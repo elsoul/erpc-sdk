@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Build, test, and package
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+      - run: corepack enable
+      - run: corepack prepare pnpm@11.24.0 --activate
+      - run: corepack pnpm install --frozen-lockfile
+      - run: corepack pnpm check
+      - run: corepack pnpm test
+      - run: corepack pnpm build
+      - run: corepack pnpm pack:check
+      - name: Switch to the minimum supported Node.js version
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 20
+      - name: Verify built package on Node.js 20
+        run: node packages/typescript/scripts/verify-package.mjs

@@ -1,0 +1,14 @@
+{
+  "name": "erpc-sdk-workspace",
+  "private": true,
+  "packageManager": "pnpm@11.24.0",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "build": "corepack pnpm --filter @elsoul/erpc-sdk build",
+    "check": "corepack pnpm --filter @elsoul/erpc-sdk check",
+    "test": "corepack pnpm --filter @elsoul/erpc-sdk test",
+    "pack:check": "corepack pnpm --filter @elsoul/erpc-sdk pack:check"
+  }
+}

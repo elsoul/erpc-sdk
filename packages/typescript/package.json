@@ -1,0 +1,64 @@
+{
+  "name": "@elsoul/erpc-sdk",
+  "version": "0.1.0",
+  "description": "Type-safe TypeScript SDK for ERPC",
+  "keywords": [
+    "erpc",
+    "ethereum",
+    "json-rpc",
+    "rpc",
+    "sdk",
+    "solana"
+  ],
+  "license": "MIT",
+  "author": "ELSOUL LABO B.V.",
+  "homepage": "https://erpc.global",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elsoul/erpc-sdk.git",
+    "directory": "packages/typescript"
+  },
+  "bugs": {
+    "url": "https://github.com/elsoul/erpc-sdk/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsup",
+    "check": "tsc --noEmit",
+    "prepublishOnly": "corepack pnpm release:check",
+    "release:check": "corepack pnpm check && corepack pnpm test && corepack pnpm build && node scripts/verify-package.mjs",
+    "test": "vitest run",
+    "test:live": "vitest run test/live.smoke.test.ts",
+    "test:watch": "vitest",
+    "pack:check": "node scripts/verify-package.mjs && corepack pnpm pack --dry-run"
+  },
+  "devDependencies": {
+    "@types/node": "^26.4.0",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.11"
+  }
+}
