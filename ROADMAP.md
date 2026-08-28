@@ -25,17 +25,20 @@
 - Publish the initial async Rust crate with the same namespaces, method
   catalogs, transport boundaries, Cloud reads, and credential safety rules.
 
-## 0.3 — Rust expansion
+## 0.3 — Python and Go
 
 - Reuse language-neutral fixtures and compatibility snapshots.
-- Provide blocking and async examples.
-- Expand structured Rust result types where protocols permit stable shapes.
+- Publish a Python package with asynchronous HTTP, SSE, and WebSocket clients.
+- Publish a Go module with context-aware HTTP, SSE, and WebSocket clients.
+- Gate all four implementations on ordered method-catalog parity, package
+  inspection, credential redaction, batch boundaries, and no-retry behavior.
 
-## 0.4 — Wider language support
+## 0.4 — Four-language expansion
 
-- Python package with synchronous and asynchronous clients.
-- Go module with context-aware HTTP and WebSocket clients.
-- Choose release order from ERPC user demand while keeping method parity.
+- Expand structured result types where protocols permit stable shapes.
+- Add synchronous Python and blocking Rust convenience clients where demand
+  justifies the additional maintenance surface.
+- Reuse language-neutral transport and compatibility fixtures.
 
 ## Service-dependent expansion
 

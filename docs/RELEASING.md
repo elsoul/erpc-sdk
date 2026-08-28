@@ -1,14 +1,19 @@
 # Releasing the ERPC SDK
 
-One stable version and one `vX.Y.Z` tag identify both public packages:
+One stable `X.Y.Z` version identifies the TypeScript, Rust, and Python
+packages. Go uses the same version through its subdirectory module tag:
 
 - npm: [`@elsoul/erpc-sdk`](https://www.npmjs.com/package/@elsoul/erpc-sdk)
 - crates.io: [`erpc-sdk`](https://crates.io/crates/erpc-sdk)
+- PyPI: [`erpc-sdk`](https://pypi.org/project/erpc-sdk/)
+- Go: [`github.com/elsoul/erpc-sdk/packages/go`](https://pkg.go.dev/github.com/elsoul/erpc-sdk/packages/go)
 
 Releases are tag-driven, human-approved, and published by
 `.github/workflows/release.yml`. A merge to `main` never publishes anything.
 The workflow validates the tagged source, publishes each missing registry
-version, and creates the GitHub Release only after both registry jobs succeed.
+version, and creates the GitHub Release only after all registry jobs succeed.
+The Go module is released by its matching subdirectory tag and needs no
+registry upload.
 
 ## One-time bootstrap
 
@@ -28,22 +33,9 @@ publisher with these exact values:
 Do not add an `NPM_TOKEN` secret. npm exchanges the workflow identity for a
 short-lived publishing credential.
 
-### First crates.io publication
+### crates.io Trusted Publishing
 
-crates.io requires the first version of a new crate to be published by a human
-before Trusted Publishing can be configured. From a clean, reviewed `main`
-checkout whose Rust and TypeScript versions match, the crate owner runs:
-
-```bash
-cargo fmt --all -- --check
-cargo clippy --workspace --all-targets --locked -- -D warnings
-cargo test --workspace --locked
-cargo package --locked --package erpc-sdk
-cargo publish --locked --package erpc-sdk
-```
-
-Use an interactive, short-lived crates.io credential for this bootstrap only.
-After the first version exists, configure its trusted publisher:
+The crate already exists. Configure its trusted publisher with:
 
 | Setting | Value |
 | --- | --- |
@@ -52,18 +44,28 @@ After the first version exists, configure its trusted publisher:
 | Workflow filename | `release.yml` |
 | Environment | `crates-io` |
 
-The workflow uses the official crates.io authentication action to obtain and
-revoke a temporary token through OIDC. Revoke the bootstrap token after the
-trusted publisher has been verified; do not store it in GitHub.
+The workflow uses the crates.io authentication action to obtain and revoke a
+temporary token through OIDC. Do not store a crates.io token in GitHub.
 
-If the first crate version is published immediately before its shared release
-tag, the tag workflow detects that exact crates.io version and safely skips the
-duplicate upload. It still publishes a missing npm version and creates the
-GitHub Release.
+### First PyPI publication
+
+Before the first Python release, create a pending trusted publisher at
+PyPI's account publishing page with these exact values:
+
+| Setting | Value |
+| --- | --- |
+| PyPI project name | `erpc-sdk` |
+| GitHub owner | `elsoul` |
+| Repository | `erpc-sdk` |
+| Workflow filename | `release.yml` |
+| Environment | `pypi` |
+
+The pending publisher creates the project when the first trusted workflow run
+publishes it. Do not add a PyPI API token secret.
 
 ## GitHub Environments
 
-Create `npm` and `crates-io` environments. For both environments configure:
+Create `npm`, `crates-io`, and `pypi` environments. For all three configure:
 
 - required human reviewers;
 - prevention of self-review when two-person approval is required;
@@ -71,16 +73,20 @@ Create `npm` and `crates-io` environments. For both environments configure:
 - no long-lived registry token secrets.
 
 The publish jobs request `id-token: write` only inside their protected
-environment. The source verification job has read-only repository permission.
+environment. Source verification has read-only repository permission.
 
 ## Prepare a version
 
-1. Update `packages/typescript/package.json` and `packages/rust/Cargo.toml` to
-   the same stable `X.Y.Z` version.
-2. Run `corepack pnpm install` if the pnpm lockfile changes and `cargo update
-   --workspace` when a Cargo dependency changes.
+1. Set the same stable `X.Y.Z` version in
+   `packages/typescript/package.json`, `packages/rust/Cargo.toml`, and
+   `packages/python/pyproject.toml`. Update `Cargo.lock` with the Rust package
+   version.
+2. Run `corepack pnpm install` if the pnpm lockfile changes, `cargo update
+   --workspace` when Cargo dependencies change, `go mod tidy` when Go
+   dependencies change, and update Python dependency bounds when necessary.
 3. Update `CHANGELOG.md` and relevant public documentation.
-4. Run `corepack pnpm release:check`.
+4. Install each language's development dependencies and run
+   `corepack pnpm release:check`.
 5. Have the version change reviewed and merged to `main`.
 
 The release command deliberately does not modify versions, stage files, or
@@ -91,37 +97,43 @@ create a commit. Those remain normal reviewed source changes.
 From a clean local `main` that exactly matches `origin/main`, run:
 
 ```bash
-corepack pnpm release -- 0.2.0
+corepack pnpm release -- 0.3.0
 ```
 
 The command:
 
-1. verifies Rust and npm package names and versions;
+1. verifies all package identities and shared versions;
 2. rejects prerelease or malformed versions;
 3. requires a clean `main` equal to `origin/main`;
-4. rejects an existing local or remote tag;
-5. runs the complete TypeScript and Rust release suite;
-6. creates annotated tag `v0.2.0` and pushes only that tag.
+4. rejects existing local or remote release tags;
+5. runs the complete four-language release suite;
+6. creates annotated tags `v0.3.0` and `packages/go/v0.3.0`;
+7. atomically pushes both tags.
 
-The pushed tag starts the protected workflow. Approve both registry
-environments, then verify the npm package, crates.io crate, generated docs, and
-GitHub Release.
+The root tag starts the protected workflow. Approve the registry environments,
+then verify npm, crates.io, PyPI, the Go package documentation, generated Rust
+documentation, and the GitHub Release.
 
 ## Validation performed by CI
 
 TypeScript validation includes strict typechecking, unit tests, builds, ESM and
 CommonJS entry-point checks, and npm dry-run package inspection. Rust
-validation includes formatting, Clippy with warnings denied, unit and transport
-tests on the minimum supported Rust version, rustdoc warnings denied, release
-build, package file listing, and `cargo package` verification.
+validation includes formatting, Clippy with warnings denied, tests on the
+minimum supported Rust version, rustdoc warnings denied, a release build, and
+crate package inspection. Python validation includes Ruff, strict mypy, async
+tests, wheel and source-distribution builds, and Twine inspection. Go
+validation includes module tidiness, formatting, vet, race-enabled tests, and
+package listing on the minimum supported Go version.
 
-The tag must exactly match both package versions and its commit must be an
-ancestor of `main`. Invalid tags cannot reach either protected publish job.
+CI also verifies that all four SDKs expose the same eight ordered RPC method
+catalogs. The root tag must match the three versioned package manifests, the
+Go tag must point to the same commit, and the release commit must be on `main`.
+Invalid tags cannot reach a protected publish job.
 
 ## Recovery
 
-Registry versions and release tags are immutable. The workflow checks both
-registries before publishing, so rerunning a partially successful workflow
-skips already-published versions and completes the missing package or GitHub
-Release. If the tagged source itself is wrong, prepare a new patch version; do
-not move or reuse the old tag.
+Registry versions and release tags are immutable. The workflow checks npm,
+crates.io, and PyPI before publishing, so rerunning a partially successful
+workflow skips versions already present and completes missing publications or
+the GitHub Release. If the tagged source itself is wrong, prepare a new patch
+version; do not move or reuse an old tag.

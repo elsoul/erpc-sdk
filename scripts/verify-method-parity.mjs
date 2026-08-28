@@ -21,6 +21,14 @@ const rustEthereum = await readFile(
   new URL('packages/rust/src/ethereum.rs', root),
   'utf8',
 )
+const pythonRPC = await readFile(
+  new URL('packages/python/src/erpc_sdk/rpc.py', root),
+  'utf8',
+)
+const goMethods = await readFile(
+  new URL('packages/go/methods.go', root),
+  'utf8',
+)
 
 const quotedValues = (body) =>
   [...body.matchAll(/['"]([^'"]+)['"]/g)].map((match) => match[1])
@@ -41,30 +49,72 @@ const rustCatalog = (source, name) => {
   return quotedValues(body)
 }
 
+const pythonCatalog = (source, name) => {
+  const body = source.match(
+    new RegExp(`^${name}\\s*=\\s*\\(([\\s\\S]*?)\\)`, 'm'),
+  )?.[1]
+  if (body === undefined) {
+    throw new Error(`Unable to read Python catalog ${name}`)
+  }
+  return quotedValues(body)
+}
+
+const goCatalog = (source, name) => {
+  const body = source.match(
+    new RegExp(`var ${name} = \\[\\]string\\{([\\s\\S]*?)\\}`),
+  )?.[1]
+  if (body === undefined) throw new Error(`Unable to read Go catalog ${name}`)
+  return quotedValues(body)
+}
+
 const catalogs = [
-  ['ETHEREUM_RPC_METHODS', typescriptEthereum, rustEthereum],
-  ['ETHEREUM_SUBSCRIPTION_METHODS', typescriptEthereum, rustEthereum],
-  ['SOLANA_RPC_METHODS', typescriptSolana, rustSolana],
-  ['SOLANA_DAS_METHODS', typescriptSolana, rustSolana],
-  ['SOLANA_HISTORY_METHODS', typescriptSolana, rustSolana],
-  ['SOLANA_LEADER_METHODS', typescriptSolana, rustSolana],
-  ['SOLANA_ANALYTICS_METHODS', typescriptSolana, rustSolana],
+  ['ETHEREUM_RPC_METHODS', 'EthereumRPCMethods', typescriptEthereum, rustEthereum],
+  [
+    'ETHEREUM_SUBSCRIPTION_METHODS',
+    'EthereumSubscriptionMethods',
+    typescriptEthereum,
+    rustEthereum,
+  ],
+  ['SOLANA_RPC_METHODS', 'SolanaRPCMethods', typescriptSolana, rustSolana],
+  ['SOLANA_DAS_METHODS', 'SolanaDASMethods', typescriptSolana, rustSolana],
+  [
+    'SOLANA_HISTORY_METHODS',
+    'SolanaHistoryMethods',
+    typescriptSolana,
+    rustSolana,
+  ],
+  ['SOLANA_LEADER_METHODS', 'SolanaLeaderMethods', typescriptSolana, rustSolana],
+  [
+    'SOLANA_ANALYTICS_METHODS',
+    'SolanaAnalyticsMethods',
+    typescriptSolana,
+    rustSolana,
+  ],
   [
     'SOLANA_ENHANCED_SUBSCRIPTION_METHODS',
+    'SolanaEnhancedSubscriptionMethods',
     typescriptSubscriptions,
     rustSolana,
   ],
 ]
 
-for (const [name, typescript, rust] of catalogs) {
+for (const [name, goName, typescript, rust] of catalogs) {
   const expected = typescriptCatalog(typescript, name)
-  const actual = rustCatalog(rust, name)
-  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
-    throw new Error(
-      `${name} differs between TypeScript and Rust:\n` +
-        `TypeScript: ${expected.join(', ')}\nRust: ${actual.join(', ')}`,
-    )
+  const implementations = [
+    ['Rust', rustCatalog(rust, name)],
+    ['Python', pythonCatalog(pythonRPC, name)],
+    ['Go', goCatalog(goMethods, goName)],
+  ]
+  for (const [language, actual] of implementations) {
+    if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+      throw new Error(
+        `${name} differs between TypeScript and ${language}:\n` +
+          `TypeScript: ${expected.join(', ')}\n${language}: ${actual.join(', ')}`,
+      )
+    }
   }
 }
 
-console.log(`Verified ${catalogs.length} TypeScript and Rust method catalogs.`)
+console.log(
+  `Verified ${catalogs.length} method catalogs across TypeScript, Rust, Python, and Go.`,
+)

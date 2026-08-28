@@ -3,7 +3,11 @@ import test from 'node:test'
 import { parseReleaseArgument } from './release-version.mjs'
 
 test('accepts direct and pnpm-separated stable versions', () => {
-  const expected = { tag: 'v1.2.3', version: '1.2.3' }
+  const expected = {
+    goTag: 'packages/go/v1.2.3',
+    tag: 'v1.2.3',
+    version: '1.2.3',
+  }
 
   assert.deepEqual(parseReleaseArgument(['1.2.3']), expected)
   assert.deepEqual(parseReleaseArgument(['v1.2.3']), expected)

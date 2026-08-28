@@ -15,7 +15,13 @@
     "rust:check": "cargo fmt --all -- --check && cargo clippy --workspace --all-targets --locked -- -D warnings",
     "rust:test": "cargo test --workspace --locked",
     "rust:pack:check": "cargo package --locked --package erpc-sdk --allow-dirty && cargo package --locked --package erpc-sdk --allow-dirty --list",
-    "release:check": "corepack pnpm check && corepack pnpm test && corepack pnpm build && corepack pnpm pack:check && corepack pnpm method:parity && corepack pnpm rust:check && corepack pnpm rust:test && corepack pnpm rust:build && corepack pnpm rust:pack:check && node --test scripts/release-version.test.mjs && node scripts/verify-release.mjs",
+    "python:check": "cd packages/python && python3 -m ruff check src tests && python3 -m mypy src",
+    "python:test": "cd packages/python && python3 -m pytest",
+    "python:pack:check": "cd packages/python && python3 -m build --outdir dist && python3 -m twine check dist/*",
+    "go:check": "node scripts/check-go-format.mjs && cd packages/go && go vet ./...",
+    "go:test": "cd packages/go && go test -race ./...",
+    "go:pack:check": "cd packages/go && go list ./...",
+    "release:check": "corepack pnpm check && corepack pnpm test && corepack pnpm build && corepack pnpm pack:check && corepack pnpm method:parity && corepack pnpm rust:check && corepack pnpm rust:test && corepack pnpm rust:build && corepack pnpm rust:pack:check && corepack pnpm python:check && corepack pnpm python:test && corepack pnpm python:pack:check && corepack pnpm go:check && corepack pnpm go:test && corepack pnpm go:pack:check && node --test scripts/release-version.test.mjs && node scripts/verify-release.mjs",
     "release": "node scripts/release.mjs"
   }
 }

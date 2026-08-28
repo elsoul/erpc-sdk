@@ -6,9 +6,9 @@ Last reviewed: 2026-08-28
 typed SDK entry point. The raw request API remains available for forward
 compatibility.
 
-The TypeScript and Rust packages share these wire catalogs. Rust exposes
-idiomatic snake-case helper names while preserving the method strings shown
-below at the JSON-RPC boundary.
+The TypeScript, Rust, Python, and Go packages share these ordered wire
+catalogs. Each package exposes idiomatic helper names while preserving the
+method strings shown below at the JSON-RPC boundary.
 
 ## Available now
 

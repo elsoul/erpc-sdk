@@ -1,8 +1,8 @@
 import { appendFile, readFile } from 'node:fs/promises'
 
 const registry = process.argv[2]
-if (registry !== 'npm' && registry !== 'crates') {
-  throw new Error('Registry must be npm or crates')
+if (registry !== 'npm' && registry !== 'crates' && registry !== 'pypi') {
+  throw new Error('Registry must be npm, crates, or pypi')
 }
 
 const packageJson = JSON.parse(
@@ -28,7 +28,7 @@ if (registry === 'npm') {
     const metadata = await response.json()
     published = Object.hasOwn(metadata.versions ?? {}, version)
   }
-} else {
+} else if (registry === 'crates') {
   const response = await fetch(
     'https://crates.io/api/v1/crates/erpc-sdk/versions',
     {
@@ -44,6 +44,18 @@ if (registry === 'npm') {
     published = (metadata.versions ?? []).some(
       (candidate) => candidate.num === version,
     )
+  }
+} else {
+  const response = await fetch('https://pypi.org/pypi/erpc-sdk/json', {
+    headers: { accept: 'application/json' },
+    signal: AbortSignal.timeout(15_000),
+  })
+  if (response.status === 404) published = false
+  else if (!response.ok) {
+    throw new Error(`Unable to inspect PyPI: HTTP ${response.status}`)
+  } else {
+    const metadata = await response.json()
+    published = Object.hasOwn(metadata.releases ?? {}, version)
   }
 }
 

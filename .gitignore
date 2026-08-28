@@ -5,6 +5,13 @@ coverage/
 *.tsbuildinfo
 *.log
 .DS_Store
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.venv/
+*.egg-info/
+*.py[cod]
+__pycache__/
 .env
 .env.*
 !.env.example

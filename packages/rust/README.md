@@ -7,7 +7,7 @@ Cloud reads.
 
 ```toml
 [dependencies]
-erpc-sdk = "0.2"
+erpc-sdk = "0.3"
 serde_json = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
@@ -111,6 +111,11 @@ println!("{} offerings, {} resources", offerings.len(), resources.len());
 Cloud configuration accepts HTTPS endpoints and local HTTP endpoints for
 testing. It retains only the access token supplied by the caller and does not
 implement interactive authorization or refresh-credential storage.
+
+Non-streaming price reads and every Cloud read also provide a `_with` variant
+that accepts an optional `CancellationToken`. The timeout configured with
+`ErpcClientConfig::with_timeout` or `ErpcCloudClientConfig::with_timeout`
+covers both response headers and the complete response body.
 
 ## Safety boundaries
 

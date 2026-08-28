@@ -1,6 +1,6 @@
 [package]
 name = "erpc-sdk"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 rust-version = "1.85"
 description = "Async Rust SDK for ERPC"
@@ -23,7 +23,7 @@ reqwest = { version = "0.12.15", default-features = false, features = ["json", "
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.140"
 thiserror = "2.0.12"
-tokio = { version = "1.44.1", features = ["macros", "net", "rt-multi-thread", "sync", "time"] }
+tokio = { version = "1.44.1", features = ["io-util", "macros", "net", "rt-multi-thread", "sync", "time"] }
 tokio-tungstenite = { version = "0.26.2", default-features = false, features = ["connect", "rustls-tls-webpki-roots"] }
 tokio-util = { version = "0.7.14", features = ["rt"] }
 url = "2.5.4"
