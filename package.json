@@ -15,7 +15,7 @@
     "rust:check": "cargo fmt --all -- --check && cargo clippy --workspace --all-targets --locked -- -D warnings",
     "rust:test": "cargo test --workspace --locked",
     "rust:pack:check": "cargo package --locked --package erpc-sdk --allow-dirty && cargo package --locked --package erpc-sdk --allow-dirty --list",
-    "release:check": "corepack pnpm check && corepack pnpm test && corepack pnpm build && corepack pnpm pack:check && corepack pnpm method:parity && corepack pnpm rust:check && corepack pnpm rust:test && corepack pnpm rust:build && corepack pnpm rust:pack:check && node scripts/verify-release.mjs",
+    "release:check": "corepack pnpm check && corepack pnpm test && corepack pnpm build && corepack pnpm pack:check && corepack pnpm method:parity && corepack pnpm rust:check && corepack pnpm rust:test && corepack pnpm rust:build && corepack pnpm rust:pack:check && node --test scripts/release-version.test.mjs && node scripts/verify-release.mjs",
     "release": "node scripts/release.mjs"
   }
 }
