@@ -9,5 +9,6 @@ export const parseReleaseArgument = (arguments_) => {
     throw new Error('Release version must use stable X.Y.Z format')
   }
 
-  return { tag: `v${version}`, version }
+  const tag = `v${version}`
+  return { goTag: `packages/go/${tag}`, tag, version }
 }

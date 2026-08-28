@@ -4,6 +4,7 @@ use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use tokio_util::sync::CancellationToken;
 
 use crate::{
     DEFAULT_TIMEOUT, DEFAULT_USER_ENDPOINT, ErpcError, Result, config::endpoint,
@@ -238,9 +239,17 @@ impl CloudCatalogClient {
 
     /// Lists available offerings.
     pub async fn list(&self) -> Result<Vec<CloudOffering>> {
+        self.list_with(None).await
+    }
+
+    /// Lists available offerings with cancellation.
+    pub async fn list_with(
+        &self,
+        cancellation: Option<&CancellationToken>,
+    ) -> Result<Vec<CloudOffering>> {
         let envelope: Envelope<CatalogMessage> = self
             .transport
-            .get("/v4/cloud/catalog", Vec::new(), None)
+            .get("/v4/cloud/catalog", Vec::new(), cancellation)
             .await?;
         if !envelope.success
             || envelope.message.offerings.iter().any(|offering| {
@@ -306,9 +315,14 @@ impl CloudCreditClient {
 
     /// Gets the current credit snapshot.
     pub async fn get(&self) -> Result<CloudCredit> {
+        self.get_with(None).await
+    }
+
+    /// Gets the current credit snapshot with cancellation.
+    pub async fn get_with(&self, cancellation: Option<&CancellationToken>) -> Result<CloudCredit> {
         let envelope: Envelope<CloudCredit> = self
             .transport
-            .get("/v4/cloud/credit", Vec::new(), None)
+            .get("/v4/cloud/credit", Vec::new(), cancellation)
             .await?;
         let credit = envelope.message;
         if !envelope.success
@@ -397,9 +411,17 @@ impl CloudResourcesClient {
 
     /// Lists provisioned resources.
     pub async fn list(&self) -> Result<Vec<CloudResource>> {
+        self.list_with(None).await
+    }
+
+    /// Lists provisioned resources with cancellation.
+    pub async fn list_with(
+        &self,
+        cancellation: Option<&CancellationToken>,
+    ) -> Result<Vec<CloudResource>> {
         let envelope: Envelope<ResourceListMessage> = self
             .transport
-            .get("/v4/cloud/resources", Vec::new(), None)
+            .get("/v4/cloud/resources", Vec::new(), cancellation)
             .await?;
         if !envelope.success {
             return Err(invalid_cloud("resource list"));
@@ -409,6 +431,15 @@ impl CloudResourcesClient {
 
     /// Gets one resource by identifier.
     pub async fn get(&self, resource_id: &str) -> Result<CloudResource> {
+        self.get_with(resource_id, None).await
+    }
+
+    /// Gets one resource by identifier with cancellation.
+    pub async fn get_with(
+        &self,
+        resource_id: &str,
+        cancellation: Option<&CancellationToken>,
+    ) -> Result<CloudResource> {
         let id = resource_id.trim();
         if id.is_empty() {
             return Err(ErpcError::Config(
@@ -420,7 +451,7 @@ impl CloudResourcesClient {
             utf8_percent_encode(id, NON_ALPHANUMERIC)
         );
         let envelope: Envelope<ResourceMessage> =
-            self.transport.get(&path, Vec::new(), None).await?;
+            self.transport.get(&path, Vec::new(), cancellation).await?;
         if !envelope.success {
             return Err(invalid_cloud("resource"));
         }
@@ -429,6 +460,15 @@ impl CloudResourcesClient {
 
     /// Gets lifecycle and billing status for one resource.
     pub async fn get_status(&self, resource_id: &str) -> Result<CloudResourceStatus> {
+        self.get_status_with(resource_id, None).await
+    }
+
+    /// Gets lifecycle and billing status for one resource with cancellation.
+    pub async fn get_status_with(
+        &self,
+        resource_id: &str,
+        cancellation: Option<&CancellationToken>,
+    ) -> Result<CloudResourceStatus> {
         let id = resource_id.trim();
         if id.is_empty() {
             return Err(ErpcError::Config(
@@ -440,7 +480,7 @@ impl CloudResourcesClient {
             utf8_percent_encode(id, NON_ALPHANUMERIC)
         );
         let envelope: Envelope<CloudResourceStatus> =
-            self.transport.get(&path, Vec::new(), None).await?;
+            self.transport.get(&path, Vec::new(), cancellation).await?;
         if !envelope.success || !valid_billing(envelope.message.billing.as_ref()) {
             return Err(invalid_cloud("resource status"));
         }

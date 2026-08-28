@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   createErpcClient,
   ErpcBatchPolicyError,
+  ErpcInvalidResponseError,
   ErpcJsonRpcError,
   ErpcTransportError,
   ETHEREUM_RPC_METHODS,
@@ -88,6 +89,98 @@ describe('ERPC client', () => {
       .send()
 
     expect(result).toEqual([123, 'ok'])
+    expect(requests).toHaveLength(1)
+    expect(requests[0]?.body).toHaveLength(2)
+  })
+
+  it.each([
+    {
+      name: 'duplicate',
+      alter: (responses: readonly Record<string, unknown>[]) => [
+        responses[0],
+        responses[0],
+      ],
+      message: 'ERPC returned duplicate batch response id',
+    },
+    {
+      name: 'missing',
+      alter: (responses: readonly Record<string, unknown>[]) => [responses[0]],
+      message: 'ERPC omitted batch response id',
+    },
+    {
+      name: 'unexpected',
+      alter: (responses: readonly Record<string, unknown>[]) => [
+        ...responses,
+        { jsonrpc: '2.0', id: 'test-secret', result: null },
+      ],
+      message: 'ERPC returned an unexpected batch response id',
+    },
+  ])('rejects $name batch response ids', async ({ alter, message }) => {
+    let fetchCount = 0
+    const client = createErpcClient({
+      apiKey: 'test-secret',
+      fetch: async (_input, init) => {
+        fetchCount += 1
+        const requests = JSON.parse(String(init?.body)) as readonly Record<
+          string,
+          unknown
+        >[]
+        const responses = requests.map((request) => ({
+          jsonrpc: '2.0',
+          id: request.id,
+          result: request.method,
+        }))
+        return new Response(JSON.stringify(alter(responses)))
+      },
+    })
+
+    const error = await client.solana.rpc
+      .batch([
+        { method: 'getSlot', params: [] },
+        { method: 'getHealth', params: [] },
+      ] as const)
+      .send()
+      .catch((value: unknown) => value)
+
+    expect(error).toBeInstanceOf(ErpcInvalidResponseError)
+    expect(error).toMatchObject({ code: 'ERPC_INVALID_RESPONSE' })
+    expect(String(error)).toContain(message)
+    expect(String(error)).not.toContain('test-secret')
+    expect(fetchCount).toBe(1)
+  })
+
+  it('returns an empty batch without making a request', async () => {
+    let fetchCount = 0
+    const client = createErpcClient({
+      apiKey: 'test-secret',
+      fetch: async () => {
+        fetchCount += 1
+        return new Response('[]')
+      },
+    })
+
+    await expect(client.solana.rpc.batch([]).send()).resolves.toEqual([])
+    expect(fetchCount).toBe(0)
+  })
+
+  it('rejects batches larger than 256 calls without making a request', async () => {
+    let fetchCount = 0
+    const client = createErpcClient({
+      apiKey: 'test-secret',
+      fetch: async () => {
+        fetchCount += 1
+        return new Response('[]')
+      },
+    })
+    const calls = Array.from({ length: 257 }, () => ({
+      method: 'getSlot' as const,
+      params: [] as const,
+    }))
+
+    await expect(client.solana.rpc.batch(calls).send()).rejects.toBeInstanceOf(
+      ErpcInvalidResponseError,
+    )
+    expect(fetchCount).toBe(0)
   })
 
   it('rejects mixed indexed and standard Solana batches locally', () => {
@@ -100,6 +193,19 @@ describe('ERPC client', () => {
       client.solana.rpc.batch([
         { method: 'getProgramAccounts', params: ['program'] },
         { method: 'getSlot', params: [] },
+      ] as const),
+    ).toThrow(ErpcBatchPolicyError)
+  })
+
+  it('rejects leader batches locally', () => {
+    const client = createErpcClient({
+      apiKey: 'test-secret',
+      fetch: rpcFetch([]),
+    })
+
+    expect(() =>
+      client.solana.leaders.batch([
+        { method: 'getLeaderSlots', params: [0] },
       ] as const),
     ).toThrow(ErpcBatchPolicyError)
   })

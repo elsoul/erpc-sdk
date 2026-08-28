@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process'
 import { parseReleaseArgument } from './release-version.mjs'
 
-const { tag, version } = parseReleaseArgument(process.argv.slice(2))
+const { goTag, tag, version } = parseReleaseArgument(process.argv.slice(2))
 
 const run = (command, args, options = {}) => {
   const result = spawnSync(command, args, {
@@ -35,23 +35,37 @@ if (head !== remoteHead) {
   throw new Error('Local main must exactly match origin/main')
 }
 
-const localTag = run('git', ['rev-parse', '--verify', `refs/tags/${tag}`], {
-  allowFailure: true,
-  capture: true,
-})
-if (localTag.status === 0) throw new Error(`Local tag ${tag} already exists`)
-const remoteTag = run(
-  'git',
-  ['ls-remote', '--exit-code', '--tags', 'origin', `refs/tags/${tag}`],
-  { allowFailure: true, capture: true },
-)
-if (remoteTag.status === 0) throw new Error(`Remote tag ${tag} already exists`)
-if (remoteTag.status !== 2) throw new Error('Unable to inspect remote tags')
+for (const releaseTag of [tag, goTag]) {
+  const localTag = run(
+    'git',
+    ['rev-parse', '--verify', `refs/tags/${releaseTag}`],
+    { allowFailure: true, capture: true },
+  )
+  if (localTag.status === 0) {
+    throw new Error(`Local tag ${releaseTag} already exists`)
+  }
+  const remoteTag = run(
+    'git',
+    ['ls-remote', '--exit-code', '--tags', 'origin', `refs/tags/${releaseTag}`],
+    { allowFailure: true, capture: true },
+  )
+  if (remoteTag.status === 0) {
+    throw new Error(`Remote tag ${releaseTag} already exists`)
+  }
+  if (remoteTag.status !== 2) throw new Error('Unable to inspect remote tags')
+}
 
 run('corepack', ['pnpm', 'release:check'])
 run('git', ['tag', '-a', tag, '-m', `ERPC SDK ${version}`])
-run('git', ['push', 'origin', `refs/tags/${tag}`])
+run('git', ['tag', '-a', goTag, '-m', `ERPC Go SDK ${version}`])
+run('git', [
+  'push',
+  '--atomic',
+  'origin',
+  `refs/tags/${tag}`,
+  `refs/tags/${goTag}`,
+])
 
 console.log(
-  `${tag} was pushed. The protected release workflow will publish both packages.`,
+  `${tag} and ${goTag} were pushed. The protected release workflow will publish the registry packages.`,
 )

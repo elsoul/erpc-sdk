@@ -10,6 +10,8 @@ Requirements:
 - Corepack
 - pnpm 11
 - Rust 1.85 or newer with `rustfmt` and `clippy`
+- Python 3.11 or newer
+- Go 1.22 or newer
 
 ```bash
 corepack enable
@@ -22,12 +24,19 @@ cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo test --workspace --locked
 cargo package --package erpc-sdk
+python -m pip install -e './packages/python[dev]'
+pnpm python:check
+pnpm python:test
+pnpm python:pack:check
+pnpm go:check
+pnpm go:test
+pnpm go:pack:check
 ```
 
 Keep changes focused and include tests for observable behavior. Public APIs
-must use explicit exports and strict TypeScript or Rust types. Avoid `any` in
+must use explicit exports and strict language-native types. Avoid `any` in
 TypeScript library code. Preserve JSON-RPC wire names and positional parameter
-order in both implementations.
+order across all implementations.
 
 Do not add automatic retries for transaction submission or other
 state-changing methods. Never log API keys or include them in thrown error

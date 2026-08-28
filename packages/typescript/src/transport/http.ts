@@ -132,6 +132,7 @@ export class HttpJsonRpcTransport {
       throw new ErpcInvalidResponseError('ERPC returned a non-array batch response')
     }
 
+    const expectedIds = new Set<JsonRpcId>(requests.map((request) => request.id))
     const byId = new Map<JsonRpcId, unknown>()
     for (const response of raw) {
       if (!isObject(response) || !('id' in response)) {
@@ -140,6 +141,16 @@ export class HttpJsonRpcTransport {
       const id = response.id
       if (typeof id !== 'number' && typeof id !== 'string') {
         throw new ErpcInvalidResponseError('ERPC returned an invalid batch id')
+      }
+      if (!expectedIds.has(id)) {
+        throw new ErpcInvalidResponseError(
+          'ERPC returned an unexpected batch response id',
+        )
+      }
+      if (byId.has(id)) {
+        throw new ErpcInvalidResponseError(
+          `ERPC returned duplicate batch response id ${String(id)}`,
+        )
       }
       byId.set(id, response)
     }

@@ -1,6 +1,7 @@
 use std::pin::Pin;
 
 use futures_util::{Stream, StreamExt};
+use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
 
@@ -195,6 +196,17 @@ impl PriceClient {
         query_text: Option<&str>,
         asset_type: Option<PriceAssetType>,
     ) -> Result<Vec<PriceFeedMetadata>> {
+        self.get_price_feeds_with(query_text, asset_type, None)
+            .await
+    }
+
+    /// Searches price feed metadata with cancellation.
+    pub async fn get_price_feeds_with(
+        &self,
+        query_text: Option<&str>,
+        asset_type: Option<PriceAssetType>,
+        cancellation: Option<&CancellationToken>,
+    ) -> Result<Vec<PriceFeedMetadata>> {
         let mut query = Vec::new();
         if let Some(value) = query_text {
             query.push(("query".to_owned(), value.to_owned()));
@@ -202,7 +214,9 @@ impl PriceClient {
         if let Some(value) = asset_type {
             query.push(("asset_type".to_owned(), value.as_str().to_owned()));
         }
-        self.transport.get("/v2/price_feeds", query, None).await
+        self.transport
+            .get("/v2/price_feeds", query, cancellation)
+            .await
     }
 
     /// Gets latest price updates.
@@ -210,8 +224,21 @@ impl PriceClient {
         &self,
         options: &PriceUpdateOptions,
     ) -> Result<PriceUpdateResponse> {
+        self.get_latest_price_updates_with(options, None).await
+    }
+
+    /// Gets latest price updates with cancellation.
+    pub async fn get_latest_price_updates_with(
+        &self,
+        options: &PriceUpdateOptions,
+        cancellation: Option<&CancellationToken>,
+    ) -> Result<PriceUpdateResponse> {
         self.transport
-            .get("/v2/updates/price/latest", update_query(options), None)
+            .get(
+                "/v2/updates/price/latest",
+                update_query(options),
+                cancellation,
+            )
             .await
     }
 
@@ -221,8 +248,23 @@ impl PriceClient {
         publish_time: impl std::fmt::Display,
         options: &PriceUpdateOptions,
     ) -> Result<PriceUpdateResponse> {
-        let path = format!("/v2/updates/price/{publish_time}");
-        self.transport.get(&path, update_query(options), None).await
+        self.get_price_updates_at_timestamp_with(publish_time, options, None)
+            .await
+    }
+
+    /// Gets price updates at a Unix publication time with cancellation.
+    pub async fn get_price_updates_at_timestamp_with(
+        &self,
+        publish_time: impl std::fmt::Display,
+        options: &PriceUpdateOptions,
+        cancellation: Option<&CancellationToken>,
+    ) -> Result<PriceUpdateResponse> {
+        let publish_time = publish_time.to_string();
+        let segment = utf8_percent_encode(&publish_time, NON_ALPHANUMERIC);
+        let path = format!("/v2/updates/price/{segment}");
+        self.transport
+            .get(&path, update_query(options), cancellation)
+            .await
     }
 
     /// Gets latest publisher stake caps.
@@ -230,6 +272,17 @@ impl PriceClient {
         &self,
         encoding: Option<PriceEncoding>,
         parsed: Option<bool>,
+    ) -> Result<PublisherStakeCapsResponse> {
+        self.get_latest_publisher_stake_caps_with(encoding, parsed, None)
+            .await
+    }
+
+    /// Gets latest publisher stake caps with cancellation.
+    pub async fn get_latest_publisher_stake_caps_with(
+        &self,
+        encoding: Option<PriceEncoding>,
+        parsed: Option<bool>,
+        cancellation: Option<&CancellationToken>,
     ) -> Result<PublisherStakeCapsResponse> {
         let mut query = Vec::new();
         if let Some(value) = encoding {
@@ -239,7 +292,11 @@ impl PriceClient {
             query.push(("parsed".to_owned(), value.to_string()));
         }
         self.transport
-            .get("/v2/updates/publisher_stake_caps/latest", query, None)
+            .get(
+                "/v2/updates/publisher_stake_caps/latest",
+                query,
+                cancellation,
+            )
             .await
     }
 

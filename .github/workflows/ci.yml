@@ -44,7 +44,9 @@ jobs:
         with:
           persist-credentials: false
       - name: Install the minimum supported Rust toolchain
-        run: rustup toolchain install 1.85.0 --profile minimal --component clippy,rustfmt
+        run: |
+          rustup toolchain install 1.85.0 --profile minimal --component clippy,rustfmt
+          rustup default 1.85.0
       - name: Verify release identities
         run: node scripts/verify-release.mjs
       - name: Verify TypeScript and Rust method parity
@@ -65,3 +67,62 @@ jobs:
         run: |
           cargo package --locked --package erpc-sdk --list
           cargo package --locked --package erpc-sdk
+
+  python:
+    name: Python lint, test, and package
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: packages/python
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.11'
+      - name: Install package and development tools
+        run: python -m pip install --disable-pip-version-check -e '.[dev]'
+      - name: Lint
+        run: python -m ruff check src tests
+      - name: Typecheck
+        run: python -m mypy src
+      - name: Test
+        run: python -m pytest
+      - name: Build wheel and source distribution
+        run: python -m build --outdir dist
+      - name: Inspect Python distributions
+        run: python -m twine check dist/*
+
+  go:
+    name: Go format, vet, test, and module
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: packages/go
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: '1.22.x'
+          cache-dependency-path: packages/go/go.sum
+      - name: Download dependencies
+        run: go mod download
+      - name: Check module files
+        run: |
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
+      - name: Check formatting
+        run: |
+          gofmt -w .
+          git diff --exit-code -- .
+      - name: Vet
+        run: go vet ./...
+      - name: Test with the race detector
+        run: go test -race ./...
+      - name: Inspect module packages
+        run: go list ./...

@@ -1,5 +1,7 @@
 #![allow(missing_docs)]
 
+mod support;
+
 use std::time::Duration;
 
 use erpc_sdk::{
@@ -13,6 +15,8 @@ use wiremock::{
     Mock, MockServer, ResponseTemplate,
     matchers::{body_json, header, method, path, query_param},
 };
+
+use support::delayed_body_server;
 
 fn config(server: &MockServer, api_key: &str) -> ErpcClientConfig {
     ErpcClientConfig::new(api_key)
@@ -173,6 +177,35 @@ async fn batch_preserves_one_boundary_and_caller_order() {
 }
 
 #[tokio::test]
+async fn batch_rejects_an_unexpected_response_id_without_exposing_it() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+            {"jsonrpc": "2.0", "id": 1, "result": "ok"},
+            {"jsonrpc": "2.0", "id": 2, "result": "hash"},
+            {"jsonrpc": "2.0", "id": 999_999, "result": "unexpected"}
+        ])))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let client = ErpcClient::new(config(&server, "key")).unwrap();
+    let error = client
+        .solana
+        .rpc
+        .batch(vec![
+            RpcBatchCall::without_params("getHealth"),
+            RpcBatchCall::without_params("getGenesisHash"),
+        ])
+        .unwrap()
+        .send()
+        .await
+        .unwrap_err();
+    let rendered = error.to_string();
+    assert!(rendered.contains("unexpected batch response id"));
+    assert!(!rendered.contains("999999"));
+}
+
+#[tokio::test]
 async fn invalid_mixed_and_leader_batches_are_rejected_locally() {
     let server = MockServer::start().await;
     let client = ErpcClient::new(config(&server, "key")).unwrap();
@@ -234,6 +267,51 @@ async fn cancellation_aborts_an_in_flight_request() {
         .await
         .unwrap_err();
     assert!(matches!(error, ErpcError::Aborted));
+}
+
+#[tokio::test]
+async fn http_cancellation_covers_response_body_read() {
+    let endpoint = delayed_body_server(
+        r#"{"jsonrpc":"2.0","id":1,"result":"ok"}"#,
+        Duration::from_millis(500),
+    )
+    .await;
+    let client = ErpcClient::new(ErpcClientConfig::new("key").with_endpoint(endpoint)).unwrap();
+    let cancellation = CancellationToken::new();
+    let trigger = cancellation.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(75)).await;
+        trigger.cancel();
+    });
+
+    let error = client
+        .solana
+        .rpc
+        .get_health()
+        .send_with(erpc_sdk::RequestOptions {
+            cancellation: Some(cancellation),
+        })
+        .await
+        .unwrap_err();
+    assert!(matches!(error, ErpcError::Aborted));
+}
+
+#[tokio::test]
+async fn http_timeout_covers_response_body_read() {
+    let endpoint = delayed_body_server(
+        r#"{"jsonrpc":"2.0","id":1,"result":"ok"}"#,
+        Duration::from_millis(500),
+    )
+    .await;
+    let client = ErpcClient::new(
+        ErpcClientConfig::new("key")
+            .with_endpoint(endpoint)
+            .with_timeout(Duration::from_millis(75)),
+    )
+    .unwrap();
+
+    let error = client.solana.rpc.get_health().send().await.unwrap_err();
+    assert!(matches!(error, ErpcError::Timeout { .. }));
 }
 
 #[tokio::test]

@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{future::Future, time::Duration};
 
 use reqwest::{Client, Response, header::HeaderMap};
 use serde::de::DeserializeOwned;
@@ -51,13 +51,16 @@ impl RestTransport {
         query: Query,
         cancellation: Option<&CancellationToken>,
     ) -> Result<T> {
-        let response = self.get_response(path, query, cancellation).await?;
-        let body = response
-            .text()
-            .await
-            .map_err(|_| ErpcError::Transport("Unable to read ERPC response".to_owned()))?;
-        serde_json::from_str(&body)
-            .map_err(|_| ErpcError::InvalidResponse("ERPC returned malformed JSON".to_owned()))
+        let operation = async {
+            let response = self.send(path, query).await?;
+            let body = response
+                .text()
+                .await
+                .map_err(|_| ErpcError::Transport("Unable to read ERPC response".to_owned()))?;
+            serde_json::from_str(&body)
+                .map_err(|_| ErpcError::InvalidResponse("ERPC returned malformed JSON".to_owned()))
+        };
+        self.run(operation, cancellation).await
     }
 
     pub async fn get_response(
@@ -66,25 +69,19 @@ impl RestTransport {
         query: Query,
         cancellation: Option<&CancellationToken>,
     ) -> Result<Response> {
+        self.run(self.send(path, query), cancellation).await
+    }
+
+    async fn send(&self, path: &str, query: Query) -> Result<Response> {
         let url = self.url(path, &query);
-        let request = self
+        let response = self
             .client
             .get(url)
             .headers(self.headers.clone())
             .bearer_auth(&self.api_key)
             .header(reqwest::header::ACCEPT, "application/json")
-            .send();
-
-        let result = if let Some(cancellation) = cancellation {
-            tokio::select! {
-                () = cancellation.cancelled() => return Err(ErpcError::Aborted),
-                result = tokio::time::timeout(self.timeout, request) => result,
-            }
-        } else {
-            tokio::time::timeout(self.timeout, request).await
-        };
-        let response = result
-            .map_err(|_| timeout(self.timeout))?
+            .send()
+            .await
             .map_err(|_| ErpcError::Transport("Unable to reach ERPC".to_owned()))?;
         if !response.status().is_success() {
             return Err(ErpcError::Http {
@@ -92,5 +89,23 @@ impl RestTransport {
             });
         }
         Ok(response)
+    }
+
+    async fn run<T>(
+        &self,
+        operation: impl Future<Output = Result<T>>,
+        cancellation: Option<&CancellationToken>,
+    ) -> Result<T> {
+        let timed = tokio::time::timeout(self.timeout, operation);
+        let result = if let Some(cancellation) = cancellation {
+            tokio::select! {
+                biased;
+                () = cancellation.cancelled() => return Err(ErpcError::Aborted),
+                result = timed => result,
+            }
+        } else {
+            timed.await
+        };
+        result.map_err(|_| timeout(self.timeout))?
     }
 }

@@ -6,6 +6,8 @@
   <a href="https://github.com/elsoul/erpc-sdk/actions/workflows/ci.yml"><img src="https://github.com/elsoul/erpc-sdk/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
   <a href="https://www.npmjs.com/package/@elsoul/erpc-sdk"><img src="https://img.shields.io/npm/v/%40elsoul%2Ferpc-sdk.svg" alt="npm" /></a>
   <a href="https://crates.io/crates/erpc-sdk"><img src="https://img.shields.io/crates/v/erpc-sdk.svg" alt="crates.io" /></a>
+  <a href="https://pypi.org/project/erpc-sdk/"><img src="https://img.shields.io/pypi/v/erpc-sdk.svg" alt="PyPI" /></a>
+  <a href="https://pkg.go.dev/github.com/elsoul/erpc-sdk/packages/go"><img src="https://pkg.go.dev/badge/github.com/elsoul/erpc-sdk/packages/go.svg" alt="Go Reference" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="license" /></a>
 </p>
 
@@ -22,12 +24,14 @@ balance information.
 
 | Language | Package | Status |
 | --- | --- | --- |
-| TypeScript | [`@elsoul/erpc-sdk`](https://www.npmjs.com/package/@elsoul/erpc-sdk) | Preview |
-| Rust | [`erpc-sdk`](https://crates.io/crates/erpc-sdk) | Preview |
-| Python | — | Planned |
-| Go | — | Planned |
+| TypeScript | [`@elsoul/erpc-sdk`](https://www.npmjs.com/package/@elsoul/erpc-sdk) | Available |
+| Rust | [`erpc-sdk`](https://crates.io/crates/erpc-sdk) | Available |
+| Python | [`erpc-sdk`](https://pypi.org/project/erpc-sdk/) | Available from v0.3.0 |
+| Go | [`github.com/elsoul/erpc-sdk/packages/go`](https://pkg.go.dev/github.com/elsoul/erpc-sdk/packages/go) | Available from v0.3.0 |
 
 ## Install
+
+TypeScript:
 
 ```bash
 npm install @elsoul/erpc-sdk
@@ -39,17 +43,32 @@ npm install @elsoul/erpc-sdk
 The TypeScript package has no runtime dependencies and includes ESM, CommonJS,
 and TypeScript declarations.
 
-For Rust:
+Rust:
 
 ```bash
 cargo add erpc-sdk
 ```
 
-See the [Rust package guide](packages/rust/README.md) for async JSON-RPC,
-batching, subscriptions, price streams, cancellation, and Cloud examples. The
-crate supports Rust 1.85 and newer.
+Python:
 
-## Quick start
+```bash
+python -m pip install erpc-sdk
+```
+
+Go:
+
+```bash
+go get github.com/elsoul/erpc-sdk/packages/go@v0.3.0
+```
+
+See the package guides for [TypeScript](packages/typescript/README.md),
+[Rust](packages/rust/README.md), [Python](packages/python/README.md), and
+[Go](packages/go/README.md). Minimum versions are Rust 1.85, Python 3.11, and
+Go 1.22.
+
+## Quick starts
+
+### TypeScript
 
 ```ts
 import { createErpcClient } from '@elsoul/erpc-sdk'
@@ -69,6 +88,43 @@ erpc.close()
 HTTP JSON-RPC methods return a pending request. Calling `.send()` performs the
 request, so request construction stays explicit and future middleware can be
 added without changing method signatures.
+
+### Rust
+
+```rust
+use erpc_sdk::{ErpcClient, ErpcClientConfig};
+
+let erpc = ErpcClient::new(ErpcClientConfig::new(api_key))?;
+let slot = erpc.solana.rpc.get_slot(Vec::<serde_json::Value>::new())?
+    .send()
+    .await?;
+let chain_id = erpc.ethereum.rpc.eth_chain_id().send().await?;
+```
+
+### Python
+
+```python
+from erpc_sdk import ErpcClient, ErpcClientConfig
+
+async with ErpcClient(ErpcClientConfig(api_key)) as erpc:
+    slot = await erpc.solana.rpc.get_slot().send()
+    chain_id = await erpc.ethereum.rpc.eth_chain_id().send()
+```
+
+### Go
+
+```go
+import erpc "github.com/elsoul/erpc-sdk/packages/go"
+
+client, err := erpc.NewClient(erpc.Config{APIKey: apiKey})
+if err != nil {
+	return err
+}
+defer client.Close()
+
+slot, err := client.Solana.RPC.GetSlot(ctx)
+chainID, err := client.Ethereum.RPC.ChainID(ctx)
+```
 
 ## API overview
 

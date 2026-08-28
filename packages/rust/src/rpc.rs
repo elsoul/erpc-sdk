@@ -186,7 +186,7 @@ impl HttpJsonRpcTransport {
                 return Err(invalid_response("ERPC returned a duplicate batch id"));
             }
         }
-        requests
+        let results = requests
             .iter()
             .map(|request| {
                 let response = by_id.remove(&request.id).ok_or_else(|| {
@@ -194,7 +194,13 @@ impl HttpJsonRpcTransport {
                 })?;
                 self.unwrap(&response, &request.id)
             })
-            .collect()
+            .collect::<Result<Vec<_>>>()?;
+        if !by_id.is_empty() {
+            return Err(invalid_response(
+                "ERPC returned an unexpected batch response id",
+            ));
+        }
+        Ok(results)
     }
 
     fn id(&self) -> JsonRpcId {
@@ -208,33 +214,38 @@ impl HttpJsonRpcTransport {
     async fn post(&self, body: &impl Serialize, options: &RequestOptions) -> Result<Value> {
         let mut url = self.endpoint.clone();
         url.query_pairs_mut().append_pair("api-key", &self.api_key);
-        let request = self
-            .client
-            .post(url)
-            .headers(self.headers.clone())
-            .json(body)
-            .send();
+        let operation = async {
+            let response = self
+                .client
+                .post(url)
+                .headers(self.headers.clone())
+                .json(body)
+                .send()
+                .await
+                .map_err(|_| ErpcError::Transport("Unable to reach ERPC".to_owned()))?;
+            if !response.status().is_success() {
+                return Err(ErpcError::Http {
+                    status: response.status().as_u16(),
+                });
+            }
+            let text = response
+                .text()
+                .await
+                .map_err(|_| ErpcError::Transport("Unable to read ERPC response".to_owned()))?;
+            serde_json::from_str(&text)
+                .map_err(|_| invalid_response("ERPC returned malformed JSON"))
+        };
+        let timed = tokio::time::timeout(self.timeout, operation);
         let result = if let Some(cancellation) = &options.cancellation {
             tokio::select! {
+                biased;
                 () = cancellation.cancelled() => return Err(ErpcError::Aborted),
-                result = tokio::time::timeout(self.timeout, request) => result,
+                result = timed => result,
             }
         } else {
-            tokio::time::timeout(self.timeout, request).await
+            timed.await
         };
-        let response = result
-            .map_err(|_| timeout(self.timeout))?
-            .map_err(|_| ErpcError::Transport("Unable to reach ERPC".to_owned()))?;
-        if !response.status().is_success() {
-            return Err(ErpcError::Http {
-                status: response.status().as_u16(),
-            });
-        }
-        let text = response
-            .text()
-            .await
-            .map_err(|_| ErpcError::Transport("Unable to read ERPC response".to_owned()))?;
-        serde_json::from_str(&text).map_err(|_| invalid_response("ERPC returned malformed JSON"))
+        result.map_err(|_| timeout(self.timeout))?
     }
 
     fn unwrap<T: DeserializeOwned>(&self, response: &Value, expected: &JsonRpcId) -> Result<T> {
