@@ -1,14 +1,7 @@
 import { spawnSync } from 'node:child_process'
+import { parseReleaseArgument } from './release-version.mjs'
 
-const requested = process.argv[2]
-if (!requested) {
-  throw new Error('Usage: corepack pnpm release -- <version>')
-}
-const version = requested.replace(/^v/, '')
-if (!/^\d+\.\d+\.\d+$/.test(version)) {
-  throw new Error('Release version must use stable X.Y.Z format')
-}
-const tag = `v${version}`
+const { tag, version } = parseReleaseArgument(process.argv.slice(2))
 
 const run = (command, args, options = {}) => {
   const result = spawnSync(command, args, {
