@@ -1,12 +1,21 @@
 # ERPC SDK
 
-[![CI](https://github.com/elsoul/erpc-sdk/actions/workflows/ci.yml/badge.svg)](https://github.com/elsoul/erpc-sdk/actions/workflows/ci.yml)
-[![npm](https://img.shields.io/npm/v/%40elsoul%2Ferpc-sdk.svg)](https://www.npmjs.com/package/@elsoul/erpc-sdk)
-[![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![ERPC — Global Edge Blockchain Infrastructure](https://storage.erpc.global/ERPCheader.jpg)](https://erpc.global)
 
-Official multi-network SDK for [ERPC](https://erpc.global). One client and one
-API key provide access to Solana, Ethereum, price data, indexed data, leader
-and validator data, analytics, subscriptions, and account balance information.
+<p align="center">
+  <a href="https://github.com/elsoul/erpc-sdk/actions/workflows/ci.yml"><img src="https://github.com/elsoul/erpc-sdk/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+  <a href="https://www.npmjs.com/package/@elsoul/erpc-sdk"><img src="https://img.shields.io/npm/v/%40elsoul%2Ferpc-sdk.svg" alt="npm" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="license" /></a>
+</p>
+
+<p align="center">
+  <strong>ERPC Official Multi-Network Blockchain SDK<br />
+  Built for Developers. Ready for AI Agents.</strong>
+</p>
+
+One client and one API key provide access to Solana, Ethereum, price data,
+indexed data, leader and validator data, analytics, subscriptions, and account
+balance information.
 
 ## Packages
 
