@@ -18,6 +18,7 @@ import {
 import { HttpJsonRpcTransport } from './transport/http'
 import { RestTransport } from './transport/rest'
 import { WebSocketJsonRpcTransport } from './transport/websocket'
+import { UsageClient } from './usage'
 
 export interface ErpcSolanaClient extends SolanaClient {
   readonly subscriptions: SolanaSubscriptions
@@ -32,6 +33,7 @@ export interface ErpcClient {
   readonly ethereum: ErpcEthereumClient
   readonly price: PriceClient
   readonly solana: ErpcSolanaClient
+  readonly usage: UsageClient
   close(): void
 }
 
@@ -77,6 +79,10 @@ export const createErpcClient = (config: ErpcClientConfig): ErpcClient => {
     ...sharedTransport,
     endpoint: resolved.accountEndpoint,
   })
+  const userTransport = new RestTransport({
+    ...sharedTransport,
+    endpoint: resolved.userEndpoint,
+  })
 
   const solana: ErpcSolanaClient = {
     ...createSolanaClient(solanaTransport),
@@ -92,6 +98,7 @@ export const createErpcClient = (config: ErpcClientConfig): ErpcClient => {
     ethereum,
     price: new PriceClient(priceTransport),
     account: new AccountClient(accountTransport),
+    usage: new UsageClient(userTransport),
     close: () => {
       solana.subscriptions.close()
       ethereum.subscriptions.close()

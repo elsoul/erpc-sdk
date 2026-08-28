@@ -5,6 +5,7 @@
 <p align="center">
   <a href="https://github.com/elsoul/erpc-sdk/actions/workflows/ci.yml"><img src="https://github.com/elsoul/erpc-sdk/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
   <a href="https://www.npmjs.com/package/@elsoul/erpc-sdk"><img src="https://img.shields.io/npm/v/%40elsoul%2Ferpc-sdk.svg" alt="npm" /></a>
+  <a href="https://crates.io/crates/erpc-sdk"><img src="https://img.shields.io/crates/v/erpc-sdk.svg" alt="crates.io" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="license" /></a>
 </p>
 
@@ -22,7 +23,7 @@ balance information.
 | Language | Package | Status |
 | --- | --- | --- |
 | TypeScript | [`@elsoul/erpc-sdk`](https://www.npmjs.com/package/@elsoul/erpc-sdk) | Preview |
-| Rust | — | Planned after TypeScript stabilization |
+| Rust | [`erpc-sdk`](https://crates.io/crates/erpc-sdk) | Preview |
 | Python | — | Planned |
 | Go | — | Planned |
 
@@ -37,6 +38,16 @@ npm install @elsoul/erpc-sdk
 
 The TypeScript package has no runtime dependencies and includes ESM, CommonJS,
 and TypeScript declarations.
+
+For Rust:
+
+```bash
+cargo add erpc-sdk
+```
+
+See the [Rust package guide](packages/rust/README.md) for async JSON-RPC,
+batching, subscriptions, price streams, cancellation, and Cloud examples. The
+crate supports Rust 1.85 and newer.
 
 ## Quick start
 
@@ -73,6 +84,10 @@ added without changing method signatures.
 | `erpc.ethereum.subscriptions` | Ethereum WebSocket subscriptions |
 | `erpc.price` | Price metadata, updates, and streams |
 | `erpc.account` | ERPC token balance |
+| `erpc.usage` | Masked monthly API-key usage |
+| `cloud.catalog` | Provider-neutral Cloud capabilities |
+| `cloud.credit` | Read-only credit and burn-rate snapshot |
+| `cloud.resources` | Credential-free Cloud resource inventory |
 
 See [method availability](docs/METHODS.md) for the complete supported catalog
 and the server-dependent capabilities planned for later releases.
@@ -126,6 +141,50 @@ Price and confidence values are strings to preserve protocol precision.
 const tokenBalance = await erpc.account.getTokenBalance()
 console.log(tokenBalance.remaining_tokens)
 ```
+
+## Monthly API-key usage
+
+The regular API-key client can read the current month or a specific calendar
+month. Results contain only the key length and last four characters; the SDK
+also projects the response onto the documented fields so unexpected credential
+fields are never returned to application code.
+
+```ts
+const usage = await erpc.usage.getMonthlyApiKeyUsage()
+const august = await erpc.usage.getMonthlyApiKeyUsage({
+  yearMonth: '2026-08',
+})
+
+console.log(usage.totalCredits, august.apiKeys[0]?.apiKeyLast4)
+```
+
+## Cloud read client
+
+Applications that already have a scoped ERPC Cloud OAuth access token can use
+the separate Cloud client. It does not accept or retain a refresh credential.
+
+```ts
+import { createErpcCloudClient } from '@elsoul/erpc-sdk'
+
+const cloud = createErpcCloudClient({ accessToken })
+const catalog = await cloud.catalog.list()
+const credit = await cloud.credit.get()
+const resources = await cloud.resources.list()
+const usage = await cloud.usage.getMonthlyApiKeyUsage()
+
+const first = resources[0]
+const resource = first ? await cloud.resources.get(first.id) : undefined
+const status = first
+  ? await cloud.resources.getStatus(first.id)
+  : undefined
+```
+
+Cloud resource responses deliberately exclude usernames, passwords, hosts, and
+internal product or subscription identifiers. The Cloud OAuth and resource
+routes are enabled as a coordinated server rollout; see the roadmap for rollout
+status. Catalog entries omit prices and availability that the service cannot
+verify. Credit snapshots use integer cents and include their quote validity
+window. The CLI owns interactive Device Authorization and keychain storage.
 
 ## Batch requests
 
@@ -206,6 +265,7 @@ const erpc = createErpcClient({
   apiKey,
   endpoint: 'https://edge.erpc.global',
   accountEndpoint: 'https://solana-rpc.erpc.global',
+  userEndpoint: 'https://user-api.erpc.global',
   timeoutMs: 30_000,
   fetch: customFetch,
   webSocket: CustomWebSocket,
@@ -223,6 +283,10 @@ corepack pnpm check
 corepack pnpm test
 corepack pnpm build
 corepack pnpm pack:check
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --locked -- -D warnings
+cargo test --workspace --locked
+cargo package --package erpc-sdk
 ```
 
 Live smoke tests are opt-in and require a real ERPC key:
@@ -237,6 +301,7 @@ enter shell history. Never commit credentials.
 ## Documentation
 
 - [Method availability](docs/METHODS.md)
+- [Changelog](CHANGELOG.md)
 - [Roadmap](ROADMAP.md)
 - [Release process](docs/RELEASING.md)
 - [Contributing](CONTRIBUTING.md)
@@ -244,9 +309,9 @@ enter shell history. Never commit credentials.
 
 ## Release model
 
-Publishing is initiated by a human-created GitHub Release, protected by the
-`npm` GitHub Environment, and authenticated through npm Trusted Publishing.
-Merging a change never publishes a package. See the
+Publishing is initiated by a human-pushed version tag, protected by the `npm`
+and `crates-io` GitHub Environments, and authenticated through registry Trusted
+Publishing. Merging a change never publishes a package. See the
 [release process](docs/RELEASING.md) for initial setup and release steps.
 
 ## License

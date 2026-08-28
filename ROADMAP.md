@@ -9,6 +9,7 @@
 - Price REST and server-sent events.
 - Ethereum and enhanced Solana WebSocket subscriptions.
 - Token balance API.
+- Masked monthly API-key usage.
 - Unit, transport, package, and live smoke-test coverage.
 - Human-approved npm release workflow using trusted publishing and provenance.
 
@@ -19,13 +20,16 @@
   shapes.
 - Add framework examples and migration recipes.
 - Promote the npm package to stable after preview feedback and human review.
+- Roll out scoped OAuth Cloud reads for monthly usage, capability catalog,
+  credit snapshots, and credential-free resource inventory.
+- Publish the initial async Rust crate with the same namespaces, method
+  catalogs, transport boundaries, Cloud reads, and credential safety rules.
 
-## 0.3 — Rust parity
+## 0.3 — Rust expansion
 
-- Implement the same namespaces and method availability as TypeScript.
 - Reuse language-neutral fixtures and compatibility snapshots.
 - Provide blocking and async examples.
-- Publish the first crate after TypeScript behavior is stable.
+- Expand structured Rust result types where protocols permit stable shapes.
 
 ## 0.4 — Wider language support
 

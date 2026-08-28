@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 jobs:
-  test:
-    name: Build, test, and package
+  typescript:
+    name: TypeScript build, test, and package
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -34,3 +34,34 @@ jobs:
           node-version: 20
       - name: Verify built package on Node.js 20
         run: node packages/typescript/scripts/verify-package.mjs
+
+  rust:
+    name: Rust lint, test, docs, and package
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Install the minimum supported Rust toolchain
+        run: rustup toolchain install 1.85.0 --profile minimal --component clippy,rustfmt
+      - name: Verify release identities
+        run: node scripts/verify-release.mjs
+      - name: Verify TypeScript and Rust method parity
+        run: node scripts/verify-method-parity.mjs
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Lint
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Test
+        run: cargo test --workspace --locked
+      - name: Build documentation
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo doc --workspace --no-deps --locked
+      - name: Build release artifacts
+        run: cargo build --workspace --release --locked
+      - name: Inspect and verify crate package
+        run: |
+          cargo package --locked --package erpc-sdk --list
+          cargo package --locked --package erpc-sdk

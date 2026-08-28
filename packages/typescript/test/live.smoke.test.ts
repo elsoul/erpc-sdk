@@ -23,4 +23,12 @@ live('live ERPC smoke tests', () => {
     expect(Array.isArray(feeds)).toBe(true)
     expect(balance?.remaining_tokens).toBeTypeOf('number')
   })
+
+  it('reads masked monthly API key usage', async () => {
+    const usage = await client?.usage.getMonthlyApiKeyUsage()
+
+    expect(usage?.yearMonth).toMatch(/^\d{4}-(0[1-9]|1[0-2])$/)
+    expect(usage?.totalCount).toBeTypeOf('number')
+    expect(Array.isArray(usage?.apiKeys)).toBe(true)
+  })
 })

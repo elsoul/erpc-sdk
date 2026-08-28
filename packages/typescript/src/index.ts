@@ -1,16 +1,35 @@
 export { AccountClient, type ErpcPlan, type TokenBalance } from './account'
 export {
+  CloudCatalogClient,
+  type CloudOffering,
+  type CloudOfferingBilling,
+  type CloudOfferingCompute,
+  type CloudOfferingSolana,
+} from './catalog'
+export {
   createErpcClient,
   type ErpcClient,
   type ErpcEthereumClient,
   type ErpcSolanaClient,
 } from './client'
 export {
+  createErpcCloudClient,
+  type ErpcCloudClient,
+  type ErpcCloudClientConfig,
+  type ErpcCloudRequestOptions,
+} from './cloud'
+export {
   DEFAULT_ACCOUNT_ENDPOINT,
   DEFAULT_ENDPOINT,
   DEFAULT_TIMEOUT_MS,
+  DEFAULT_USER_ENDPOINT,
   type ErpcClientConfig,
 } from './config'
+export {
+  CloudCreditClient,
+  type CloudCredit,
+  type CloudCreditAlertLevel,
+} from './credit'
 export {
   ErpcAbortedError,
   ErpcBatchPolicyError,
@@ -38,6 +57,14 @@ export {
   type PublisherStakeCap,
   type PublisherStakeCapsResponse,
 } from './price'
+export {
+  CloudResourcesClient,
+  type CloudResource,
+  type CloudResourceKind,
+  type CloudResourceMode,
+  type CloudResourceStatus,
+  type CloudResourceStatusBilling,
+} from './resources'
 export {
   PendingRpcBatchRequest,
   PendingRpcRequest,
@@ -136,3 +163,11 @@ export type {
   RpcNotification,
   RpcNotificationListener,
 } from './transport/websocket'
+export {
+  UsageClient,
+  type MonthlyApiKeyChainUsage,
+  type MonthlyApiKeyMethodUsage,
+  type MonthlyApiKeyUsage,
+  type MonthlyApiKeyUsageEntry,
+  type MonthlyApiKeyUsageParams,
+} from './usage'

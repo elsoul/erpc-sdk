@@ -2,6 +2,7 @@ import { ErpcConfigError } from './errors'
 
 export const DEFAULT_ENDPOINT = 'https://edge.erpc.global'
 export const DEFAULT_ACCOUNT_ENDPOINT = 'https://solana-rpc.erpc.global'
+export const DEFAULT_USER_ENDPOINT = 'https://user-api.erpc.global'
 export const DEFAULT_TIMEOUT_MS = 30_000
 
 export interface ErpcClientConfig {
@@ -11,6 +12,7 @@ export interface ErpcClientConfig {
   readonly fetch?: typeof globalThis.fetch
   readonly headers?: Readonly<Record<string, string>>
   readonly timeoutMs?: number
+  readonly userEndpoint?: string
   readonly webSocket?: typeof globalThis.WebSocket
 }
 
@@ -21,6 +23,7 @@ export interface ResolvedErpcClientConfig {
   readonly fetch: typeof globalThis.fetch
   readonly headers: Readonly<Record<string, string>>
   readonly timeoutMs: number
+  readonly userEndpoint: URL
   readonly webSocket?: typeof globalThis.WebSocket
 }
 
@@ -42,11 +45,13 @@ export const resolveConfig = (
 
   let endpoint: URL
   let accountEndpoint: URL
+  let userEndpoint: URL
   try {
     endpoint = new URL(config.endpoint ?? DEFAULT_ENDPOINT)
     accountEndpoint = new URL(
       config.accountEndpoint ?? DEFAULT_ACCOUNT_ENDPOINT,
     )
+    userEndpoint = new URL(config.userEndpoint ?? DEFAULT_USER_ENDPOINT)
   } catch {
     throw new ErpcConfigError('endpoint must be an absolute HTTP(S) URL')
   }
@@ -60,6 +65,12 @@ export const resolveConfig = (
   ) {
     throw new ErpcConfigError('accountEndpoint must use HTTP or HTTPS')
   }
+  if (
+    userEndpoint.protocol !== 'https:' &&
+    userEndpoint.protocol !== 'http:'
+  ) {
+    throw new ErpcConfigError('userEndpoint must use HTTP or HTTPS')
+  }
 
   endpoint.search = ''
   endpoint.hash = ''
@@ -68,6 +79,9 @@ export const resolveConfig = (
   accountEndpoint.hash = ''
   accountEndpoint.pathname =
     accountEndpoint.pathname.replace(/\/+$/, '') || '/'
+  userEndpoint.search = ''
+  userEndpoint.hash = ''
+  userEndpoint.pathname = userEndpoint.pathname.replace(/\/+$/, '') || '/'
 
   const timeoutMs = config.timeoutMs ?? DEFAULT_TIMEOUT_MS
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
@@ -81,6 +95,7 @@ export const resolveConfig = (
     fetch: requireFetch(config.fetch),
     headers: config.headers ?? {},
     timeoutMs,
+    userEndpoint,
     ...(config.webSocket === undefined
       ? {}
       : { webSocket: config.webSocket }),
