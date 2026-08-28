@@ -1,0 +1,41 @@
+[package]
+name = "erpc-sdk"
+version = "0.2.0"
+edition = "2024"
+rust-version = "1.85"
+description = "Async Rust SDK for ERPC"
+license = "MIT"
+authors = ["ELSOUL LABO B.V."]
+homepage = "https://erpc.global"
+repository = "https://github.com/elsoul/erpc-sdk"
+documentation = "https://docs.rs/erpc-sdk"
+readme = "README.md"
+keywords = ["erpc", "ethereum", "json-rpc", "rpc", "solana"]
+categories = ["api-bindings", "asynchronous", "web-programming::http-client"]
+publish = ["crates-io"]
+include = ["Cargo.toml", "LICENSE", "README.md", "examples/**/*.rs", "src/**/*.rs", "tests/**/*.rs"]
+
+[dependencies]
+async-stream = "0.3.6"
+futures-util = "0.3.31"
+percent-encoding = "2.3.1"
+reqwest = { version = "0.12.15", default-features = false, features = ["json", "rustls-tls", "stream"] }
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.140"
+thiserror = "2.0.12"
+tokio = { version = "1.44.1", features = ["macros", "net", "rt-multi-thread", "sync", "time"] }
+tokio-tungstenite = { version = "0.26.2", default-features = false, features = ["connect", "rustls-tls-webpki-roots"] }
+tokio-util = { version = "0.7.14", features = ["rt"] }
+url = "2.5.4"
+
+[dev-dependencies]
+wiremock = "0.6.3"
+
+[lints.rust]
+missing_docs = "warn"
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = "warn"
+pedantic = "warn"
+missing_errors_doc = "allow"

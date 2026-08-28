@@ -26,10 +26,24 @@ for (const field of ['dependencies', 'optionalDependencies', 'peerDependencies']
   }
 }
 
-if (typeof esm.createErpcClient !== 'function') {
+if (
+  typeof esm.createErpcClient !== 'function' ||
+  typeof esm.createErpcCloudClient !== 'function' ||
+  typeof esm.CloudCatalogClient !== 'function' ||
+  typeof esm.CloudCreditClient !== 'function' ||
+  typeof esm.CloudResourcesClient !== 'function' ||
+  typeof esm.UsageClient !== 'function'
+) {
   throw new Error('ESM export check failed')
 }
-if (typeof cjs.createErpcClient !== 'function') {
+if (
+  typeof cjs.createErpcClient !== 'function' ||
+  typeof cjs.createErpcCloudClient !== 'function' ||
+  typeof cjs.CloudCatalogClient !== 'function' ||
+  typeof cjs.CloudCreditClient !== 'function' ||
+  typeof cjs.CloudResourcesClient !== 'function' ||
+  typeof cjs.UsageClient !== 'function'
+) {
   throw new Error('CommonJS export check failed')
 }
 if (esm.ETHEREUM_RPC_METHODS.length !== 53) {

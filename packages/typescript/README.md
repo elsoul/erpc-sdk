@@ -48,6 +48,7 @@ network request.
 | `erpc.ethereum.subscriptions` | Ethereum WebSocket subscriptions |
 | `erpc.price` | Price metadata, updates, and streams |
 | `erpc.account` | ERPC token balance |
+| `erpc.usage` | Masked monthly API-key usage |
 
 ## Examples
 
@@ -71,6 +72,33 @@ const heads = await erpc.ethereum.subscriptions.subscribe(
 await heads.unsubscribe()
 erpc.close()
 ```
+
+Monthly API-key usage is available from the same client:
+
+```ts
+const usage = await erpc.usage.getMonthlyApiKeyUsage({
+  yearMonth: '2026-08',
+})
+```
+
+For scoped ERPC Cloud OAuth access tokens, create a client that cannot receive
+or retain refresh credentials:
+
+```ts
+import { createErpcCloudClient } from '@elsoul/erpc-sdk'
+
+const cloud = createErpcCloudClient({ accessToken })
+const catalog = await cloud.catalog.list()
+const credit = await cloud.credit.get()
+const resources = await cloud.resources.list()
+const first = resources[0]
+const status = first ? await cloud.resources.getStatus(first.id) : undefined
+const monthlyUsage = await cloud.usage.getMonthlyApiKeyUsage()
+```
+
+Catalog, credit, and resource results are projected onto documented public
+fields. Interactive login and operating-system keychain storage belong to
+`@elsoul/erpc-cli`.
 
 ## Raw methods
 

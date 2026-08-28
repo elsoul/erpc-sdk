@@ -6,6 +6,10 @@ Last reviewed: 2026-08-28
 typed SDK entry point. The raw request API remains available for forward
 compatibility.
 
+The TypeScript and Rust packages share these wire catalogs. Rust exposes
+idiomatic snake-case helper names while preserving the method strings shown
+below at the JSON-RPC boundary.
+
 ## Available now
 
 ### Solana JSON-RPC
@@ -205,7 +209,11 @@ streamPriceUpdates
 
 ```text
 getTokenBalance
+getMonthlyApiKeyUsage
 ```
+
+`getMonthlyApiKeyUsage` is exposed as `erpc.usage.getMonthlyApiKeyUsage` and
+returns masked API-key identifiers.
 
 ## Planned after server availability
 
@@ -219,5 +227,21 @@ The SDK will add typed entries after ERPC exposes and verifies each capability:
 - Ethereum consensus-layer APIs;
 - optional add-on namespaces.
 
-These are deliberately not represented as working SDK methods today. This
-keeps compile-time availability aligned with production behavior.
+The planned protocol entries above are deliberately not represented as working
+SDK methods today. This keeps compile-time availability aligned with production
+behavior.
+
+The scoped OAuth Cloud read client is already typed as
+`createErpcCloudClient`. Its read-only entries are:
+
+```text
+cloud.catalog.list
+cloud.credit.get
+cloud.resources.list
+cloud.resources.get
+cloud.resources.getStatus
+cloud.usage.getMonthlyApiKeyUsage
+```
+
+These entries become production-available with the coordinated Cloud OAuth and
+user API rollout.
