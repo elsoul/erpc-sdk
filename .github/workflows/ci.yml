@@ -126,3 +126,35 @@ jobs:
         run: go test -race ./...
       - name: Inspect module packages
         run: go list ./...
+
+  ruby:
+    name: Ruby syntax, test, and gem
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: packages/ruby
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Install the minimum supported Ruby
+        uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b # v1
+        with:
+          ruby-version: '3.1'
+          bundler-cache: true
+          working-directory: packages/ruby
+      - name: Verify release identities
+        working-directory: .
+        run: node scripts/verify-release.mjs
+      - name: Verify method parity
+        working-directory: .
+        run: node scripts/verify-method-parity.mjs
+      - name: Check syntax
+        run: bundle exec rake check
+      - name: Test
+        run: bundle exec rake test
+      - name: Build and inspect gem
+        run: |
+          bundle exec rake package
+          ruby scripts/verify-package.rb

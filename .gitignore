@@ -12,6 +12,10 @@ coverage/
 *.egg-info/
 *.py[cod]
 __pycache__/
+.bundle/
+packages/ruby/pkg/
+vendor/bundle/
+*.gem
 .env
 .env.*
 !.env.example

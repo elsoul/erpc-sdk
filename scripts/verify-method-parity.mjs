@@ -29,6 +29,10 @@ const goMethods = await readFile(
   new URL('packages/go/methods.go', root),
   'utf8',
 )
+const rubyRPC = await readFile(
+  new URL('packages/ruby/lib/erpc_sdk/rpc.rb', root),
+  'utf8',
+)
 
 const quotedValues = (body) =>
   [...body.matchAll(/['"]([^'"]+)['"]/g)].map((match) => match[1])
@@ -64,6 +68,14 @@ const goCatalog = (source, name) => {
     new RegExp(`var ${name} = \\[\\]string\\{([\\s\\S]*?)\\}`),
   )?.[1]
   if (body === undefined) throw new Error(`Unable to read Go catalog ${name}`)
+  return quotedValues(body)
+}
+
+const rubyCatalog = (source, name) => {
+  const body = source.match(
+    new RegExp(`${name}\\s*=\\s*\\[([\\s\\S]*?)\\]\\.freeze`),
+  )?.[1]
+  if (body === undefined) throw new Error(`Unable to read Ruby catalog ${name}`)
   return quotedValues(body)
 }
 
@@ -104,6 +116,7 @@ for (const [name, goName, typescript, rust] of catalogs) {
     ['Rust', rustCatalog(rust, name)],
     ['Python', pythonCatalog(pythonRPC, name)],
     ['Go', goCatalog(goMethods, goName)],
+    ['Ruby', rubyCatalog(rubyRPC, name)],
   ]
   for (const [language, actual] of implementations) {
     if (JSON.stringify(actual) !== JSON.stringify(expected)) {
@@ -116,5 +129,5 @@ for (const [name, goName, typescript, rust] of catalogs) {
 }
 
 console.log(
-  `Verified ${catalogs.length} method catalogs across TypeScript, Rust, Python, and Go.`,
+  `Verified ${catalogs.length} method catalogs across TypeScript, Rust, Python, Go, and Ruby.`,
 )

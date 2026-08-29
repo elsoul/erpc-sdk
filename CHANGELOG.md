@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.0 — 2026-08-29
+
+- Add the dependency-free `erpc-sdk` Ruby gem with synchronous JSON-RPC,
+  REST, SSE, WebSocket subscription, account usage, and Cloud read clients.
+- Extend ordered method-catalog parity, CI, package inspection, and the
+  Trusted Publishing release workflow to Ruby and RubyGems.
+
 ## 0.3.0 — 2026-08-28
 
 - Add the `erpc-sdk` Python distribution with asynchronous JSON-RPC, REST,

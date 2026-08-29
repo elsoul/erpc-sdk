@@ -33,8 +33,11 @@
 - Gate all four implementations on ordered method-catalog parity, package
   inspection, credential redaction, batch boundaries, and no-retry behavior.
 
-## 0.4 — Four-language expansion
+## 0.4 — Ruby and typed expansion
 
+- Publish a dependency-free Ruby gem with synchronous HTTP, SSE, and WebSocket
+  clients and the same transport safety boundaries.
+- Gate all five implementations on ordered method-catalog parity.
 - Expand structured result types where protocols permit stable shapes.
 - Add synchronous Python and blocking Rust convenience clients where demand
   justifies the additional maintenance surface.

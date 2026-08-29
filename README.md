@@ -8,6 +8,7 @@
   <a href="https://crates.io/crates/erpc-sdk"><img src="https://img.shields.io/crates/v/erpc-sdk.svg" alt="crates.io" /></a>
   <a href="https://pypi.org/project/erpc-sdk/"><img src="https://img.shields.io/pypi/v/erpc-sdk.svg" alt="PyPI" /></a>
   <a href="https://pkg.go.dev/github.com/elsoul/erpc-sdk/packages/go"><img src="https://pkg.go.dev/badge/github.com/elsoul/erpc-sdk/packages/go.svg" alt="Go Reference" /></a>
+  <a href="https://rubygems.org/gems/erpc-sdk"><img src="https://img.shields.io/gem/v/erpc-sdk.svg" alt="RubyGems" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="license" /></a>
 </p>
 
@@ -28,6 +29,7 @@ balance information.
 | Rust | [`erpc-sdk`](https://crates.io/crates/erpc-sdk) | Available |
 | Python | [`erpc-sdk`](https://pypi.org/project/erpc-sdk/) | Available from v0.3.0 |
 | Go | [`github.com/elsoul/erpc-sdk/packages/go`](https://pkg.go.dev/github.com/elsoul/erpc-sdk/packages/go) | Available from v0.3.0 |
+| Ruby | [`erpc-sdk`](https://rubygems.org/gems/erpc-sdk) | Available from v0.4.0 |
 
 ## Install
 
@@ -58,13 +60,19 @@ python -m pip install erpc-sdk
 Go:
 
 ```bash
-go get github.com/elsoul/erpc-sdk/packages/go@v0.3.0
+go get github.com/elsoul/erpc-sdk/packages/go@v0.4.0
+```
+
+Ruby:
+
+```bash
+gem install erpc-sdk
 ```
 
 See the package guides for [TypeScript](packages/typescript/README.md),
-[Rust](packages/rust/README.md), [Python](packages/python/README.md), and
-[Go](packages/go/README.md). Minimum versions are Rust 1.85, Python 3.11, and
-Go 1.22.
+[Rust](packages/rust/README.md), [Python](packages/python/README.md),
+[Go](packages/go/README.md), and [Ruby](packages/ruby/README.md). Minimum
+versions are Rust 1.85, Python 3.11, Go 1.22, and Ruby 3.1.
 
 ## Quick starts
 
@@ -124,6 +132,20 @@ defer client.Close()
 
 slot, err := client.Solana.RPC.GetSlot(ctx)
 chainID, err := client.Ethereum.RPC.ChainID(ctx)
+```
+
+### Ruby
+
+```ruby
+require "erpc_sdk"
+
+begin
+  erpc = ERPC::Client.new(ERPC::ClientConfig.new(api_key: api_key))
+  slot = erpc.solana.rpc.get_slot.send
+  chain_id = erpc.ethereum.rpc.eth_chain_id.send
+ensure
+  erpc&.close
+end
 ```
 
 ## API overview
@@ -343,6 +365,10 @@ cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo test --workspace --locked
 cargo package --package erpc-sdk
+cd packages/ruby
+bundle install
+bundle exec rake
+bundle exec rake package
 ```
 
 Live smoke tests are opt-in and require a real ERPC key:
@@ -365,9 +391,9 @@ enter shell history. Never commit credentials.
 
 ## Release model
 
-Publishing is initiated by a human-pushed version tag, protected by the `npm`
-and `crates-io` GitHub Environments, and authenticated through registry Trusted
-Publishing. Merging a change never publishes a package. See the
+Publishing is initiated by a human-pushed version tag, protected by registry
+GitHub Environments, and authenticated through Trusted Publishing. Merging a
+change never publishes a package. See the
 [release process](docs/RELEASING.md) for initial setup and release steps.
 
 ## License

@@ -1,12 +1,13 @@
 # Releasing the ERPC SDK
 
-One stable `X.Y.Z` version identifies the TypeScript, Rust, and Python
+One stable `X.Y.Z` version identifies the TypeScript, Rust, Python, and Ruby
 packages. Go uses the same version through its subdirectory module tag:
 
 - npm: [`@elsoul/erpc-sdk`](https://www.npmjs.com/package/@elsoul/erpc-sdk)
 - crates.io: [`erpc-sdk`](https://crates.io/crates/erpc-sdk)
 - PyPI: [`erpc-sdk`](https://pypi.org/project/erpc-sdk/)
 - Go: [`github.com/elsoul/erpc-sdk/packages/go`](https://pkg.go.dev/github.com/elsoul/erpc-sdk/packages/go)
+- RubyGems: [`erpc-sdk`](https://rubygems.org/gems/erpc-sdk)
 
 Releases are tag-driven, human-approved, and published by
 `.github/workflows/release.yml`. A merge to `main` never publishes anything.
@@ -63,9 +64,27 @@ PyPI's account publishing page with these exact values:
 The pending publisher creates the project when the first trusted workflow run
 publishes it. Do not add a PyPI API token secret.
 
+### First RubyGems publication
+
+Before the first Ruby release, create a pending trusted publisher from the
+RubyGems.org profile page with these exact values:
+
+| Setting | Value |
+| --- | --- |
+| Ruby gem name | `erpc-sdk` |
+| GitHub owner | `elsoul` |
+| Repository | `erpc-sdk` |
+| Workflow filename | `release.yml` |
+| Environment | `rubygems` |
+
+The pending publisher creates the gem on the first trusted workflow run and
+then becomes its regular trusted publisher. Do not add a RubyGems API key to
+GitHub.
+
 ## GitHub Environments
 
-Create `npm`, `crates-io`, and `pypi` environments. For all three configure:
+Create `npm`, `crates-io`, `pypi`, and `rubygems` environments. For all four
+configure:
 
 - required human reviewers;
 - prevention of self-review when two-person approval is required;
@@ -79,8 +98,9 @@ environment. Source verification has read-only repository permission.
 
 1. Set the same stable `X.Y.Z` version in
    `packages/typescript/package.json`, `packages/rust/Cargo.toml`, and
-   `packages/python/pyproject.toml`. Update `Cargo.lock` with the Rust package
-   version.
+   `packages/python/pyproject.toml`, and
+   `packages/ruby/lib/erpc_sdk/version.rb`. Update `Cargo.lock` with the Rust
+   package version.
 2. Run `corepack pnpm install` if the pnpm lockfile changes, `cargo update
    --workspace` when Cargo dependencies change, `go mod tidy` when Go
    dependencies change, and update Python dependency bounds when necessary.
@@ -97,7 +117,7 @@ create a commit. Those remain normal reviewed source changes.
 From a clean local `main` that exactly matches `origin/main`, run:
 
 ```bash
-corepack pnpm release -- 0.3.0
+corepack pnpm release -- 0.4.0
 ```
 
 The command:
@@ -106,13 +126,13 @@ The command:
 2. rejects prerelease or malformed versions;
 3. requires a clean `main` equal to `origin/main`;
 4. rejects existing local or remote release tags;
-5. runs the complete four-language release suite;
-6. creates annotated tags `v0.3.0` and `packages/go/v0.3.0`;
+5. runs the complete five-language release suite;
+6. creates annotated tags `v0.4.0` and `packages/go/v0.4.0`;
 7. atomically pushes both tags.
 
 The root tag starts the protected workflow. Approve the registry environments,
-then verify npm, crates.io, PyPI, the Go package documentation, generated Rust
-documentation, and the GitHub Release.
+then verify npm, crates.io, PyPI, RubyGems, the Go package documentation,
+generated Rust documentation, and the GitHub Release.
 
 ## Validation performed by CI
 
@@ -123,17 +143,19 @@ minimum supported Rust version, rustdoc warnings denied, a release build, and
 crate package inspection. Python validation includes Ruff, strict mypy, async
 tests, wheel and source-distribution builds, and Twine inspection. Go
 validation includes module tidiness, formatting, vet, race-enabled tests, and
-package listing on the minimum supported Go version.
+package listing on the minimum supported Go version. Ruby validation includes
+syntax checks, unit tests on the minimum supported Ruby version, explicit gem
+content inspection, and a packaged load-path smoke test.
 
-CI also verifies that all four SDKs expose the same eight ordered RPC method
-catalogs. The root tag must match the three versioned package manifests, the
+CI also verifies that all five SDKs expose the same eight ordered RPC method
+catalogs. The root tag must match the four versioned package manifests, the
 Go tag must point to the same commit, and the release commit must be on `main`.
 Invalid tags cannot reach a protected publish job.
 
 ## Recovery
 
 Registry versions and release tags are immutable. The workflow checks npm,
-crates.io, and PyPI before publishing, so rerunning a partially successful
+crates.io, PyPI, and RubyGems before publishing, so rerunning a partially successful
 workflow skips versions already present and completes missing publications or
 the GitHub Release. If the tagged source itself is wrong, prepare a new patch
 version; do not move or reuse an old tag.

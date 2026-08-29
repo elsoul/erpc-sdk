@@ -1,8 +1,13 @@
 import { appendFile, readFile } from 'node:fs/promises'
 
 const registry = process.argv[2]
-if (registry !== 'npm' && registry !== 'crates' && registry !== 'pypi') {
-  throw new Error('Registry must be npm, crates, or pypi')
+if (
+  registry !== 'npm' &&
+  registry !== 'crates' &&
+  registry !== 'pypi' &&
+  registry !== 'rubygems'
+) {
+  throw new Error('Registry must be npm, crates, pypi, or rubygems')
 }
 
 const packageJson = JSON.parse(
@@ -45,7 +50,7 @@ if (registry === 'npm') {
       (candidate) => candidate.num === version,
     )
   }
-} else {
+} else if (registry === 'pypi') {
   const response = await fetch('https://pypi.org/pypi/erpc-sdk/json', {
     headers: { accept: 'application/json' },
     signal: AbortSignal.timeout(15_000),
@@ -56,6 +61,21 @@ if (registry === 'npm') {
   } else {
     const metadata = await response.json()
     published = Object.hasOwn(metadata.releases ?? {}, version)
+  }
+} else {
+  const response = await fetch(
+    `https://rubygems.org/api/v1/versions/erpc-sdk.json`,
+    {
+      headers: { accept: 'application/json' },
+      signal: AbortSignal.timeout(15_000),
+    },
+  )
+  if (response.status === 404) published = false
+  else if (!response.ok) {
+    throw new Error(`Unable to inspect RubyGems: HTTP ${response.status}`)
+  } else {
+    const metadata = await response.json()
+    published = metadata.some((candidate) => candidate.number === version)
   }
 }
 
