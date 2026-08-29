@@ -12,6 +12,7 @@ Requirements:
 - Rust 1.85 or newer with `rustfmt` and `clippy`
 - Python 3.11 or newer
 - Go 1.22 or newer
+- Ruby 3.1 or newer with Bundler
 
 ```bash
 corepack enable
@@ -31,6 +32,12 @@ pnpm python:pack:check
 pnpm go:check
 pnpm go:test
 pnpm go:pack:check
+cd packages/ruby
+bundle install
+cd ../..
+pnpm ruby:check
+pnpm ruby:test
+pnpm ruby:pack:check
 ```
 
 Keep changes focused and include tests for observable behavior. Public APIs

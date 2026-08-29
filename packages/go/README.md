@@ -10,7 +10,7 @@ The first Go release is version `v0.3.0` from the monorepo tag
 `packages/go/v0.3.0`.
 
 ```bash
-go get github.com/elsoul/erpc-sdk/packages/go@v0.3.0
+go get github.com/elsoul/erpc-sdk/packages/go@v0.4.0
 ```
 
 Go 1.22 or later is supported.

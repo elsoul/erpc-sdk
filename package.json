@@ -21,7 +21,10 @@
     "go:check": "node scripts/check-go-format.mjs && cd packages/go && go vet ./...",
     "go:test": "cd packages/go && go test -race ./...",
     "go:pack:check": "cd packages/go && go list ./...",
-    "release:check": "corepack pnpm check && corepack pnpm test && corepack pnpm build && corepack pnpm pack:check && corepack pnpm method:parity && corepack pnpm rust:check && corepack pnpm rust:test && corepack pnpm rust:build && corepack pnpm rust:pack:check && corepack pnpm python:check && corepack pnpm python:test && corepack pnpm python:pack:check && corepack pnpm go:check && corepack pnpm go:test && corepack pnpm go:pack:check && node --test scripts/release-version.test.mjs && node scripts/verify-release.mjs",
+    "ruby:check": "cd packages/ruby && bundle exec rake check",
+    "ruby:test": "cd packages/ruby && bundle exec rake test",
+    "ruby:pack:check": "cd packages/ruby && bundle exec rake package && ruby scripts/verify-package.rb",
+    "release:check": "corepack pnpm check && corepack pnpm test && corepack pnpm build && corepack pnpm pack:check && corepack pnpm method:parity && corepack pnpm rust:check && corepack pnpm rust:test && corepack pnpm rust:build && corepack pnpm rust:pack:check && corepack pnpm python:check && corepack pnpm python:test && corepack pnpm python:pack:check && corepack pnpm go:check && corepack pnpm go:test && corepack pnpm go:pack:check && corepack pnpm ruby:check && corepack pnpm ruby:test && corepack pnpm ruby:pack:check && node --test scripts/release-version.test.mjs && node scripts/verify-release.mjs",
     "release": "node scripts/release.mjs"
   }
 }

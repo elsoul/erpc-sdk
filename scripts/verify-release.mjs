@@ -17,11 +17,21 @@ const goManifest = await readFile(
   new URL('packages/go/go.mod', root),
   'utf8',
 )
+const rubyManifest = await readFile(
+  new URL('packages/ruby/erpc-sdk.gemspec', root),
+  'utf8',
+)
+const rubyVersionSource = await readFile(
+  new URL('packages/ruby/lib/erpc_sdk/version.rb', root),
+  'utf8',
+)
 const cargoName = cargoManifest.match(/^name = "([^"]+)"$/m)?.[1]
 const cargoVersion = cargoManifest.match(/^version = "([^"]+)"$/m)?.[1]
 const pythonName = pythonManifest.match(/^name = "([^"]+)"$/m)?.[1]
 const pythonVersion = pythonManifest.match(/^version = "([^"]+)"$/m)?.[1]
 const goModule = goManifest.match(/^module (\S+)$/m)?.[1]
+const rubyName = rubyManifest.match(/^\s*spec\.name = "([^"]+)"$/m)?.[1]
+const rubyVersion = rubyVersionSource.match(/^\s*VERSION = "([^"]+)"$/m)?.[1]
 const expectedTag = `v${packageJson.version}`
 
 if (tag && tag !== expectedTag) {
@@ -39,12 +49,17 @@ if (pythonName !== 'erpc-sdk') {
 if (goModule !== 'github.com/elsoul/erpc-sdk/packages/go') {
   throw new Error('Unexpected Go module path')
 }
+if (rubyName !== 'erpc-sdk') {
+  throw new Error('Unexpected RubyGems package name')
+}
 if (
   cargoVersion !== packageJson.version ||
-  pythonVersion !== packageJson.version
+  pythonVersion !== packageJson.version ||
+  rubyVersion !== packageJson.version
 ) {
   throw new Error(
-    `Package versions differ: npm=${packageJson.version}, crates.io=${cargoVersion}, PyPI=${pythonVersion}`,
+    `Package versions differ: npm=${packageJson.version}, crates.io=${cargoVersion}, ` +
+      `PyPI=${pythonVersion}, RubyGems=${rubyVersion}`,
   )
 }
 if (packageJson.publishConfig?.access !== 'public') {
@@ -91,9 +106,25 @@ if (
 if (!/^go 1\.22$/m.test(goManifest)) {
   throw new Error('Unexpected minimum Go version')
 }
+if (!/^\s*spec\.required_ruby_version = ">= 3\.1"$/m.test(rubyManifest)) {
+  throw new Error('Unexpected minimum Ruby version')
+}
+if (!/^\s*spec\.license = "MIT"$/m.test(rubyManifest)) {
+  throw new Error('Unexpected Ruby gem license')
+}
+if (
+  !/^\s*"source_code_uri" => "https:\/\/github\.com\/elsoul\/erpc-sdk",$/m.test(
+    rubyManifest,
+  )
+) {
+  throw new Error('Unexpected Ruby gem repository')
+}
+if (!/^\s*"rubygems_mfa_required" => "true"$/m.test(rubyManifest)) {
+  throw new Error('The Ruby gem must require MFA')
+}
 
 console.log(
-  `${packageJson.name}, ${cargoName}, ${pythonName}, and ${goModule}` +
+  `${packageJson.name}, ${cargoName}, ${pythonName}, ${goModule}, and ${rubyName}` +
     ` share version ${packageJson.version}` +
     (tag ? ` and match ${tag}.` : '.'),
 )

@@ -16,7 +16,7 @@ jobs:
   verify:
     name: Verify tagged source
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -44,6 +44,12 @@ jobs:
         with:
           go-version: '1.22.x'
           cache: false
+      - name: Install the minimum supported Ruby
+        uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b # v1
+        with:
+          ruby-version: '3.1'
+          bundler-cache: true
+          working-directory: packages/ruby
       - name: Enable pnpm
         run: |
           corepack enable
@@ -196,12 +202,54 @@ jobs:
         with:
           packages-dir: dist/
 
+  rubygems:
+    name: Publish erpc-sdk Ruby gem
+    needs: verify
+    environment: rubygems
+    permissions:
+      contents: read
+      id-token: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b # v1
+        with:
+          ruby-version: '3.1'
+          bundler-cache: true
+          working-directory: packages/ruby
+      - name: Check RubyGems publication status
+        id: registry
+        run: node scripts/check-registry-version.mjs rubygems
+      - name: Build Ruby gem
+        if: steps.registry.outputs.published != 'true'
+        working-directory: packages/ruby
+        run: bundle exec rake package
+      - name: Inspect Ruby gem
+        if: steps.registry.outputs.published != 'true'
+        working-directory: packages/ruby
+        run: ruby scripts/verify-package.rb
+      - name: Authenticate with RubyGems Trusted Publishing
+        if: steps.registry.outputs.published != 'true'
+        uses: rubygems/configure-rubygems-credentials@dc5a8d8553e6ee01fc26761a49e99e733d17954a # v2.1.0
+      - name: Publish gem
+        if: steps.registry.outputs.published != 'true'
+        working-directory: packages/ruby
+        run: gem push pkg/erpc-sdk-*.gem
+
   github-release:
     name: Create GitHub Release
     needs:
       - npm
       - crates
       - pypi
+      - rubygems
     permissions:
       contents: write
     runs-on: ubuntu-latest
