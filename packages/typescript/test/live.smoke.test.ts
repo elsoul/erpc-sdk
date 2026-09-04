@@ -8,12 +8,14 @@ const client = apiKey ? createErpcClient({ apiKey }) : undefined
 live('live ERPC smoke tests', () => {
   afterAll(() => client?.close())
 
-  it('reads both RPC networks', async () => {
+  it('reads every RPC network', async () => {
     const slot = await client?.solana.rpc.getSlot().send()
     const chainId = await client?.ethereum.rpc.eth_chainId().send()
+    const avalancheChainId = await client?.avalanche.rpc.eth_chainId().send()
 
     expect(slot).toBeTypeOf('number')
     expect(chainId).toMatch(/^0x[0-9a-f]+$/i)
+    expect(avalancheChainId).toBe('0xa86a')
   })
 
   it('reads price metadata and account balance', async () => {

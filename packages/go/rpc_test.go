@@ -46,6 +46,54 @@ func TestTypedRequestAndCredentialBoundary(t *testing.T) {
 	}
 }
 
+func TestAvalancheUsesCChainEndpoint(t *testing.T) {
+	const key = "avalanche-key"
+	defaults, err := resolveConfig(Config{APIKey: key})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := defaults.avalancheEndpoint.String(); got != DefaultAvalancheEndpoint {
+		t.Fatalf("default Avalanche endpoint = %q", got)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/ava" {
+			t.Errorf("path = %q", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("api-key"); got != key {
+			t.Errorf("api key = %q", got)
+		}
+		var request wireRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Fatal(err)
+		}
+		if request.Method != "eth_chainId" {
+			t.Errorf("method = %q", request.Method)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"jsonrpc": "2.0", "id": request.ID, "result": "0xa86a",
+		})
+	}))
+	defer server.Close()
+	client, err := NewClient(Config{APIKey: key, AvalancheEndpoint: server.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	if got, want := client.Avalanche.Subscriptions.Endpoint(), "ws"+strings.TrimPrefix(server.URL, "http")+"/ava-ws"; got != want {
+		t.Fatalf("Avalanche WebSocket endpoint = %q, want %q", got, want)
+	}
+	chainID, err := client.Avalanche.RPC.ChainID(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if chainID != "0xa86a" {
+		t.Fatalf("chain id = %q", chainID)
+	}
+	if strings.Contains(client.Avalanche.RPC.Endpoint(), key) {
+		t.Fatal("public endpoint contains credentials")
+	}
+}
+
 func TestBatchOrderAndPolicy(t *testing.T) {
 	var requests atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

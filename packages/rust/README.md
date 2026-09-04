@@ -1,13 +1,13 @@
 # ERPC SDK for Rust
 
-Async Rust client for ERPC. The crate covers standard Solana and Ethereum
-JSON-RPC, indexed asset and history RPC, leader and analytics RPC, WebSocket
-subscriptions, price REST and server-sent events, account usage, and scoped
-Cloud reads.
+Async Rust client for ERPC. The crate covers standard Solana, Ethereum, and
+Avalanche C-Chain JSON-RPC, indexed asset and history RPC, leader and analytics
+RPC, WebSocket subscriptions, price REST and server-sent events, account usage,
+and scoped Cloud reads.
 
 ```toml
 [dependencies]
-erpc-sdk = "0.3"
+erpc-sdk = "0.4"
 serde_json = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
@@ -28,8 +28,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .send()
         .await?;
     let chain_id = erpc.ethereum.rpc.eth_chain_id().send().await?;
+    let avalanche_chain_id = erpc.avalanche.rpc.eth_chain_id().send().await?;
 
-    println!("slot={slot}, chain_id={chain_id}");
+    println!("slot={slot}, chain_id={chain_id}, avalanche_chain_id={avalanche_chain_id}");
     erpc.close().await;
     Ok(())
 }
@@ -52,12 +53,17 @@ objects. The wire method names remain unchanged.
 | `erpc.solana.subscriptions` | Enhanced WebSocket subscriptions |
 | `erpc.ethereum.rpc` | Standard Ethereum JSON-RPC |
 | `erpc.ethereum.subscriptions` | Ethereum WebSocket subscriptions |
+| `erpc.avalanche.rpc` | Avalanche C-Chain EVM-compatible JSON-RPC |
+| `erpc.avalanche.subscriptions` | Avalanche C-Chain WebSocket subscriptions |
 | `erpc.price` | Price metadata, updates, and SSE streams |
 | `erpc.account` | Token balance |
 | `erpc.usage` | Masked monthly API-key usage |
 
 Every JSON-RPC namespace also exposes `request`, `raw`, and `batch` for typed
-results and forward-compatible methods.
+results and forward-compatible methods. Avalanche uses the Ethereum-compatible
+typed catalog and defaults to `https://ava-rpc.erpc.global`; the SDK uses its
+`/ava` HTTP route and `/ava-ws` WebSocket route. Override the base URL with
+`ErpcClientConfig::with_avalanche_endpoint` when needed.
 
 ## Batch requests
 

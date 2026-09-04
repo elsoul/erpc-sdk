@@ -21,8 +21,47 @@ use support::delayed_body_server;
 fn config(server: &MockServer, api_key: &str) -> ErpcClientConfig {
     ErpcClientConfig::new(api_key)
         .with_endpoint(server.uri())
+        .with_avalanche_endpoint(server.uri())
         .with_account_endpoint(server.uri())
         .with_user_endpoint(server.uri())
+}
+
+#[tokio::test]
+async fn avalanche_uses_its_c_chain_endpoint() {
+    assert_eq!(
+        erpc_sdk::DEFAULT_AVALANCHE_ENDPOINT,
+        "https://ava-rpc.erpc.global"
+    );
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/ava"))
+        .and(query_param("api-key", "test-key"))
+        .and(body_json(json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "eth_chainId",
+            "params": []
+        })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": "0xa86a"
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let client = ErpcClient::new(config(&server, "test-key")).unwrap();
+    assert!(!client.avalanche.rpc.endpoint().contains("test-key"));
+    assert_eq!(
+        client.avalanche.subscriptions.endpoint(),
+        format!("{}/ava-ws", server.uri().replacen("http://", "ws://", 1))
+    );
+    assert_eq!(
+        client.avalanche.rpc.eth_chain_id().send().await.unwrap(),
+        "0xa86a"
+    );
+    client.close().await;
 }
 
 #[test]

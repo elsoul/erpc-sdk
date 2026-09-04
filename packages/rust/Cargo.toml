@@ -1,16 +1,16 @@
 [package]
 name = "erpc-sdk"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2024"
 rust-version = "1.85"
-description = "Async Rust SDK for ERPC"
+description = "Async multi-network Rust SDK for ERPC"
 license = "MIT"
 authors = ["ELSOUL LABO B.V."]
 homepage = "https://erpc.global"
 repository = "https://github.com/elsoul/erpc-sdk"
 documentation = "https://docs.rs/erpc-sdk"
 readme = "README.md"
-keywords = ["erpc", "ethereum", "json-rpc", "rpc", "solana"]
+keywords = ["avalanche", "erpc", "ethereum", "json-rpc", "solana"]
 categories = ["api-bindings", "asynchronous", "web-programming::http-client"]
 publish = ["crates-io"]
 include = ["Cargo.toml", "LICENSE", "README.md", "examples/**/*.rs", "src/**/*.rs", "tests/**/*.rs"]

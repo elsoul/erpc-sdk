@@ -112,6 +112,7 @@ environment. Source verification has read-only repository permission.
 
 2. Set the same `X.Y.Z` version in `packages/typescript/package.json`,
    `packages/rust/Cargo.toml`, `packages/python/pyproject.toml`, and
+   `packages/python/src/erpc_sdk/__init__.py`, and
    `packages/ruby/lib/erpc_sdk/version.rb`. Update the root `Cargo.lock` with
    the Rust package version. Go has no version file; its version comes from the
    subdirectory tag.

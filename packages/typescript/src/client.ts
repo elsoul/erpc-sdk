@@ -28,8 +28,11 @@ export interface ErpcEthereumClient extends EthereumClient {
   readonly subscriptions: EthereumSubscriptions
 }
 
+export type ErpcAvalancheClient = ErpcEthereumClient
+
 export interface ErpcClient {
   readonly account: AccountClient
+  readonly avalanche: ErpcAvalancheClient
   readonly ethereum: ErpcEthereumClient
   readonly price: PriceClient
   readonly solana: ErpcSolanaClient
@@ -55,6 +58,10 @@ export const createErpcClient = (config: ErpcClientConfig): ErpcClient => {
     ...sharedTransport,
     endpoint: ethereumEndpoint,
   })
+  const avalancheTransport = new HttpJsonRpcTransport({
+    ...sharedTransport,
+    endpoint: endpointWithPath(resolved.avalancheEndpoint, '/ava'),
+  })
 
   const solanaWebSocket = new WebSocketJsonRpcTransport({
     endpoint: websocketUrl(resolved.endpoint, resolved.apiKey),
@@ -65,6 +72,17 @@ export const createErpcClient = (config: ErpcClientConfig): ErpcClient => {
   })
   const ethereumWebSocket = new WebSocketJsonRpcTransport({
     endpoint: websocketUrl(resolved.endpoint, resolved.apiKey, '/eth'),
+    timeoutMs: resolved.timeoutMs,
+    ...(resolved.webSocket === undefined
+      ? {}
+      : { webSocket: resolved.webSocket }),
+  })
+  const avalancheWebSocket = new WebSocketJsonRpcTransport({
+    endpoint: websocketUrl(
+      resolved.avalancheEndpoint,
+      resolved.apiKey,
+      '/ava-ws',
+    ),
     timeoutMs: resolved.timeoutMs,
     ...(resolved.webSocket === undefined
       ? {}
@@ -92,16 +110,22 @@ export const createErpcClient = (config: ErpcClientConfig): ErpcClient => {
     ...createEthereumClient(ethereumTransport),
     subscriptions: new EthereumSubscriptions(ethereumWebSocket),
   }
+  const avalanche: ErpcAvalancheClient = {
+    ...createEthereumClient(avalancheTransport),
+    subscriptions: new EthereumSubscriptions(avalancheWebSocket),
+  }
 
   return {
     solana,
     ethereum,
+    avalanche,
     price: new PriceClient(priceTransport),
     account: new AccountClient(accountTransport),
     usage: new UsageClient(userTransport),
     close: () => {
       solana.subscriptions.close()
       ethereum.subscriptions.close()
+      avalanche.subscriptions.close()
     },
   }
 }

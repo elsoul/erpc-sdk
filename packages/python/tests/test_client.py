@@ -13,15 +13,48 @@ from erpc_sdk import (
     ErpcInvalidResponseError,
     ErpcJsonRpcError,
 )
+from erpc_sdk.config import websocket_url
 from erpc_sdk.types import RpcBatchCall
 
 
 def test_config_normalizes_endpoints_and_redacts_credential() -> None:
-    config = ErpcClientConfig(" secret ", endpoint="https://example.test/rpc/?discard=yes#fragment")
+    config = ErpcClientConfig(
+        " secret ",
+        endpoint="https://example.test/rpc/?discard=yes#fragment",
+        avalanche_endpoint="https://ava.example.test/c-chain/?discard=yes#fragment",
+    )
     assert config.api_key == "secret"
     assert config.endpoint == "https://example.test/rpc"
+    assert config.avalanche_endpoint == "https://ava.example.test/c-chain"
+    assert websocket_url(
+        config.avalanche_endpoint, "socket key", "/ava-ws"
+    ) == "wss://ava.example.test/c-chain/ava-ws?api-key=socket%20key"
     assert "secret" not in repr(config)
     assert "[REDACTED]" in repr(config)
+
+
+@pytest.mark.asyncio
+async def test_avalanche_uses_the_c_chain_endpoint() -> None:
+    received: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        received.append(request)
+        body = json.loads(request.content)
+        assert body["method"] == "eth_chainId"
+        return httpx.Response(
+            200,
+            json={"jsonrpc": "2.0", "id": body["id"], "result": "0xa86a"},
+        )
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    erpc = ErpcClient(ErpcClientConfig("api key"), http_client=http)
+    assert await erpc.avalanche.rpc.eth_chain_id().send() == "0xa86a"
+    assert received[0].url.host == "ava-rpc.erpc.global"
+    assert received[0].url.path == "/ava"
+    assert received[0].url.params["api-key"] == "api key"
+    assert "api-key" not in erpc.avalanche.rpc.endpoint
+    await erpc.close()
+    await http.aclose()
 
 
 @pytest.mark.asyncio

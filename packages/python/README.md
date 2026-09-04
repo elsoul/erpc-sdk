@@ -1,8 +1,9 @@
 # ERPC SDK for Python
 
-Async Python client for ERPC. It covers standard Solana and Ethereum JSON-RPC,
-indexed assets, history, leader and analytics RPC, WebSocket subscriptions,
-price REST and server-sent events, account usage, and scoped Cloud reads.
+Async Python client for ERPC. It covers standard Solana, Ethereum, and
+Avalanche C-Chain JSON-RPC, indexed assets, history, leader and analytics RPC,
+WebSocket subscriptions, price REST and server-sent events, account usage, and
+scoped Cloud reads.
 
 ```bash
 python -m pip install erpc-sdk
@@ -23,7 +24,8 @@ async def main() -> None:
     async with ErpcClient(ErpcClientConfig(os.environ["ERPC_API_KEY"])) as erpc:
         slot = await erpc.solana.rpc.get_slot().send()
         chain_id = await erpc.ethereum.rpc.eth_chain_id().send()
-        print(slot, chain_id)
+        avalanche_chain_id = await erpc.avalanche.rpc.eth_chain_id().send()
+        print(slot, chain_id, avalanche_chain_id)
 
 
 asyncio.run(main())
@@ -46,9 +48,16 @@ when `send()` is awaited. `request()` restricts calls to the namespace catalog;
 | `erpc.solana.subscriptions` | Enhanced WebSocket subscriptions |
 | `erpc.ethereum.rpc` | Standard Ethereum JSON-RPC |
 | `erpc.ethereum.subscriptions` | Ethereum WebSocket subscriptions |
+| `erpc.avalanche.rpc` | Avalanche C-Chain EVM-compatible JSON-RPC |
+| `erpc.avalanche.subscriptions` | Avalanche C-Chain WebSocket subscriptions |
 | `erpc.price` | Price metadata, updates, and SSE streams |
 | `erpc.account` | Token balance |
 | `erpc.usage` | Masked monthly API-key usage |
+
+`avalanche_endpoint` defaults to `https://ava-rpc.erpc.global` and can be
+overridden independently. The SDK uses its `/ava` HTTP route and `/ava-ws`
+WebSocket route. The Avalanche namespace uses the Ethereum-compatible typed
+catalog; use `raw()` for additional C-Chain methods.
 
 ## Intact batches
 

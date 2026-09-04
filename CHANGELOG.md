@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+## 0.5.0 — 2026-09-04
+
+- Add Avalanche C-Chain JSON-RPC and WebSocket namespaces to all five SDKs,
+  backed by the dedicated `ava-rpc.erpc.global` endpoint and the shared
+  Ethereum-compatible typed method catalog.
+- Add an independently configurable Avalanche endpoint while preserving API-key
+  redaction, intact batch behavior, and no-retry transport rules.
+- Align Python's runtime `__version__` with its package manifest and enforce the
+  match during release validation.
+
 ## 0.4.0 — 2026-08-29
 
 - Add the dependency-free `erpc-sdk` Ruby gem with synchronous JSON-RPC,

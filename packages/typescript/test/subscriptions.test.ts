@@ -56,6 +56,7 @@ describe('WebSocket subscriptions', () => {
   it('subscribes, dispatches notifications, and unsubscribes', async () => {
     MockWebSocket.instances.length = 0
     const received: unknown[] = []
+    const avalancheReceived: unknown[] = []
     const client = createErpcClient({
       apiKey: 'ws-secret',
       fetch: async () => new Response('{}'),
@@ -76,6 +77,19 @@ describe('WebSocket subscriptions', () => {
     await Promise.resolve()
     expect(received).toEqual([{ number: '0x2a' }])
     await expect(subscription.unsubscribe()).resolves.toBe(true)
+
+    const avalancheSubscription =
+      await client.avalanche.subscriptions.subscribe('newHeads', (value) =>
+        avalancheReceived.push(value),
+      )
+    const avalancheSocket = MockWebSocket.instances[1]
+    expect(avalancheSocket?.url).toBe(
+      'wss://ava-rpc.erpc.global/ava-ws?api-key=ws-secret',
+    )
+    avalancheSocket?.notify({ number: '0x10' })
+    await Promise.resolve()
+    expect(avalancheReceived).toEqual([{ number: '0x10' }])
+    await expect(avalancheSubscription.unsubscribe()).resolves.toBe(true)
     client.close()
   })
 })

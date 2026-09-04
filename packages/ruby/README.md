@@ -1,8 +1,8 @@
 # ERPC SDK for Ruby
 
-Synchronous Ruby client for ERPC. It covers standard Solana and Ethereum
-JSON-RPC, indexed data, analytics, WebSocket subscriptions, price REST and
-server-sent events, account usage, and scoped Cloud reads.
+Synchronous Ruby client for ERPC. It covers standard Solana, Ethereum, and
+Avalanche C-Chain JSON-RPC, indexed data, analytics, WebSocket subscriptions,
+price REST and server-sent events, account usage, and scoped Cloud reads.
 
 ```bash
 gem install erpc-sdk
@@ -21,7 +21,8 @@ begin
 
   slot = erpc.solana.rpc.get_slot.send
   chain_id = erpc.ethereum.rpc.eth_chain_id.send
-  puts({ slot: slot, chain_id: chain_id })
+  avalanche_chain_id = erpc.avalanche.rpc.eth_chain_id.send
+  puts({ slot: slot, chain_id: chain_id, avalanche_chain_id: avalanche_chain_id })
 ensure
   erpc&.close
 end
@@ -44,9 +45,16 @@ only when `send` is called. `request` restricts calls to the namespace catalog;
 | `erpc.solana.subscriptions` | Enhanced WebSocket subscriptions |
 | `erpc.ethereum.rpc` | Standard Ethereum JSON-RPC |
 | `erpc.ethereum.subscriptions` | Ethereum WebSocket subscriptions |
+| `erpc.avalanche.rpc` | Avalanche C-Chain EVM-compatible JSON-RPC |
+| `erpc.avalanche.subscriptions` | Avalanche C-Chain WebSocket subscriptions |
 | `erpc.price` | Price metadata, updates, and SSE streams |
 | `erpc.account` | Token balance |
 | `erpc.usage` | Masked monthly API-key usage |
+
+`avalanche_endpoint` defaults to `https://ava-rpc.erpc.global` and can be
+overridden independently. The SDK uses its `/ava` HTTP route and `/ava-ws`
+WebSocket route. The Avalanche namespace uses the Ethereum-compatible typed
+catalog; use `raw` for additional C-Chain methods.
 
 ## Intact batches
 
@@ -74,7 +82,7 @@ end
 ```
 
 Subscriptions use a lazy persistent WebSocket connection. `unsubscribe` is
-idempotent, and `close` closes both network subscription transports.
+idempotent, and `close` closes all network subscription transports.
 
 ## Cloud reads
 

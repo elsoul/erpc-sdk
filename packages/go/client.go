@@ -9,11 +9,12 @@ import (
 
 // Client groups all API namespaces backed by one API key.
 type Client struct {
-	Solana   *SolanaClient
-	Ethereum *EthereumClient
-	Price    *PriceClient
-	Account  *AccountClient
-	Usage    *UsageClient
+	Solana    *SolanaClient
+	Ethereum  *EthereumClient
+	Avalanche *AvalancheClient
+	Price     *PriceClient
+	Account   *AccountClient
+	Usage     *UsageClient
 }
 
 // NewClient validates config and creates an inert client. It performs no
@@ -25,17 +26,20 @@ func NewClient(config Config) (*Client, error) {
 	}
 	solanaHTTP := newHTTPRPCTransport(resolved, resolved.endpoint)
 	ethereumHTTP := newHTTPRPCTransport(resolved, endpointPath(resolved.endpoint, "/eth"))
+	avalancheHTTP := newHTTPRPCTransport(resolved, endpointPath(resolved.avalancheEndpoint, "/ava"))
 	solanaWS := newWebSocketTransport(websocketURL(resolved.endpoint, resolved.apiKey, ""), resolved.timeout)
 	ethereumWS := newWebSocketTransport(websocketURL(resolved.endpoint, resolved.apiKey, "/eth"), resolved.timeout)
+	avalancheWS := newWebSocketTransport(websocketURL(resolved.avalancheEndpoint, resolved.apiKey, "/ava-ws"), resolved.timeout)
 	sharedREST := newRESTTransport(resolved.apiKey, resolved.endpoint, resolved)
 	accountREST := newRESTTransport(resolved.apiKey, resolved.accountEndpoint, resolved)
 	userREST := newRESTTransport(resolved.apiKey, resolved.userEndpoint, resolved)
 	return &Client{
-		Solana:   newSolanaClient(solanaHTTP, solanaWS),
-		Ethereum: newEthereumClient(ethereumHTTP, ethereumWS),
-		Price:    &PriceClient{transport: sharedREST},
-		Account:  &AccountClient{transport: accountREST},
-		Usage:    &UsageClient{transport: userREST},
+		Solana:    newSolanaClient(solanaHTTP, solanaWS),
+		Ethereum:  newEthereumClient(ethereumHTTP, ethereumWS),
+		Avalanche: newEthereumClient(avalancheHTTP, avalancheWS),
+		Price:     &PriceClient{transport: sharedREST},
+		Account:   &AccountClient{transport: accountREST},
+		Usage:     &UsageClient{transport: userREST},
 	}, nil
 }
 
@@ -43,6 +47,9 @@ func NewClient(config Config) (*Client, error) {
 func (c *Client) Close() error {
 	first := c.Solana.Subscriptions.close()
 	if err := c.Ethereum.Subscriptions.close(); first == nil {
+		first = err
+	}
+	if err := c.Avalanche.Subscriptions.close(); first == nil {
 		first = err
 	}
 	return first
@@ -119,6 +126,9 @@ type EthereumClient struct {
 	RPC           *EthereumRPCClient
 	Subscriptions *EthereumSubscriptions
 }
+
+// AvalancheClient exposes the EVM-compatible Avalanche C-Chain surface.
+type AvalancheClient = EthereumClient
 
 func newEthereumClient(transport *httpRPCTransport, ws *webSocketTransport) *EthereumClient {
 	return &EthereumClient{

@@ -8,32 +8,35 @@ import (
 )
 
 const (
-	DefaultEndpoint        = "https://edge.erpc.global"
-	DefaultAccountEndpoint = "https://solana-rpc.erpc.global"
-	DefaultUserEndpoint    = "https://user-api.erpc.global"
-	DefaultTimeout         = 30 * time.Second
+	DefaultEndpoint          = "https://edge.erpc.global"
+	DefaultAvalancheEndpoint = "https://ava-rpc.erpc.global"
+	DefaultAccountEndpoint   = "https://solana-rpc.erpc.global"
+	DefaultUserEndpoint      = "https://user-api.erpc.global"
+	DefaultTimeout           = 30 * time.Second
 )
 
 // Config configures Client. APIKey is retained in memory but never returned by
 // Endpoint methods or SDK errors.
 type Config struct {
-	APIKey          string
-	Endpoint        string
-	AccountEndpoint string
-	UserEndpoint    string
-	Headers         http.Header
-	Timeout         time.Duration
-	HTTPClient      *http.Client
+	APIKey            string
+	Endpoint          string
+	AvalancheEndpoint string
+	AccountEndpoint   string
+	UserEndpoint      string
+	Headers           http.Header
+	Timeout           time.Duration
+	HTTPClient        *http.Client
 }
 
 type resolvedConfig struct {
-	apiKey          string
-	endpoint        *url.URL
-	accountEndpoint *url.URL
-	userEndpoint    *url.URL
-	headers         http.Header
-	timeout         time.Duration
-	httpClient      *http.Client
+	apiKey            string
+	endpoint          *url.URL
+	avalancheEndpoint *url.URL
+	accountEndpoint   *url.URL
+	userEndpoint      *url.URL
+	headers           http.Header
+	timeout           time.Duration
+	httpClient        *http.Client
 }
 
 func resolveConfig(config Config) (resolvedConfig, error) {
@@ -49,6 +52,10 @@ func resolveConfig(config Config) (resolvedConfig, error) {
 		return resolvedConfig{}, sdkError(ErrorConfig, "timeout must be positive")
 	}
 	endpoint, err := parseEndpoint(defaultString(config.Endpoint, DefaultEndpoint), false)
+	if err != nil {
+		return resolvedConfig{}, err
+	}
+	avalanche, err := parseEndpoint(defaultString(config.AvalancheEndpoint, DefaultAvalancheEndpoint), false)
 	if err != nil {
 		return resolvedConfig{}, err
 	}
@@ -71,7 +78,7 @@ func resolveConfig(config Config) (resolvedConfig, error) {
 	return resolvedConfig{
 		apiKey: key, endpoint: endpoint, accountEndpoint: account,
 		userEndpoint: user, headers: headers, timeout: timeout,
-		httpClient: httpClient,
+		httpClient: httpClient, avalancheEndpoint: avalanche,
 	}, nil
 }
 

@@ -6,13 +6,38 @@ class ClientTest < Minitest::Test
   def test_config_normalizes_endpoints_and_redacts_credential
     config = ERPC::ClientConfig.new(
       api_key: " secret ",
-      endpoint: "https://example.test/rpc/?discard=yes#fragment"
+      endpoint: "https://example.test/rpc/?discard=yes#fragment",
+      avalanche_endpoint: "https://ava.example.test/c-chain/?discard=yes#fragment"
     )
 
     assert_equal "secret", config.api_key
     assert_equal "https://example.test/rpc", config.endpoint
+    assert_equal "https://ava.example.test/c-chain", config.avalanche_endpoint
+    assert_equal "wss://ava.example.test/c-chain/ava-ws?api-key=socket+key",
+                 ERPC::URLs.websocket(config.avalanche_endpoint, "socket key", "/ava-ws")
     refute_includes config.inspect, "secret"
     assert_includes config.inspect, "[REDACTED]"
+  end
+
+  def test_avalanche_uses_the_c_chain_endpoint
+    adapter = FakeHttpAdapter.new do |request|
+      body = JSON.parse(request.fetch(:body))
+      assert_equal "eth_chainId", body["method"]
+      ERPC::HttpResponse.new(
+        status: 200,
+        body: JSON.generate("jsonrpc" => "2.0", "id" => body["id"], "result" => "0xa86a")
+      )
+    end
+    erpc = ERPC::Client.new(ERPC::ClientConfig.new(api_key: "api key"), http_adapter: adapter)
+
+    assert_equal "0xa86a", erpc.avalanche.rpc.eth_chain_id.send
+    request_url = URI.parse(adapter.requests.first.fetch(:url))
+    assert_equal "ava-rpc.erpc.global", request_url.host
+    assert_equal "/ava", request_url.path
+    assert_equal "api key", URI.decode_www_form(request_url.query).to_h["api-key"]
+    refute_includes erpc.avalanche.rpc.endpoint, "api-key"
+  ensure
+    erpc&.close
   end
 
   def test_request_is_inert_and_uses_exact_wire_method

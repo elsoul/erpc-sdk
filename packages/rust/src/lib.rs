@@ -22,8 +22,8 @@ pub use cloud::{
     ErpcCloudClient, ErpcCloudClientConfig,
 };
 pub use config::{
-    DEFAULT_ACCOUNT_ENDPOINT, DEFAULT_ENDPOINT, DEFAULT_TIMEOUT, DEFAULT_USER_ENDPOINT,
-    ErpcClientConfig,
+    DEFAULT_ACCOUNT_ENDPOINT, DEFAULT_AVALANCHE_ENDPOINT, DEFAULT_ENDPOINT, DEFAULT_TIMEOUT,
+    DEFAULT_USER_ENDPOINT, ErpcClientConfig,
 };
 pub use error::{ErpcError, ErpcErrorCode, JsonRpcErrorObject, Result};
 pub use ethereum::{
@@ -61,6 +61,9 @@ pub use usage::{
     MonthlyApiKeyUsageParams, UsageClient,
 };
 
+/// Avalanche C-Chain client using the EVM-compatible RPC surface.
+pub type AvalancheClient = EthereumClient;
+
 use std::sync::Arc;
 
 use config::{ResolvedErpcClientConfig, endpoint_with_path, websocket_url};
@@ -72,6 +75,8 @@ use subscriptions::WebSocketJsonRpcTransport;
 pub struct ErpcClient {
     /// Account and token balance API.
     pub account: AccountClient,
+    /// Avalanche C-Chain JSON-RPC and subscriptions.
+    pub avalanche: AvalancheClient,
     /// Standard Ethereum JSON-RPC and subscriptions.
     pub ethereum: EthereumClient,
     /// Price feed REST and streaming API.
@@ -103,12 +108,24 @@ impl ErpcClient {
             timeout: resolved.timeout,
             client: http.clone(),
         }));
+        let avalanche_transport = Arc::new(HttpJsonRpcTransport::new(HttpTransportConfig {
+            api_key: resolved.api_key.clone(),
+            endpoint: endpoint_with_path(&resolved.avalanche_endpoint, "/ava"),
+            headers: resolved.headers.clone(),
+            max_batch_size: 256,
+            timeout: resolved.timeout,
+            client: http.clone(),
+        }));
         let solana_ws = Arc::new(WebSocketJsonRpcTransport::new(
             websocket_url(&resolved.endpoint, &resolved.api_key, "")?,
             resolved.timeout,
         ));
         let ethereum_ws = Arc::new(WebSocketJsonRpcTransport::new(
             websocket_url(&resolved.endpoint, &resolved.api_key, "/eth")?,
+            resolved.timeout,
+        ));
+        let avalanche_ws = Arc::new(WebSocketJsonRpcTransport::new(
+            websocket_url(&resolved.avalanche_endpoint, &resolved.api_key, "/ava-ws")?,
             resolved.timeout,
         ));
         let shared_rest = RestTransport::new(
@@ -135,6 +152,7 @@ impl ErpcClient {
 
         Ok(Self {
             account: AccountClient::new(account_rest),
+            avalanche: AvalancheClient::new(avalanche_transport, avalanche_ws),
             ethereum: EthereumClient::new(ethereum_transport, ethereum_ws),
             price: PriceClient::new(shared_rest),
             solana: SolanaClient::new(solana_transport, solana_ws),
@@ -142,9 +160,10 @@ impl ErpcClient {
         })
     }
 
-    /// Closes both subscription connections. HTTP clients need no explicit close.
+    /// Closes all subscription connections. HTTP clients need no explicit close.
     pub async fn close(&self) {
         self.solana.subscriptions.close().await;
         self.ethereum.subscriptions.close().await;
+        self.avalanche.subscriptions.close().await;
     }
 }

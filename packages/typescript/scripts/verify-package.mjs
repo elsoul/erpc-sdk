@@ -32,7 +32,8 @@ if (
   typeof esm.CloudCatalogClient !== 'function' ||
   typeof esm.CloudCreditClient !== 'function' ||
   typeof esm.CloudResourcesClient !== 'function' ||
-  typeof esm.UsageClient !== 'function'
+  typeof esm.UsageClient !== 'function' ||
+  esm.DEFAULT_AVALANCHE_ENDPOINT !== 'https://ava-rpc.erpc.global'
 ) {
   throw new Error('ESM export check failed')
 }
@@ -42,10 +43,20 @@ if (
   typeof cjs.CloudCatalogClient !== 'function' ||
   typeof cjs.CloudCreditClient !== 'function' ||
   typeof cjs.CloudResourcesClient !== 'function' ||
-  typeof cjs.UsageClient !== 'function'
+  typeof cjs.UsageClient !== 'function' ||
+  cjs.DEFAULT_AVALANCHE_ENDPOINT !== 'https://ava-rpc.erpc.global'
 ) {
   throw new Error('CommonJS export check failed')
 }
+
+const client = esm.createErpcClient({
+  apiKey: 'package-check',
+  fetch: async () => new Response('{}'),
+})
+if (client.avalanche?.rpc?.endpoint !== 'https://ava-rpc.erpc.global/ava') {
+  throw new Error('Avalanche client export check failed')
+}
+client.close()
 if (esm.ETHEREUM_RPC_METHODS.length !== 53) {
   throw new Error('Ethereum method catalog check failed')
 }

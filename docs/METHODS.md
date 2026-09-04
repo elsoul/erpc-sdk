@@ -1,6 +1,6 @@
 # Method availability
 
-Last reviewed: 2026-08-28
+Last reviewed: 2026-09-04
 
 “Available” means the method is exposed by the current ERPC service and has a
 typed SDK entry point. The raw request API remains available for forward
@@ -192,6 +192,17 @@ WebSocket methods (`erpc.ethereum.subscriptions`, 2):
 eth_subscribe
 eth_unsubscribe
 ```
+
+### Avalanche C-Chain JSON-RPC
+
+[Avalanche C-Chain](https://build.avax.network/docs/rpcs/c-chain/api)
+(`erpc.avalanche.rpc`) exposes the same 53 typed EVM-compatible HTTP methods
+listed for Ethereum above. Its WebSocket namespace
+(`erpc.avalanche.subscriptions`) exposes `eth_subscribe` and `eth_unsubscribe`.
+Avalanche-specific subscription names such as `newAcceptedTransactions` can be
+passed to `subscribe`, and additional C-Chain methods remain available through
+the namespace's raw request API. X-Chain and P-Chain-specific APIs are outside
+this compatibility namespace.
 
 ### Price API
 

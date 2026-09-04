@@ -14,8 +14,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .send()
         .await?;
     let chain_id = erpc.ethereum.rpc.eth_chain_id().send().await?;
+    let avalanche_chain_id = erpc.avalanche.rpc.eth_chain_id().send().await?;
 
-    println!("slot={slot}, chain_id={chain_id}");
+    println!("slot={slot}, chain_id={chain_id}, avalanche_chain_id={avalanche_chain_id}");
     erpc.close().await;
     Ok(())
 }

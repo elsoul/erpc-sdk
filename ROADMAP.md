@@ -43,6 +43,14 @@
   justifies the additional maintenance surface.
 - Reuse language-neutral transport and compatibility fixtures.
 
+## 0.5 — Avalanche C-Chain
+
+- Expose Avalanche C-Chain JSON-RPC and WebSocket namespaces in all five SDKs.
+- Reuse the Ethereum-compatible typed catalog while keeping the dedicated
+  Avalanche endpoint independently configurable.
+- Cover endpoint routing, credential redaction, and live C-Chain identity in
+  automated tests.
+
 ## Service-dependent expansion
 
 The following SDK work starts only after the corresponding server capability
