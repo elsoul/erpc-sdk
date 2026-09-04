@@ -1,8 +1,9 @@
 # `@elsoul/erpc-sdk`
 
 Official type-safe TypeScript client for [ERPC](https://erpc.global). Use one
-client and one API key for Solana, Ethereum, price data, indexed data, leader
-and validator data, analytics, subscriptions, and account information.
+client and one API key for Solana, Ethereum, Avalanche C-Chain, price data,
+indexed data, leader and validator data, analytics, subscriptions, and account
+information.
 
 ## Install
 
@@ -26,8 +27,9 @@ const erpc = createErpcClient({ apiKey })
 
 const slot = await erpc.solana.rpc.getSlot().send()
 const chainId = await erpc.ethereum.rpc.eth_chainId().send()
+const avalancheChainId = await erpc.avalanche.rpc.eth_chainId().send()
 
-console.log({ slot, chainId })
+console.log({ slot, chainId, avalancheChainId })
 erpc.close()
 ```
 
@@ -46,9 +48,17 @@ network request.
 | `erpc.solana.subscriptions` | Enhanced WebSocket subscriptions |
 | `erpc.ethereum.rpc` | Ethereum JSON-RPC |
 | `erpc.ethereum.subscriptions` | Ethereum WebSocket subscriptions |
+| `erpc.avalanche.rpc` | Avalanche C-Chain EVM-compatible JSON-RPC |
+| `erpc.avalanche.subscriptions` | Avalanche C-Chain WebSocket subscriptions |
 | `erpc.price` | Price metadata, updates, and streams |
 | `erpc.account` | ERPC token balance |
 | `erpc.usage` | Masked monthly API-key usage |
+
+`avalancheEndpoint` defaults to `https://ava-rpc.erpc.global` and can be
+overridden independently from the shared `endpoint` option. The SDK uses its
+`/ava` HTTP route and `/ava-ws` WebSocket route. The Avalanche namespace uses
+the Ethereum-compatible typed catalog; use `raw` for additional C-Chain
+methods.
 
 ## Examples
 
@@ -56,6 +66,10 @@ network request.
 const asset = await erpc.solana.das.getAsset({ id: assetId }).send()
 
 const block = await erpc.ethereum.rpc
+  .eth_getBlockByNumber('latest', false)
+  .send()
+
+const avalancheBlock = await erpc.avalanche.rpc
   .eth_getBlockByNumber('latest', false)
   .send()
 

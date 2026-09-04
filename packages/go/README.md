@@ -1,8 +1,8 @@
 # ERPC SDK for Go
 
-Context-aware Go client for ERPC Solana and Ethereum JSON-RPC, indexed data,
-analytics, WebSocket subscriptions, price streams, account information, usage,
-and Cloud APIs.
+Context-aware Go client for ERPC Solana, Ethereum, and Avalanche C-Chain
+JSON-RPC, indexed data, analytics, WebSocket subscriptions, price streams,
+account information, usage, and Cloud APIs.
 
 ## Install
 
@@ -43,7 +43,11 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println(slot, chainID)
+	avalancheChainID, err := client.Avalanche.RPC.ChainID(context.Background())
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(slot, chainID, avalancheChainID)
 }
 ```
 
@@ -104,9 +108,16 @@ event and `Close` when the stream is no longer needed.
 | `client.Solana.Subscriptions` | Enhanced WebSocket subscriptions |
 | `client.Ethereum.RPC` | Standard Ethereum JSON-RPC |
 | `client.Ethereum.Subscriptions` | Ethereum WebSocket subscriptions |
+| `client.Avalanche.RPC` | Avalanche C-Chain EVM-compatible JSON-RPC |
+| `client.Avalanche.Subscriptions` | Avalanche C-Chain WebSocket subscriptions |
 | `client.Price` | Price metadata, updates, and streams |
 | `client.Account` | Token balance |
 | `client.Usage` | Masked monthly API-key usage |
+
+`Config.AvalancheEndpoint` defaults to `https://ava-rpc.erpc.global` and can be
+overridden independently. The SDK uses its `/ava` HTTP route and `/ava-ws`
+WebSocket route. The Avalanche namespace uses the Ethereum-compatible typed
+catalog; use `Raw` for additional C-Chain methods.
 
 Create a separate `CloudClient` with a scoped access token for catalog, credit,
 resource, and usage APIs. Refresh credentials are not accepted or retained.

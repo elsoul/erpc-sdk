@@ -23,5 +23,9 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println(slot)
+	avalancheChainID, err := client.Avalanche.RPC.ChainID(context.Background())
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(slot, avalancheChainID)
 }

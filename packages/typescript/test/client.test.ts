@@ -34,7 +34,9 @@ const rpcFetch = (
           : request.method === 'getHealth'
             ? 'ok'
             : request.method === 'eth_chainId'
-              ? '0x1'
+              ? url.includes('ava-rpc')
+                ? '0xa86a'
+                : '0x1'
               : request.params,
     })
     const response = Array.isArray(body)
@@ -46,7 +48,7 @@ const rpcFetch = (
   }
 
 describe('ERPC client', () => {
-  it('routes Solana, named asset, and Ethereum calls from one client', async () => {
+  it('routes Solana, Ethereum, and Avalanche calls from one client', async () => {
     const requests: Array<{ readonly body: unknown; readonly url: string }> = []
     const client = createErpcClient({
       apiKey: 'test-secret',
@@ -58,8 +60,11 @@ describe('ERPC client', () => {
       client.solana.das.getAsset({ id: 'asset-id' }).send(),
     ).resolves.toEqual({ id: 'asset-id' })
     await expect(client.ethereum.rpc.eth_chainId().send()).resolves.toBe('0x1')
+    await expect(client.avalanche.rpc.eth_chainId().send()).resolves.toBe(
+      '0xa86a',
+    )
 
-    expect(requests).toHaveLength(3)
+    expect(requests).toHaveLength(4)
     expect(requests[0]?.url).toBe(
       'https://edge.erpc.global/?api-key=test-secret',
     )
@@ -70,8 +75,12 @@ describe('ERPC client', () => {
     expect(requests[2]?.url).toBe(
       'https://edge.erpc.global/eth?api-key=test-secret',
     )
+    expect(requests[3]?.url).toBe(
+      'https://ava-rpc.erpc.global/ava?api-key=test-secret',
+    )
     expect(client.solana.rpc.endpoint).not.toContain('test-secret')
     expect(client.ethereum.rpc.endpoint).not.toContain('test-secret')
+    expect(client.avalanche.rpc.endpoint).not.toContain('test-secret')
   })
 
   it('restores batch results to request order', async () => {

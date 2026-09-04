@@ -7,6 +7,8 @@ use crate::{ErpcError, Result};
 
 /// Default JSON-RPC and price endpoint.
 pub const DEFAULT_ENDPOINT: &str = "https://edge.erpc.global";
+/// Default Avalanche C-Chain JSON-RPC endpoint.
+pub const DEFAULT_AVALANCHE_ENDPOINT: &str = "https://ava-rpc.erpc.global";
 /// Default account endpoint.
 pub const DEFAULT_ACCOUNT_ENDPOINT: &str = "https://solana-rpc.erpc.global";
 /// Default user and Cloud endpoint.
@@ -21,6 +23,8 @@ pub struct ErpcClientConfig {
     api_key: String,
     /// Optional JSON-RPC and price endpoint override.
     pub endpoint: String,
+    /// Optional Avalanche C-Chain endpoint override.
+    pub avalanche_endpoint: String,
     /// Optional account endpoint override.
     pub account_endpoint: String,
     /// Optional user endpoint override.
@@ -37,6 +41,7 @@ impl fmt::Debug for ErpcClientConfig {
             .debug_struct("ErpcClientConfig")
             .field("api_key", &"[REDACTED]")
             .field("endpoint", &self.endpoint)
+            .field("avalanche_endpoint", &self.avalanche_endpoint)
             .field("account_endpoint", &self.account_endpoint)
             .field("user_endpoint", &self.user_endpoint)
             .field(
@@ -59,6 +64,7 @@ impl ErpcClientConfig {
         Self {
             api_key: api_key.into(),
             endpoint: DEFAULT_ENDPOINT.to_owned(),
+            avalanche_endpoint: DEFAULT_AVALANCHE_ENDPOINT.to_owned(),
             account_endpoint: DEFAULT_ACCOUNT_ENDPOINT.to_owned(),
             user_endpoint: DEFAULT_USER_ENDPOINT.to_owned(),
             headers: Vec::new(),
@@ -76,6 +82,13 @@ impl ErpcClientConfig {
     #[must_use]
     pub fn with_endpoint(mut self, endpoint: impl Into<String>) -> Self {
         self.endpoint = endpoint.into();
+        self
+    }
+
+    /// Overrides the Avalanche C-Chain endpoint.
+    #[must_use]
+    pub fn with_avalanche_endpoint(mut self, endpoint: impl Into<String>) -> Self {
+        self.avalanche_endpoint = endpoint.into();
         self
     }
 
@@ -111,6 +124,7 @@ impl ErpcClientConfig {
 pub(crate) struct ResolvedErpcClientConfig {
     pub api_key: String,
     pub endpoint: Url,
+    pub avalanche_endpoint: Url,
     pub account_endpoint: Url,
     pub user_endpoint: Url,
     pub headers: HeaderMap,
@@ -139,6 +153,7 @@ impl TryFrom<ErpcClientConfig> for ResolvedErpcClientConfig {
         Ok(Self {
             api_key,
             endpoint: endpoint(&config.endpoint, false)?,
+            avalanche_endpoint: endpoint(&config.avalanche_endpoint, false)?,
             account_endpoint: endpoint(&config.account_endpoint, false)?,
             user_endpoint: endpoint(&config.user_endpoint, false)?,
             headers,

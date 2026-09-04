@@ -9,6 +9,7 @@ from urllib.parse import quote, urlencode, urlsplit, urlunsplit
 from .errors import ErpcConfigError
 
 DEFAULT_ENDPOINT = "https://edge.erpc.global"
+DEFAULT_AVALANCHE_ENDPOINT = "https://ava-rpc.erpc.global"
 DEFAULT_ACCOUNT_ENDPOINT = "https://solana-rpc.erpc.global"
 DEFAULT_USER_ENDPOINT = "https://user-api.erpc.global"
 DEFAULT_TIMEOUT = 30.0
@@ -61,6 +62,7 @@ class ErpcClientConfig:
     user_endpoint: str = DEFAULT_USER_ENDPOINT
     headers: Mapping[str, str] = field(default_factory=dict)
     timeout: float = DEFAULT_TIMEOUT
+    avalanche_endpoint: str = DEFAULT_AVALANCHE_ENDPOINT
 
     def __post_init__(self) -> None:
         key = self.api_key.strip()
@@ -70,6 +72,9 @@ class ErpcClientConfig:
             raise ErpcConfigError("timeout must be positive")
         object.__setattr__(self, "api_key", key)
         object.__setattr__(self, "endpoint", normalize_endpoint(self.endpoint))
+        object.__setattr__(
+            self, "avalanche_endpoint", normalize_endpoint(self.avalanche_endpoint)
+        )
         object.__setattr__(self, "account_endpoint", normalize_endpoint(self.account_endpoint))
         object.__setattr__(self, "user_endpoint", normalize_endpoint(self.user_endpoint))
         object.__setattr__(self, "headers", dict(self.headers))
@@ -78,7 +83,8 @@ class ErpcClientConfig:
     def __repr__(self) -> str:
         return (
             "ErpcClientConfig(api_key='[REDACTED]', "
-            f"endpoint={self.endpoint!r}, account_endpoint={self.account_endpoint!r}, "
+            f"endpoint={self.endpoint!r}, avalanche_endpoint={self.avalanche_endpoint!r}, "
+            f"account_endpoint={self.account_endpoint!r}, "
             f"user_endpoint={self.user_endpoint!r}, "
             f"header_names={list(self.headers)!r}, timeout={self.timeout!r})"
         )

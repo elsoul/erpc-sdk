@@ -4,13 +4,13 @@ build-backend = "hatchling.build"
 
 [project]
 name = "erpc-sdk"
-version = "0.4.0"
-description = "Async Python SDK for ERPC"
+version = "0.5.0"
+description = "Async multi-network Python SDK for ERPC"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { file = "LICENSE" }
 authors = [{ name = "ELSOUL LABO B.V." }]
-keywords = ["erpc", "ethereum", "json-rpc", "rpc", "solana"]
+keywords = ["avalanche", "erpc", "ethereum", "json-rpc", "rpc", "solana"]
 classifiers = [
   "Development Status :: 4 - Beta",
   "Framework :: AsyncIO",

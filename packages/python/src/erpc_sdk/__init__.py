@@ -1,6 +1,7 @@
 """Async Python SDK for ERPC."""
 
 from .client import (
+    AvalancheClient,
     ErpcClient,
     ErpcCloudClient,
     EthereumClient,
@@ -10,6 +11,7 @@ from .client import (
 )
 from .config import (
     DEFAULT_ACCOUNT_ENDPOINT,
+    DEFAULT_AVALANCHE_ENDPOINT,
     DEFAULT_ENDPOINT,
     DEFAULT_TIMEOUT,
     DEFAULT_USER_ENDPOINT,
@@ -58,10 +60,11 @@ from .subscriptions import (
 from .transport import HttpJsonRpcTransport
 from .types import *  # noqa: F403
 
-__version__ = "0.3.0"
+__version__ = "0.5.0"
 
 __all__ = [
     "DEFAULT_ACCOUNT_ENDPOINT",
+    "DEFAULT_AVALANCHE_ENDPOINT",
     "DEFAULT_ENDPOINT",
     "DEFAULT_TIMEOUT",
     "DEFAULT_USER_ENDPOINT",
@@ -74,6 +77,7 @@ __all__ = [
     "SOLANA_LEADER_METHODS",
     "SOLANA_RPC_METHODS",
     "AccountClient",
+    "AvalancheClient",
     "CloudCatalogClient",
     "CloudCreditClient",
     "CloudResourcesClient",

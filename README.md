@@ -17,9 +17,9 @@
   Built for Developers. Ready for AI Agents.</strong>
 </p>
 
-One client and one API key provide access to Solana, Ethereum, price data,
-indexed data, leader and validator data, analytics, subscriptions, and account
-balance information.
+One client and one API key provide access to Solana, Ethereum, Avalanche
+C-Chain, price data, indexed data, leader and validator data, analytics,
+subscriptions, and account balance information.
 
 ## Packages
 
@@ -88,8 +88,9 @@ const erpc = createErpcClient({ apiKey })
 
 const slot = await erpc.solana.rpc.getSlot().send()
 const chainId = await erpc.ethereum.rpc.eth_chainId().send()
+const avalancheChainId = await erpc.avalanche.rpc.eth_chainId().send()
 
-console.log({ slot, chainId })
+console.log({ slot, chainId, avalancheChainId })
 erpc.close()
 ```
 
@@ -107,6 +108,7 @@ let slot = erpc.solana.rpc.get_slot(Vec::<serde_json::Value>::new())?
     .send()
     .await?;
 let chain_id = erpc.ethereum.rpc.eth_chain_id().send().await?;
+let avalanche_chain_id = erpc.avalanche.rpc.eth_chain_id().send().await?;
 ```
 
 ### Python
@@ -117,6 +119,7 @@ from erpc_sdk import ErpcClient, ErpcClientConfig
 async with ErpcClient(ErpcClientConfig(api_key)) as erpc:
     slot = await erpc.solana.rpc.get_slot().send()
     chain_id = await erpc.ethereum.rpc.eth_chain_id().send()
+    avalanche_chain_id = await erpc.avalanche.rpc.eth_chain_id().send()
 ```
 
 ### Go
@@ -132,6 +135,7 @@ defer client.Close()
 
 slot, err := client.Solana.RPC.GetSlot(ctx)
 chainID, err := client.Ethereum.RPC.ChainID(ctx)
+avalancheChainID, err := client.Avalanche.RPC.ChainID(ctx)
 ```
 
 ### Ruby
@@ -143,6 +147,7 @@ begin
   erpc = ERPC::Client.new(ERPC::ClientConfig.new(api_key: api_key))
   slot = erpc.solana.rpc.get_slot.send
   chain_id = erpc.ethereum.rpc.eth_chain_id.send
+  avalanche_chain_id = erpc.avalanche.rpc.eth_chain_id.send
 ensure
   erpc&.close
 end
@@ -160,6 +165,8 @@ end
 | `erpc.solana.subscriptions` | Enhanced WebSocket subscriptions |
 | `erpc.ethereum.rpc` | Ethereum JSON-RPC |
 | `erpc.ethereum.subscriptions` | Ethereum WebSocket subscriptions |
+| `erpc.avalanche.rpc` | Avalanche C-Chain EVM-compatible JSON-RPC |
+| `erpc.avalanche.subscriptions` | Avalanche C-Chain WebSocket subscriptions |
 | `erpc.price` | Price metadata, updates, and streams |
 | `erpc.account` | ERPC token balance |
 | `erpc.usage` | Masked monthly API-key usage |
@@ -197,6 +204,30 @@ const balance = await erpc.ethereum.rpc
   .eth_getBalance(address, 'latest')
   .send()
 ```
+
+## Avalanche C-Chain examples
+
+Avalanche reuses the typed Ethereum-compatible method catalog on its dedicated
+C-Chain endpoint. The SDK routes HTTP requests through `/ava` and WebSocket
+subscriptions through `/ava-ws`. C-Chain-specific methods remain available
+through `raw`.
+
+```ts
+const chainId = await erpc.avalanche.rpc.eth_chainId().send()
+const block = await erpc.avalanche.rpc
+  .eth_getBlockByNumber('latest', false)
+  .send()
+
+const accepted = await erpc.avalanche.subscriptions.subscribe(
+  'newAcceptedTransactions',
+  (transaction) => console.log(transaction),
+)
+
+await accepted.unsubscribe()
+```
+
+This namespace targets Avalanche C-Chain. X-Chain and P-Chain-specific APIs are
+not represented as supported methods in this release.
 
 ## Price data
 
@@ -342,6 +373,7 @@ const result = await erpc.solana.rpc
 const erpc = createErpcClient({
   apiKey,
   endpoint: 'https://edge.erpc.global',
+  avalancheEndpoint: 'https://ava-rpc.erpc.global',
   accountEndpoint: 'https://solana-rpc.erpc.global',
   userEndpoint: 'https://user-api.erpc.global',
   timeoutMs: 30_000,

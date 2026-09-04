@@ -6,8 +6,8 @@ Gem::Specification.new do |spec|
   spec.name = "erpc-sdk"
   spec.version = ERPC::VERSION
   spec.authors = ["ELSOUL LABO B.V."]
-  spec.summary = "Ruby SDK for ERPC"
-  spec.description = "Ruby client for ERPC JSON-RPC, REST, streams, subscriptions, and Cloud reads."
+  spec.summary = "Multi-network Ruby SDK for ERPC"
+  spec.description = "Ruby client for ERPC Solana, Ethereum, and Avalanche RPC, REST, streams, subscriptions, and Cloud reads."
   spec.homepage = "https://erpc.global"
   spec.license = "MIT"
   spec.required_ruby_version = ">= 3.1"

@@ -9,7 +9,8 @@ begin
 
   slot = erpc.solana.rpc.get_slot.send
   chain_id = erpc.ethereum.rpc.eth_chain_id.send
-  puts({ slot: slot, chain_id: chain_id })
+  avalanche_chain_id = erpc.avalanche.rpc.eth_chain_id.send
+  puts({ slot: slot, chain_id: chain_id, avalanche_chain_id: avalanche_chain_id })
 ensure
   erpc&.close
 end

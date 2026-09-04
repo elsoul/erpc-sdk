@@ -13,6 +13,10 @@ const pythonManifest = await readFile(
   new URL('packages/python/pyproject.toml', root),
   'utf8',
 )
+const pythonVersionSource = await readFile(
+  new URL('packages/python/src/erpc_sdk/__init__.py', root),
+  'utf8',
+)
 const goManifest = await readFile(
   new URL('packages/go/go.mod', root),
   'utf8',
@@ -29,6 +33,9 @@ const cargoName = cargoManifest.match(/^name = "([^"]+)"$/m)?.[1]
 const cargoVersion = cargoManifest.match(/^version = "([^"]+)"$/m)?.[1]
 const pythonName = pythonManifest.match(/^name = "([^"]+)"$/m)?.[1]
 const pythonVersion = pythonManifest.match(/^version = "([^"]+)"$/m)?.[1]
+const pythonRuntimeVersion = pythonVersionSource.match(
+  /^__version__ = "([^"]+)"$/m,
+)?.[1]
 const goModule = goManifest.match(/^module (\S+)$/m)?.[1]
 const rubyName = rubyManifest.match(/^\s*spec\.name = "([^"]+)"$/m)?.[1]
 const rubyVersion = rubyVersionSource.match(/^\s*VERSION = "([^"]+)"$/m)?.[1]
@@ -55,11 +62,12 @@ if (rubyName !== 'erpc-sdk') {
 if (
   cargoVersion !== packageJson.version ||
   pythonVersion !== packageJson.version ||
+  pythonRuntimeVersion !== packageJson.version ||
   rubyVersion !== packageJson.version
 ) {
   throw new Error(
     `Package versions differ: npm=${packageJson.version}, crates.io=${cargoVersion}, ` +
-      `PyPI=${pythonVersion}, RubyGems=${rubyVersion}`,
+      `PyPI=${pythonVersion}, Python runtime=${pythonRuntimeVersion}, RubyGems=${rubyVersion}`,
   )
 }
 if (packageJson.publishConfig?.access !== 'public') {

@@ -1,6 +1,7 @@
 import { ErpcConfigError } from './errors'
 
 export const DEFAULT_ENDPOINT = 'https://edge.erpc.global'
+export const DEFAULT_AVALANCHE_ENDPOINT = 'https://ava-rpc.erpc.global'
 export const DEFAULT_ACCOUNT_ENDPOINT = 'https://solana-rpc.erpc.global'
 export const DEFAULT_USER_ENDPOINT = 'https://user-api.erpc.global'
 export const DEFAULT_TIMEOUT_MS = 30_000
@@ -8,6 +9,7 @@ export const DEFAULT_TIMEOUT_MS = 30_000
 export interface ErpcClientConfig {
   readonly accountEndpoint?: string
   readonly apiKey: string
+  readonly avalancheEndpoint?: string
   readonly endpoint?: string
   readonly fetch?: typeof globalThis.fetch
   readonly headers?: Readonly<Record<string, string>>
@@ -19,6 +21,7 @@ export interface ErpcClientConfig {
 export interface ResolvedErpcClientConfig {
   readonly accountEndpoint: URL
   readonly apiKey: string
+  readonly avalancheEndpoint: URL
   readonly endpoint: URL
   readonly fetch: typeof globalThis.fetch
   readonly headers: Readonly<Record<string, string>>
@@ -44,10 +47,14 @@ export const resolveConfig = (
   if (!apiKey) throw new ErpcConfigError('apiKey must not be empty')
 
   let endpoint: URL
+  let avalancheEndpoint: URL
   let accountEndpoint: URL
   let userEndpoint: URL
   try {
     endpoint = new URL(config.endpoint ?? DEFAULT_ENDPOINT)
+    avalancheEndpoint = new URL(
+      config.avalancheEndpoint ?? DEFAULT_AVALANCHE_ENDPOINT,
+    )
     accountEndpoint = new URL(
       config.accountEndpoint ?? DEFAULT_ACCOUNT_ENDPOINT,
     )
@@ -58,6 +65,12 @@ export const resolveConfig = (
 
   if (endpoint.protocol !== 'https:' && endpoint.protocol !== 'http:') {
     throw new ErpcConfigError('endpoint must use HTTP or HTTPS')
+  }
+  if (
+    avalancheEndpoint.protocol !== 'https:' &&
+    avalancheEndpoint.protocol !== 'http:'
+  ) {
+    throw new ErpcConfigError('avalancheEndpoint must use HTTP or HTTPS')
   }
   if (
     accountEndpoint.protocol !== 'https:' &&
@@ -75,6 +88,10 @@ export const resolveConfig = (
   endpoint.search = ''
   endpoint.hash = ''
   endpoint.pathname = endpoint.pathname.replace(/\/+$/, '') || '/'
+  avalancheEndpoint.search = ''
+  avalancheEndpoint.hash = ''
+  avalancheEndpoint.pathname =
+    avalancheEndpoint.pathname.replace(/\/+$/, '') || '/'
   accountEndpoint.search = ''
   accountEndpoint.hash = ''
   accountEndpoint.pathname =
@@ -91,6 +108,7 @@ export const resolveConfig = (
   return {
     accountEndpoint,
     apiKey,
+    avalancheEndpoint,
     endpoint,
     fetch: requireFetch(config.fetch),
     headers: config.headers ?? {},

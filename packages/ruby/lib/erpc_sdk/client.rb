@@ -3,9 +3,10 @@
 module ERPC
   SolanaClient = Struct.new(:rpc, :das, :history, :leaders, :analytics, :subscriptions, keyword_init: true)
   EthereumClient = Struct.new(:rpc, :subscriptions, keyword_init: true)
+  AvalancheClient = Struct.new(:rpc, :subscriptions, keyword_init: true)
 
   class Client
-    attr_reader :solana, :ethereum, :price, :account, :usage
+    attr_reader :solana, :ethereum, :avalanche, :price, :account, :usage
 
     def initialize(config, http_adapter: nil, websocket_factory: nil)
       adapter = http_adapter || NetHttpAdapter.new
@@ -23,6 +24,13 @@ module ERPC
         timeout: config.timeout,
         adapter: adapter
       )
+      avalanche_transport = HttpJsonRpcTransport.new(
+        api_key: config.api_key,
+        endpoint: URLs.with_path(config.avalanche_endpoint, "/ava"),
+        headers: config.headers,
+        timeout: config.timeout,
+        adapter: adapter
+      )
       solana_ws = WebSocketJsonRpcTransport.new(
         URLs.websocket(config.endpoint, config.api_key),
         config.api_key,
@@ -31,6 +39,12 @@ module ERPC
       )
       ethereum_ws = WebSocketJsonRpcTransport.new(
         URLs.websocket(config.endpoint, config.api_key, "/eth"),
+        config.api_key,
+        config.timeout,
+        connection_factory: websocket_factory
+      )
+      avalanche_ws = WebSocketJsonRpcTransport.new(
+        URLs.websocket(config.avalanche_endpoint, config.api_key, "/ava-ws"),
         config.api_key,
         config.timeout,
         connection_factory: websocket_factory
@@ -61,6 +75,10 @@ module ERPC
       @ethereum = EthereumClient.new(
         rpc: RpcNamespace.new(ethereum_transport, ETHEREUM_RPC_METHODS, parameter_mode: :positional),
         subscriptions: EthereumSubscriptions.new(ethereum_ws)
+      )
+      @avalanche = AvalancheClient.new(
+        rpc: RpcNamespace.new(avalanche_transport, ETHEREUM_RPC_METHODS, parameter_mode: :positional),
+        subscriptions: EthereumSubscriptions.new(avalanche_ws)
       )
       @price = PriceClient.new(
         RestTransport.new(
@@ -98,6 +116,7 @@ module ERPC
       @closed = true
       solana.subscriptions.close
       ethereum.subscriptions.close
+      avalanche.subscriptions.close
       nil
     end
   end

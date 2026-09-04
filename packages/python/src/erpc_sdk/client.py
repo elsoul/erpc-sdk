@@ -53,6 +53,14 @@ class EthereumClient:
     subscriptions: EthereumSubscriptions
 
 
+@dataclass(frozen=True, slots=True)
+class AvalancheClient:
+    """Avalanche C-Chain client using the EVM-compatible RPC surface."""
+
+    rpc: RpcNamespace
+    subscriptions: EthereumSubscriptions
+
+
 class ErpcClient:
     """Async-first client for JSON-RPC, REST, streams, and subscriptions."""
 
@@ -79,6 +87,13 @@ class ErpcClient:
             timeout=config.timeout,
             client=client,
         )
+        avalanche_transport = HttpJsonRpcTransport(
+            api_key=config.api_key,
+            endpoint=endpoint_with_path(config.avalanche_endpoint, "/ava"),
+            headers=config.headers,
+            timeout=config.timeout,
+            client=client,
+        )
         solana_ws = WebSocketJsonRpcTransport(
             websocket_url(config.endpoint, config.api_key),
             config.api_key,
@@ -86,6 +101,11 @@ class ErpcClient:
         )
         ethereum_ws = WebSocketJsonRpcTransport(
             websocket_url(config.endpoint, config.api_key, "/eth"),
+            config.api_key,
+            config.timeout,
+        )
+        avalanche_ws = WebSocketJsonRpcTransport(
+            websocket_url(config.avalanche_endpoint, config.api_key, "/ava-ws"),
             config.api_key,
             config.timeout,
         )
@@ -116,6 +136,14 @@ class ErpcClient:
         self.ethereum = EthereumClient(
             rpc=RpcNamespace(ethereum_transport, ETHEREUM_RPC_METHODS, parameter_mode="positional"),
             subscriptions=EthereumSubscriptions(ethereum_ws),
+        )
+        self.avalanche = AvalancheClient(
+            rpc=RpcNamespace(
+                avalanche_transport,
+                ETHEREUM_RPC_METHODS,
+                parameter_mode="positional",
+            ),
+            subscriptions=EthereumSubscriptions(avalanche_ws),
         )
         self.price = PriceClient(
             RestTransport(
@@ -152,6 +180,7 @@ class ErpcClient:
         self._closed = True
         await self.solana.subscriptions.close()
         await self.ethereum.subscriptions.close()
+        await self.avalanche.subscriptions.close()
         if self._owns_http_client:
             await self._http_client.aclose()
 

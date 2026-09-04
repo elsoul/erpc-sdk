@@ -4,6 +4,7 @@ require "uri"
 
 module ERPC
   DEFAULT_ENDPOINT = "https://edge.erpc.global"
+  DEFAULT_AVALANCHE_ENDPOINT = "https://ava-rpc.erpc.global"
   DEFAULT_ACCOUNT_ENDPOINT = "https://solana-rpc.erpc.global"
   DEFAULT_USER_ENDPOINT = "https://user-api.erpc.global"
   DEFAULT_TIMEOUT = 30.0
@@ -56,15 +57,17 @@ module ERPC
   end
 
   class ClientConfig
-    attr_reader :api_key, :endpoint, :account_endpoint, :user_endpoint, :headers, :timeout
+    attr_reader :api_key, :endpoint, :account_endpoint, :user_endpoint, :headers, :timeout, :avalanche_endpoint
 
     def initialize(api_key:, endpoint: DEFAULT_ENDPOINT, account_endpoint: DEFAULT_ACCOUNT_ENDPOINT,
-                   user_endpoint: DEFAULT_USER_ENDPOINT, headers: {}, timeout: DEFAULT_TIMEOUT)
+                   user_endpoint: DEFAULT_USER_ENDPOINT, headers: {}, timeout: DEFAULT_TIMEOUT,
+                   avalanche_endpoint: DEFAULT_AVALANCHE_ENDPOINT)
       @api_key = api_key.to_s.strip
       raise ConfigError, "api_key must not be empty" if @api_key.empty?
       raise ConfigError, "timeout must be positive" unless timeout.is_a?(Numeric) && timeout.finite? && timeout.positive?
 
       @endpoint = URLs.normalize_endpoint(endpoint)
+      @avalanche_endpoint = URLs.normalize_endpoint(avalanche_endpoint)
       @account_endpoint = URLs.normalize_endpoint(account_endpoint)
       @user_endpoint = URLs.normalize_endpoint(user_endpoint)
       @headers = headers.to_h.transform_keys(&:to_s).transform_values(&:to_s).freeze
@@ -73,6 +76,7 @@ module ERPC
 
     def inspect
       "#<#{self.class} api_key=[REDACTED] endpoint=#{endpoint.inspect} " \
+        "avalanche_endpoint=#{avalanche_endpoint.inspect} " \
         "account_endpoint=#{account_endpoint.inspect} user_endpoint=#{user_endpoint.inspect} " \
         "header_names=#{headers.keys.inspect} timeout=#{timeout.inspect}>"
     end

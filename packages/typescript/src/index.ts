@@ -8,6 +8,7 @@ export {
 } from './catalog'
 export {
   createErpcClient,
+  type ErpcAvalancheClient,
   type ErpcClient,
   type ErpcEthereumClient,
   type ErpcSolanaClient,
@@ -20,6 +21,7 @@ export {
 } from './cloud'
 export {
   DEFAULT_ACCOUNT_ENDPOINT,
+  DEFAULT_AVALANCHE_ENDPOINT,
   DEFAULT_ENDPOINT,
   DEFAULT_TIMEOUT_MS,
   DEFAULT_USER_ENDPOINT,
