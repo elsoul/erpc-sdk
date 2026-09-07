@@ -413,7 +413,7 @@ impl RpcNamespace {
         if matches!(self.policy, BatchPolicy::Unsupported) {
             if !calls.is_empty() {
                 return Err(ErpcError::BatchPolicy(
-                    "Leader RPC methods do not support batching".to_owned(),
+                    "This RPC namespace does not support batching".to_owned(),
                 ));
             }
         } else if matches!(self.policy, BatchPolicy::SolanaStandard) {

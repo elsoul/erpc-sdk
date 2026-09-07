@@ -2,6 +2,7 @@
 //! and Cloud APIs.
 
 mod account;
+mod avalanche;
 mod cloud;
 mod config;
 mod error;
@@ -14,6 +15,12 @@ mod subscriptions;
 mod usage;
 
 pub use account::{AccountClient, ErpcPlan, TokenBalance};
+pub use avalanche::{
+    AVALANCHE_AVAX_METHODS, AVALANCHE_INDEX_METHODS, AVALANCHE_INFO_METHODS,
+    AVALANCHE_P_CHAIN_METHODS, AVALANCHE_PROPOSER_VM_METHODS, AVALANCHE_X_CHAIN_METHODS,
+    AvalancheAvaxClient, AvalancheClient, AvalancheIndexClient, AvalancheIndexRpcClient,
+    AvalancheInfoClient, AvalanchePChainClient, AvalancheProposerVmClient, AvalancheXChainClient,
+};
 pub use cloud::{
     CloudCatalogClient, CloudCredit, CloudCreditAlertLevel, CloudCreditClient, CloudOffering,
     CloudOfferingBilling, CloudOfferingCompute, CloudOfferingComputeTenancy, CloudOfferingSolana,
@@ -61,21 +68,52 @@ pub use usage::{
     MonthlyApiKeyUsageParams, UsageClient,
 };
 
-/// Avalanche C-Chain client using the EVM-compatible RPC surface.
-pub type AvalancheClient = EthereumClient;
-
 use std::sync::Arc;
 
 use config::{ResolvedErpcClientConfig, endpoint_with_path, websocket_url};
 use rest::RestTransport;
 use subscriptions::WebSocketJsonRpcTransport;
 
+fn rpc_transport(
+    resolved: &ResolvedErpcClientConfig,
+    endpoint: url::Url,
+    client: &reqwest::Client,
+) -> Arc<HttpJsonRpcTransport> {
+    Arc::new(HttpJsonRpcTransport::new(HttpTransportConfig {
+        api_key: resolved.api_key.clone(),
+        endpoint,
+        headers: resolved.headers.clone(),
+        max_batch_size: 256,
+        timeout: resolved.timeout,
+        client: client.clone(),
+    }))
+}
+
+fn avalanche_index_transports(
+    resolved: &ResolvedErpcClientConfig,
+    client: &reqwest::Client,
+) -> avalanche::AvalancheIndexTransports {
+    let index_transport = |path| {
+        rpc_transport(
+            resolved,
+            endpoint_with_path(&resolved.avalanche_endpoint, path),
+            client,
+        )
+    };
+    avalanche::AvalancheIndexTransports {
+        c_chain_blocks: index_transport("/ava/ext/index/C/block"),
+        p_chain_blocks: index_transport("/ava/ext/index/P/block"),
+        x_chain_blocks: index_transport("/ava/ext/index/X/block"),
+        x_chain_transactions: index_transport("/ava/ext/index/X/tx"),
+    }
+}
+
 /// A configured ERPC client containing all public service clients.
 #[derive(Clone)]
 pub struct ErpcClient {
     /// Account and token balance API.
     pub account: AccountClient,
-    /// Avalanche C-Chain JSON-RPC and subscriptions.
+    /// Avalanche C-Chain, native-chain, Index API, and subscriptions.
     pub avalanche: AvalancheClient,
     /// Standard Ethereum JSON-RPC and subscriptions.
     pub ethereum: EthereumClient,
@@ -92,30 +130,18 @@ impl ErpcClient {
     pub fn new(config: ErpcClientConfig) -> Result<Self> {
         let resolved = ResolvedErpcClientConfig::try_from(config)?;
         let http = ResolvedErpcClientConfig::http_client()?;
-        let solana_transport = Arc::new(HttpJsonRpcTransport::new(HttpTransportConfig {
-            api_key: resolved.api_key.clone(),
-            endpoint: resolved.endpoint.clone(),
-            headers: resolved.headers.clone(),
-            max_batch_size: 256,
-            timeout: resolved.timeout,
-            client: http.clone(),
-        }));
-        let ethereum_transport = Arc::new(HttpJsonRpcTransport::new(HttpTransportConfig {
-            api_key: resolved.api_key.clone(),
-            endpoint: endpoint_with_path(&resolved.endpoint, "/eth"),
-            headers: resolved.headers.clone(),
-            max_batch_size: 256,
-            timeout: resolved.timeout,
-            client: http.clone(),
-        }));
-        let avalanche_transport = Arc::new(HttpJsonRpcTransport::new(HttpTransportConfig {
-            api_key: resolved.api_key.clone(),
-            endpoint: endpoint_with_path(&resolved.avalanche_endpoint, "/ava"),
-            headers: resolved.headers.clone(),
-            max_batch_size: 256,
-            timeout: resolved.timeout,
-            client: http.clone(),
-        }));
+        let solana_transport = rpc_transport(&resolved, resolved.endpoint.clone(), &http);
+        let ethereum_transport = rpc_transport(
+            &resolved,
+            endpoint_with_path(&resolved.endpoint, "/eth"),
+            &http,
+        );
+        let avalanche_transport = rpc_transport(
+            &resolved,
+            endpoint_with_path(&resolved.avalanche_endpoint, "/ava"),
+            &http,
+        );
+        let avalanche_index = avalanche_index_transports(&resolved, &http);
         let solana_ws = Arc::new(WebSocketJsonRpcTransport::new(
             websocket_url(&resolved.endpoint, &resolved.api_key, "")?,
             resolved.timeout,
@@ -152,7 +178,7 @@ impl ErpcClient {
 
         Ok(Self {
             account: AccountClient::new(account_rest),
-            avalanche: AvalancheClient::new(avalanche_transport, avalanche_ws),
+            avalanche: AvalancheClient::new(avalanche_transport, avalanche_ws, avalanche_index),
             ethereum: EthereumClient::new(ethereum_transport, ethereum_ws),
             price: PriceClient::new(shared_rest),
             solana: SolanaClient::new(solana_transport, solana_ws),

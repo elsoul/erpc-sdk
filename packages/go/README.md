@@ -1,6 +1,6 @@
 # ERPC SDK for Go
 
-Context-aware Go client for ERPC Solana, Ethereum, and Avalanche C-Chain
+Context-aware Go client for ERPC Solana, Ethereum, and Avalanche C/P/X-chain
 JSON-RPC, indexed data, analytics, WebSocket subscriptions, price streams,
 account information, usage, and Cloud APIs.
 
@@ -110,14 +110,31 @@ event and `Close` when the stream is no longer needed.
 | `client.Ethereum.Subscriptions` | Ethereum WebSocket subscriptions |
 | `client.Avalanche.RPC` | Avalanche C-Chain EVM-compatible JSON-RPC |
 | `client.Avalanche.Subscriptions` | Avalanche C-Chain WebSocket subscriptions |
+| `client.Avalanche.AVAX` | C-Chain AVAX atomic transaction API |
+| `client.Avalanche.XChain` | X-Chain API |
+| `client.Avalanche.PChain` | P-Chain API |
+| `client.Avalanche.ProposerVM` | P-Chain proposer VM API |
+| `client.Avalanche.Info` | Network upgrade information |
+| `client.Avalanche.Index` | C/P/X block and X transaction indexes |
 | `client.Price` | Price metadata, updates, and streams |
 | `client.Account` | Token balance |
 | `client.Usage` | Masked monthly API-key usage |
 
 `Config.AvalancheEndpoint` defaults to `https://ava-rpc.erpc.global` and can be
 overridden independently. The SDK uses its `/ava` HTTP route and `/ava-ws`
-WebSocket route. The Avalanche namespace uses the Ethereum-compatible typed
-catalog; use `Raw` for additional C-Chain methods.
+WebSocket route. Native calls use short catalog names with `Request`; the SDK
+restores the wire prefix and routes Index calls to explicit chain/container
+paths. Native and Index batches are rejected locally. Use `Raw` with an exact
+wire method for forward compatibility.
+
+```go
+var pHeight json.RawMessage
+err := client.Avalanche.PChain.Request(ctx, "getHeight", nil, &pHeight)
+var indexedTx json.RawMessage
+err = client.Avalanche.Index.XChainTransactions.Request(
+	ctx, "getContainerByID", map[string]any{"id": transactionID}, &indexedTx,
+)
+```
 
 Create a separate `CloudClient` with a scoped access token for catalog, credit,
 resource, and usage APIs. Refresh credentials are not accepted or retained.

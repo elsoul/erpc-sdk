@@ -40,6 +40,37 @@ class ClientTest < Minitest::Test
     erpc&.close
   end
 
+  def test_avalanche_native_and_index_namespaces_preserve_wire_routes
+    adapter = FakeHttpAdapter.new do |request|
+      body = JSON.parse(request.fetch(:body))
+      ERPC::HttpResponse.new(
+        status: 200,
+        body: JSON.generate("jsonrpc" => "2.0", "id" => body["id"], "result" => body["method"])
+      )
+    end
+    erpc = ERPC::Client.new(ERPC::ClientConfig.new(api_key: "key"), http_adapter: adapter)
+
+    assert_equal "platform.getHeight", erpc.avalanche.p_chain.get_height.send
+    assert_equal "index.getContainerByID",
+                 erpc.avalanche.index.x_chain_transactions.get_container_by_id(id: "tx-id").send
+    assert_equal "/ava", URI.parse(adapter.requests[0].fetch(:url)).path
+    assert_equal "/ava/ext/index/X/tx", URI.parse(adapter.requests[1].fetch(:url)).path
+    assert_raises(ERPC::BatchPolicyError) do
+      erpc.avalanche.x_chain.batch([{ method: "getHeight" }])
+    end
+  ensure
+    erpc&.close
+  end
+
+  def test_avalanche_method_catalogs_cover_native_apis
+    assert_equal 4, ERPC::AVALANCHE_AVAX_METHODS.length
+    assert_equal 11, ERPC::AVALANCHE_X_CHAIN_METHODS.length
+    assert_equal 26, ERPC::AVALANCHE_P_CHAIN_METHODS.length
+    assert_equal 2, ERPC::AVALANCHE_PROPOSER_VM_METHODS.length
+    assert_equal 1, ERPC::AVALANCHE_INFO_METHODS.length
+    assert_equal 6, ERPC::AVALANCHE_INDEX_METHODS.length
+  end
+
   def test_request_is_inert_and_uses_exact_wire_method
     adapter = FakeHttpAdapter.new do |request|
       body = JSON.parse(request.fetch(:body))

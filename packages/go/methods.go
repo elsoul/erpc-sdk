@@ -43,3 +43,35 @@ var EthereumRPCMethods = []string{
 }
 
 var EthereumSubscriptionMethods = []string{"eth_subscribe", "eth_unsubscribe"}
+
+var AvalancheAVAXMethods = []string{
+	"avax.getAtomicTx", "avax.getAtomicTxStatus", "avax.getUTXOs", "avax.issueTx",
+}
+
+var AvalancheXChainMethods = []string{
+	"avm.buildGenesis", "avm.getAllBalances", "avm.getAssetDescription", "avm.getBalance",
+	"avm.getBlockByHeight", "avm.getHeight", "avm.getTx", "avm.getTxFee", "avm.getTxStatus",
+	"avm.getUTXOs", "avm.issueTx",
+}
+
+var AvalanchePChainMethods = []string{
+	"platform.getAllValidatorsAt", "platform.getBalance", "platform.getBlockchainStatus",
+	"platform.getBlockchains", "platform.getCurrentSupply", "platform.getCurrentValidators",
+	"platform.getFeeConfig", "platform.getFeeState", "platform.getHeight", "platform.getMinStake",
+	"platform.getRewardUTXOs", "platform.getStake", "platform.getStakingAssetID", "platform.getSubnets",
+	"platform.getTimestamp", "platform.getTotalStake", "platform.getTx", "platform.getTxStatus",
+	"platform.getUTXOs", "platform.getValidatorFeeConfig", "platform.getValidatorFeeState",
+	"platform.getValidatorsAt", "platform.issueTx", "platform.sampleValidators", "platform.validatedBy",
+	"platform.validates",
+}
+
+var AvalancheProposerVMMethods = []string{
+	"proposervm.getCurrentEpoch", "proposervm.getProposedHeight",
+}
+
+var AvalancheInfoMethods = []string{"info.upgrades"}
+
+var AvalancheIndexMethods = []string{
+	"index.getContainerByID", "index.getContainerByIndex", "index.getContainerRange",
+	"index.getIndex", "index.getLastAccepted", "index.isAccepted",
+}

@@ -18,6 +18,14 @@ live('live ERPC smoke tests', () => {
     expect(avalancheChainId).toBe('0xa86a')
   })
 
+  it('reads Avalanche P-Chain and X-Chain native APIs', async () => {
+    const pChainHeight = await client?.avalanche.pChain.getHeight().send()
+    const xChainHeight = await client?.avalanche.xChain.getHeight().send()
+
+    expect(pChainHeight).toHaveProperty('height')
+    expect(xChainHeight).toHaveProperty('height')
+  })
+
   it('reads price metadata and account balance', async () => {
     const feeds = await client?.price.getPriceFeeds({ query: 'btc' })
     const balance = await client?.account.getTokenBalance()

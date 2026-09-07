@@ -166,6 +166,67 @@ ETHEREUM_RPC_METHODS = (
 )
 ETHEREUM_SUBSCRIPTION_METHODS = ("eth_subscribe", "eth_unsubscribe")
 
+AVALANCHE_AVAX_METHODS = (
+    "avax.getAtomicTx",
+    "avax.getAtomicTxStatus",
+    "avax.getUTXOs",
+    "avax.issueTx",
+)
+AVALANCHE_X_CHAIN_METHODS = (
+    "avm.buildGenesis",
+    "avm.getAllBalances",
+    "avm.getAssetDescription",
+    "avm.getBalance",
+    "avm.getBlockByHeight",
+    "avm.getHeight",
+    "avm.getTx",
+    "avm.getTxFee",
+    "avm.getTxStatus",
+    "avm.getUTXOs",
+    "avm.issueTx",
+)
+AVALANCHE_P_CHAIN_METHODS = (
+    "platform.getAllValidatorsAt",
+    "platform.getBalance",
+    "platform.getBlockchainStatus",
+    "platform.getBlockchains",
+    "platform.getCurrentSupply",
+    "platform.getCurrentValidators",
+    "platform.getFeeConfig",
+    "platform.getFeeState",
+    "platform.getHeight",
+    "platform.getMinStake",
+    "platform.getRewardUTXOs",
+    "platform.getStake",
+    "platform.getStakingAssetID",
+    "platform.getSubnets",
+    "platform.getTimestamp",
+    "platform.getTotalStake",
+    "platform.getTx",
+    "platform.getTxStatus",
+    "platform.getUTXOs",
+    "platform.getValidatorFeeConfig",
+    "platform.getValidatorFeeState",
+    "platform.getValidatorsAt",
+    "platform.issueTx",
+    "platform.sampleValidators",
+    "platform.validatedBy",
+    "platform.validates",
+)
+AVALANCHE_PROPOSER_VM_METHODS = (
+    "proposervm.getCurrentEpoch",
+    "proposervm.getProposedHeight",
+)
+AVALANCHE_INFO_METHODS = ("info.upgrades",)
+AVALANCHE_INDEX_METHODS = (
+    "index.getContainerByID",
+    "index.getContainerByIndex",
+    "index.getContainerRange",
+    "index.getIndex",
+    "index.getLastAccepted",
+    "index.isAccepted",
+)
+
 _HEAVY_SOLANA_METHODS = {
     "getPriorityFeeEstimate",
     "getProgramAccounts",
@@ -223,10 +284,15 @@ class RpcNamespace:
         *,
         parameter_mode: ParameterMode,
         batch_policy: BatchPolicy = "any",
+        method_prefix: str | None = None,
     ) -> None:
         self._transport = transport
-        self._methods = frozenset(methods)
-        self._aliases = {_snake_case(method): method for method in methods}
+        prefix = f"{method_prefix}." if method_prefix is not None else ""
+        self._wire_methods = {
+            method.removeprefix(prefix): method for method in methods
+        }
+        self._methods = frozenset(self._wire_methods)
+        self._aliases = {_snake_case(method): method for method in self._methods}
         self._parameter_mode = parameter_mode
         self._batch_policy = batch_policy
 
@@ -246,7 +312,9 @@ class RpcNamespace:
                 f"{method!r} is not in this namespace; use raw for forward-compatible methods"
             )
         selected = decoder or cast(Callable[[JsonValue], T], lambda value: value)
-        return PendingRpcRequest(self._transport, method, params, selected)
+        return PendingRpcRequest(
+            self._transport, self._wire_methods[method], params, selected
+        )
 
     def raw(
         self,
@@ -262,7 +330,7 @@ class RpcNamespace:
 
     def batch(self, calls: Sequence[RpcBatchCall]) -> PendingRpcBatchRequest:
         if self._batch_policy == "unsupported" and calls:
-            raise ErpcBatchPolicyError("Leader RPC methods do not support batching")
+            raise ErpcBatchPolicyError("This RPC namespace does not support batching")
         if self._batch_policy == "solana-standard":
             has_heavy = any(call["method"] in _HEAVY_SOLANA_METHODS for call in calls)
             has_standard = any(call["method"] not in _HEAVY_SOLANA_METHODS for call in calls)
@@ -270,7 +338,24 @@ class RpcNamespace:
                 raise ErpcBatchPolicyError(
                     "Solana indexed and standard RPC methods cannot share a batch"
                 )
-        return PendingRpcBatchRequest(self._transport, calls)
+        wire_calls: Sequence[RpcBatchCall] = calls
+        if any(method != wire for method, wire in self._wire_methods.items()):
+            mapped: list[RpcBatchCall] = []
+            for call in calls:
+                public_method = call["method"]
+                if public_method not in self._wire_methods:
+                    raise ErpcConfigError(
+                        f"{public_method!r} is not in this namespace; "
+                        "use raw for forward-compatible methods"
+                    )
+                wire_call: RpcBatchCall = {
+                    "method": self._wire_methods[public_method]
+                }
+                if "params" in call:
+                    wire_call["params"] = call["params"]
+                mapped.append(wire_call)
+            wire_calls = mapped
+        return PendingRpcBatchRequest(self._transport, wire_calls)
 
     def __getattr__(self, name: str) -> Callable[..., PendingRpcRequest[JsonValue]]:
         method = name if name in self._methods else self._aliases.get(name)

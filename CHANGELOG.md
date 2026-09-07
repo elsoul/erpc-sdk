@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.6.0 — 2026-09-07
+
+- Add first-class AVAX, X-Chain, P-Chain, proposer VM, network information, and
+  C/P/X Index API namespaces to the TypeScript, Rust, Python, Go, and Ruby SDKs.
+- Keep native method names wire-compatible, route Index calls through their
+  explicit chain/container paths, and reject unsupported native batches before
+  network I/O.
+
 ## 0.5.0 — 2026-09-04
 
 - Add Avalanche C-Chain JSON-RPC and WebSocket namespaces to all five SDKs,

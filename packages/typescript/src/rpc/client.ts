@@ -117,6 +117,7 @@ export type RpcNamespace<TSchema extends SchemaConstraint<TSchema>> =
   }
 
 export interface CreateRpcNamespaceConfig {
+  readonly methodPrefix?: string
   readonly parameterMode: 'named' | 'positional'
   readonly transport: JsonRpcTransport
   readonly validateBatch?: (calls: readonly RpcBatchCall[]) => void
@@ -134,10 +135,18 @@ const methodParams = (
 export const createRpcNamespace = <
   TSchema extends SchemaConstraint<TSchema>,
 >(config: CreateRpcNamespaceConfig): RpcNamespace<TSchema> => {
+  const wireMethod = (method: string) =>
+    config.methodPrefix === undefined
+      ? method
+      : `${config.methodPrefix}.${method}`
+
   const base: RpcNamespaceBase<TSchema> = {
     endpoint: config.transport.endpoint,
     batch: <const TCalls extends readonly BatchCall<TSchema>[]>(calls: TCalls) => {
-      const wireCalls = calls as readonly RpcBatchCall[]
+      const wireCalls = (calls as readonly RpcBatchCall[]).map((call) => ({
+        ...call,
+        method: wireMethod(call.method),
+      }))
       config.validateBatch?.(wireCalls)
       return new PendingRpcBatchRequest((options) =>
         config.transport.batch<BatchResults<TSchema, TCalls>>(
@@ -158,7 +167,7 @@ export const createRpcNamespace = <
     ) =>
       new PendingRpcRequest<RpcResult<TSchema[TMethod]>>((options) =>
         config.transport.request<RpcResult<TSchema[TMethod]>>(
-          method,
+          wireMethod(method),
           params[0] as JsonRpcParams | undefined,
           options,
         ),
@@ -174,7 +183,7 @@ export const createRpcNamespace = <
       return (...args: readonly unknown[]) =>
         new PendingRpcRequest((options) =>
           config.transport.request(
-            property,
+            wireMethod(property),
             methodParams(config.parameterMode, args),
             options,
           ),

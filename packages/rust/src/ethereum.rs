@@ -76,7 +76,7 @@ pub struct EthereumRpcClient {
 }
 
 impl EthereumRpcClient {
-    const fn new(transport: Arc<HttpJsonRpcTransport>) -> Self {
+    pub(crate) const fn new(transport: Arc<HttpJsonRpcTransport>) -> Self {
         Self {
             namespace: RpcNamespace::new(transport, BatchPolicy::Any),
         }

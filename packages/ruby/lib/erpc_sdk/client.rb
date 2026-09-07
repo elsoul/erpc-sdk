@@ -3,7 +3,24 @@
 module ERPC
   SolanaClient = Struct.new(:rpc, :das, :history, :leaders, :analytics, :subscriptions, keyword_init: true)
   EthereumClient = Struct.new(:rpc, :subscriptions, keyword_init: true)
-  AvalancheClient = Struct.new(:rpc, :subscriptions, keyword_init: true)
+  AvalancheIndexClient = Struct.new(
+    :c_chain_blocks,
+    :p_chain_blocks,
+    :x_chain_blocks,
+    :x_chain_transactions,
+    keyword_init: true
+  )
+  AvalancheClient = Struct.new(
+    :rpc,
+    :avax,
+    :x_chain,
+    :p_chain,
+    :proposer_vm,
+    :info,
+    :index,
+    :subscriptions,
+    keyword_init: true
+  )
 
   class Client
     attr_reader :solana, :ethereum, :avalanche, :price, :account, :usage
@@ -31,6 +48,15 @@ module ERPC
         timeout: config.timeout,
         adapter: adapter
       )
+      avalanche_index_transport = lambda do |path|
+        HttpJsonRpcTransport.new(
+          api_key: config.api_key,
+          endpoint: URLs.with_path(config.avalanche_endpoint, path),
+          headers: config.headers,
+          timeout: config.timeout,
+          adapter: adapter
+        )
+      end
       solana_ws = WebSocketJsonRpcTransport.new(
         URLs.websocket(config.endpoint, config.api_key),
         config.api_key,
@@ -78,6 +104,37 @@ module ERPC
       )
       @avalanche = AvalancheClient.new(
         rpc: RpcNamespace.new(avalanche_transport, ETHEREUM_RPC_METHODS, parameter_mode: :positional),
+        avax: avalanche_namespace(avalanche_transport, AVALANCHE_AVAX_METHODS, "avax"),
+        x_chain: avalanche_namespace(avalanche_transport, AVALANCHE_X_CHAIN_METHODS, "avm"),
+        p_chain: avalanche_namespace(avalanche_transport, AVALANCHE_P_CHAIN_METHODS, "platform"),
+        proposer_vm: avalanche_namespace(
+          avalanche_transport,
+          AVALANCHE_PROPOSER_VM_METHODS,
+          "proposervm"
+        ),
+        info: avalanche_namespace(avalanche_transport, AVALANCHE_INFO_METHODS, "info"),
+        index: AvalancheIndexClient.new(
+          c_chain_blocks: avalanche_namespace(
+            avalanche_index_transport.call("/ava/ext/index/C/block"),
+            AVALANCHE_INDEX_METHODS,
+            "index"
+          ),
+          p_chain_blocks: avalanche_namespace(
+            avalanche_index_transport.call("/ava/ext/index/P/block"),
+            AVALANCHE_INDEX_METHODS,
+            "index"
+          ),
+          x_chain_blocks: avalanche_namespace(
+            avalanche_index_transport.call("/ava/ext/index/X/block"),
+            AVALANCHE_INDEX_METHODS,
+            "index"
+          ),
+          x_chain_transactions: avalanche_namespace(
+            avalanche_index_transport.call("/ava/ext/index/X/tx"),
+            AVALANCHE_INDEX_METHODS,
+            "index"
+          )
+        ),
         subscriptions: EthereumSubscriptions.new(avalanche_ws)
       )
       @price = PriceClient.new(
@@ -118,6 +175,18 @@ module ERPC
       ethereum.subscriptions.close
       avalanche.subscriptions.close
       nil
+    end
+
+    private
+
+    def avalanche_namespace(transport, methods, prefix)
+      RpcNamespace.new(
+        transport,
+        methods,
+        parameter_mode: :named,
+        batch_policy: :unsupported,
+        method_prefix: prefix
+      )
     end
   end
 

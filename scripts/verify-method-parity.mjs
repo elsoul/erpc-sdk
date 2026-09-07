@@ -9,6 +9,10 @@ const typescriptEthereum = await readFile(
   new URL('packages/typescript/src/rpc/ethereum.ts', root),
   'utf8',
 )
+const typescriptAvalanche = await readFile(
+  new URL('packages/typescript/src/rpc/avalanche.ts', root),
+  'utf8',
+)
 const typescriptSubscriptions = await readFile(
   new URL('packages/typescript/src/subscriptions.ts', root),
   'utf8',
@@ -19,6 +23,10 @@ const rustSolana = await readFile(
 )
 const rustEthereum = await readFile(
   new URL('packages/rust/src/ethereum.rs', root),
+  'utf8',
+)
+const rustAvalanche = await readFile(
+  new URL('packages/rust/src/avalanche.rs', root),
   'utf8',
 )
 const pythonRPC = await readFile(
@@ -107,6 +115,42 @@ const catalogs = [
     'SolanaEnhancedSubscriptionMethods',
     typescriptSubscriptions,
     rustSolana,
+  ],
+  [
+    'AVALANCHE_AVAX_METHODS',
+    'AvalancheAVAXMethods',
+    typescriptAvalanche,
+    rustAvalanche,
+  ],
+  [
+    'AVALANCHE_X_CHAIN_METHODS',
+    'AvalancheXChainMethods',
+    typescriptAvalanche,
+    rustAvalanche,
+  ],
+  [
+    'AVALANCHE_P_CHAIN_METHODS',
+    'AvalanchePChainMethods',
+    typescriptAvalanche,
+    rustAvalanche,
+  ],
+  [
+    'AVALANCHE_PROPOSER_VM_METHODS',
+    'AvalancheProposerVMMethods',
+    typescriptAvalanche,
+    rustAvalanche,
+  ],
+  [
+    'AVALANCHE_INFO_METHODS',
+    'AvalancheInfoMethods',
+    typescriptAvalanche,
+    rustAvalanche,
+  ],
+  [
+    'AVALANCHE_INDEX_METHODS',
+    'AvalancheIndexMethods',
+    typescriptAvalanche,
+    rustAvalanche,
   ],
 ]
 

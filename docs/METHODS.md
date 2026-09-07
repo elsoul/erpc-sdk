@@ -193,7 +193,7 @@ eth_subscribe
 eth_unsubscribe
 ```
 
-### Avalanche C-Chain JSON-RPC
+### Avalanche JSON-RPC
 
 [Avalanche C-Chain](https://build.avax.network/docs/rpcs/c-chain/api)
 (`erpc.avalanche.rpc`) exposes the same 53 typed EVM-compatible HTTP methods
@@ -201,8 +201,99 @@ listed for Ethereum above. Its WebSocket namespace
 (`erpc.avalanche.subscriptions`) exposes `eth_subscribe` and `eth_unsubscribe`.
 Avalanche-specific subscription names such as `newAcceptedTransactions` can be
 passed to `subscribe`, and additional C-Chain methods remain available through
-the namespace's raw request API. X-Chain and P-Chain-specific APIs are outside
-this compatibility namespace.
+the namespace's raw request API.
+
+The native-chain namespaces expose 44 methods through `/ava`; calls with
+parameters use named objects. The SDK-facing method omits the prefix shown
+below; for example,
+`erpc.avalanche.pChain.getHeight()` sends `platform.getHeight`.
+
+C-Chain AVAX API (`erpc.avalanche.avax`, 4):
+
+```text
+avax.getAtomicTx
+avax.getAtomicTxStatus
+avax.getUTXOs
+avax.issueTx
+```
+
+X-Chain API (`erpc.avalanche.xChain`, 11):
+
+```text
+avm.buildGenesis
+avm.getAllBalances
+avm.getAssetDescription
+avm.getBalance
+avm.getBlockByHeight
+avm.getHeight
+avm.getTx
+avm.getTxFee
+avm.getTxStatus
+avm.getUTXOs
+avm.issueTx
+```
+
+P-Chain API (`erpc.avalanche.pChain`, 26):
+
+```text
+platform.getAllValidatorsAt
+platform.getBalance
+platform.getBlockchainStatus
+platform.getBlockchains
+platform.getCurrentSupply
+platform.getCurrentValidators
+platform.getFeeConfig
+platform.getFeeState
+platform.getHeight
+platform.getMinStake
+platform.getRewardUTXOs
+platform.getStake
+platform.getStakingAssetID
+platform.getSubnets
+platform.getTimestamp
+platform.getTotalStake
+platform.getTx
+platform.getTxStatus
+platform.getUTXOs
+platform.getValidatorFeeConfig
+platform.getValidatorFeeState
+platform.getValidatorsAt
+platform.issueTx
+platform.sampleValidators
+platform.validatedBy
+platform.validates
+```
+
+P-Chain proposer VM and network information APIs (3):
+
+```text
+proposervm.getCurrentEpoch
+proposervm.getProposedHeight
+info.upgrades
+```
+
+The [Index API](https://build.avax.network/docs/rpcs/other/index-rpc) exposes the
+same six methods on four explicit routes:
+
+| SDK namespace | HTTP route |
+| --- | --- |
+| `erpc.avalanche.index.cChainBlocks` | `/ava/ext/index/C/block` |
+| `erpc.avalanche.index.pChainBlocks` | `/ava/ext/index/P/block` |
+| `erpc.avalanche.index.xChainBlocks` | `/ava/ext/index/X/block` |
+| `erpc.avalanche.index.xChainTransactions` | `/ava/ext/index/X/tx` |
+
+```text
+index.getContainerByID
+index.getContainerByIndex
+index.getContainerRange
+index.getIndex
+index.getLastAccepted
+index.isAccepted
+```
+
+Rust, Python, and Ruby use snake_case member names; Go uses exported PascalCase
+members and `Request`. Native-chain and Index API batches are rejected locally.
+The C-Chain EVM namespace continues to preserve and send valid batches intact.
 
 ### Price API
 

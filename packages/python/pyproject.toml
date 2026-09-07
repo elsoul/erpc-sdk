@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "erpc-sdk"
-version = "0.5.0"
+version = "0.6.0"
 description = "Async multi-network Python SDK for ERPC"
 readme = "README.md"
 requires-python = ">=3.11"

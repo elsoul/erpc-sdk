@@ -7,6 +7,12 @@ import httpx
 import pytest
 
 from erpc_sdk import (
+    AVALANCHE_AVAX_METHODS,
+    AVALANCHE_INDEX_METHODS,
+    AVALANCHE_INFO_METHODS,
+    AVALANCHE_P_CHAIN_METHODS,
+    AVALANCHE_PROPOSER_VM_METHODS,
+    AVALANCHE_X_CHAIN_METHODS,
     ErpcBatchPolicyError,
     ErpcClient,
     ErpcClientConfig,
@@ -55,6 +61,45 @@ async def test_avalanche_uses_the_c_chain_endpoint() -> None:
     assert "api-key" not in erpc.avalanche.rpc.endpoint
     await erpc.close()
     await http.aclose()
+
+
+@pytest.mark.asyncio
+async def test_avalanche_native_and_index_namespaces_preserve_wire_routes() -> None:
+    received: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        received.append(request)
+        body = json.loads(request.content)
+        return httpx.Response(
+            200,
+            json={"jsonrpc": "2.0", "id": body["id"], "result": body["method"]},
+        )
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    erpc = ErpcClient(ErpcClientConfig("api key"), http_client=http)
+    assert await erpc.avalanche.p_chain.get_height().send() == "platform.getHeight"
+    assert (
+        await erpc.avalanche.index.x_chain_transactions.get_container_by_id(
+            {"id": "tx-id"}
+        ).send()
+        == "index.getContainerByID"
+    )
+    assert received[0].url.path == "/ava"
+    assert received[1].url.path == "/ava/ext/index/X/tx"
+    assert json.loads(received[1].content)["params"] == {"id": "tx-id"}
+    with pytest.raises(ErpcBatchPolicyError):
+        erpc.avalanche.x_chain.batch([{"method": "getHeight"}])
+    await erpc.close()
+    await http.aclose()
+
+
+def test_avalanche_method_catalogs_cover_native_apis() -> None:
+    assert len(AVALANCHE_AVAX_METHODS) == 4
+    assert len(AVALANCHE_X_CHAIN_METHODS) == 11
+    assert len(AVALANCHE_P_CHAIN_METHODS) == 26
+    assert len(AVALANCHE_PROPOSER_VM_METHODS) == 2
+    assert len(AVALANCHE_INFO_METHODS) == 1
+    assert len(AVALANCHE_INDEX_METHODS) == 6
 
 
 @pytest.mark.asyncio

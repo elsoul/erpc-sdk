@@ -50,7 +50,7 @@ func (n *RPCNamespace) Raw(ctx context.Context, method string, params any, resul
 // The transport never silently splits a batch.
 func (n *RPCNamespace) Batch(ctx context.Context, calls []BatchCall) ([]json.RawMessage, error) {
 	if n.policy == batchUnsupported && len(calls) != 0 {
-		return nil, sdkError(ErrorBatchPolicy, "leader RPC methods do not support batching")
+		return nil, sdkError(ErrorBatchPolicy, "this RPC namespace does not support batching")
 	}
 	if n.policy == batchSolanaStandard {
 		if err := validateSolanaBatch(calls); err != nil {

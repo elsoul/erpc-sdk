@@ -2,6 +2,7 @@
 
 from .client import (
     AvalancheClient,
+    AvalancheIndexClient,
     ErpcClient,
     ErpcCloudClient,
     EthereumClient,
@@ -39,6 +40,12 @@ from .rest import (
     UsageClient,
 )
 from .rpc import (
+    AVALANCHE_AVAX_METHODS,
+    AVALANCHE_INDEX_METHODS,
+    AVALANCHE_INFO_METHODS,
+    AVALANCHE_P_CHAIN_METHODS,
+    AVALANCHE_PROPOSER_VM_METHODS,
+    AVALANCHE_X_CHAIN_METHODS,
     ETHEREUM_RPC_METHODS,
     ETHEREUM_SUBSCRIPTION_METHODS,
     SOLANA_ANALYTICS_METHODS,
@@ -60,9 +67,15 @@ from .subscriptions import (
 from .transport import HttpJsonRpcTransport
 from .types import *  # noqa: F403
 
-__version__ = "0.5.0"
+__version__ = "0.6.0"
 
 __all__ = [
+    "AVALANCHE_AVAX_METHODS",
+    "AVALANCHE_INDEX_METHODS",
+    "AVALANCHE_INFO_METHODS",
+    "AVALANCHE_P_CHAIN_METHODS",
+    "AVALANCHE_PROPOSER_VM_METHODS",
+    "AVALANCHE_X_CHAIN_METHODS",
     "DEFAULT_ACCOUNT_ENDPOINT",
     "DEFAULT_AVALANCHE_ENDPOINT",
     "DEFAULT_ENDPOINT",
@@ -78,6 +91,7 @@ __all__ = [
     "SOLANA_RPC_METHODS",
     "AccountClient",
     "AvalancheClient",
+    "AvalancheIndexClient",
     "CloudCatalogClient",
     "CloudCreditClient",
     "CloudResourcesClient",

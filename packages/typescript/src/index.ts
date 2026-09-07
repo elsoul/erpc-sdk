@@ -75,6 +75,25 @@ export {
   type RpcNamespaceBase,
 } from './rpc/client'
 export {
+  AVALANCHE_AVAX_METHODS,
+  AVALANCHE_INDEX_METHODS,
+  AVALANCHE_INFO_METHODS,
+  AVALANCHE_P_CHAIN_METHODS,
+  AVALANCHE_PROPOSER_VM_METHODS,
+  AVALANCHE_X_CHAIN_METHODS,
+  type AvalancheAvaxSchema,
+  type AvalancheClient,
+  type AvalancheEncodingParams,
+  type AvalancheIndexClient,
+  type AvalancheIndexSchema,
+  type AvalancheIndexTransports,
+  type AvalancheInfoSchema,
+  type AvalanchePChainSchema,
+  type AvalancheProposerVmSchema,
+  type AvalancheUtxoParams,
+  type AvalancheXChainSchema,
+} from './rpc/avalanche'
+export {
   ETHEREUM_RPC_METHODS,
   ETHEREUM_SUBSCRIPTION_METHODS,
   type EthereumAddress,

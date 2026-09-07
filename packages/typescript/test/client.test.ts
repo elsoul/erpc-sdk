@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
+  AVALANCHE_AVAX_METHODS,
+  AVALANCHE_INDEX_METHODS,
+  AVALANCHE_INFO_METHODS,
+  AVALANCHE_P_CHAIN_METHODS,
+  AVALANCHE_PROPOSER_VM_METHODS,
+  AVALANCHE_X_CHAIN_METHODS,
   createErpcClient,
   ErpcBatchPolicyError,
   ErpcInvalidResponseError,
@@ -37,7 +43,7 @@ const rpcFetch = (
               ? url.includes('ava-rpc')
                 ? '0xa86a'
                 : '0x1'
-              : request.params,
+              : request.params ?? null,
     })
     const response = Array.isArray(body)
       ? [...body].reverse().map(respond)
@@ -81,6 +87,72 @@ describe('ERPC client', () => {
     expect(client.solana.rpc.endpoint).not.toContain('test-secret')
     expect(client.ethereum.rpc.endpoint).not.toContain('test-secret')
     expect(client.avalanche.rpc.endpoint).not.toContain('test-secret')
+  })
+
+  it('routes Avalanche native and index namespaces with wire-compatible names', async () => {
+    const requests: Array<{ readonly body: unknown; readonly url: string }> = []
+    const client = createErpcClient({
+      apiKey: 'test-secret',
+      fetch: rpcFetch(requests),
+    })
+
+    await client.avalanche.avax
+      .getAtomicTxStatus({ txID: 'tx-id' })
+      .send()
+    await client.avalanche.xChain.getHeight().send()
+    await client.avalanche.pChain.getCurrentValidators({}).send()
+    await client.avalanche.proposerVm.getCurrentEpoch().send()
+    await client.avalanche.info.upgrades().send()
+    await client.avalanche.index.xChainTransactions
+      .getContainerByID({ id: 'tx-id' })
+      .send()
+    await client.avalanche.pChain.raw('platform.futureMethod', {}).send()
+
+    expect(requests.map(({ body }) => body)).toEqual([
+      expect.objectContaining({
+        method: 'avax.getAtomicTxStatus',
+        params: { txID: 'tx-id' },
+      }),
+      expect.objectContaining({ method: 'avm.getHeight' }),
+      expect.objectContaining({
+        method: 'platform.getCurrentValidators',
+        params: {},
+      }),
+      expect.objectContaining({ method: 'proposervm.getCurrentEpoch' }),
+      expect.objectContaining({ method: 'info.upgrades' }),
+      expect.objectContaining({
+        method: 'index.getContainerByID',
+        params: { id: 'tx-id' },
+      }),
+      expect.objectContaining({ method: 'platform.futureMethod', params: {} }),
+    ])
+    expect(requests[5]?.url).toBe(
+      'https://ava-rpc.erpc.global/ava/ext/index/X/tx?api-key=test-secret',
+    )
+  })
+
+  it('rejects Avalanche native batches before transport', () => {
+    const client = createErpcClient({
+      apiKey: 'test-secret',
+      fetch: rpcFetch([]),
+    })
+
+    expect(() =>
+      client.avalanche.xChain.batch([
+        { method: 'getHeight' },
+      ] as const),
+    ).toThrowError(ErpcBatchPolicyError)
+  })
+
+  it('exports the complete Avalanche native method catalogs', () => {
+    expect([
+      ...AVALANCHE_AVAX_METHODS,
+      ...AVALANCHE_X_CHAIN_METHODS,
+      ...AVALANCHE_P_CHAIN_METHODS,
+      ...AVALANCHE_PROPOSER_VM_METHODS,
+      ...AVALANCHE_INFO_METHODS,
+      ...AVALANCHE_INDEX_METHODS,
+    ]).toHaveLength(50)
   })
 
   it('restores batch results to request order', async () => {
