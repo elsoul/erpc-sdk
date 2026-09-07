@@ -104,7 +104,7 @@ environment. Source verification has read-only repository permission.
 1. Choose a stable version and create a normal review branch. For example:
 
    ```bash
-   export ERPC_RELEASE_VERSION=0.5.0
+   export ERPC_RELEASE_VERSION=0.6.0
    git switch main
    git pull --ff-only origin main
    git switch -c "release/v${ERPC_RELEASE_VERSION}"
@@ -152,7 +152,7 @@ create a commit. Those remain normal reviewed source changes.
 From a clean local `main` that exactly matches `origin/main`, run:
 
 ```bash
-export ERPC_RELEASE_VERSION=0.5.0
+export ERPC_RELEASE_VERSION=0.6.0
 git switch main
 git pull --ff-only origin main
 git status --short --branch
@@ -225,7 +225,7 @@ package listing on the minimum supported Go version. Ruby validation includes
 syntax checks, unit tests on the minimum supported Ruby version, explicit gem
 content inspection, and a packaged load-path smoke test.
 
-CI also verifies that all five SDKs expose the same eight ordered RPC method
+CI also verifies that all five SDKs expose the same fourteen ordered RPC method
 catalogs. The root tag must match the four versioned package manifests, the
 Go tag must point to the same commit, and the release commit must be on `main`.
 Invalid tags cannot reach a protected publish job.

@@ -7,6 +7,10 @@ import {
 } from './config'
 import { PriceClient } from './price'
 import {
+  createAvalancheClient,
+  type AvalancheClient,
+} from './rpc/avalanche'
+import {
   createEthereumClient,
   type EthereumClient,
 } from './rpc/ethereum'
@@ -28,7 +32,9 @@ export interface ErpcEthereumClient extends EthereumClient {
   readonly subscriptions: EthereumSubscriptions
 }
 
-export type ErpcAvalancheClient = ErpcEthereumClient
+export interface ErpcAvalancheClient extends AvalancheClient {
+  readonly subscriptions: EthereumSubscriptions
+}
 
 export interface ErpcClient {
   readonly account: AccountClient
@@ -62,6 +68,11 @@ export const createErpcClient = (config: ErpcClientConfig): ErpcClient => {
     ...sharedTransport,
     endpoint: endpointWithPath(resolved.avalancheEndpoint, '/ava'),
   })
+  const avalancheIndexTransport = (path: string) =>
+    new HttpJsonRpcTransport({
+      ...sharedTransport,
+      endpoint: endpointWithPath(resolved.avalancheEndpoint, path),
+    })
 
   const solanaWebSocket = new WebSocketJsonRpcTransport({
     endpoint: websocketUrl(resolved.endpoint, resolved.apiKey),
@@ -111,7 +122,12 @@ export const createErpcClient = (config: ErpcClientConfig): ErpcClient => {
     subscriptions: new EthereumSubscriptions(ethereumWebSocket),
   }
   const avalanche: ErpcAvalancheClient = {
-    ...createEthereumClient(avalancheTransport),
+    ...createAvalancheClient(avalancheTransport, {
+      cChainBlocks: avalancheIndexTransport('/ava/ext/index/C/block'),
+      pChainBlocks: avalancheIndexTransport('/ava/ext/index/P/block'),
+      xChainBlocks: avalancheIndexTransport('/ava/ext/index/X/block'),
+      xChainTransactions: avalancheIndexTransport('/ava/ext/index/X/tx'),
+    }),
     subscriptions: new EthereumSubscriptions(avalancheWebSocket),
   }
 

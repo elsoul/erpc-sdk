@@ -21,6 +21,12 @@ from .rest import (
     UsageClient,
 )
 from .rpc import (
+    AVALANCHE_AVAX_METHODS,
+    AVALANCHE_INDEX_METHODS,
+    AVALANCHE_INFO_METHODS,
+    AVALANCHE_P_CHAIN_METHODS,
+    AVALANCHE_PROPOSER_VM_METHODS,
+    AVALANCHE_X_CHAIN_METHODS,
     ETHEREUM_RPC_METHODS,
     SOLANA_ANALYTICS_METHODS,
     SOLANA_DAS_METHODS,
@@ -54,10 +60,24 @@ class EthereumClient:
 
 
 @dataclass(frozen=True, slots=True)
+class AvalancheIndexClient:
+    c_chain_blocks: RpcNamespace
+    p_chain_blocks: RpcNamespace
+    x_chain_blocks: RpcNamespace
+    x_chain_transactions: RpcNamespace
+
+
+@dataclass(frozen=True, slots=True)
 class AvalancheClient:
-    """Avalanche C-Chain client using the EVM-compatible RPC surface."""
+    """Avalanche C-Chain, native-chain, and Index API client."""
 
     rpc: RpcNamespace
+    avax: RpcNamespace
+    x_chain: RpcNamespace
+    p_chain: RpcNamespace
+    proposer_vm: RpcNamespace
+    info: RpcNamespace
+    index: AvalancheIndexClient
     subscriptions: EthereumSubscriptions
 
 
@@ -94,6 +114,15 @@ class ErpcClient:
             timeout=config.timeout,
             client=client,
         )
+
+        def avalanche_index_transport(path: str) -> HttpJsonRpcTransport:
+            return HttpJsonRpcTransport(
+                api_key=config.api_key,
+                endpoint=endpoint_with_path(config.avalanche_endpoint, path),
+                headers=config.headers,
+                timeout=config.timeout,
+                client=client,
+            )
         solana_ws = WebSocketJsonRpcTransport(
             websocket_url(config.endpoint, config.api_key),
             config.api_key,
@@ -142,6 +171,71 @@ class ErpcClient:
                 avalanche_transport,
                 ETHEREUM_RPC_METHODS,
                 parameter_mode="positional",
+            ),
+            avax=RpcNamespace(
+                avalanche_transport,
+                AVALANCHE_AVAX_METHODS,
+                parameter_mode="named",
+                batch_policy="unsupported",
+                method_prefix="avax",
+            ),
+            x_chain=RpcNamespace(
+                avalanche_transport,
+                AVALANCHE_X_CHAIN_METHODS,
+                parameter_mode="named",
+                batch_policy="unsupported",
+                method_prefix="avm",
+            ),
+            p_chain=RpcNamespace(
+                avalanche_transport,
+                AVALANCHE_P_CHAIN_METHODS,
+                parameter_mode="named",
+                batch_policy="unsupported",
+                method_prefix="platform",
+            ),
+            proposer_vm=RpcNamespace(
+                avalanche_transport,
+                AVALANCHE_PROPOSER_VM_METHODS,
+                parameter_mode="named",
+                batch_policy="unsupported",
+                method_prefix="proposervm",
+            ),
+            info=RpcNamespace(
+                avalanche_transport,
+                AVALANCHE_INFO_METHODS,
+                parameter_mode="named",
+                batch_policy="unsupported",
+                method_prefix="info",
+            ),
+            index=AvalancheIndexClient(
+                c_chain_blocks=RpcNamespace(
+                    avalanche_index_transport("/ava/ext/index/C/block"),
+                    AVALANCHE_INDEX_METHODS,
+                    parameter_mode="named",
+                    batch_policy="unsupported",
+                    method_prefix="index",
+                ),
+                p_chain_blocks=RpcNamespace(
+                    avalanche_index_transport("/ava/ext/index/P/block"),
+                    AVALANCHE_INDEX_METHODS,
+                    parameter_mode="named",
+                    batch_policy="unsupported",
+                    method_prefix="index",
+                ),
+                x_chain_blocks=RpcNamespace(
+                    avalanche_index_transport("/ava/ext/index/X/block"),
+                    AVALANCHE_INDEX_METHODS,
+                    parameter_mode="named",
+                    batch_policy="unsupported",
+                    method_prefix="index",
+                ),
+                x_chain_transactions=RpcNamespace(
+                    avalanche_index_transport("/ava/ext/index/X/tx"),
+                    AVALANCHE_INDEX_METHODS,
+                    parameter_mode="named",
+                    batch_policy="unsupported",
+                    method_prefix="index",
+                ),
             ),
             subscriptions=EthereumSubscriptions(avalanche_ws),
         )

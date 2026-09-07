@@ -1,7 +1,7 @@
 # ERPC SDK for Rust
 
 Async Rust client for ERPC. The crate covers standard Solana, Ethereum, and
-Avalanche C-Chain JSON-RPC, indexed asset and history RPC, leader and analytics
+Avalanche C/P/X-chain JSON-RPC, indexed asset and history RPC, leader and analytics
 RPC, WebSocket subscriptions, price REST and server-sent events, account usage,
 and scoped Cloud reads.
 
@@ -55,6 +55,12 @@ objects. The wire method names remain unchanged.
 | `erpc.ethereum.subscriptions` | Ethereum WebSocket subscriptions |
 | `erpc.avalanche.rpc` | Avalanche C-Chain EVM-compatible JSON-RPC |
 | `erpc.avalanche.subscriptions` | Avalanche C-Chain WebSocket subscriptions |
+| `erpc.avalanche.avax` | C-Chain AVAX atomic transaction API |
+| `erpc.avalanche.x_chain` | X-Chain API |
+| `erpc.avalanche.p_chain` | P-Chain API |
+| `erpc.avalanche.proposer_vm` | P-Chain proposer VM API |
+| `erpc.avalanche.info` | Network upgrade information |
+| `erpc.avalanche.index` | C/P/X block and X transaction indexes |
 | `erpc.price` | Price metadata, updates, and SSE streams |
 | `erpc.account` | Token balance |
 | `erpc.usage` | Masked monthly API-key usage |
@@ -62,8 +68,18 @@ objects. The wire method names remain unchanged.
 Every JSON-RPC namespace also exposes `request`, `raw`, and `batch` for typed
 results and forward-compatible methods. Avalanche uses the Ethereum-compatible
 typed catalog and defaults to `https://ava-rpc.erpc.global`; the SDK uses its
-`/ava` HTTP route and `/ava-ws` WebSocket route. Override the base URL with
+`/ava` HTTP route and `/ava-ws` WebSocket route. Native namespaces provide
+snake_case convenience methods with named parameters, while Index calls use
+explicit chain/container paths. Override the base URL with
 `ErpcClientConfig::with_avalanche_endpoint` when needed.
+
+```rust
+let p_height = erpc.avalanche.p_chain.get_height().send().await?;
+let indexed_tx = erpc.avalanche.index.x_chain_transactions
+    .get_container_by_id(serde_json::json!({"id": transaction_id}))?
+    .send()
+    .await?;
+```
 
 ## Batch requests
 

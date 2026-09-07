@@ -94,6 +94,64 @@ func TestAvalancheUsesCChainEndpoint(t *testing.T) {
 	}
 }
 
+func TestAvalancheNativeAndIndexNamespacesPreserveWireRoutes(t *testing.T) {
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		var request wireRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Fatal(err)
+		}
+		switch request.Method {
+		case "platform.getHeight":
+			if r.URL.Path != "/ava" {
+				t.Errorf("P-Chain path = %q", r.URL.Path)
+			}
+		case "index.getContainerByID":
+			if r.URL.Path != "/ava/ext/index/X/tx" {
+				t.Errorf("Index path = %q", r.URL.Path)
+			}
+		default:
+			t.Errorf("method = %q", request.Method)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"jsonrpc": "2.0", "id": request.ID, "result": request.Method,
+		})
+	}))
+	defer server.Close()
+	client, err := NewClient(Config{APIKey: "key", AvalancheEndpoint: server.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	var result string
+	if err := client.Avalanche.PChain.Request(context.Background(), "getHeight", nil, &result); err != nil {
+		t.Fatal(err)
+	}
+	if result != "platform.getHeight" {
+		t.Fatalf("result = %q", result)
+	}
+	if err := client.Avalanche.Index.XChainTransactions.Request(
+		context.Background(),
+		"getContainerByID",
+		map[string]any{"id": "tx-id"},
+		&result,
+	); err != nil {
+		t.Fatal(err)
+	}
+	_, err = client.Avalanche.XChain.Batch(
+		context.Background(),
+		[]BatchCall{{Method: "getHeight"}},
+	)
+	var sdkErr *Error
+	if !errors.As(err, &sdkErr) || sdkErr.Kind != ErrorBatchPolicy {
+		t.Fatalf("error = %#v", err)
+	}
+	if requests.Load() != 2 {
+		t.Fatalf("requests = %d", requests.Load())
+	}
+}
+
 func TestBatchOrderAndPolicy(t *testing.T) {
 	var requests atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -200,8 +258,14 @@ func TestStateChangingRequestIsNotRetriedAndRPCErrorIsRedacted(t *testing.T) {
 }
 
 func TestMethodCatalogCounts(t *testing.T) {
-	counts := []int{len(SolanaRPCMethods), len(SolanaDASMethods), len(SolanaHistoryMethods), len(SolanaLeaderMethods), len(SolanaAnalyticsMethods), len(SolanaEnhancedSubscriptionMethods), len(EthereumRPCMethods), len(EthereumSubscriptionMethods)}
-	want := []int{55, 14, 2, 2, 5, 4, 53, 2}
+	counts := []int{
+		len(SolanaRPCMethods), len(SolanaDASMethods), len(SolanaHistoryMethods),
+		len(SolanaLeaderMethods), len(SolanaAnalyticsMethods), len(SolanaEnhancedSubscriptionMethods),
+		len(EthereumRPCMethods), len(EthereumSubscriptionMethods), len(AvalancheAVAXMethods),
+		len(AvalancheXChainMethods), len(AvalanchePChainMethods), len(AvalancheProposerVMMethods),
+		len(AvalancheInfoMethods), len(AvalancheIndexMethods),
+	}
+	want := []int{55, 14, 2, 2, 5, 4, 53, 2, 4, 11, 26, 2, 1, 6}
 	for i := range want {
 		if counts[i] != want[i] {
 			t.Fatalf("catalog %d count = %d", i, counts[i])

@@ -51,6 +51,14 @@
 - Cover endpoint routing, credential redaction, and live C-Chain identity in
   automated tests.
 
+## 0.6 — Avalanche native chains
+
+- Expose C-Chain AVAX, X-Chain, P-Chain, proposer VM, and network information
+  methods in all five SDKs.
+- Expose explicit C/P/X block and X-Chain transaction Index API routes.
+- Keep native API batching disabled locally while preserving C-Chain EVM batch
+  behavior.
+
 ## Service-dependent expansion
 
 The following SDK work starts only after the corresponding server capability

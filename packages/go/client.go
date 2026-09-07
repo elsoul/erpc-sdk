@@ -27,6 +27,28 @@ func NewClient(config Config) (*Client, error) {
 	solanaHTTP := newHTTPRPCTransport(resolved, resolved.endpoint)
 	ethereumHTTP := newHTTPRPCTransport(resolved, endpointPath(resolved.endpoint, "/eth"))
 	avalancheHTTP := newHTTPRPCTransport(resolved, endpointPath(resolved.avalancheEndpoint, "/ava"))
+	avalancheIndex := &AvalancheIndexClient{
+		CChainBlocks: newAvalancheRPCNamespace(
+			newHTTPRPCTransport(resolved, endpointPath(resolved.avalancheEndpoint, "/ava/ext/index/C/block")),
+			"index",
+			AvalancheIndexMethods,
+		),
+		PChainBlocks: newAvalancheRPCNamespace(
+			newHTTPRPCTransport(resolved, endpointPath(resolved.avalancheEndpoint, "/ava/ext/index/P/block")),
+			"index",
+			AvalancheIndexMethods,
+		),
+		XChainBlocks: newAvalancheRPCNamespace(
+			newHTTPRPCTransport(resolved, endpointPath(resolved.avalancheEndpoint, "/ava/ext/index/X/block")),
+			"index",
+			AvalancheIndexMethods,
+		),
+		XChainTransactions: newAvalancheRPCNamespace(
+			newHTTPRPCTransport(resolved, endpointPath(resolved.avalancheEndpoint, "/ava/ext/index/X/tx")),
+			"index",
+			AvalancheIndexMethods,
+		),
+	}
 	solanaWS := newWebSocketTransport(websocketURL(resolved.endpoint, resolved.apiKey, ""), resolved.timeout)
 	ethereumWS := newWebSocketTransport(websocketURL(resolved.endpoint, resolved.apiKey, "/eth"), resolved.timeout)
 	avalancheWS := newWebSocketTransport(websocketURL(resolved.avalancheEndpoint, resolved.apiKey, "/ava-ws"), resolved.timeout)
@@ -36,7 +58,7 @@ func NewClient(config Config) (*Client, error) {
 	return &Client{
 		Solana:    newSolanaClient(solanaHTTP, solanaWS),
 		Ethereum:  newEthereumClient(ethereumHTTP, ethereumWS),
-		Avalanche: newEthereumClient(avalancheHTTP, avalancheWS),
+		Avalanche: newAvalancheClient(avalancheHTTP, avalancheWS, avalancheIndex),
 		Price:     &PriceClient{transport: sharedREST},
 		Account:   &AccountClient{transport: accountREST},
 		Usage:     &UsageClient{transport: userREST},
@@ -126,9 +148,6 @@ type EthereumClient struct {
 	RPC           *EthereumRPCClient
 	Subscriptions *EthereumSubscriptions
 }
-
-// AvalancheClient exposes the EVM-compatible Avalanche C-Chain surface.
-type AvalancheClient = EthereumClient
 
 func newEthereumClient(transport *httpRPCTransport, ws *webSocketTransport) *EthereumClient {
 	return &EthereumClient{

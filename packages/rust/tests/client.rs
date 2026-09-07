@@ -5,6 +5,8 @@ mod support;
 use std::time::Duration;
 
 use erpc_sdk::{
+    AVALANCHE_AVAX_METHODS, AVALANCHE_INDEX_METHODS, AVALANCHE_INFO_METHODS,
+    AVALANCHE_P_CHAIN_METHODS, AVALANCHE_PROPOSER_VM_METHODS, AVALANCHE_X_CHAIN_METHODS,
     AssetRequest, CancellationToken, ETHEREUM_RPC_METHODS, ErpcClient, ErpcClientConfig,
     ErpcCloudClient, ErpcCloudClientConfig, ErpcError, ErpcErrorCode, RpcBatchCall,
     SOLANA_ANALYTICS_METHODS, SOLANA_DAS_METHODS, SOLANA_HISTORY_METHODS, SOLANA_LEADER_METHODS,
@@ -64,6 +66,70 @@ async fn avalanche_uses_its_c_chain_endpoint() {
     client.close().await;
 }
 
+#[tokio::test]
+async fn avalanche_native_and_index_namespaces_preserve_wire_routes() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/ava"))
+        .and(query_param("api-key", "test-key"))
+        .and(body_json(json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "platform.getHeight"
+        })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {"height": "123"}
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/ava/ext/index/X/tx"))
+        .and(query_param("api-key", "test-key"))
+        .and(body_json(json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "index.getContainerByID",
+            "params": {"id": "tx-id"}
+        })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {"id": "tx-id"}
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let client = ErpcClient::new(config(&server, "test-key")).unwrap();
+    assert_eq!(
+        client.avalanche.p_chain.get_height().send().await.unwrap(),
+        json!({"height": "123"})
+    );
+    assert_eq!(
+        client
+            .avalanche
+            .index
+            .x_chain_transactions
+            .get_container_by_id(json!({"id": "tx-id"}))
+            .unwrap()
+            .send()
+            .await
+            .unwrap(),
+        json!({"id": "tx-id"})
+    );
+    assert!(matches!(
+        client
+            .avalanche
+            .x_chain
+            .batch(vec![RpcBatchCall::without_params("avm.getHeight")]),
+        Err(ErpcError::BatchPolicy(_))
+    ));
+    client.close().await;
+}
+
 #[test]
 fn configuration_debug_redacts_credentials() {
     let rendered = format!("{:?}", ErpcClientConfig::new("super-secret"));
@@ -83,6 +149,12 @@ fn method_catalogs_match_the_public_contract() {
     assert_eq!(SOLANA_LEADER_METHODS.len(), 2);
     assert_eq!(SOLANA_ANALYTICS_METHODS.len(), 5);
     assert_eq!(ETHEREUM_RPC_METHODS.len(), 53);
+    assert_eq!(AVALANCHE_AVAX_METHODS.len(), 4);
+    assert_eq!(AVALANCHE_X_CHAIN_METHODS.len(), 11);
+    assert_eq!(AVALANCHE_P_CHAIN_METHODS.len(), 26);
+    assert_eq!(AVALANCHE_PROPOSER_VM_METHODS.len(), 2);
+    assert_eq!(AVALANCHE_INFO_METHODS.len(), 1);
+    assert_eq!(AVALANCHE_INDEX_METHODS.len(), 6);
 }
 
 #[test]

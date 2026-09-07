@@ -18,8 +18,8 @@
 </p>
 
 One client and one API key provide access to Solana, Ethereum, Avalanche
-C-Chain, price data, indexed data, leader and validator data, analytics,
-subscriptions, and account balance information.
+C-Chain, X-Chain, P-Chain, price data, indexed data, leader and validator data,
+analytics, subscriptions, and account balance information.
 
 ## Packages
 
@@ -60,7 +60,7 @@ python -m pip install erpc-sdk
 Go:
 
 ```bash
-go get github.com/elsoul/erpc-sdk/packages/go@v0.4.0
+go get github.com/elsoul/erpc-sdk/packages/go@v0.6.0
 ```
 
 Ruby:
@@ -167,6 +167,12 @@ end
 | `erpc.ethereum.subscriptions` | Ethereum WebSocket subscriptions |
 | `erpc.avalanche.rpc` | Avalanche C-Chain EVM-compatible JSON-RPC |
 | `erpc.avalanche.subscriptions` | Avalanche C-Chain WebSocket subscriptions |
+| `erpc.avalanche.avax` | C-Chain AVAX atomic transaction API |
+| `erpc.avalanche.xChain` | X-Chain (`avm.*`) API |
+| `erpc.avalanche.pChain` | P-Chain (`platform.*`) API |
+| `erpc.avalanche.proposerVm` | P-Chain proposer VM API |
+| `erpc.avalanche.info` | Avalanche network upgrade information |
+| `erpc.avalanche.index` | C/P/X block and X transaction indexes |
 | `erpc.price` | Price metadata, updates, and streams |
 | `erpc.account` | ERPC token balance |
 | `erpc.usage` | Masked monthly API-key usage |
@@ -205,17 +211,25 @@ const balance = await erpc.ethereum.rpc
   .send()
 ```
 
-## Avalanche C-Chain examples
+## Avalanche examples
 
-Avalanche reuses the typed Ethereum-compatible method catalog on its dedicated
-C-Chain endpoint. The SDK routes HTTP requests through `/ava` and WebSocket
-subscriptions through `/ava-ws`. C-Chain-specific methods remain available
-through `raw`.
+Avalanche C-Chain EVM calls continue to use the Ethereum-compatible catalog.
+Native AVAX, X-Chain, P-Chain, proposer VM, and information methods use named
+parameters on `/ava`. Index calls use their required explicit C/P/X routes.
 
 ```ts
 const chainId = await erpc.avalanche.rpc.eth_chainId().send()
 const block = await erpc.avalanche.rpc
   .eth_getBlockByNumber('latest', false)
+  .send()
+
+const pHeight = await erpc.avalanche.pChain.getHeight().send()
+const xHeight = await erpc.avalanche.xChain.getHeight().send()
+const validators = await erpc.avalanche.pChain
+  .getCurrentValidators({})
+  .send()
+const indexedTransaction = await erpc.avalanche.index.xChainTransactions
+  .getContainerByID({ id: transactionId })
   .send()
 
 const accepted = await erpc.avalanche.subscriptions.subscribe(
@@ -226,8 +240,9 @@ const accepted = await erpc.avalanche.subscriptions.subscribe(
 await accepted.unsubscribe()
 ```
 
-This namespace targets Avalanche C-Chain. X-Chain and P-Chain-specific APIs are
-not represented as supported methods in this release.
+Native and Index API namespaces do not support JSON-RPC batches; the SDK rejects
+non-empty batches before network I/O. Every namespace retains `raw` access for
+forward-compatible exact wire method names.
 
 ## Price data
 

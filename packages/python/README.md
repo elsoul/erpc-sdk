@@ -1,7 +1,7 @@
 # ERPC SDK for Python
 
 Async Python client for ERPC. It covers standard Solana, Ethereum, and
-Avalanche C-Chain JSON-RPC, indexed assets, history, leader and analytics RPC,
+Avalanche C/P/X-chain JSON-RPC, indexed assets, history, leader and analytics RPC,
 WebSocket subscriptions, price REST and server-sent events, account usage, and
 scoped Cloud reads.
 
@@ -50,14 +50,28 @@ when `send()` is awaited. `request()` restricts calls to the namespace catalog;
 | `erpc.ethereum.subscriptions` | Ethereum WebSocket subscriptions |
 | `erpc.avalanche.rpc` | Avalanche C-Chain EVM-compatible JSON-RPC |
 | `erpc.avalanche.subscriptions` | Avalanche C-Chain WebSocket subscriptions |
+| `erpc.avalanche.avax` | C-Chain AVAX atomic transaction API |
+| `erpc.avalanche.x_chain` | X-Chain API |
+| `erpc.avalanche.p_chain` | P-Chain API |
+| `erpc.avalanche.proposer_vm` | P-Chain proposer VM API |
+| `erpc.avalanche.info` | Network upgrade information |
+| `erpc.avalanche.index` | C/P/X block and X transaction indexes |
 | `erpc.price` | Price metadata, updates, and SSE streams |
 | `erpc.account` | Token balance |
 | `erpc.usage` | Masked monthly API-key usage |
 
 `avalanche_endpoint` defaults to `https://ava-rpc.erpc.global` and can be
 overridden independently. The SDK uses its `/ava` HTTP route and `/ava-ws`
-WebSocket route. The Avalanche namespace uses the Ethereum-compatible typed
-catalog; use `raw()` for additional C-Chain methods.
+WebSocket route. Native methods use named mappings and Index calls use explicit
+chain/container paths. Native and Index batches are rejected locally; use
+`raw()` with an exact wire method name for forward compatibility.
+
+```python
+p_height = await erpc.avalanche.p_chain.get_height().send()
+indexed_tx = await erpc.avalanche.index.x_chain_transactions.get_container_by_id(
+    {"id": transaction_id}
+).send()
+```
 
 ## Intact batches
 

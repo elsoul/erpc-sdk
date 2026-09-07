@@ -1,7 +1,7 @@
 # `@elsoul/erpc-sdk`
 
 Official type-safe TypeScript client for [ERPC](https://erpc.global). Use one
-client and one API key for Solana, Ethereum, Avalanche C-Chain, price data,
+client and one API key for Solana, Ethereum, Avalanche C/P/X chains, price data,
 indexed data, leader and validator data, analytics, subscriptions, and account
 information.
 
@@ -50,15 +50,22 @@ network request.
 | `erpc.ethereum.subscriptions` | Ethereum WebSocket subscriptions |
 | `erpc.avalanche.rpc` | Avalanche C-Chain EVM-compatible JSON-RPC |
 | `erpc.avalanche.subscriptions` | Avalanche C-Chain WebSocket subscriptions |
+| `erpc.avalanche.avax` | C-Chain AVAX atomic transaction API |
+| `erpc.avalanche.xChain` | X-Chain API |
+| `erpc.avalanche.pChain` | P-Chain API |
+| `erpc.avalanche.proposerVm` | P-Chain proposer VM API |
+| `erpc.avalanche.info` | Network upgrade information |
+| `erpc.avalanche.index` | C/P/X block and X transaction indexes |
 | `erpc.price` | Price metadata, updates, and streams |
 | `erpc.account` | ERPC token balance |
 | `erpc.usage` | Masked monthly API-key usage |
 
 `avalancheEndpoint` defaults to `https://ava-rpc.erpc.global` and can be
 overridden independently from the shared `endpoint` option. The SDK uses its
-`/ava` HTTP route and `/ava-ws` WebSocket route. The Avalanche namespace uses
-the Ethereum-compatible typed catalog; use `raw` for additional C-Chain
-methods.
+`/ava` HTTP route and `/ava-ws` WebSocket route. Native C/P/X methods use named
+parameters; Index calls are routed to the required explicit chain/container
+path. Native and Index batches are rejected locally. Use `raw` with an exact
+wire method name for forward compatibility.
 
 ## Examples
 
@@ -71,6 +78,12 @@ const block = await erpc.ethereum.rpc
 
 const avalancheBlock = await erpc.avalanche.rpc
   .eth_getBlockByNumber('latest', false)
+  .send()
+
+const pChainHeight = await erpc.avalanche.pChain.getHeight().send()
+const xChainHeight = await erpc.avalanche.xChain.getHeight().send()
+const indexedTransaction = await erpc.avalanche.index.xChainTransactions
+  .getContainerByID({ id: transactionId })
   .send()
 
 const prices = await erpc.price.getLatestPriceUpdates({

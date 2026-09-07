@@ -7,7 +7,7 @@ use crate::{ErpcError, Result};
 
 /// Default JSON-RPC and price endpoint.
 pub const DEFAULT_ENDPOINT: &str = "https://edge.erpc.global";
-/// Default Avalanche C-Chain JSON-RPC endpoint.
+/// Default Avalanche JSON-RPC endpoint.
 pub const DEFAULT_AVALANCHE_ENDPOINT: &str = "https://ava-rpc.erpc.global";
 /// Default account endpoint.
 pub const DEFAULT_ACCOUNT_ENDPOINT: &str = "https://solana-rpc.erpc.global";
@@ -23,7 +23,7 @@ pub struct ErpcClientConfig {
     api_key: String,
     /// Optional JSON-RPC and price endpoint override.
     pub endpoint: String,
-    /// Optional Avalanche C-Chain endpoint override.
+    /// Optional Avalanche endpoint override.
     pub avalanche_endpoint: String,
     /// Optional account endpoint override.
     pub account_endpoint: String,
@@ -85,7 +85,7 @@ impl ErpcClientConfig {
         self
     }
 
-    /// Overrides the Avalanche C-Chain endpoint.
+    /// Overrides the Avalanche endpoint.
     #[must_use]
     pub fn with_avalanche_endpoint(mut self, endpoint: impl Into<String>) -> Self {
         self.avalanche_endpoint = endpoint.into();

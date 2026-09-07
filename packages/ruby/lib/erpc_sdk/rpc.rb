@@ -162,6 +162,72 @@ module ERPC
     "eth_unsubscribe"
   ].freeze
 
+  AVALANCHE_AVAX_METHODS = [
+    "avax.getAtomicTx",
+    "avax.getAtomicTxStatus",
+    "avax.getUTXOs",
+    "avax.issueTx"
+  ].freeze
+
+  AVALANCHE_X_CHAIN_METHODS = [
+    "avm.buildGenesis",
+    "avm.getAllBalances",
+    "avm.getAssetDescription",
+    "avm.getBalance",
+    "avm.getBlockByHeight",
+    "avm.getHeight",
+    "avm.getTx",
+    "avm.getTxFee",
+    "avm.getTxStatus",
+    "avm.getUTXOs",
+    "avm.issueTx"
+  ].freeze
+
+  AVALANCHE_P_CHAIN_METHODS = [
+    "platform.getAllValidatorsAt",
+    "platform.getBalance",
+    "platform.getBlockchainStatus",
+    "platform.getBlockchains",
+    "platform.getCurrentSupply",
+    "platform.getCurrentValidators",
+    "platform.getFeeConfig",
+    "platform.getFeeState",
+    "platform.getHeight",
+    "platform.getMinStake",
+    "platform.getRewardUTXOs",
+    "platform.getStake",
+    "platform.getStakingAssetID",
+    "platform.getSubnets",
+    "platform.getTimestamp",
+    "platform.getTotalStake",
+    "platform.getTx",
+    "platform.getTxStatus",
+    "platform.getUTXOs",
+    "platform.getValidatorFeeConfig",
+    "platform.getValidatorFeeState",
+    "platform.getValidatorsAt",
+    "platform.issueTx",
+    "platform.sampleValidators",
+    "platform.validatedBy",
+    "platform.validates"
+  ].freeze
+
+  AVALANCHE_PROPOSER_VM_METHODS = [
+    "proposervm.getCurrentEpoch",
+    "proposervm.getProposedHeight"
+  ].freeze
+
+  AVALANCHE_INFO_METHODS = ["info.upgrades"].freeze
+
+  AVALANCHE_INDEX_METHODS = [
+    "index.getContainerByID",
+    "index.getContainerByIndex",
+    "index.getContainerRange",
+    "index.getIndex",
+    "index.getLastAccepted",
+    "index.isAccepted"
+  ].freeze
+
   HEAVY_SOLANA_METHODS = %w[
     getPriorityFeeEstimate
     getProgramAccounts
@@ -197,11 +263,16 @@ module ERPC
   class RpcNamespace
     attr_reader :endpoint
 
-    def initialize(transport, methods, parameter_mode:, batch_policy: :any)
+    def initialize(transport, methods, parameter_mode:, batch_policy: :any, method_prefix: nil)
       @transport = transport
       @endpoint = transport.endpoint
-      @methods = methods.to_h { |method| [method, true] }.freeze
-      @aliases = methods.to_h { |method| [snake_case(method), method] }.freeze
+      prefix = method_prefix.nil? ? "" : "#{method_prefix}."
+      @wire_methods = methods.to_h do |method|
+        public_method = method.start_with?(prefix) ? method.delete_prefix(prefix) : method
+        [public_method, method]
+      end.freeze
+      @methods = @wire_methods.transform_values { true }.freeze
+      @aliases = @methods.to_h { |method, _| [snake_case(method), method] }.freeze
       @parameter_mode = parameter_mode
       @batch_policy = batch_policy
     end
@@ -211,7 +282,7 @@ module ERPC
         raise ConfigError, "#{method.inspect} is not in this namespace; use raw for forward-compatible methods"
       end
 
-      PendingRpcRequest.new(@transport, method, params, decoder || ->(value) { value })
+      PendingRpcRequest.new(@transport, @wire_methods.fetch(method), params, decoder || ->(value) { value })
     end
 
     def raw(method, params = nil, decoder: nil)
@@ -222,7 +293,7 @@ module ERPC
 
     def batch(calls)
       if @batch_policy == :unsupported && !calls.empty?
-        raise BatchPolicyError, "Leader RPC methods do not support batching"
+        raise BatchPolicyError, "This RPC namespace does not support batching"
       end
       if @batch_policy == :solana_standard
         methods = calls.map { |call| call[:method] || call["method"] }
@@ -233,7 +304,12 @@ module ERPC
         end
       end
 
-      PendingRpcBatchRequest.new(@transport, calls)
+      wire_calls = if @wire_methods.any? { |method, wire| method != wire }
+                     calls.map { |call| wire_call(call) }
+                   else
+                     calls
+                   end
+      PendingRpcBatchRequest.new(@transport, wire_calls)
     end
 
     def method_missing(name, *arguments, &block)
@@ -261,6 +337,18 @@ module ERPC
     end
 
     private
+
+    def wire_call(call)
+      method = call[:method] || call["method"]
+      unless @wire_methods.key?(method)
+        raise ConfigError, "#{method.inspect} is not in this namespace; use raw for forward-compatible methods"
+      end
+
+      mapped = { method: @wire_methods.fetch(method) }
+      mapped[:params] = call[:params] if call.key?(:params)
+      mapped[:params] = call["params"] if call.key?("params")
+      mapped
+    end
 
     def snake_case(value)
       value.gsub(/(?<=[a-z0-9])(?=[A-Z])/, "_").downcase
