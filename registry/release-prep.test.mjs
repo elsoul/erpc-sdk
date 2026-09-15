@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -9,6 +9,7 @@ import {
   APPROVED_SOURCE_SHA,
   BASELINE_VERSION,
   CATALOG_RUNTIME_PATHS,
+  DEX_CATALOG_RUNTIME_PATHS,
   PACKAGE_VERSION_PATHS,
   REPOSITORY_ROOT,
   STATUS,
@@ -17,6 +18,7 @@ import {
   parseStableVersion,
   prepareRelease,
 } from "./release-prep.mjs";
+import { computeDigest as computeDexDigest } from "./dex-catalog.mjs";
 import { CATALOG, computeDigest, validateCatalog } from "./token-catalog.mjs";
 
 const BASELINE_TAG_COMMIT = "d77169fbf9e927d51113af7a2ee51a5c9b10f3fc";
@@ -24,6 +26,16 @@ const WORKTREE_BASE = APPROVED_SOURCE_SHA;
 
 function git(root, args, { stdio = "pipe" } = {}) {
   return execFileSync("git", ["-C", root, ...args], { encoding: "utf8", stdio }).trim();
+}
+
+function gitRunner(command, args, { cwd } = {}) {
+  const result = spawnSync(command, args, { cwd, encoding: "utf8", stdio: "pipe" });
+  return {
+    status: result.status === null ? 1 : result.status,
+    stdout: result.stdout ?? "",
+    stderr: result.stderr ?? "",
+    error: result.error,
+  };
 }
 
 function newWorktree() {
@@ -120,6 +132,12 @@ test("clean released baseline reports the approved catalog candidate through lat
     assert.equal(report.status, STATUS.PATCH_READY);
     assert.equal(report.prepareAllowed, true);
     assert.equal(report.currentVersion, BASELINE_VERSION);
+    assert.equal(report.plan.sourceSha, APPROVED_SOURCE_SHA);
+    assert.equal(report.plan.approvedSourceSha, APPROVED_SOURCE_SHA);
+    assert.equal(report.plan.applies, true);
+    assert.deepEqual(report.plan.unexpectedPackageChanges, []);
+    assert.equal(report.dexRuntime.baselineCatalogPresent, false, "DEX catalog was absent at the 0.6.0 historical baseline");
+    assert.equal(report.dexRuntime.baselineCatalogDigest, null);
     assert.ok(report.tags.warnings.some((warning) => warning.includes("v0.2.0")));
     assert.equal(report.tags.pairs.find((pair) => pair.version === BASELINE_VERSION).rootPeel, BASELINE_TAG_COMMIT);
   });
@@ -193,6 +211,89 @@ test("catalog runtime history is PATCH_READY and preparation bumps semver", asyn
   });
 });
 
+test("combined token and DEX catalog changes validate against the candidate tree", async () => {
+  await withWorktree(async (root, expectedHead) => {
+    const token = JSON.parse(readFileSync(path.join(root, "registry/token-catalog.json"), "utf8"));
+    token.deployments.push({
+      deploymentId: "deployment-0099",
+      assetId: "asset-0008",
+      chainId: "eip155:1",
+      symbol: "EURC_TEST",
+      decimals: 6,
+      standard: "erc20",
+      address: "0x1111111111111111111111111111111111111111",
+      status: "active",
+      replacedByDeploymentId: null,
+      evidence: ["https://example.invalid/token-deployment-0099"],
+      asOfDate: "2026-09-16",
+    });
+    token.contentDigest = computeDigest(token);
+    validateCatalog(token);
+    writeFileSync(path.join(root, "registry/token-catalog.json"), `${JSON.stringify(token, null, 2)}\n`);
+
+    const dex = JSON.parse(readFileSync(path.join(root, "registry/dex-catalog.json"), "utf8"));
+    dex.poolDefinitions.push({
+      poolDefinitionId: "pool-0099",
+      dexDeploymentId: "dex-deployment-0001",
+      chainId: "eip155:1",
+      address: "0x2222222222222222222222222222222222222222",
+      token0DeploymentId: "deployment-0099",
+      token1DeploymentId: "deployment-0002",
+      adapter: { kind: "evm-constant-product-v2", feeNumerator: "3", feeDenominator: "1000" },
+      status: "active",
+      replacedByPoolDefinitionId: null,
+      evidence: ["https://example.invalid/pool-0099"],
+      asOfDate: "2026-09-16",
+    });
+    dex.contentDigest = computeDexDigest(dex);
+    writeFileSync(path.join(root, "registry/dex-catalog.json"), `${JSON.stringify(dex, null, 2)}\n`);
+
+    const head = commitAll(root, "combined token and DEX catalog refresh");
+    const report = inspectRelease({ root, expectedHead: head });
+    assert.equal(report.status, STATUS.PATCH_READY);
+    assert.equal(report.prepareAllowed, true);
+    assert.equal(report.selectedVersion, "0.7.0");
+    assert.equal(report.plan.sourceSha, APPROVED_SOURCE_SHA);
+    assert.equal(report.plan.applies, true);
+    assert.deepEqual(report.plan.unexpectedPackageChanges, []);
+    assert.equal(report.catalog.digest, computeDigest(token));
+    assert.equal(report.dexCatalog.digest, computeDexDigest(dex));
+    assert.equal(report.runtime.catalogDigestChanged, true);
+    assert.equal(report.dexRuntime.catalogDigestChanged, true);
+    assert.ok(report.runtime.changedRuntimePaths.includes("registry/token-catalog.json"));
+    assert.ok(report.dexRuntime.changedRuntimePaths.includes("registry/dex-catalog.json"));
+    assert.ok(DEX_CATALOG_RUNTIME_PATHS.every((relativePath) => typeof relativePath === "string"));
+    assert.ok(report.shippingChanges.length > 0, "approved feature history remains visible as shippingChanges");
+    void expectedHead;
+  });
+});
+
+test("DEX catalog runtime-only changes select the approved patch", async () => {
+  await withWorktree(async (root, expectedHead) => {
+    const dexPath = path.join(root, "registry/dex-catalog.json");
+    const dex = JSON.parse(readFileSync(dexPath, "utf8"));
+    dex.manualAsOf = "2026-09-16";
+    dex.contentDigest = computeDexDigest(dex);
+    writeFileSync(dexPath, `${JSON.stringify(dex, null, 2)}\n`);
+    for (const relativePath of DEX_CATALOG_RUNTIME_PATHS.slice(1)) {
+      const target = path.join(root, relativePath);
+      writeFileSync(target, `${readFileSync(target, "utf8")}\n/* DEX runtime refresh */\n`);
+    }
+    const head = commitAll(root, "DEX runtime refresh");
+    const report = inspectRelease({ root, expectedHead: head });
+    assert.equal(report.status, STATUS.PATCH_READY);
+    assert.equal(report.prepareAllowed, true);
+    assert.equal(report.selectedVersion, "0.7.0");
+    assert.equal(report.plan.sourceSha, APPROVED_SOURCE_SHA);
+    assert.equal(report.plan.applies, true);
+    assert.deepEqual(report.plan.unexpectedPackageChanges, []);
+    assert.equal(report.dexRuntime.catalogDigestChanged, true);
+    assert.deepEqual(report.dexRuntime.changedGeneratedPaths, DEX_CATALOG_RUNTIME_PATHS.slice(1));
+    assert.deepEqual(report.dexRuntime.changedRuntimePaths, DEX_CATALOG_RUNTIME_PATHS);
+    void expectedHead;
+  });
+});
+
 test("unknown package code and manifest dependency changes require manual version", async () => {
   await withWorktree(async (root) => {
     writeFileSync(path.join(root, "packages/typescript/src/index.ts"), `${readFileSync(path.join(root, "packages/typescript/src/index.ts"), "utf8")}\n// shipping code change\n`);
@@ -209,6 +310,105 @@ test("unknown package code and manifest dependency changes require manual versio
     assert.equal(report.status, STATUS.MANUAL_VERSION_REQUIRED);
     assert.ok(report.shippingChanges.includes("packages/typescript/package.json"));
   });
+});
+
+test("non-SDK Cargo.lock dependency changes remain manual-version shipping changes", async () => {
+  await withWorktree(async (root, expectedHead) => {
+    const lockPath = path.join(root, "Cargo.lock");
+    const source = readFileSync(lockPath, "utf8");
+    const changed = source.replace(/(name = "num-bigint"\nversion = ")0\.5\.1("\n)/u, (_match, prefix, suffix) => `${prefix}0.5.2${suffix}`);
+    assert.notEqual(changed, source, "fixture must contain the approved num-bigint package entry");
+    writeFileSync(lockPath, changed);
+    const head = commitAll(root, "unapproved dependency lock change");
+    const report = inspectRelease({ root, expectedHead: head });
+    assert.equal(report.status, STATUS.MANUAL_VERSION_REQUIRED);
+    assert.equal(report.prepareAllowed, false);
+    assert.equal(report.plan.applies, false);
+    assert.ok(report.plan.unexpectedPackageChanges.includes("Cargo.lock"));
+    assert.ok(report.shippingChanges.includes("Cargo.lock"));
+    void expectedHead;
+  });
+});
+
+test("historical DEX catalog absence is distinct from malformed released data", async () => {
+  await withWorktree(async (root, expectedHead) => {
+    const report = inspectRelease({ root, expectedHead });
+    assert.equal(report.dexRuntime.baselineCatalogPresent, false);
+    assert.equal(report.dexRuntime.baselineCatalogDigest, null);
+  });
+
+  const root = newIsolatedRepo();
+  try {
+    const dexPath = path.join(root, "registry/dex-catalog.json");
+    writeFileSync(dexPath, "{ malformed historical DEX catalog\n");
+    const malformedHead = commitAll(root, "malformed historical DEX catalog");
+    execFileSync("git", ["-C", root, "tag", "v0.7.0", malformedHead], { encoding: "utf8", stdio: "ignore" });
+    execFileSync("git", ["-C", root, "tag", "packages/go/v0.7.0", malformedHead], { encoding: "utf8", stdio: "ignore" });
+    try {
+      writeFileSync(dexPath, readFileSync(path.join(REPOSITORY_ROOT, "registry/dex-catalog.json"), "utf8"));
+      const validHead = commitAll(root, "restore current DEX catalog");
+      assert.throws(() => inspectRelease({ root, expectedHead: validHead }), /DEX catalog at released commit .*failed validation/u);
+    } finally {
+      for (const tag of ["v0.7.0", "packages/go/v0.7.0"]) execFileSync("git", ["-C", root, "tag", "-d", tag], { encoding: "utf8", stdio: "ignore" });
+    }
+  } finally {
+    removeIsolatedRepo(root);
+  }
+});
+
+test("git provenance read failures are hard errors instead of empty change sets", async () => {
+  const root = newIsolatedRepo();
+  try {
+    const packagePath = path.join(root, "packages/go/client.go");
+    writeFileSync(packagePath, `${readFileSync(packagePath, "utf8")}\n// unapproved provenance fixture\n`);
+    const expectedHead = commitAll(root, "unapproved package code");
+    const normal = inspectRelease({ root, expectedHead });
+    assert.equal(normal.status, STATUS.MANUAL_VERSION_REQUIRED);
+    assert.equal(normal.prepareAllowed, false);
+    assert.equal(normal.plan.applies, false);
+
+    const failWorkingDiff = (command, args, options) => {
+      if (command === "git" && args[0] === "diff" && args[1] === "--name-only" && args.length === 4) return { status: 128, stdout: "", stderr: "simulated unreadable working diff" };
+      return gitRunner(command, args, options);
+    };
+    assert.throws(() => inspectRelease({ root, expectedHead, runner: failWorkingDiff }), /git diff --name-only failed: simulated unreadable working diff/u);
+
+    const failHistoricalDiff = (command, args, options) => {
+      if (command === "git" && args[0] === "diff" && args[1] === "--name-only" && args.length === 5) return { status: 128, stdout: "", stderr: "simulated unreadable historical diff" };
+      return gitRunner(command, args, options);
+    };
+    assert.throws(() => inspectRelease({ root, expectedHead, runner: failHistoricalDiff }), /git diff --name-only failed: simulated unreadable historical diff/u);
+
+    const failStatus = (command, args, options) => {
+      if (command === "git" && args[0] === "status") return { status: 128, stdout: "", stderr: "simulated unreadable status" };
+      return gitRunner(command, args, options);
+    };
+    assert.throws(() => inspectRelease({ root, expectedHead, runner: failStatus }), /git status --porcelain.*simulated unreadable status/u);
+
+    const failTagEnumeration = (command, args, options) => {
+      if (command === "git" && args[0] === "for-each-ref") return { status: 128, stdout: "", stderr: "simulated unreadable tag history" };
+      return gitRunner(command, args, options);
+    };
+    assert.throws(() => inspectRelease({ root, expectedHead, runner: failTagEnumeration }), /git tag enumeration failed: simulated unreadable tag history/u);
+
+    execFileSync("git", ["-C", root, "tag", "v0.7.0", expectedHead], { encoding: "utf8", stdio: "ignore" });
+    try {
+      const normalTagReport = inspectRelease({ root, expectedHead });
+      assert.equal(normalTagReport.status, STATUS.BLOCKED_TAG_HISTORY);
+      const failTagResolution = (command, args, options) => {
+        if (command === "git" && args[0] === "rev-parse" && args.includes("refs/tags/v0.7.0")) return { status: 128, stdout: "", stderr: "simulated unresolved listed tag" };
+        return gitRunner(command, args, options);
+      };
+      const unresolvedTagReport = inspectRelease({ root, expectedHead, runner: failTagResolution });
+      assert.equal(unresolvedTagReport.status, STATUS.BLOCKED_TAG_HISTORY);
+      assert.equal(unresolvedTagReport.prepareAllowed, false);
+      assert.ok(unresolvedTagReport.tags.problems.some((problem) => problem.includes("listed tag v0.7.0 could not be resolved")));
+    } finally {
+      execFileSync("git", ["-C", root, "tag", "-d", "v0.7.0"], { encoding: "utf8", stdio: "ignore" });
+    }
+  } finally {
+    removeIsolatedRepo(root);
+  }
 });
 
 test("manual version preparation requires existing Unreleased notes", async () => {
@@ -319,10 +519,17 @@ test("higher unpaired tag blocks and paired target tags produce prepared status"
       dateOnlyCatalog.assets[0].asOfDate = "2026-09-17";
       const dateOnlyDigest = dateOnlyCatalog.contentDigest;
       writeFileSync(path.join(root, "registry/token-catalog.json"), `${JSON.stringify(dateOnlyCatalog, null, 2)}\n`);
+      const dateOnlyDexCatalog = JSON.parse(readFileSync(path.join(root, "registry/dex-catalog.json"), "utf8"));
+      dateOnlyDexCatalog.dexDeployments[0].asOfDate = "2026-09-17";
+      const dateOnlyDexDigest = dateOnlyDexCatalog.contentDigest;
+      writeFileSync(path.join(root, "registry/dex-catalog.json"), `${JSON.stringify(dateOnlyDexCatalog, null, 2)}\n`);
       const dateOnlyHead = commitAll(root, "source evidence date refresh");
       const dateOnly = inspectRelease({ root, expectedHead: dateOnlyHead });
       assert.equal(dateOnlyCatalog.contentDigest, dateOnlyDigest);
+      assert.equal(dateOnlyDexCatalog.contentDigest, dateOnlyDexDigest);
       assert.equal(dateOnly.runtime.catalogDigestChanged, false);
+      assert.equal(dateOnly.dexRuntime.catalogDigestChanged, false);
+      assert.deepEqual(dateOnly.dexRuntime.changedGeneratedPaths, []);
       assert.equal(dateOnly.status, STATUS.NO_RELEASE_CHANGE);
       assert.equal(dateOnly.selectedVersion, null);
       assert.equal(dateOnly.prepareAllowed, false);
@@ -334,9 +541,17 @@ test("higher unpaired tag blocks and paired target tags produce prepared status"
       laterCatalog.manualAsOf = "2026-09-16";
       laterCatalog.contentDigest = computeDigest(laterCatalog);
       writeFileSync(path.join(root, "registry/token-catalog.json"), `${JSON.stringify(laterCatalog, null, 2)}\n`);
+      const laterDexCatalog = JSON.parse(readFileSync(path.join(root, "registry/dex-catalog.json"), "utf8"));
+      laterDexCatalog.manualAsOf = "2026-09-16";
+      laterDexCatalog.contentDigest = computeDexDigest(laterDexCatalog);
+      writeFileSync(path.join(root, "registry/dex-catalog.json"), `${JSON.stringify(laterDexCatalog, null, 2)}\n`);
       for (const relativePath of CATALOG_RUNTIME_PATHS.slice(1)) {
         const target = path.join(root, relativePath);
         writeFileSync(target, `${readFileSync(target, "utf8")}\n/* later runtime refresh */\n`);
+      }
+      for (const relativePath of DEX_CATALOG_RUNTIME_PATHS.slice(1)) {
+        const target = path.join(root, relativePath);
+        writeFileSync(target, `${readFileSync(target, "utf8")}\n/* later DEX runtime refresh */\n`);
       }
       const laterHead = commitAll(root, "later catalog refresh");
       const later = inspectRelease({ root, expectedHead: laterHead });
@@ -344,6 +559,7 @@ test("higher unpaired tag blocks and paired target tags produce prepared status"
       assert.equal(later.status, STATUS.PATCH_READY);
       assert.equal(later.selectedVersion, "0.7.1");
       assert.equal(later.prepareAllowed, true);
+      assert.equal(later.dexRuntime.catalogDigestChanged, true);
       const laterPrepared = prepareRelease({ root, expectedHead: laterHead, releaseDate: "2026-09-16" });
       assert.equal(laterPrepared.status, STATUS.PREPARED_UNPUBLISHED);
       assert.equal(laterPrepared.prepareAllowed, false);
