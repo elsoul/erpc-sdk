@@ -42,15 +42,24 @@ function removeWorktree(root) {
 function newIsolatedRepo() {
   const root = mkdtempSync(path.join(tmpdir(), "erpc-release-prep-repo-"));
   execFileSync("git", ["clone", "--local", "--no-hardlinks", REPOSITORY_ROOT, root], { encoding: "utf8", stdio: "ignore" });
+  try {
+    execFileSync("git", ["-C", root, "checkout", "--detach", WORKTREE_BASE], { encoding: "utf8", stdio: "ignore" });
+  } catch (error) {
+    throw new Error(`isolated fixture cannot checkout approved source ${WORKTREE_BASE}: ${error.message}`);
+  }
+  const initialHead = git(root, ["rev-parse", "HEAD"]);
+  assert.equal(initialHead, WORKTREE_BASE, "isolated fixture must start at the approved historical source");
+  assert.equal(git(root, ["rev-parse", "--abbrev-ref", "HEAD"]), "HEAD", "isolated fixture must be detached at the historical source");
   const planTarget = path.join(root, "registry/release-plan.json");
   const expectedPlan = readFileSync(path.join(REPOSITORY_ROOT, "registry/release-plan.json"), "utf8");
-  const existingPlan = readFileSync(planTarget, "utf8");
+  const existingPlan = existsSync(planTarget) ? readFileSync(planTarget, "utf8") : null;
   if (existingPlan !== expectedPlan) {
     writeFileSync(planTarget, expectedPlan);
     execFileSync("git", ["-C", root, "add", "registry/release-plan.json"], { encoding: "utf8", stdio: "ignore" });
     execFileSync("git", ["-C", root, "-c", "user.name=Release Prep Test", "-c", "user.email=release-prep-test@example.invalid", "commit", "-m", "fixture approved release plan"], { encoding: "utf8", stdio: "ignore" });
   }
   assert.equal(git(root, ["status", "--porcelain"]), "", "isolated fixture must be clean after plan checkout");
+  assert.equal(git(root, ["rev-parse", "--abbrev-ref", "HEAD"]), "HEAD", "isolated fixture must remain detached after plan checkout");
   return root;
 }
 
