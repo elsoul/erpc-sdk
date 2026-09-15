@@ -15,13 +15,15 @@ import { existsSync, lstatSync, readFileSync, realpathSync, statSync, writeFileS
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+import { computeDigest as computeDexDigest, validateCatalog as validateDexCatalog } from "./dex-catalog.mjs";
+import { OUTPUTS as DEX_GENERATED_OUTPUTS } from "./generate-dex-catalog.mjs";
 import { computeDigest, validateCatalog } from "./token-catalog.mjs";
 
 const MODULE_DIRECTORY = dirname(fileURLToPath(import.meta.url));
 export const REPOSITORY_ROOT = resolve(MODULE_DIRECTORY, "..");
 export const BASELINE_VERSION = "0.6.0";
 export const APPROVED_VERSION = "0.7.0";
-export const APPROVED_SOURCE_SHA = "1eed9b24790dfe8267173a06ffdf3155e7c14057";
+export const APPROVED_SOURCE_SHA = "30c30d121422210d755c99c045d74b471e7d837f";
 export const PAIRED_TAG_PEEL = "d77169fbf9e927d51113af7a2ee51a5c9b10f3fc";
 export const RELEASE_PLAN_RELATIVE_PATH = "registry/release-plan.json";
 export const CHANGELOG_RELATIVE_PATH = "CHANGELOG.md";
@@ -30,6 +32,9 @@ export const RELEASE_BASELINE_TAGS = Object.freeze({ root: "v0.6.0", go: "packag
 export const APPROVED_NOTES = Object.freeze([
   "Add an offline token catalog to all five SDKs, covering 39 assets and 60 deployments on Ethereum, Solana, and Avalanche C-Chain.",
   "Add shared asset and deployment lookups, chain and currency filters, address and symbol searches, alias constants, and lifecycle metadata backed by deterministic generated data.",
+  "Add an offline DEX and pool catalog to all five SDKs, with four DEX deployments, four pools, three explicit native-wrap definitions, shared lookups, and alias constants.",
+  "Add RPC-only, local exact-input quotes for Ethereum Uniswap V2 WETH/USDC and Avalanche C-Chain LFJ Joe V1 WAVAX/USDC; Solana Orca and Raydium pools remain lookup-only.",
+  "Use Rust num-bigint 0.5.1 with explicit uint256 bounds for quote arithmetic, and update the workspace-locked rustls dependency to 0.23.45.",
 ]);
 
 export const PACKAGE_VERSION_PATHS = Object.freeze([
@@ -49,6 +54,14 @@ export const CATALOG_RUNTIME_PATHS = Object.freeze([
   "packages/go/token_catalog_generated.go",
   "packages/ruby/lib/erpc_sdk/generated/token_catalog.rb",
 ]);
+
+export const DEX_CATALOG_SOURCE_PATH = "registry/dex-catalog.json";
+export const DEX_CATALOG_GENERATED_PATHS = Object.freeze(Object.values(DEX_GENERATED_OUTPUTS));
+export const DEX_CATALOG_RUNTIME_PATHS = Object.freeze([
+  DEX_CATALOG_SOURCE_PATH,
+  ...DEX_CATALOG_GENERATED_PATHS,
+]);
+const ALL_CATALOG_RUNTIME_PATHS = new Set([...CATALOG_RUNTIME_PATHS, ...DEX_CATALOG_RUNTIME_PATHS]);
 
 export const PREPARATION_OUTPUT_PATHS = Object.freeze([
   ...PACKAGE_VERSION_PATHS,
@@ -208,7 +221,7 @@ function planForRoot(root) {
   if (!existsSync(target)) fail("registry/release-plan.json is required; approved version defaults are disabled", STATUS.INVALID_PLAN);
   const plan = readJson(root, RELEASE_PLAN_RELATIVE_PATH);
   if (!plan || typeof plan !== "object" || Array.isArray(plan)) fail("release-plan.json must be an object", STATUS.INVALID_PLAN);
-  if (plan.sourceSha !== APPROVED_SOURCE_SHA || plan.baselineVersion !== BASELINE_VERSION || plan.targetVersion !== APPROVED_VERSION) {
+  if (plan.sourceSha !== APPROVED_SOURCE_SHA || plan.approvedSourceSha !== APPROVED_SOURCE_SHA || plan.baselineVersion !== BASELINE_VERSION || plan.targetVersion !== APPROVED_VERSION) {
     fail("release-plan.json provenance does not match the approved 0.7.0 plan", STATUS.INVALID_PLAN);
   }
   if ((plan.basisSha !== undefined && plan.basisSha !== APPROVED_SOURCE_SHA)
@@ -223,6 +236,8 @@ function planForRoot(root) {
   if (!plan.packageChangeProvenanceGuard || plan.packageChangeProvenanceGuard.unexpectedPackageCodeChangesInvalidatePlan !== true) {
     fail("release-plan.json is missing its package-change provenance guard", STATUS.INVALID_PLAN);
   }
+  if (JSON.stringify(plan.catalogRuntimePaths) !== JSON.stringify(CATALOG_RUNTIME_PATHS)) fail("release-plan.json token catalog runtime paths do not match the approved paths", STATUS.INVALID_PLAN);
+  if (JSON.stringify(plan.dexCatalogRuntimePaths) !== JSON.stringify(DEX_CATALOG_RUNTIME_PATHS)) fail("release-plan.json DEX catalog runtime paths do not match the approved paths", STATUS.INVALID_PLAN);
   return plan;
 }
 
@@ -238,20 +253,21 @@ function isClean(root, runner) {
 
 function listChangedPaths(root, expectedHead, runner) {
   const result = runGit(root, ["diff", "--name-only", expectedHead, "--"], runner, { allowFailure: true });
-  const names = result.status === 0 ? asText(result.stdout).split(/\r?\n/u).filter(Boolean) : [];
+  if (result.status !== 0) fail(`git diff --name-only failed: ${asText(result.stderr).trim() || `exit ${result.status}`}`, STATUS.INVALID_INPUT);
+  const names = asText(result.stdout).split(/\r?\n/u).filter(Boolean);
   const status = runGit(root, ["status", "--porcelain", "--untracked-files=all"], runner, { allowFailure: true });
-  if (status.status === 0) {
-    for (const line of asText(status.stdout).split(/\r?\n/u).filter(Boolean)) {
-      const candidate = line.slice(3).trim();
-      if (candidate && !names.includes(candidate)) names.push(candidate);
-    }
+  if (status.status !== 0) fail(`git status failed: ${asText(status.stderr).trim() || `exit ${status.status}`}`, STATUS.INVALID_INPUT);
+  for (const line of asText(status.stdout).split(/\r?\n/u).filter(Boolean)) {
+    const candidate = line.slice(3).trim();
+    if (candidate && !names.includes(candidate)) names.push(candidate);
   }
   return names.sort();
 }
 
 function listChangedBetween(root, from, to, runner) {
   const result = runGit(root, ["diff", "--name-only", `${from}`, `${to}`, "--"], runner, { allowFailure: true });
-  return result.status === 0 ? asText(result.stdout).split(/\r?\n/u).filter(Boolean).sort() : [];
+  if (result.status !== 0) fail(`git diff --name-only failed: ${asText(result.stderr).trim() || `exit ${result.status}`}`, STATUS.INVALID_INPUT);
+  return asText(result.stdout).split(/\r?\n/u).filter(Boolean).sort();
 }
 
 function isShippingPackageCode(relativePath) {
@@ -267,15 +283,47 @@ function gitFile(root, commitSha, relativePath, runner) {
   return result.status === 0 ? asText(result.stdout) : null;
 }
 
-function catalogDigestAtCommit(root, commitSha, runner) {
-  const source = gitFile(root, commitSha, "registry/token-catalog.json", runner);
-  if (source === null) return null;
+function gitHistoricalFile(root, commitSha, relativePath, runner) {
+  const listing = runGit(root, ["ls-tree", "--name-only", commitSha, "--", relativePath], runner, { allowFailure: true });
+  if (listing.status !== 0) fail(`cannot inspect historical ${relativePath} at ${commitSha}`, STATUS.INVALID_INPUT);
+  const paths = asText(listing.stdout).split(/\r?\n/u).filter(Boolean);
+  if (!paths.includes(relativePath)) return { present: false, source: null };
+  const result = runGit(root, ["show", `${commitSha}:${relativePath}`], runner, { allowFailure: true });
+  if (result.status !== 0) fail(`cannot read historical ${relativePath} at ${commitSha}`, STATUS.INVALID_INPUT);
+  return { present: true, source: asText(result.stdout) };
+}
+
+function parseTokenCatalogSource(source, label) {
   try {
     const catalog = JSON.parse(source);
     validateCatalog(catalog);
-    return computeDigest(catalog);
+    return catalog;
   } catch (error) {
-    fail(`catalog at released commit ${commitSha} failed validation: ${error.message}`, STATUS.INVALID_INPUT);
+    fail(`${label} failed validation: ${error.message}`, STATUS.INVALID_INPUT);
+  }
+}
+
+function tokenCatalogAtCommit(root, commitSha, runner) {
+  const historical = gitHistoricalFile(root, commitSha, "registry/token-catalog.json", runner);
+  if (!historical.present) fail(`token catalog is unavailable at ${commitSha}`, STATUS.INVALID_INPUT);
+  return parseTokenCatalogSource(historical.source, `token catalog at ${commitSha}`);
+}
+
+function catalogDigestAtCommit(root, commitSha, runner) {
+  const historical = gitHistoricalFile(root, commitSha, "registry/token-catalog.json", runner);
+  if (!historical.present) return null;
+  return computeDigest(parseTokenCatalogSource(historical.source, `catalog at released commit ${commitSha}`));
+}
+
+function dexCatalogDigestAtCommit(root, commitSha, runner) {
+  const historical = gitHistoricalFile(root, commitSha, DEX_CATALOG_SOURCE_PATH, runner);
+  if (!historical.present) return null;
+  try {
+    const catalog = JSON.parse(historical.source);
+    validateDexCatalog(catalog, { tokenCatalog: tokenCatalogAtCommit(root, commitSha, runner) });
+    return computeDexDigest(catalog);
+  } catch (error) {
+    fail(`DEX catalog at released commit ${commitSha} failed validation: ${error.message}`, STATUS.INVALID_INPUT);
   }
 }
 
@@ -292,6 +340,30 @@ function runtimeEffects(root, baselineSha, expectedHead, actualHead, currentCata
     if (before !== after) changedGeneratedPaths.push(relativePath);
   }
   return { baselineCatalogDigest, catalogDigestChanged, changedGeneratedPaths, changedRuntimePaths: [...(catalogDigestChanged && changedPaths.includes("registry/token-catalog.json") ? ["registry/token-catalog.json"] : []), ...changedGeneratedPaths] };
+}
+
+function dexRuntimeEffects(root, baselineSha, expectedHead, actualHead, currentCatalog, changedPaths, runner) {
+  const baselineCatalogDigest = dexCatalogDigestAtCommit(root, baselineSha, runner);
+  const catalogDigestChanged = baselineCatalogDigest === null || baselineCatalogDigest !== currentCatalog.digest;
+  const changedGeneratedPaths = [];
+  for (const relativePath of DEX_CATALOG_GENERATED_PATHS) {
+    if (!changedPaths.includes(relativePath)) continue;
+    const before = gitFile(root, baselineSha, relativePath, runner);
+    const after = expectedHead === actualHead ? (() => {
+      try { return readFileSync(repositoryPath(root, relativePath, "DEX runtime output", { allowMissing: false }), "utf8"); } catch { return null; }
+    })() : gitFile(root, expectedHead, relativePath, runner);
+    if (before !== after) changedGeneratedPaths.push(relativePath);
+  }
+  return {
+    baselineCatalogDigest,
+    baselineCatalogPresent: baselineCatalogDigest !== null,
+    catalogDigestChanged,
+    changedGeneratedPaths,
+    changedRuntimePaths: [
+      ...(catalogDigestChanged && changedPaths.includes(DEX_CATALOG_SOURCE_PATH) ? [DEX_CATALOG_SOURCE_PATH] : []),
+      ...changedGeneratedPaths,
+    ],
+  };
 }
 
 function normalizeVersionSource(text, relativePath) {
@@ -349,14 +421,15 @@ function managedVersionOnlyChange(root, relativePath, fromSha, toSha, runner, { 
 
 function classifyShippingPaths(root, changedPaths, fromSha, toSha, runner, { targetIsWorkingTree = false } = {}) {
   return changedPaths.filter((relativePath) => {
-    if (CATALOG_RUNTIME_PATHS.includes(relativePath)) return false;
+    if (ALL_CATALOG_RUNTIME_PATHS.has(relativePath)) return false;
     if (managedVersionOnlyChange(root, relativePath, fromSha, toSha, runner, { targetIsWorkingTree })) return false;
+    if (relativePath === "Cargo.lock") return true;
     return isShippingPackageCode(relativePath);
   }).sort();
 }
 
 function isReleaseRelevantPath(relativePath) {
-  return CATALOG_RUNTIME_PATHS.includes(relativePath)
+  return ALL_CATALOG_RUNTIME_PATHS.has(relativePath)
     || PACKAGE_VERSION_PATHS.includes(relativePath)
     || relativePath === CHANGELOG_RELATIVE_PATH
     || isShippingPackageCode(relativePath);
@@ -447,7 +520,10 @@ function tagHistory(root, expectedHead, runner) {
   const problems = [];
   const versions = new Set();
   const validPaired = [];
-  const refs = gitText(root, ["for-each-ref", "--format=%(refname:strip=2)", "refs/tags"], runner, { allowFailure: true });
+  const refResult = runGit(root, ["for-each-ref", "--format=%(refname:strip=2)", "refs/tags"], runner, { allowFailure: true });
+  if (refResult.status !== 0) fail(`git tag enumeration failed: ${asText(refResult.stderr).trim() || `exit ${refResult.status}`}`, STATUS.INVALID_INPUT);
+  const refs = asText(refResult.stdout).trim();
+  const listedRefs = new Set(refs.split(/\r?\n/u).filter(Boolean));
   for (const ref of refs.split(/\r?\n/u).filter(Boolean)) {
     const match = /^(?:v|packages\/go\/v)(\d+\.\d+\.\d+)$/u.exec(ref);
     if (match && STABLE_VERSION_RE.test(match[1])) versions.add(match[1]);
@@ -466,6 +542,8 @@ function tagHistory(root, expectedHead, runner) {
     const goExists = tagExists(root, goTag, runner);
     const rootPeel = rootExists ? tagPeel(root, rootTag, runner) : null;
     const goPeel = goExists ? tagPeel(root, goTag, runner) : null;
+    if (listedRefs.has(rootTag) && (!rootExists || rootPeel === null)) problems.push(`listed tag ${rootTag} could not be resolved`);
+    if (listedRefs.has(goTag) && (!goExists || goPeel === null)) problems.push(`listed tag ${goTag} could not be resolved`);
     const pair = { version, rootTag, goTag, rootExists, goExists, rootPeel, goPeel, paired: rootExists && goExists && rootPeel === goPeel };
     pairs.push(pair);
     const parsed = parseStableVersion(version);
@@ -519,6 +597,28 @@ function boundedCatalogDigest(root) {
   };
 }
 
+function boundedDexCatalogDigest(root) {
+  const target = repositoryPath(root, DEX_CATALOG_SOURCE_PATH, "canonical DEX catalog", { allowMissing: false });
+  let catalog;
+  try {
+    catalog = JSON.parse(readFileSync(target, "utf8"));
+    const tokenTarget = repositoryPath(root, "registry/token-catalog.json", "canonical token catalog", { allowMissing: false });
+    const referencedTokenCatalog = parseTokenCatalogSource(readFileSync(tokenTarget, "utf8"), "canonical token catalog");
+    validateDexCatalog(catalog, { tokenCatalog: referencedTokenCatalog });
+  } catch (error) {
+    fail(`canonical DEX catalog failed validation: ${error.message}`, STATUS.INVALID_INPUT);
+  }
+  return {
+    digest: computeDexDigest(catalog),
+    catalogVersion: catalog.catalogVersion,
+    asOfDate: catalog.manualAsOf,
+    dexDeploymentCount: catalog.dexDeployments.length,
+    poolDefinitionCount: catalog.poolDefinitions.length,
+    nativeWrapDefinitionCount: catalog.nativeWrapDefinitions.length,
+    aliasCount: catalog.aliases.length,
+  };
+}
+
 function statusReport(root, expectedHead, options, runner) {
   validSha(expectedHead, "--expected-head");
   const requestedVersion = options.version ?? undefined;
@@ -544,20 +644,25 @@ function statusReport(root, expectedHead, options, runner) {
     ? listChangedBetween(root, tags.latestPaired.peelCommit, expectedHead, runner)
     : [];
   const catalog = boundedCatalogDigest(root);
+  const dexCatalog = boundedDexCatalogDigest(root);
   const releaseViewPaths = workingChangedPaths.length > 0
     ? [...new Set([...releasedBaselinePaths, ...workingChangedPaths])].sort()
     : releasedBaselinePaths;
   const runtime = tags.latestPaired
     ? runtimeEffects(root, tags.latestPaired.peelCommit, expectedHead, actualHead, catalog, releaseViewPaths, runner)
     : { baselineCatalogDigest: null, catalogDigestChanged: true, changedGeneratedPaths: [], changedRuntimePaths: [] };
+  const dexRuntime = tags.latestPaired
+    ? dexRuntimeEffects(root, tags.latestPaired.peelCommit, expectedHead, actualHead, dexCatalog, releaseViewPaths, runner)
+    : { baselineCatalogDigest: null, baselineCatalogPresent: false, catalogDigestChanged: true, changedGeneratedPaths: [], changedRuntimePaths: [] };
   const releaseSemanticPaths = [
-    ...releaseViewPaths.filter((file) => !CATALOG_RUNTIME_PATHS.includes(file)),
+    ...releaseViewPaths.filter((file) => !ALL_CATALOG_RUNTIME_PATHS.has(file)),
     ...runtime.changedRuntimePaths,
+    ...dexRuntime.changedRuntimePaths,
   ];
   const relevantChangedPaths = releaseSemanticPaths.filter(isReleaseRelevantPath);
-  const runtimeOnly = relevantChangedPaths.length > 0 && relevantChangedPaths.every((file) => CATALOG_RUNTIME_PATHS.includes(file));
-  const releaseRuntimeOnly = runtime.changedRuntimePaths.length > 0
-    && releaseSemanticPaths.filter(isReleaseRelevantPath).every((file) => CATALOG_RUNTIME_PATHS.includes(file));
+  const runtimeOnly = relevantChangedPaths.length > 0 && relevantChangedPaths.every((file) => ALL_CATALOG_RUNTIME_PATHS.has(file));
+  const releaseRuntimeOnly = (runtime.changedRuntimePaths.length + dexRuntime.changedRuntimePaths.length) > 0
+    && releaseSemanticPaths.filter(isReleaseRelevantPath).every((file) => ALL_CATALOG_RUNTIME_PATHS.has(file));
   const historyShippingChanges = planState.unexpectedPaths ?? [];
   const currentUnexpectedPackageChanges = classifyShippingPaths(root, workingChangedPaths, expectedHead, expectedHead, runner, { targetIsWorkingTree: true });
   const releasedShippingChanges = tags.latestPaired
@@ -646,15 +751,20 @@ function statusReport(root, expectedHead, options, runner) {
     changedPaths,
     releasedBaselinePaths,
     runtime,
+    dexRuntime,
     releaseSemanticPaths,
     runtimeOnly,
     releaseRuntimeOnly,
     releasedBaseline: tags.latestPaired ? { version: tags.latestPaired.version, peelCommit: tags.latestPaired.peelCommit } : null,
     shippingChanges,
     catalog,
+    dexCatalog,
     plan: {
       id: plan.planId ?? "erpc-sdk-0.7.0-weekly-maintenance",
       sourceSha: plan.sourceSha,
+      approvedSourceSha: plan.approvedSourceSha,
+      catalogRuntimePaths: [...plan.catalogRuntimePaths],
+      dexCatalogRuntimePaths: [...plan.dexCatalogRuntimePaths],
       applies: planCanSupplyVersion,
       changedSinceSource: planState.changedPaths,
       unexpectedPackageChanges: [...new Set([...(planState.unexpectedPaths ?? []), ...currentUnexpectedPackageChanges])].sort(),
@@ -676,6 +786,8 @@ function statusReport(root, expectedHead, options, runner) {
       semanticReleasePaths: releaseSemanticPaths,
       catalogDigest: catalog.digest,
       runtime: { catalogDigestChanged: runtime.catalogDigestChanged, changedGeneratedPaths: runtime.changedGeneratedPaths },
+      dexCatalogDigest: dexCatalog.digest,
+      dexRuntime: { catalogDigestChanged: dexRuntime.catalogDigestChanged, changedGeneratedPaths: dexRuntime.changedGeneratedPaths },
       changelog: { hasVersion: changelog.hasVersion, hasNotes: changelog.substantive },
     }),
   };
@@ -842,7 +954,13 @@ export function prepareRelease(options = {}) {
   if (!approvedPlanCandidate && !runtimePatchCandidate && !before.changelog.hasNotes) {
     fail("manual release preparation requires meaningful existing Unreleased notes", STATUS.CHANGELOG_REQUIRED);
   }
-  const runtimeNotes = [`Refresh the offline token catalog runtime data for catalog ${before.catalog.catalogVersion} (${before.catalog.digest}), covering ${before.catalog.assetCount} assets and ${before.catalog.deploymentCount} deployments across the five SDKs.`];
+  const runtimeNotes = [];
+  if (before.runtime.changedRuntimePaths.length > 0) {
+    runtimeNotes.push(`Refresh the offline token catalog runtime data for catalog ${before.catalog.catalogVersion} (${before.catalog.digest}), covering ${before.catalog.assetCount} assets and ${before.catalog.deploymentCount} deployments across the five SDKs.`);
+  }
+  if (before.dexRuntime.changedRuntimePaths.length > 0) {
+    runtimeNotes.push(`Refresh the offline DEX and pool catalog runtime data for catalog ${before.dexCatalog.catalogVersion} (${before.dexCatalog.digest}), covering ${before.dexCatalog.dexDeploymentCount} DEX deployments, ${before.dexCatalog.poolDefinitionCount} pools, and ${before.dexCatalog.nativeWrapDefinitionCount} native-wrap definitions across the five SDKs.`);
+  }
   const notesForCandidate = approvedPlanCandidate ? (plan.approvedNotes ?? APPROVED_NOTES) : runtimePatchCandidate ? runtimeNotes : APPROVED_NOTES;
   const writes = prepareWrites(root, version, releaseDate, changelogPath, { ...plan, approvedNotes: notesForCandidate, appendNotes: runtimePatchCandidate });
   assertOutputAllowlist(writes.changed.map(([relativePath]) => relativePath), changelogPath);
