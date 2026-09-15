@@ -5,4 +5,7 @@
 //! file itself must be refreshed with the registry generator.
 
 #[allow(missing_docs)]
+pub mod dex_catalog;
+
+#[allow(missing_docs)]
 pub mod token_catalog;

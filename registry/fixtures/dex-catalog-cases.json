@@ -1,0 +1,160 @@
+{
+  "schemaVersion": 1,
+  "catalogVersion": "1.0.0",
+  "canonicalCounts": {
+    "dexDeployments": 4,
+    "poolDefinitions": 4,
+    "nativeWrapDefinitions": 3,
+    "aliases": 8
+  },
+  "codegen": [
+    {
+      "name": "literal-payload",
+      "dexName": "Quoted \\\"DEX\\\" \\\\ unicode ☃ ` ${marker}",
+      "poolAddress": "0x0000000000000000000000000000000000000001"
+    }
+  ],
+  "lookupCases": [
+    {
+      "function": "getDexDeployment",
+      "input": "dex-deployment-0001",
+      "result": "dex-deployment-0001"
+    },
+    {
+      "function": "getPoolDefinition",
+      "input": "pool-0001",
+      "result": "pool-0001"
+    },
+    {
+      "function": "findPoolDefinitionByAddress",
+      "chainId": "eip155:1",
+      "address": "0xB4E16D0168E52D35CACD2C6185B44281EC28C9DC",
+      "result": "pool-0001"
+    },
+    {
+      "function": "findPoolDefinitionsByPair",
+      "chainId": "eip155:1",
+      "token0DeploymentId": "deployment-0002",
+      "token1DeploymentId": "deployment-0008",
+      "result": ["pool-0001"]
+    },
+    {
+      "function": "listPoolDefinitions",
+      "filter": {
+        "chainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+        "tokenDeploymentId": "deployment-0006"
+      },
+      "result": ["pool-0003", "pool-0004"]
+    },
+    {
+      "function": "getNativeWrapDefinition",
+      "input": "deployment-0001",
+      "result": "native-wrap-0001"
+    },
+    {
+      "function": "findPoolDefinitionByAddress",
+      "chainId": "unknown:chain",
+      "address": "not-an-address",
+      "result": null
+    },
+    {
+      "function": "findPoolDefinitionsByPair",
+      "chainId": "unknown:chain",
+      "token0DeploymentId": "deployment-0002",
+      "token1DeploymentId": "deployment-0008",
+      "result": []
+    },
+    {
+      "function": "getNativeWrapDefinition",
+      "input": "native-wrap-0001",
+      "result": null
+    }
+  ],
+  "history": {
+    "previous": "the previous validated catalog snapshot",
+    "validMigration": {
+      "operation": "setPoolStatus",
+      "poolDefinitionId": "pool-0001",
+      "value": "legacy"
+    },
+    "invalidCases": [
+      {
+        "name": "remove historical DEX ID",
+        "operation": "removeDexDeployment",
+        "expectError": "historical DEX deployment ID removed"
+      },
+      {
+        "name": "rebind historical pool address",
+        "operation": "rebindPool",
+        "expectError": "historical pool definition identity changed"
+      },
+      {
+        "name": "retarget historical alias",
+        "operation": "retargetAlias",
+        "expectError": "historical alias retargeted"
+      }
+    ]
+  },
+  "invalidCases": [
+    {
+      "name": "extra catalog key",
+      "operation": "addExtraCatalogKey",
+      "expectError": "catalog has an unknown key"
+    },
+    {
+      "name": "unknown chain",
+      "operation": "setUnknownChain",
+      "expectError": "chainId is unsupported"
+    },
+    {
+      "name": "uppercase EVM program",
+      "operation": "uppercaseEvmProgram",
+      "expectError": "lowercase 20-byte EVM address"
+    },
+    {
+      "name": "invalid Solana pool address",
+      "operation": "invalidSolanaPoolAddress",
+      "expectError": "32-byte Solana base58 address"
+    },
+    {
+      "name": "cross-chain pool",
+      "operation": "setPoolWrongChain",
+      "expectError": "chain does not match"
+    },
+    {
+      "name": "native pool token",
+      "operation": "setNativePoolToken",
+      "expectError": "must be a token contract or mint"
+    },
+    {
+      "name": "duplicate pool address",
+      "operation": "duplicatePoolAddress",
+      "expectError": "duplicate normalized pool address binding"
+    },
+    {
+      "name": "pool replacement cycle",
+      "operation": "poolReplacementCycle",
+      "expectError": "pool replacement cycle"
+    },
+    {
+      "name": "wrong adapter fee shape",
+      "operation": "setSolanaFee",
+      "expectError": "unsupported adapter fee fields must be null"
+    },
+    {
+      "name": "duplicate alias",
+      "operation": "duplicateAlias",
+      "expectError": "duplicate alias"
+    },
+    {
+      "name": "wrap cross-chain",
+      "operation": "setWrapWrongChain",
+      "expectError": "nativeWrapDefinitions.*wrong chain"
+    },
+    {
+      "name": "wrap wrong asset relation",
+      "operation": "setWrapWrongAsset",
+      "expectError": "wrapped side must be the native asset's wrapped representation"
+    }
+  ]
+}

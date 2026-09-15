@@ -23,7 +23,7 @@ module ERPC
   )
 
   class Client
-    attr_reader :solana, :ethereum, :avalanche, :price, :account, :usage
+    attr_reader :solana, :ethereum, :avalanche, :price, :account, :usage, :swap
 
     def initialize(config, http_adapter: nil, websocket_factory: nil)
       adapter = http_adapter || NetHttpAdapter.new
@@ -136,6 +136,10 @@ module ERPC
           )
         ),
         subscriptions: EthereumSubscriptions.new(avalanche_ws)
+      )
+      @swap = SwapClient.new(
+        ethereum_transport: ethereum_transport,
+        avalanche_transport: avalanche_transport
       )
       @price = PriceClient.new(
         RestTransport.new(

@@ -19,6 +19,7 @@ import {
   EthereumSubscriptions,
   SolanaSubscriptions,
 } from './subscriptions'
+import { createSwapClient, type SwapClient } from './swap'
 import { HttpJsonRpcTransport } from './transport/http'
 import { RestTransport } from './transport/rest'
 import { WebSocketJsonRpcTransport } from './transport/websocket'
@@ -42,6 +43,7 @@ export interface ErpcClient {
   readonly ethereum: ErpcEthereumClient
   readonly price: PriceClient
   readonly solana: ErpcSolanaClient
+  readonly swap: SwapClient
   readonly usage: UsageClient
   close(): void
 }
@@ -130,6 +132,10 @@ export const createErpcClient = (config: ErpcClientConfig): ErpcClient => {
     }),
     subscriptions: new EthereumSubscriptions(avalancheWebSocket),
   }
+  const swap = createSwapClient({
+    ethereum: ethereumTransport,
+    avalanche: avalancheTransport,
+  })
 
   return {
     solana,
@@ -137,6 +143,7 @@ export const createErpcClient = (config: ErpcClientConfig): ErpcClient => {
     avalanche,
     price: new PriceClient(priceTransport),
     account: new AccountClient(accountTransport),
+    swap,
     usage: new UsageClient(userTransport),
     close: () => {
       solana.subscriptions.close()

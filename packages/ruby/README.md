@@ -57,6 +57,60 @@ keeping legacy, winding-down, and retired records visible. The canonical
 registry and its evidence are documented in the [token catalog registry
 README](https://github.com/elsoul/erpc-sdk/blob/main/registry/README.md).
 
+## Offline DEX and pool catalog
+
+The source tree bundles the generated DEX deployment, pool, and native/wrapped
+token catalog. These lookups are synchronous and offline, and the returned
+records are frozen. The published `0.6.0` gem predates these exports; this
+source-tree feature is planned for unreleased `0.7.0`.
+
+```ruby
+pool = ERPC::DexCatalog.get_pool_definition("pool-0001")
+puts pool.fetch(:address)
+puts ERPC::Dexes::Ethereum.fetch(:UNISWAP_V2)
+puts ERPC::Pools::AvalancheC.fetch(:LFJ_LEGACY_WAVAX_USDC)
+
+matches = ERPC::DexCatalog.find_pool_definitions_by_pair(
+  ERPC::DexChainIDs::SOLANA_MAINNET,
+  "deployment-0013",
+  "deployment-0006"
+)
+```
+
+The catalog currently contains Uniswap V2 on Ethereum and LFJ legacy
+constant-product on Avalanche C-Chain, plus lookup-only Orca Whirlpools and
+Raydium CLMM records on Solana. Pair lookup is unordered and returns stable
+pool-ID order. `get_native_wrap_definition` accepts a native token deployment
+ID and returns its chain-bound wrapped deployment.
+
+## RPC-only swap quotes
+
+`erpc.swap.quote_exact_input` performs an exact-input quote for the two EVM
+constant-product pools through the client's configured RPC transports. It
+reads the factory, pool, reserves, and block snapshot using the EIP-1898 block
+hash selector, validates the final headers, and computes the result locally.
+Amounts and block quantities are decimal strings; no hosted aggregator or
+additional API is required.
+
+```ruby
+quote = erpc.swap.quote_exact_input(
+  chainId: ERPC::DexChainIDs::ETHEREUM_MAINNET,
+  poolDefinitionId: ERPC::Pools::Ethereum.fetch(:UNISWAP_V2_USDC_WETH),
+  inputTokenDeploymentId: ERPC::Tokens::Ethereum.fetch(:WETH),
+  outputTokenDeploymentId: ERPC::Tokens::Ethereum.fetch(:USDC),
+  amountIn: "1000000000000000000"
+)
+
+puts quote.fetch("amountOut")
+```
+
+`SwapQuoteError#code` exposes deterministic validation codes such as
+`SWAP_STATE_STALE` and `SWAP_UNSUPPORTED_ADAPTER`. Existing transport,
+timeout, and JSON-RPC errors retain their native class. Solana pool records
+are available for lookup; their CLMM adapters are not yet quote-enabled.
+Transaction building, signing, sending, route search, native wrapping, and
+cross-chain bridging are outside this quote API.
+
 Both exact wire names (`getSlot`, `eth_chainId`) and idiomatic snake-case
 aliases (`get_slot`, `eth_chain_id`) create inert requests. Network I/O starts
 only when `send` is called. `request` restricts calls to the namespace catalog;
