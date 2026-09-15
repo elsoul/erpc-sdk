@@ -1,12 +1,16 @@
 # Token catalog roadmap
 
-Status: the bounded offline token catalog, deterministic code generation, all five package outputs, native parity capture, and the Steiner and Cyan catalog reviews are implemented and recorded as passed on 2026-09-15. This status covers the catalog gate and does not establish overall release or legal readiness.
+Status: the bounded offline token catalog, deterministic code generation, all five package outputs, native parity capture, and the Steiner and Cyan catalog reviews are implemented and recorded as passed on 2026-09-15. The catalog is on `main` and planned for the unreleased `0.7.0` package. The current published package baseline, latest GitHub release, and package manifests remain `0.6.0`. This status covers the catalog gate and does not establish overall release or legal readiness.
 
-The weekly maintenance implementation is staged as reviewable tooling:
+The weekly maintenance implementation is installed as reviewable tooling:
 [`weekly-maintenance.md`](./weekly-maintenance.md),
 [`release-plan.json`](./release-plan.json), `release-prep.mjs`,
-`maintenance-pr.mjs`, and `ci-catalog-baseline.mjs`. It remains offline and
-human-approved; it does not publish packages or create release tags.
+`maintenance-pr.mjs`, and `ci-catalog-baseline.mjs`. The installed workflows
+schedule an observation PR for Tuesday at 03:17 UTC and a release-preparation
+PR for Thursday at 03:47 UTC. Their observer reads configured RPC endpoints
+and reviewed HTTP sources online; release inspection and the catalog runtime
+remain offline. The bot creates or updates reviewable PRs and CI. Package
+publication and release approval remain human-invoked actions.
 
 ## Current acceptance gates
 
@@ -27,22 +31,27 @@ human-approved; it does not publish packages or create release tags.
 - Refresh native package snapshots only after each package owner runs its own compiled tests, then rerun the central verifier and retain artifact and snapshot hashes.
 - Resolve the documented source gaps with a new bounded evidence packet before adding records.
 
+## Operational status
+
+### Weekly workflow and publication
+
+The Tuesday observation and Thursday release-preparation schedules, changelog
+candidate updates, reviewable PR writers, and CI dispatch are installed. They
+prepare evidence and candidates for review; package publication, release
+approval, merge, and tag creation remain human-invoked actions.
+
 ## Explicitly pending future work
-
-### Weekly releases
-
-Weekly automatic publication, changelog automation, and release scheduling
-remain pending a separate human-approved release design and future release
-review. The current preparation tools create a candidate and review evidence;
-current scripts remain manually invoked.
 
 ### Rankings and coverage
 
 Ranking, “top” labels, market data, complete stablecoin coverage, and freshness claims remain pending a source-backed methodology and review. The current catalog is a bounded factual seed.
 
-### RPC-local swap flow
+### DEX, pools, and RPC-local swap flow
 
-Quotes, routes, and transaction builds must use configured RPC endpoints and local logic. Hosted Jupiter or 0x dependencies are not part of this registry. A production swap implementation remains pending its separate contract, test vectors, and money-path gate.
+DEX and pool records plus quotes, routes, and transaction builds remain pending
+their separate contract, test vectors, and money-path gate. They must use
+configured RPC endpoints and local logic. Hosted Jupiter or 0x dependencies are
+not part of this registry.
 
 ### Separate bridging research
 
@@ -56,7 +65,10 @@ License, dependency, SBOM, security, and release-readiness review must use the E
 
 | Date | Change | Evidence |
 | --- | --- | --- |
+| 2026-09-15 | PR #10 merged: initial bounded token catalog and five-language outputs | [PR #10](https://github.com/elsoul/erpc-sdk/pull/10), `token-catalog-2026-09-15.json` |
+| 2026-09-15 | PR #11 merged: weekly maintenance and release-preparation implementation | [PR #11](https://github.com/elsoul/erpc-sdk/pull/11), `weekly-maintenance.md`, `release-plan.json` |
+| 2026-09-15 | PR #12 merged: initial observer findings and maintenance evidence | [PR #12](https://github.com/elsoul/erpc-sdk/pull/12), `maintenance-review.json` |
 | 2026-09-15 | Initial bounded catalog seed, 39 assets, 60 deployments, and 60 aliases; deterministic five-language emitters and history guard prepared | `token-catalog-2026-09-15.json` |
 | 2026-09-15 | Native parity passed across all five compiled packages; 338 public-API query rows and 60 compiled alias-constant checks per language; PayPal USD display-name correction recorded | `token-catalog-2026-09-15.json`, `PROVENANCE.md` |
 | 2026-09-15 | Steiner and Cyan catalog reviews passed for the bounded offline registry scope | `token-catalog-2026-09-15.json` |
-| 2026-09-15 | Weekly maintenance release preparation, released-tag history checks, PR-base catalog binding, release command regression coverage, and EU OSS planning evidence staged for review | `weekly-maintenance.md`, `release-plan.json`, `evidence/weekly-maintenance-eu-oss-2026-09-15.json` |
+| 2026-09-15 | Weekly maintenance release preparation, released-tag history checks, PR-base catalog binding, release command regression coverage, and EU OSS planning evidence installed and recorded | `weekly-maintenance.md`, `release-plan.json`, `evidence/weekly-maintenance-eu-oss-2026-09-15.json` |

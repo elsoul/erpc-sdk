@@ -25,11 +25,17 @@ analytics, subscriptions, and account balance information.
 
 | Language | Package | Status |
 | --- | --- | --- |
-| TypeScript | [`@elsoul/erpc-sdk`](https://www.npmjs.com/package/@elsoul/erpc-sdk) | Available |
-| Rust | [`erpc-sdk`](https://crates.io/crates/erpc-sdk) | Available |
-| Python | [`erpc-sdk`](https://pypi.org/project/erpc-sdk/) | Available from v0.3.0 |
-| Go | [`github.com/elsoul/erpc-sdk/packages/go`](https://pkg.go.dev/github.com/elsoul/erpc-sdk/packages/go) | Available from v0.3.0 |
-| Ruby | [`erpc-sdk`](https://rubygems.org/gems/erpc-sdk) | Available from v0.4.0 |
+| TypeScript | [`@elsoul/erpc-sdk`](https://www.npmjs.com/package/@elsoul/erpc-sdk) | Published 0.6.0 |
+| Rust | [`erpc-sdk`](https://crates.io/crates/erpc-sdk) | Published 0.6.0 |
+| Python | [`erpc-sdk`](https://pypi.org/project/erpc-sdk/) | Published 0.6.0 |
+| Go | [`github.com/elsoul/erpc-sdk/packages/go`](https://pkg.go.dev/github.com/elsoul/erpc-sdk/packages/go) | Published 0.6.0 |
+| Ruby | [`erpc-sdk`](https://rubygems.org/gems/erpc-sdk) | Published 0.6.0 |
+
+The current published package baseline, [latest GitHub release](https://github.com/elsoul/erpc-sdk/releases/latest),
+and package manifests remain `0.6.0`. The canonical token catalog is on
+`main` and is
+planned for `0.7.0` (`UNRELEASED`); installing the current published package
+does not provide the catalog exports yet.
 
 ## Install
 
@@ -73,6 +79,57 @@ See the package guides for [TypeScript](packages/typescript/README.md),
 [Rust](packages/rust/README.md), [Python](packages/python/README.md),
 [Go](packages/go/README.md), and [Ruby](packages/ruby/README.md). Minimum
 versions are Rust 1.85, Python 3.11, Go 1.22, and Ruby 3.1.
+
+## Offline token catalog
+
+The `main` source tree contains a bundled, source-backed token catalog with 39
+assets, 60 deployments, and 60 aliases across Ethereum, Solana, and Avalanche
+C-Chain. Catalog reads are local: they do not create a client, need an API key,
+or access a network.
+
+The public TypeScript names use the chain-qualified constants below. Alias
+values are opaque deployment IDs; returned deployments keep their lifecycle
+status (`active`, `legacy`, `winding-down`, or `retired`) and native
+deployments use `address: null`.
+
+```ts
+import {
+  findTokenDeploymentsBySymbol,
+  getTokenDeployment,
+  TOKEN_CHAIN_IDS,
+  tokens,
+} from '@elsoul/erpc-sdk'
+
+const ethereumUsdc = getTokenDeployment(tokens.ethereum.USDC)
+const solanaUsdc = getTokenDeployment(tokens.solana.USDC)
+const avalancheUsdc = getTokenDeployment(tokens.avalancheC.USDC)
+
+const usdOnEthereum = findTokenDeploymentsBySymbol(
+  TOKEN_CHAIN_IDS.ethereumMainnet,
+  'USDC',
+)
+const eurOnSolana = findTokenDeploymentsBySymbol(
+  TOKEN_CHAIN_IDS.solanaMainnet,
+  'EURC',
+)
+const jpyOnAvalanche = findTokenDeploymentsBySymbol(
+  TOKEN_CHAIN_IDS.avalancheCMainnet,
+  'JPYC',
+)
+
+console.log({ ethereumUsdc, solanaUsdc, avalancheUsdc })
+console.log({ usdOnEthereum, eurOnSolana, jpyOnAvalanche })
+```
+
+The `stableCurrency` filter maps `USD` to U.S. dollar, `EUR` to euro, and
+`JPY` to Japanese yen. These are straightforward catalog labels; the bounded
+catalog makes no claim of complete coverage, ranking, or market data. See the
+[canonical registry guide](registry/README.md) and its
+[source notes](registry/SOURCES.md) for fields, evidence, and lookup rules.
+
+The catalog is planned for the unreleased `0.7.0` package. Until that release
+is published, `npm install @elsoul/erpc-sdk` resolves to the published `0.6.0`
+package and its exports do not include this catalog.
 
 ## Quick starts
 
@@ -196,6 +253,25 @@ const transactions = await erpc.solana.history
 
 const programs = await erpc.solana.analytics
   .jetTopPrograms({ limit: 10 })
+  .send()
+```
+
+## Solana transaction v1
+
+For Solana transaction v1, pass `maxSupportedTransactionVersion: 1` when the
+caller supports v1, and pass a serialized payload with `encoding: 'base64'`
+when sending or simulating a larger transaction. The SDK forwards these
+options and payloads unchanged; the caller supplies the signed transaction,
+and the SDK does not build, sign, or decode it. A server JSON-RPC error such as
+`-32015` remains an `ErpcJsonRpcError` with its numeric code and optional data
+preserved. See the [Solana transaction v1 guide](packages/typescript/docs/solana-v1.md).
+
+```ts
+const transaction = await erpc.solana.rpc
+  .getTransaction(signature, { maxSupportedTransactionVersion: 1 })
+  .send()
+const sent = await erpc.solana.rpc
+  .sendTransaction(serializedBase64, { encoding: 'base64' })
   .send()
 ```
 
@@ -430,6 +506,7 @@ enter shell history. Never commit credentials.
 ## Documentation
 
 - [Method availability](docs/METHODS.md)
+- [Solana transaction v1 guide](packages/typescript/docs/solana-v1.md)
 - [Changelog](CHANGELOG.md)
 - [Roadmap](ROADMAP.md)
 - [Release process](docs/RELEASING.md)
@@ -438,9 +515,9 @@ enter shell history. Never commit credentials.
 
 ## Release model
 
-Publishing is initiated by a human-pushed version tag, protected by registry
-GitHub Environments, and authenticated through Trusted Publishing. Merging a
-change never publishes a package. See the
+Publishing is initiated by a human-pushed version tag. The release workflow is
+configured for registry Trusted Publishing and provenance. Merging a change
+never publishes a package. See the
 [release process](docs/RELEASING.md) for initial setup and release steps.
 
 ## License

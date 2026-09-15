@@ -3,15 +3,28 @@
 ## Weekly maintenance
 
 The reviewable weekly maintenance stage is documented in
-[`weekly-maintenance.md`](./weekly-maintenance.md). It provides an offline
-release inspector/preparer, a bounded PR writer, and a PR-base catalog helper.
-The approved 0.7.0 provenance and package-change guard are recorded in
+[`weekly-maintenance.md`](./weekly-maintenance.md). The installed Tuesday
+observation and Thursday release-preparation workflows use an online observer
+for configured RPC endpoints and reviewed HTTP source reads, then create or
+update reviewable PRs and CI. Release inspection and the catalog runtime remain
+offline. The approved 0.7.0 provenance and package-change guard are recorded in
 [`release-plan.json`](./release-plan.json). These tools prepare evidence and a
-reviewable candidate; approval, merge, tag, publication, swaps, rankings, and
-bridging remain human or separate future work. The dated EU OSS planning
-packet is [`evidence/weekly-maintenance-eu-oss-2026-09-15.json`](./evidence/weekly-maintenance-eu-oss-2026-09-15.json).
+reviewable candidate; approval, merge, tag, and publication remain human
+actions, while swaps, rankings, and bridging remain separate future work. The
+dated EU OSS planning packet is
+[`evidence/weekly-maintenance-eu-oss-2026-09-15.json`](./evidence/weekly-maintenance-eu-oss-2026-09-15.json).
 
-This directory owns the bounded, source-backed token catalog consumed by the TypeScript, Rust, Python, Go, and Ruby SDKs. It is an offline data source. It does not make a complete-coverage, ranking, or top-N claim, and it does not call an RPC, require an API key, or bundle a third-party token database.
+This directory owns the bounded, source-backed token catalog consumed by the
+TypeScript, Rust, Python, Go, and Ruby SDKs. The current source contains 39
+assets, 60 deployments, and 60 aliases. The runtime catalog is an offline data
+source: it does not call an RPC, require an API key, or bundle a third-party
+token database. It does not claim to list every token, rank assets, or provide
+a top-N list.
+
+The catalog is on `main` and planned for the unreleased `0.7.0` package. The
+current published package baseline, latest GitHub release, and package
+manifests remain `0.6.0`; current package installs do not include these catalog
+exports yet.
 
 `token-catalog.json` is the canonical source. Its asset and deployment records retain `evidence` and `asOfDate` for source review. Generated SDK records contain the runtime fields below and omit per-record provenance; only the catalog-wide `asOfDate` and `contentDigest` are emitted as metadata.
 
@@ -28,7 +41,17 @@ Each package exposes the same six practical lookup operations, with language-app
 
 Alias constants are grouped under the fixed namespaces `ethereum`, `solana`, and `avalancheC`. Alias names are uppercase ASCII so they remain portable across language emitters. `assetId` and `deploymentId` are opaque strings; callers must not infer a chain, issuer, or symbol from their spelling.
 
-Every deployment includes `assetId`, `deploymentId`, `name`, `representationKind`, `stableCurrency`, `underlyingAssetId`, `economicReferenceAssetId`, `chainId`, `symbol`, `decimals`, `standard`, `address`, `status`, and `replacedByDeploymentId`. Native ETH, AVAX, and SOL use `address: null`. EVM addresses are stored lowercase. The classic WSOL mint and the Token-2022 WSOL mint are distinct deployments.
+Every deployment includes `assetId`, `deploymentId`, `name`, `representationKind`, `stableCurrency`, `underlyingAssetId`, `economicReferenceAssetId`, `chainId`, `symbol`, `decimals`, `standard`, `address`, `status`, and `replacedByDeploymentId`. Status values are `active`, `legacy`, `winding-down`, and `retired`; lookups and filters keep each status visible. Native ETH, AVAX, and SOL use `address: null`. EVM addresses are stored lowercase. The classic WSOL mint and the Token-2022 WSOL mint are distinct deployments.
+
+The stable-currency filter uses exact labels: `USD` means U.S. dollar, `EUR`
+means euro, and `JPY` means Japanese yen. These labels describe catalog
+metadata and do not imply complete coverage or a ranking. Source links for the
+records are maintained in [`SOURCES.md`](./SOURCES.md).
+
+DEX and pool records, quotes, routes, and transaction builds are outside this
+catalog and remain pending for a later phase. That work will use configured RPC
+endpoints and local logic; hosted Jupiter and 0x dependencies are not implied.
+Bridging remains separate research.
 
 ## Generate and check
 

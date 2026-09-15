@@ -22,8 +22,18 @@ test('all five package paths select exact owners and valid briefs enable only th
 });
 test('harness, future assets, and CI route correctly', () => {
   assert.equal(route(registry, 'scripts/agent-harness.mjs', { phase: 'planning' }).roles[1], 'celes');
-  const asset = 'assets/tokens.json'; assert.equal(route(registry, asset, { taskBrief: brief(asset, selected(asset)) }).candidateImplementer, 'sdk-l3-registry');
+  for (const target of ['assets/tokens.json', 'registry/pools.json']) assert.equal(route(registry, target, { taskBrief: brief(target, selected(target)) }).candidateImplementer, 'sdk-l3-registry');
   const ci = '.github/workflows/release.yml'; assert.deepEqual(route(registry, ci, { taskBrief: brief(ci, selected(ci)) }).requiredGates, ['cyan']);
+});
+test('root README and ROADMAP route through the future assets registry with a Cyan gate', () => {
+  for (const target of ['README.md', 'ROADMAP.md']) {
+    const rule = selected(target); assert.equal(rule.id, 'future-assets-registry');
+    const planning = route(registry, target, { phase: 'planning' }); assert.deepEqual(planning.roles, ['edgar', 'rydia', 'cyan']); assert.deepEqual(planning.requiredGates, ['cyan']); assert.equal(planning.dispatchL3, false);
+    const required = route(registry, target); assert.equal(required.status, 'BRIEF_REQUIRED'); assert.equal(required.dispatchL3, false); assert.equal(required.candidateImplementer, 'sdk-l3-registry'); assert.deepEqual(required.roles, ['edgar', 'rydia']);
+    const ready = route(registry, target, { taskBrief: brief(target, rule) }); assert.equal(ready.status, 'READY'); assert.equal(ready.actionable, true); assert.equal(ready.dispatchL3, true); assert.deepEqual(ready.requiredGates, ['cyan']); assert.deepEqual(ready.roles, ['edgar', 'rydia', 'sdk-l3-registry']);
+    const invalid = route(registry, target, { taskBrief: { ...brief(target, rule), approvedBy: 'luida' } }); assert.equal(invalid.status, 'BRIEF_INVALID'); assert.equal(invalid.actionable, false); assert.equal(invalid.dispatchL3, false); assert.deepEqual(invalid.roles, ['edgar', 'rydia']);
+  }
+  for (const target of ['docs/README.md', 'README.md.bak', 'ROADMAP.md.bak']) { const unresolved = route(registry, target); assert.equal(unresolved.status, 'ROUTE_UNRESOLVED'); assert.equal(unresolved.dispatchL3, false); assert.deepEqual(unresolved.roles, ['el', 'edgar']); }
 });
 test('categories append contributors and gates while bridge research stays planning only', () => {
   const target = 'packages/typescript/src/client'; const rule = selected(target);
