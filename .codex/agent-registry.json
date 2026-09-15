@@ -1,0 +1,425 @@
+{
+  "schemaVersion": 1,
+  "runtime": {
+    "enabled": true,
+    "maxConcurrentThreadsPerSession": 3
+  },
+  "roles": [
+    {
+      "id": "el",
+      "name": "El",
+      "description": "L1 intake, routing, and closure decision maker.",
+      "tier": "L1",
+      "reportsTo": "el",
+      "model": "gpt-6-astra",
+      "modelReasoningEffort": "max",
+      "authority": "decision-only",
+      "scope": "intake/routing/closure"
+    },
+    {
+      "id": "edgar",
+      "name": "Edgar",
+      "description": "L1 SDK architecture, scope, and compatibility decision maker.",
+      "tier": "L1",
+      "reportsTo": "el",
+      "model": "gpt-6-astra",
+      "modelReasoningEffort": "max",
+      "authority": "decision-only",
+      "scope": "SDK architecture/scope/compatibility"
+    },
+    {
+      "id": "luida",
+      "name": "Luida",
+      "description": "L1 harness design and acceptance decision maker.",
+      "tier": "L1",
+      "reportsTo": "el",
+      "model": "gpt-6-astra",
+      "modelReasoningEffort": "max",
+      "authority": "decision-only",
+      "scope": "harness design/acceptance"
+    },
+    {
+      "id": "celes",
+      "name": "Celes",
+      "description": "L2 harness detail packet contributor.",
+      "tier": "L2",
+      "reportsTo": "luida",
+      "model": "gpt-5.6-sol",
+      "modelReasoningEffort": "xhigh",
+      "authority": "packet-only",
+      "scope": "harness detail"
+    },
+    {
+      "id": "gogo",
+      "name": "Gogo",
+      "description": "L2 code generation and parity planning contributor.",
+      "tier": "L2",
+      "reportsTo": "edgar",
+      "model": "gpt-5.6-sol",
+      "modelReasoningEffort": "xhigh",
+      "authority": "packet-only",
+      "scope": "codegen/parity planning"
+    },
+    {
+      "id": "sephiroth",
+      "name": "Sephiroth",
+      "description": "L2 release readiness, cadence, version, and changelog planning contributor.",
+      "tier": "L2",
+      "reportsTo": "edgar",
+      "model": "gpt-5.6-sol",
+      "modelReasoningEffort": "xhigh",
+      "authority": "packet-only",
+      "scope": "release readiness/cadence/version/changelog planning"
+    },
+    {
+      "id": "bartz",
+      "name": "Bartz",
+      "description": "L2 public SDK contract, transport, errors, and five-language compatibility detail contributor.",
+      "tier": "L2",
+      "reportsTo": "edgar",
+      "model": "gpt-5.6-sol",
+      "modelReasoningEffort": "xhigh",
+      "authority": "packet-only",
+      "scope": "new public SDK contract/transport/errors/5lang compatibility detail"
+    },
+    {
+      "id": "rydia",
+      "name": "Rydia",
+      "description": "L2 chain asset, DEX, pool registry and separate bridge research contributor.",
+      "tier": "L2",
+      "reportsTo": "edgar",
+      "model": "gpt-5.6-sol",
+      "modelReasoningEffort": "xhigh",
+      "authority": "packet-only",
+      "scope": "new chain asset/DEX/pool registries, RPC-only swap and separate bridge research"
+    },
+    {
+      "id": "bahamut",
+      "name": "Bahamut",
+      "description": "L2 CI and release automation detail contributor.",
+      "tier": "L2",
+      "reportsTo": "edgar",
+      "model": "gpt-6-astra",
+      "modelReasoningEffort": "max",
+      "authority": "packet-only",
+      "scope": "CI/release automation detail"
+    },
+    {
+      "id": "eu-oss-compliance",
+      "name": "EU OSS Compliance",
+      "description": "L2 source-backed EU OSS regulatory applicability, evidence, gaps, owners, and review packet contributor.",
+      "tier": "L2",
+      "reportsTo": "edgar",
+      "model": "gpt-6-astra",
+      "modelReasoningEffort": "max",
+      "authority": "packet-only",
+      "scope": "source-backed EU OSS regulatory applicability/evidence/gaps/owners/review packets; read .codex/docs/eu-oss-compliance.md; not a legal certifier or statutory OSS steward designation; no direct source writing or path ownership"
+    },
+    {
+      "id": "backend-l3-pokemon-rotom",
+      "name": "Backend L3 Pokemon Rotom",
+      "description": "L3 bounded harness implementation owner.",
+      "tier": "L3",
+      "reportsTo": "celes",
+      "model": "gpt-5.6-luna",
+      "modelReasoningEffort": "max",
+      "authority": "scoped-write",
+      "scope": "harness implementation"
+    },
+    {
+      "id": "backend-l3-pokemon-rarecoil",
+      "name": "Backend L3 Pokemon Rarecoil",
+      "description": "L3 TypeScript, Node, and pnpm implementation owner.",
+      "tier": "L3",
+      "reportsTo": "bartz",
+      "model": "gpt-5.6-luna",
+      "modelReasoningEffort": "max",
+      "authority": "scoped-write",
+      "scope": "TypeScript/Node/pnpm"
+    },
+    {
+      "id": "backend-l3-pokemon-haganeil",
+      "name": "Backend L3 Pokemon Haganeil",
+      "description": "L3 Rust implementation owner.",
+      "tier": "L3",
+      "reportsTo": "bartz",
+      "model": "gpt-5.6-luna",
+      "modelReasoningEffort": "max",
+      "authority": "scoped-write",
+      "scope": "Rust"
+    },
+    {
+      "id": "sdk-l3-python",
+      "name": "SDK L3 Python",
+      "description": "L3 Python implementation owner.",
+      "tier": "L3",
+      "reportsTo": "bartz",
+      "model": "gpt-5.6-luna",
+      "modelReasoningEffort": "max",
+      "authority": "scoped-write",
+      "scope": "Python"
+    },
+    {
+      "id": "sdk-l3-go",
+      "name": "SDK L3 Go",
+      "description": "L3 Go implementation owner.",
+      "tier": "L3",
+      "reportsTo": "bartz",
+      "model": "gpt-5.6-luna",
+      "modelReasoningEffort": "max",
+      "authority": "scoped-write",
+      "scope": "Go"
+    },
+    {
+      "id": "sdk-l3-ruby",
+      "name": "SDK L3 Ruby",
+      "description": "L3 Ruby implementation owner.",
+      "tier": "L3",
+      "reportsTo": "bartz",
+      "model": "gpt-5.6-luna",
+      "modelReasoningEffort": "max",
+      "authority": "scoped-write",
+      "scope": "Ruby"
+    },
+    {
+      "id": "sdk-l3-registry",
+      "name": "SDK L3 Registry",
+      "description": "L3 canonical registry and deterministic route implementation owner.",
+      "tier": "L3",
+      "reportsTo": "rydia",
+      "model": "gpt-5.6-luna",
+      "modelReasoningEffort": "max",
+      "authority": "scoped-write",
+      "scope": "canonical token/stablecoin/DEX/pool source and deterministic derived outputs/route implementation"
+    },
+    {
+      "id": "backend-l3-pokemon-wanriky",
+      "name": "Backend L3 Pokemon Wanriky",
+      "description": "L3 GitHub Actions and release automation implementation owner.",
+      "tier": "L3",
+      "reportsTo": "bahamut",
+      "model": "gpt-5.6-luna",
+      "modelReasoningEffort": "max",
+      "authority": "scoped-write",
+      "scope": "GitHub Actions/release automation"
+    },
+    {
+      "id": "steiner",
+      "name": "Steiner",
+      "description": "Independent L1 SDK code, tests, and package gate.",
+      "tier": "GATE",
+      "reportsTo": "edgar",
+      "model": "gpt-6-astra",
+      "modelReasoningEffort": "max",
+      "authority": "independent-review",
+      "scope": "normal SDK code/tests/package review"
+    },
+    {
+      "id": "cyan",
+      "name": "Cyan",
+      "description": "Independent L1 final cross-domain security and release gate.",
+      "tier": "GATE",
+      "reportsTo": "el",
+      "model": "gpt-6-astra",
+      "modelReasoningEffort": "max",
+      "authority": "independent-review",
+      "scope": "harness/registries/routing/public cross-language/security/money/release/cross-domain final review"
+    }
+  ],
+  "routing": {
+    "pathRules": [
+      {
+        "id": "harness",
+        "exactPaths": [
+          "AGENTS.md",
+          "scripts/agent-harness.mjs",
+          "scripts/agent-harness.test.mjs"
+        ],
+        "pathPrefixes": [
+          ".codex/"
+        ],
+        "decisionOwner": "luida",
+        "detailOwner": "celes",
+        "implementer": "backend-l3-pokemon-rotom",
+        "gates": [
+          "cyan"
+        ]
+      },
+      {
+        "id": "typescript",
+        "exactPaths": [],
+        "pathPrefixes": [
+          "packages/typescript/"
+        ],
+        "decisionOwner": "edgar",
+        "detailOwner": "bartz",
+        "implementer": "backend-l3-pokemon-rarecoil",
+        "gates": [
+          "steiner"
+        ]
+      },
+      {
+        "id": "rust",
+        "exactPaths": [],
+        "pathPrefixes": [
+          "packages/rust/"
+        ],
+        "decisionOwner": "edgar",
+        "detailOwner": "bartz",
+        "implementer": "backend-l3-pokemon-haganeil",
+        "gates": [
+          "steiner"
+        ]
+      },
+      {
+        "id": "python",
+        "exactPaths": [],
+        "pathPrefixes": [
+          "packages/python/"
+        ],
+        "decisionOwner": "edgar",
+        "detailOwner": "bartz",
+        "implementer": "sdk-l3-python",
+        "gates": [
+          "steiner"
+        ]
+      },
+      {
+        "id": "go",
+        "exactPaths": [],
+        "pathPrefixes": [
+          "packages/go/"
+        ],
+        "decisionOwner": "edgar",
+        "detailOwner": "bartz",
+        "implementer": "sdk-l3-go",
+        "gates": [
+          "steiner"
+        ]
+      },
+      {
+        "id": "ruby",
+        "exactPaths": [],
+        "pathPrefixes": [
+          "packages/ruby/"
+        ],
+        "decisionOwner": "edgar",
+        "detailOwner": "bartz",
+        "implementer": "sdk-l3-ruby",
+        "gates": [
+          "steiner"
+        ]
+      },
+      {
+        "id": "future-assets-registry",
+        "exactPaths": [],
+        "pathPrefixes": [
+          "assets/",
+          "registry/"
+        ],
+        "decisionOwner": "edgar",
+        "detailOwner": "rydia",
+        "implementer": "sdk-l3-registry",
+        "gates": [
+          "cyan"
+        ]
+      },
+      {
+        "id": "ci-release",
+        "exactPaths": [
+          "scripts/release.mjs",
+          "scripts/verify-release.mjs",
+          "scripts/release-version.mjs"
+        ],
+        "pathPrefixes": [
+          ".github/workflows/"
+        ],
+        "decisionOwner": "edgar",
+        "detailOwner": "bahamut",
+        "implementer": "backend-l3-pokemon-wanriky",
+        "gates": [
+          "cyan"
+        ]
+      }
+    ],
+    "categories": {
+      "codegen-parity": {
+        "contributors": [
+          "gogo"
+        ],
+        "requiredGates": []
+      },
+      "release-readiness": {
+      "contributors": [
+          "sephiroth",
+          "eu-oss-compliance"
+        ],
+        "requiredGates": [
+          "cyan"
+        ]
+      },
+      "public-cross-language": {
+        "contributors": [],
+        "requiredGates": [
+          "cyan"
+        ]
+      },
+      "security": {
+        "contributors": [
+          "eu-oss-compliance"
+        ],
+        "requiredGates": [
+          "cyan"
+        ]
+      },
+      "eu-oss-compliance": {
+        "contributors": [
+          "eu-oss-compliance"
+        ],
+        "requiredGates": [
+          "cyan"
+        ]
+      },
+      "money-path": {
+        "contributors": [],
+        "requiredGates": [
+          "cyan"
+        ]
+      },
+      "cross-domain": {
+        "contributors": [],
+        "requiredGates": [
+          "cyan"
+        ]
+      },
+      "bridging-research": {
+        "contributors": [
+          "rydia"
+        ],
+        "requiredGates": [],
+        "planningOnly": true
+      }
+    },
+    "phaseRules": {
+      "planning": "L1+L2 only; never dispatch L3",
+      "implementation": "requires L1-approved Task Brief; independent gate; author cannot self-review",
+      "fallback": "L1+L2 investigation only; no L3"
+    },
+    "fallback": {
+      "planningOwners": [
+        "el",
+        "edgar"
+      ]
+    }
+  },
+  "guidance": [
+    "Five languages consume common data.",
+    "Swap quotes/routes/build use configured RPC and local logic; no hosted Jupiter/0x dependencies.",
+    "Weekly release is future work; current scripts remain human-approved.",
+    "Bridging is separate research requiring exact chains, native versus wrapped addresses, proof/attestation, and relayer dependencies.",
+    "No role grants push, tag, publish, live-funds, or secret authority; current or future explicit user authorization remains authoritative.",
+    "An L1 approval in the Task Brief is required before L3 work; metadata is structural preflight, not proof of authorization.",
+    "License, dependency, SBOM, security, and release-readiness work involves eu-oss-compliance and reads .codex/docs/eu-oss-compliance.md; review packets state applicability status, primary source and as-of date, evidence, gaps, owner, due date, and next review.",
+    "EU OSS packets are planning evidence only: no self-issued legal compliance or CE certification and no standing authority for regulatory filings, public vulnerability disclosure, or live effects; honor explicit user authorization."
+  ]
+}
