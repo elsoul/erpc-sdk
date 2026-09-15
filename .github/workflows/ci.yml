@@ -5,18 +5,163 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
+    inputs:
+      expected_head_sha:
+        description: Commit that the dispatched bot-branch check must test
+        required: true
+        type: string
+      base_sha:
+        description: Validated main commit used as the catalog baseline
+        required: true
+        type: string
 
 permissions:
   contents: read
 
 jobs:
-  typescript:
-    name: TypeScript build, test, and package
+  validate-source:
+    name: Validate CI source and dispatch inputs
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Enforce event and checkout binding
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_REF: ${{ github.ref }}
+          EVENT_SHA: ${{ github.sha }}
+          EXPECTED_HEAD_SHA: ${{ inputs.expected_head_sha }}
+          DISPATCH_BASE_SHA: ${{ inputs.base_sha }}
+          PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EVENT_SHA"
+          case "$EVENT_NAME" in
+            workflow_dispatch)
+              case "$EVENT_REF" in
+                refs/heads/codex/registry-maintenance|refs/heads/codex/release-preparation) ;;
+                *) exit 64 ;;
+              esac
+              test "$EXPECTED_HEAD_SHA" = "$EVENT_SHA"
+              test -n "$DISPATCH_BASE_SHA"
+              test "$DISPATCH_BASE_SHA" != "$EXPECTED_HEAD_SHA"
+              ;;
+            pull_request)
+              test "$PR_BASE_REF" = "main"
+              test -n "$PR_BASE_SHA"
+              test -n "$PR_HEAD_SHA"
+              ;;
+            push)
+              test "$EVENT_REF" = "refs/heads/main"
+              test -n "$PUSH_BEFORE_SHA"
+              test "$PUSH_BEFORE_SHA" != "$EVENT_SHA"
+              ;;
+            *)
+              echo "Unsupported CI event: $EVENT_NAME" >&2
+              exit 64
+              ;;
+          esac
+
+  catalog:
+    name: Catalog and maintenance checks
+    needs: validate-source
+    if: needs.validate-source.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+      - name: Resolve validated catalog baseline
+        id: baseline
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_SHA: ${{ github.sha }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+          DISPATCH_BASE_SHA: ${{ inputs.base_sha }}
+        run: |
+          set -euo pipefail
+          case "$EVENT_NAME" in
+            pull_request)
+              BASE_SHA="$PR_BASE_SHA"
+              PUSH_SHA="$PR_BASE_SHA"
+              DISPATCH_SHA="$PR_BASE_SHA"
+              ;;
+            push)
+              BASE_SHA="$PUSH_BEFORE_SHA"
+              PUSH_SHA="$PUSH_BEFORE_SHA"
+              DISPATCH_SHA="$PUSH_BEFORE_SHA"
+              ;;
+            workflow_dispatch)
+              BASE_SHA="$DISPATCH_BASE_SHA"
+              PUSH_SHA="$DISPATCH_BASE_SHA"
+              DISPATCH_SHA="$DISPATCH_BASE_SHA"
+              ;;
+            *)
+              echo "Unsupported CI event: $EVENT_NAME" >&2
+              exit 64
+              ;;
+          esac
+          test -n "$BASE_SHA"
+          test -n "$PUSH_SHA"
+          test -n "$DISPATCH_SHA"
+          BASELINE_JSON="$RUNNER_TEMP/validated-catalog-baseline.json"
+          VERIFIED_BASE="$RUNNER_TEMP/verified-base-token-catalog.json"
+          node registry/ci-catalog-baseline.mjs \
+            --base-sha "$BASE_SHA" \
+            --push-before-sha "$PUSH_SHA" \
+            --dispatch-base-sha "$DISPATCH_SHA" \
+            --head-sha "$HEAD_SHA" \
+            --format=json > "$BASELINE_JSON"
+          git show "$BASE_SHA:registry/token-catalog.json" > "$VERIFIED_BASE"
+          {
+            echo "base_sha=$BASE_SHA"
+            echo "baseline_json=$BASELINE_JSON"
+            echo "verified_base=$VERIFIED_BASE"
+          } >> "$GITHUB_OUTPUT"
+      - name: Run agent harness (19 tests)
+        run: |
+          node --test scripts/agent-harness.test.mjs
+          node scripts/agent-harness.mjs check
+      - name: Run catalog and maintenance tests
+        run: >-
+          node --test
+          registry/token-catalog.test.mjs
+          registry/observer.test.mjs
+          registry/release-prep.test.mjs
+          registry/maintenance-pr.test.mjs
+          registry/ci-catalog-baseline.test.mjs
+          registry/release-command.test.mjs
+      - name: Verify generated catalogs against the validated base
+        env:
+          VERIFIED_BASE: ${{ steps.baseline.outputs.verified_base }}
+        run: node registry/generate-token-catalog.mjs --check --language all --previous "$VERIFIED_BASE"
+
+  typescript:
+    name: TypeScript build, test, and package
+    needs: validate-source
+    if: needs.validate-source.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
           persist-credentials: false
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
@@ -37,11 +182,15 @@ jobs:
 
   rust:
     name: Rust lint, test, docs, and package
+    needs: validate-source
+    if: needs.validate-source.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
           persist-credentials: false
       - name: Install the minimum supported Rust toolchain
         run: |
@@ -70,6 +219,8 @@ jobs:
 
   python:
     name: Python lint, test, and package
+    needs: validate-source
+    if: needs.validate-source.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -78,6 +229,8 @@ jobs:
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
           persist-credentials: false
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
@@ -97,6 +250,8 @@ jobs:
 
   go:
     name: Go format, vet, test, and module
+    needs: validate-source
+    if: needs.validate-source.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -105,6 +260,8 @@ jobs:
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
           persist-credentials: false
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
@@ -129,6 +286,8 @@ jobs:
 
   ruby:
     name: Ruby syntax, test, and gem
+    needs: validate-source
+    if: needs.validate-source.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -137,6 +296,8 @@ jobs:
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
           persist-credentials: false
       - name: Install the minimum supported Ruby
         uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b # v1

@@ -1,5 +1,16 @@
 # Canonical token catalog
 
+## Weekly maintenance
+
+The reviewable weekly maintenance stage is documented in
+[`weekly-maintenance.md`](./weekly-maintenance.md). It provides an offline
+release inspector/preparer, a bounded PR writer, and a PR-base catalog helper.
+The approved 0.7.0 provenance and package-change guard are recorded in
+[`release-plan.json`](./release-plan.json). These tools prepare evidence and a
+reviewable candidate; approval, merge, tag, publication, swaps, rankings, and
+bridging remain human or separate future work. The dated EU OSS planning
+packet is [`evidence/weekly-maintenance-eu-oss-2026-09-15.json`](./evidence/weekly-maintenance-eu-oss-2026-09-15.json).
+
 This directory owns the bounded, source-backed token catalog consumed by the TypeScript, Rust, Python, Go, and Ruby SDKs. It is an offline data source. It does not make a complete-coverage, ranking, or top-N claim, and it does not call an RPC, require an API key, or bundle a third-party token database.
 
 `token-catalog.json` is the canonical source. Its asset and deployment records retain `evidence` and `asOfDate` for source review. Generated SDK records contain the runtime fields below and omit per-record provenance; only the catalog-wide `asOfDate` and `contentDigest` are emitted as metadata.

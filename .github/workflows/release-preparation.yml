@@ -1,0 +1,279 @@
+name: Weekly release preparation
+
+on:
+  schedule:
+    - cron: '47 3 * * 4'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Optional stable version for an explicitly approved manual preparation
+        required: false
+        type: string
+      release_date:
+        description: Optional YYYY-MM-DD release date
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: weekly-release-preparation-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  reader:
+    name: Inspect release preparation inputs
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    outputs:
+      observer_exit_code: ${{ steps.classify.outputs.observer_exit_code }}
+      prep_exit_code: ${{ steps.classify.outputs.prep_exit_code }}
+      prep_status: ${{ steps.classify.outputs.prep_status }}
+      prepare_allowed: ${{ steps.classify.outputs.prepare_allowed }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+      - name: Create bounded preparation directory
+        env:
+          OUTPUT_DIR: ${{ runner.temp }}/release-preparation
+          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_DATE: ${{ inputs.release_date }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$OUTPUT_DIR"
+          printf '%s\n' 70 > "$OUTPUT_DIR/observer-exit-code"
+          printf '%s\n' 70 > "$OUTPUT_DIR/prep-exit-code"
+          : > "$OUTPUT_DIR/observer.stdout"
+          : > "$OUTPUT_DIR/observer.stderr"
+          : > "$OUTPUT_DIR/prep.stdout"
+          : > "$OUTPUT_DIR/prep.stderr"
+          node --input-type=module - "$OUTPUT_DIR" "$RELEASE_VERSION" "$RELEASE_DATE" <<'NODE'
+          import { writeFileSync } from 'node:fs'
+          const [outputDir, version, releaseDate] = process.argv.slice(2)
+          writeFileSync(`${outputDir}/release-inputs.json`, `${JSON.stringify({ version: version || null, releaseDate: releaseDate || null }, null, 2)}\n`)
+          NODE
+      - name: Observe configured sources for the preparation review
+        id: observe
+        continue-on-error: true
+        env:
+          ERPC_OBSERVER_SOURCE_SHA: ${{ github.sha }}
+          OUTPUT_DIR: ${{ runner.temp }}/release-preparation/observation
+        run: |
+          set +e
+          mkdir -p "$OUTPUT_DIR"
+          node registry/observe-token-catalog.mjs --output-dir "$OUTPUT_DIR" \
+            > "$OUTPUT_DIR/observer.stdout" \
+            2> "$OUTPUT_DIR/observer.stderr"
+          observer_status=$?
+          printf '%s\n' "$observer_status" > "$RUNNER_TEMP/release-preparation/observer-exit-code"
+          exit "$observer_status"
+      - name: Inspect the approved release plan
+        id: inspect-release
+        continue-on-error: true
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.sha }}
+          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_DATE: ${{ inputs.release_date }}
+          OUTPUT_DIR: ${{ runner.temp }}/release-preparation
+        run: |
+          set +e
+          prep_args=(inspect --expected-head "$EXPECTED_SOURCE_SHA" --format=json)
+          if [ -n "$RELEASE_VERSION" ]; then prep_args+=(--version "$RELEASE_VERSION"); fi
+          if [ -n "$RELEASE_DATE" ]; then prep_args+=(--release-date "$RELEASE_DATE"); fi
+          node registry/release-prep.mjs "${prep_args[@]}" \
+            > "$OUTPUT_DIR/release-report.json" \
+            2> "$OUTPUT_DIR/prep.stderr"
+          prep_status=$?
+          printf '%s\n' "$prep_status" > "$OUTPUT_DIR/prep-exit-code"
+          exit "$prep_status"
+      - name: Bound diagnostics and assemble the same-run observation envelope
+        if: always()
+        continue-on-error: true
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.sha }}
+          OUTPUT_DIR: ${{ runner.temp }}/release-preparation
+        run: |
+          set +e
+          for output_file in "$OUTPUT_DIR/observation/observer.stdout" "$OUTPUT_DIR/observation/observer.stderr" "$OUTPUT_DIR/prep.stdout" "$OUTPUT_DIR/prep.stderr"; do
+            if [ -f "$output_file" ] && [ "$(wc -c < "$output_file")" -gt 65536 ]; then
+              head -c 65536 "$output_file" > "$output_file.truncated"
+              mv "$output_file.truncated" "$output_file"
+            fi
+          done
+          if [ -f "$OUTPUT_DIR/release-report.json" ] && [ "$(wc -c < "$OUTPUT_DIR/release-report.json")" -gt 262144 ]; then
+            head -c 262144 "$OUTPUT_DIR/release-report.json" > "$OUTPUT_DIR/release-report.json.truncated"
+            mv "$OUTPUT_DIR/release-report.json.truncated" "$OUTPUT_DIR/release-report.json"
+          fi
+          if [ -f "$OUTPUT_DIR/observation/receipts.json" ] && [ -f "$OUTPUT_DIR/observation/findings.json" ] && [ -f "$OUTPUT_DIR/observation/review-candidate.json" ]; then
+            node --input-type=module - "$OUTPUT_DIR" "$EXPECTED_SOURCE_SHA" <<'NODE'
+            import { readFileSync, writeFileSync } from 'node:fs'
+            import { join } from 'node:path'
+
+            const [outputDir, expectedSourceSha] = process.argv.slice(2)
+            const observationDir = join(outputDir, 'observation')
+            const readJson = (dir, name) => JSON.parse(readFileSync(join(dir, name), 'utf8'))
+            const receipts = readJson(observationDir, 'receipts.json')
+            const findings = readJson(observationDir, 'findings.json')
+            const reviewCandidate = readJson(observationDir, 'review-candidate.json')
+            const sha = /^[0-9a-f]{40}$/u
+            const digest = /^[0-9a-f]{64}$/u
+            if (!sha.test(expectedSourceSha) || receipts.sourceSha !== expectedSourceSha) throw new Error('observation source SHA is not bound to the event SHA')
+            if (!digest.test(receipts.catalogDigest) || !digest.test(receipts.configDigest)) throw new Error('observation digests are invalid')
+            if (findings.catalogDigest !== receipts.catalogDigest || findings.configDigest !== receipts.configDigest) throw new Error('findings are not bound to receipts')
+            if (reviewCandidate.sourceSha !== expectedSourceSha || reviewCandidate.catalogDigest !== receipts.catalogDigest || reviewCandidate.configDigest !== receipts.configDigest) throw new Error('review candidate is not bound to receipts')
+            const envelope = {
+              receipts,
+              findings,
+              reviewCandidate,
+            }
+            writeFileSync(join(outputDir, 'observation-envelope.json'), `${JSON.stringify(envelope, null, 2)}\n`)
+            NODE
+          fi
+          exit 0
+      - name: Upload bounded preparation diagnostics
+        if: always()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: weekly-release-preparation
+          path: ${{ runner.temp }}/release-preparation
+          if-no-files-found: error
+          retention-days: 14
+      - name: Classify preparation result
+        id: classify
+        if: always()
+        env:
+          OUTPUT_DIR: ${{ runner.temp }}/release-preparation
+        run: |
+          set -euo pipefail
+          observer_status="$(tr -d '\r\n' < "$OUTPUT_DIR/observer-exit-code")"
+          prep_exit_code="$(tr -d '\r\n' < "$OUTPUT_DIR/prep-exit-code")"
+          prep_status="INVALID_INPUT"
+          prepare_allowed="false"
+          if [ -s "$OUTPUT_DIR/release-report.json" ]; then
+            classification_file="$OUTPUT_DIR/release-classification"
+            if ! node --input-type=module - "$OUTPUT_DIR/release-report.json" <<'NODE' > "$classification_file"
+            import { readFileSync } from 'node:fs'
+            const report = JSON.parse(readFileSync(process.argv[2], 'utf8'))
+            if (typeof report.prepareAllowed !== 'boolean') throw new Error('release report prepareAllowed must be a boolean')
+            console.log(`status=${report.status ?? 'INVALID_INPUT'}`)
+            console.log(`prepare_allowed=${report.prepareAllowed ? 'true' : 'false'}`)
+            NODE
+            then
+              echo "release report preparation decision is missing or invalid" >&2
+              exit 64
+            fi
+            while IFS='=' read -r key value; do
+              case "$key" in
+                status) prep_status="$value" ;;
+                prepare_allowed) prepare_allowed="$value" ;;
+              esac
+            done < "$classification_file"
+          fi
+          echo "observer_exit_code=$observer_status" >> "$GITHUB_OUTPUT"
+          echo "prep_exit_code=$prep_exit_code" >> "$GITHUB_OUTPUT"
+          echo "prep_status=$prep_status" >> "$GITHUB_OUTPUT"
+          case "$prepare_allowed" in
+            true|false) ;;
+            *)
+              echo "release report preparation decision is missing or invalid" >&2
+              exit 64
+              ;;
+          esac
+          echo "prepare_allowed=$prepare_allowed" >> "$GITHUB_OUTPUT"
+          if [ "$observer_status" != 0 ] && [ "$observer_status" != 2 ] && [ "$observer_status" != 3 ]; then exit "$observer_status"; fi
+          if [ "$prep_exit_code" != 0 ]; then exit "$prep_exit_code"; fi
+
+  writer:
+    name: Prepare and write the release PR
+    needs: reader
+    if: needs.reader.result == 'success' && needs.reader.outputs.prepare_allowed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+      - name: Download same-run preparation evidence
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: weekly-release-preparation
+          path: ${{ runner.temp }}/release-preparation
+      - name: Verify writer checkout and same-run bindings
+        id: binding
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.sha }}
+          OUTPUT_DIR: ${{ runner.temp }}/release-preparation
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+          node --input-type=module - "$OUTPUT_DIR/observation-envelope.json" "$OUTPUT_DIR/release-report.json" "$EXPECTED_SOURCE_SHA" <<'NODE' >> "$GITHUB_OUTPUT"
+          import { readFileSync } from 'node:fs'
+          const [observationFile, releaseFile, expectedSourceSha] = process.argv.slice(2)
+          const observation = JSON.parse(readFileSync(observationFile, 'utf8'))
+          const release = JSON.parse(readFileSync(releaseFile, 'utf8'))
+          if (!observation.receipts || observation.receipts.sourceSha !== expectedSourceSha) throw new Error('observation source binding is invalid')
+          const observationReceipts = observation.receipts
+          if (release.expectedHead !== expectedSourceSha) throw new Error('release report source binding is invalid')
+          if (!/^[0-9a-f]{64}$/u.test(observationReceipts.catalogDigest)) throw new Error('catalog digest is invalid')
+          if (!/^[0-9a-f]{64}$/u.test(observationReceipts.configDigest)) throw new Error('config digest is invalid')
+          console.log(`source_sha=${observationReceipts.sourceSha}`)
+          console.log(`catalog_digest=${observationReceipts.catalogDigest}`)
+          console.log(`config_digest=${observationReceipts.configDigest}`)
+          NODE
+      - name: Prepare the allowlisted version and changelog files
+        id: prepare
+        env:
+          EXPECTED_SOURCE_SHA: ${{ steps.binding.outputs.source_sha }}
+          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_DATE: ${{ inputs.release_date }}
+          OUTPUT_DIR: ${{ runner.temp }}/release-preparation
+        run: |
+          set -euo pipefail
+          prep_args=(prepare --expected-head "$EXPECTED_SOURCE_SHA" --format=json)
+          if [ -n "$RELEASE_VERSION" ]; then prep_args+=(--version "$RELEASE_VERSION"); fi
+          if [ -n "$RELEASE_DATE" ]; then prep_args+=(--release-date "$RELEASE_DATE"); fi
+          node registry/release-prep.mjs "${prep_args[@]}" \
+            > "$OUTPUT_DIR/prepared-release-report.json"
+      - name: Validate and write the reviewable release PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+          OBSERVATION_FILE: ${{ runner.temp }}/release-preparation/observation-envelope.json
+          RELEASE_FILE: ${{ runner.temp }}/release-preparation/prepared-release-report.json
+          SOURCE_SHA: ${{ steps.binding.outputs.source_sha }}
+          CATALOG_DIGEST: ${{ steps.binding.outputs.catalog_digest }}
+          CONFIG_DIGEST: ${{ steps.binding.outputs.config_digest }}
+        run: |
+          set -euo pipefail
+          writer_args=(
+            --observation "$OBSERVATION_FILE"
+            --release "$RELEASE_FILE"
+            --base-sha "$SOURCE_SHA"
+            --source-sha "$SOURCE_SHA"
+            --catalog-digest "$CATALOG_DIGEST"
+            --write
+            --format=json
+          )
+          if [ -n "$CONFIG_DIGEST" ]; then
+            writer_args+=(--config-digest "$CONFIG_DIGEST")
+          fi
+          node registry/maintenance-pr.mjs "${writer_args[@]}"

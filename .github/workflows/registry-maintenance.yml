@@ -1,0 +1,181 @@
+name: Weekly registry maintenance
+
+on:
+  schedule:
+    - cron: '17 3 * * 2'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: weekly-registry-maintenance-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  observer:
+    name: Observe the token catalog
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    outputs:
+      observer_exit_code: ${{ steps.classify.outputs.exit_code }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+      - name: Create bounded observation directory
+        env:
+          OUTPUT_DIR: ${{ runner.temp }}/registry-observation
+        run: |
+          set -euo pipefail
+          mkdir -p "$OUTPUT_DIR"
+          printf '%s\n' 70 > "$OUTPUT_DIR/exit-code"
+          : > "$OUTPUT_DIR/observer.stdout"
+          : > "$OUTPUT_DIR/observer.stderr"
+      - name: Observe configured sources and deployments
+        id: observe
+        continue-on-error: true
+        env:
+          ERPC_OBSERVER_SOURCE_SHA: ${{ github.sha }}
+          OUTPUT_DIR: ${{ runner.temp }}/registry-observation
+        run: |
+          set +e
+          node registry/observe-token-catalog.mjs --output-dir "$OUTPUT_DIR" \
+            > "$OUTPUT_DIR/observer.stdout" \
+            2> "$OUTPUT_DIR/observer.stderr"
+          observer_status=$?
+          printf '%s\n' "$observer_status" > "$OUTPUT_DIR/exit-code"
+          exit "$observer_status"
+      - name: Bound observation output and assemble the same-run envelope
+        if: always()
+        continue-on-error: true
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.sha }}
+          OUTPUT_DIR: ${{ runner.temp }}/registry-observation
+        run: |
+          set +e
+          for output_file in "$OUTPUT_DIR/observer.stdout" "$OUTPUT_DIR/observer.stderr"; do
+            if [ "$(wc -c < "$output_file")" -gt 65536 ]; then
+              head -c 65536 "$output_file" > "$output_file.truncated"
+              mv "$output_file.truncated" "$output_file"
+            fi
+          done
+          node --input-type=module - "$OUTPUT_DIR" "$EXPECTED_SOURCE_SHA" <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs'
+          import { join } from 'node:path'
+
+          const [outputDir, expectedSourceSha] = process.argv.slice(2)
+          const readJson = name => JSON.parse(readFileSync(join(outputDir, name), 'utf8'))
+          const receipts = readJson('receipts.json')
+          const findings = readJson('findings.json')
+          const reviewCandidate = readJson('review-candidate.json')
+          const sha = /^[0-9a-f]{40}$/u
+          const digest = /^[0-9a-f]{64}$/u
+          if (!sha.test(expectedSourceSha) || receipts.sourceSha !== expectedSourceSha) throw new Error('observation source SHA is not bound to the event SHA')
+          if (!digest.test(receipts.catalogDigest) || !digest.test(receipts.configDigest)) throw new Error('observation digests are invalid')
+          if (findings.catalogDigest !== receipts.catalogDigest || findings.configDigest !== receipts.configDigest) throw new Error('findings are not bound to receipts')
+          if (reviewCandidate.sourceSha !== expectedSourceSha || reviewCandidate.catalogDigest !== receipts.catalogDigest || reviewCandidate.configDigest !== receipts.configDigest) throw new Error('review candidate is not bound to receipts')
+          const envelope = {
+            receipts,
+            findings,
+            reviewCandidate,
+          }
+          writeFileSync(join(outputDir, 'observation-envelope.json'), `${JSON.stringify(envelope, null, 2)}\n`)
+          NODE
+          exit 0
+      - name: Upload bounded observation diagnostics
+        if: always()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: weekly-registry-observation
+          path: ${{ runner.temp }}/registry-observation
+          if-no-files-found: error
+          retention-days: 14
+      - name: Classify observer result
+        id: classify
+        if: always()
+        env:
+          OUTPUT_DIR: ${{ runner.temp }}/registry-observation
+        run: |
+          set -euo pipefail
+          observer_status="$(tr -d '\r\n' < "$OUTPUT_DIR/exit-code")"
+          echo "exit_code=$observer_status" >> "$GITHUB_OUTPUT"
+          case "$observer_status" in
+            0|2|3) exit 0 ;;
+            *) exit "$observer_status" ;;
+          esac
+
+  writer:
+    name: Write the reviewable maintenance PR
+    needs: observer
+    if: needs.observer.result == 'success' && (needs.observer.outputs.observer_exit_code == '0' || needs.observer.outputs.observer_exit_code == '2' || needs.observer.outputs.observer_exit_code == '3')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+      - name: Download same-run observation
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: weekly-registry-observation
+          path: ${{ runner.temp }}/registry-observation
+      - name: Verify writer checkout binding and extract validated data
+        id: binding
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.sha }}
+          OBSERVATION_FILE: ${{ runner.temp }}/registry-observation/observation-envelope.json
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+          node --input-type=module - "$OBSERVATION_FILE" "$EXPECTED_SOURCE_SHA" <<'NODE' >> "$GITHUB_OUTPUT"
+          import { readFileSync } from 'node:fs'
+          const [file, expectedSourceSha] = process.argv.slice(2)
+          const envelope = JSON.parse(readFileSync(file, 'utf8'))
+          const receipts = envelope.receipts
+          if (!receipts || receipts.sourceSha !== expectedSourceSha) throw new Error('observation source binding is invalid')
+          if (!/^[0-9a-f]{64}$/u.test(receipts.catalogDigest)) throw new Error('catalog digest is invalid')
+          if (!/^[0-9a-f]{64}$/u.test(receipts.configDigest)) throw new Error('config digest is invalid')
+          console.log(`source_sha=${receipts.sourceSha}`)
+          console.log(`catalog_digest=${receipts.catalogDigest}`)
+          console.log(`config_digest=${receipts.configDigest}`)
+          NODE
+      - name: Validate artifacts and create or reuse the PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+          OBSERVATION_FILE: ${{ runner.temp }}/registry-observation/observation-envelope.json
+          SOURCE_SHA: ${{ steps.binding.outputs.source_sha }}
+          CATALOG_DIGEST: ${{ steps.binding.outputs.catalog_digest }}
+          CONFIG_DIGEST: ${{ steps.binding.outputs.config_digest }}
+        run: |
+          set -euo pipefail
+          writer_args=(
+            --observation "$OBSERVATION_FILE"
+            --base-sha "$SOURCE_SHA"
+            --source-sha "$SOURCE_SHA"
+            --catalog-digest "$CATALOG_DIGEST"
+            --write
+            --format=json
+          )
+          if [ -n "$CONFIG_DIGEST" ]; then
+            writer_args+=(--config-digest "$CONFIG_DIGEST")
+          fi
+          node registry/maintenance-pr.mjs "${writer_args[@]}"

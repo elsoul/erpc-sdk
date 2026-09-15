@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "description": "Offline release preparation contracts and deterministic status cases.",
+  "approvedPlan": {
+    "basisSha": "1eed9b24790dfe8267173a06ffdf3155e7c14057",
+    "version": "0.7.0",
+    "sourceSha": "1eed9b24790dfe8267173a06ffdf3155e7c14057",
+    "baselineVersion": "0.6.0",
+    "targetVersion": "0.7.0",
+    "pairedPeelCommit": "d77169fbf9e927d51113af7a2ee51a5c9b10f3fc",
+    "approvedNotes": [
+      "Add an offline token catalog to all five SDKs, covering 39 assets and 60 deployments on Ethereum, Solana, and Avalanche C-Chain.",
+      "Add shared asset and deployment lookups, chain and currency filters, address and symbol searches, alias constants, and lifecycle metadata backed by deterministic generated data."
+    ]
+  },
+  "statuses": [
+    { "name": "clean-released-baseline-with-approved-catalog", "expected": "PATCH_READY", "prepareAllowed": true },
+    { "name": "clean-older-baseline-without-release-diff", "expected": "NO_RELEASE_CHANGE", "prepareAllowed": false },
+    { "name": "highest-actual-paired-tag-is-the-next-baseline", "expected": "PREPARED", "prepareAllowed": false },
+    { "name": "runtime-change-after-0.7.0", "expected": "0.7.1", "prepareAllowed": true },
+    { "name": "runtime-change-after-unrelated-0.8.0-shipping-code", "expected": "0.8.1", "prepareAllowed": true },
+    { "name": "asset-evidence-date-only-with-unchanged-digest", "expected": "NO_RELEASE_CHANGE", "prepareAllowed": false },
+    { "name": "catalog-runtime-only", "expected": "PATCH_READY" },
+    { "name": "unknown-package-code", "expected": "MANUAL_VERSION_REQUIRED" },
+    { "name": "0.7-files-and-notes-without-tags", "expected": "PREPARED_UNPUBLISHED" },
+    { "name": "0.7-files-with-existing-paired-tags", "expected": "PREPARED" },
+    { "name": "mismatched-or-off-main-higher-tags", "expected": "BLOCKED_TAG_HISTORY" },
+    { "name": "inconsistent-package-versions", "expected": "VERSION_DRIFT" },
+    { "name": "expected-head-does-not-match-checkout", "expected": "STALE_HEAD" },
+    { "name": "version-without-release-notes", "expected": "CHANGELOG_REQUIRED" }
+  ],
+  "invariants": [
+    "strict stable semver rejects leading zeroes and prereleases",
+    "prepare requires a clean expected-head checkout and writes only the version/changelog allowlist",
+    "Cargo.lock permits changing only the unique source-less erpc-sdk package version",
+    "Unreleased notes are preserved; approved notes fill an empty Unreleased section",
+    "omitted dates and transport/raw hashes do not change semantic fingerprints",
+    "inspect is read-only unless an explicit report path is provided",
+    "dependency resolution, network access, commits, tags, and publication are never performed"
+  ]
+}

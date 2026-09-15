@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "fixtureKind": "synthetic-rpc-failures",
+  "description": "Offline failure vectors for deterministic observer tests.",
+  "scenarios": [
+    {
+      "name": "wrong-ethereum-chain",
+      "network": "ethereum",
+      "method": "eth_chainId",
+      "result": "0x999",
+      "expectedErrorCode": "NETWORK_IDENTITY_MISMATCH",
+      "downstreamMethodsAllowed": false
+    },
+    {
+      "name": "malformed-decimals",
+      "network": "ethereum",
+      "method": "eth_call",
+      "selector": "0x313ce567",
+      "result": "0x01",
+      "expectedErrorCode": "EVM_DECIMALS_INVALID"
+    },
+    {
+      "name": "decimals-too-large",
+      "network": "ethereum",
+      "method": "eth_call",
+      "selector": "0x313ce567",
+      "result": "0x0000000000000000000000000000000000000000000000000000000000000100",
+      "expectedErrorCode": "EVM_DECIMALS_OUT_OF_RANGE"
+    },
+    {
+      "name": "empty-contract-code",
+      "network": "avalancheC",
+      "method": "eth_getCode",
+      "result": "0x",
+      "expectedErrorCode": "EVM_EMPTY_CODE"
+    },
+    {
+      "name": "solana-stale-context",
+      "network": "solana",
+      "method": "getAccountInfo",
+      "contextSlot": 447257738,
+      "anchorSlot": 447257739,
+      "expectedErrorCode": "SOLANA_CONTEXT_SLOT_BELOW_ANCHOR"
+    },
+    {
+      "name": "solana-wrong-owner",
+      "network": "solana",
+      "method": "getAccountInfo",
+      "owner": "11111111111111111111111111111111",
+      "expectedErrorCode": "SOLANA_STANDARD_MISMATCH"
+    },
+    {
+      "name": "transport-timeout",
+      "network": "ethereum",
+      "method": "eth_call",
+      "transport": "timeout",
+      "expectedErrorCode": "TIMEOUT",
+      "maxRetries": 2
+    },
+    {
+      "name": "rate-limited",
+      "network": "solana",
+      "method": "getAccountInfo",
+      "httpStatus": 429,
+      "expectedErrorCode": "RPC_HTTP_429",
+      "maxRetries": 2
+    }
+  ]
+}
