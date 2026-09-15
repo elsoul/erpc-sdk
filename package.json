@@ -11,6 +11,7 @@
     "test": "corepack pnpm --filter @elsoul/erpc-sdk test",
     "pack:check": "corepack pnpm --filter @elsoul/erpc-sdk pack:check",
     "method:parity": "node scripts/verify-method-parity.mjs",
+    "agent:check": "node --test scripts/agent-harness.test.mjs && node scripts/agent-harness.mjs check",
     "rust:build": "cargo build --workspace --release --locked",
     "rust:check": "cargo fmt --all -- --check && cargo clippy --workspace --all-targets --locked -- -D warnings",
     "rust:test": "cargo test --workspace --locked",
