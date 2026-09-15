@@ -54,6 +54,9 @@ func main() {
 Every network method accepts `context.Context`. HTTP calls are attempted once;
 transaction submission and other state-changing calls are never retried.
 
+For Solana transaction v1 options, response fields, and large base64
+transaction forwarding, see the [Solana transaction v1 guide](https://github.com/elsoul/erpc-sdk/blob/main/packages/typescript/docs/solana-v1.md).
+
 ## Generic, typed, and batch requests
 
 Typed common methods coexist with generic access to every method in the public
@@ -138,6 +141,32 @@ err = client.Avalanche.Index.XChainTransactions.Request(
 
 Create a separate `CloudClient` with a scoped access token for catalog, credit,
 resource, and usage APIs. Refresh credentials are not accepted or retained.
+
+## Offline token catalog
+
+The package includes a generated, offline catalog for the supported Ethereum,
+Solana, and Avalanche C-Chain deployments. It contains the complete asset and
+deployment records, including native tokens, wrapped tokens, bridged assets,
+replacement status, decimals, and chain-specific addresses. Catalog lookups do
+not create a client, require an API key, or make a network request.
+
+```go
+usdc, ok := erpc.TokenDeploymentByID(erpc.TokenEthereumUSDC)
+if !ok {
+	panic("Ethereum USDC is not in the catalog")
+}
+
+fmt.Println(usdc.Symbol, usdc.Decimals, usdc.Address)
+
+eur := erpc.ListTokenDeployments(erpc.TokenDeploymentFilter{
+	ChainID:        erpc.TokenChainSolanaMainnet,
+	StableCurrency: "EUR",
+})
+fmt.Println(len(eur))
+```
+
+The canonical source and update evidence live in the
+[token catalog registry README](https://github.com/elsoul/erpc-sdk/blob/main/registry/README.md).
 
 ## License
 

@@ -1,0 +1,1707 @@
+{
+  "schemaVersion": 1,
+  "catalogVersion": "1.0.0",
+  "manualAsOf": "2026-09-15",
+  "contentDigest": "62879dfe8bb49a154d2a1bff356321e5dbe78d8cef0cd3409ef2b22cfd3445a4",
+  "assets": [
+    {
+      "assetId": "asset-0001",
+      "name": "Ether",
+      "representationKind": "native",
+      "stableCurrency": null,
+      "underlyingAssetId": null,
+      "economicReferenceAssetId": null,
+      "evidence": [
+        "https://ethereum.org/whitepaper/"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "assetId": "asset-0002",
+      "name": "Wrapped Ether",
+      "representationKind": "wrapped",
+      "stableCurrency": null,
+      "underlyingAssetId": "asset-0001",
+      "economicReferenceAssetId": null,
+      "evidence": [
+        "https://github.com/gnosis/canonical-weth"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "assetId": "asset-0003",
+      "name": "Avalanche",
+      "representationKind": "native",
+      "stableCurrency": null,
+      "underlyingAssetId": null,
+      "economicReferenceAssetId": null,
+      "evidence": [
+        "https://build.avax.network/docs/primary-network",
+        "https://build.avax.network/academy/blockchain/x402-payment-infrastructure/04-x402-on-avalanche/02-network-setup"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "assetId": "asset-0004",
+      "name": "Wrapped AVAX",
+      "representationKind": "wrapped",
+      "stableCurrency": null,
+      "underlyingAssetId": "asset-0003",
+      "economicReferenceAssetId": null,
+      "evidence": [
+        "https://build.avax.network/docs/primary-network",
+        "https://build.avax.network/academy/blockchain/x402-payment-infrastructure/04-x402-on-avalanche/02-network-setup"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "assetId": "asset-0005",
+      "name": "Solana",
+      "representationKind": "native",
+      "stableCurrency": null,
+      "underlyingAssetId": null,
+      "economicReferenceAssetId": null,
+      "evidence": [
+        "https://solana.com/docs/tokens/basics/sync-native"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "assetId": "asset-0006",
+      "name": "Wrapped SOL",
+      "representationKind": "wrapped",
+      "stableCurrency": null,
+      "underlyingAssetId": "asset-0005",
+      "economicReferenceAssetId": null,
+      "evidence": [
+        "https://solana.com/docs/tokens/basics/sync-native"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "assetId": "asset-0007",
+      "name": "USD Coin",
+      "representationKind": "issued",
+      "stableCurrency": "USD",
+      "underlyingAssetId": null,
+      "economicReferenceAssetId": null,
+      "evidence": [
+        "https://developers.circle.com/stablecoins/usdc-contract-addresses"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "assetId": "asset-0008",
+      "name": "Euro Coin",
+      "representationKind": "issued",
+      "stableCurrency": "EUR",
+      "underlyingAssetId": null,
+      "economicReferenceAssetId": null,
+      "evidence": [
+        "https://developers.circle.com/stablecoins/eurc-contract-addresses"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "assetId": "asset-0009",
+      "name": "Tether USDt",
+      "representationKind": "issued",
+      "stableCurrency": "USD",
+      "underlyingAssetId": null,
+      "economicReferenceAssetId": null,
+      "evidence": [
+        "https://tether.to/en/supported-protocols/"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "assetId": "asset-0010",
+      "name": "Tether EURt",
+      "representationKind": "issued",
+      "stableCurrency": "EUR",
+      "underlyingAssetId": null,
+      "economicReferenceAssetId": null,
+      "evidence": [
+        "https://tether.to/en/supported-protocols/"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "assetId": "asset-0011",
+      "name": "Bridged USD Coin (USDC.e)",
+      "representationKind": "bridged",
+      "stableCurrency": "USD",
+      "underlyingAssetId": null,
+      "economicReferenceAssetId": "asset-0007",
+      "evidence": [
+        "https://support.avax.network/en/articles/8857127-usdc-cctp-faq",
+        "https://help.circle.com/support/en/usdc-on-avalanche-vs-usdc-e?id=kb_article_view&sysparm_article=KB0010587"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "assetId": "asset-0012",
+      "name": "Dai",
+      "representationKind": "issued",
+      "stableCurrency": "USD",
+      "underlyingAssetId": null,
+      "economicReferenceAssetId": null,
+      "evidence": [
+        "https://github.com/sky-ecosystem/developerguides/blob/master/dai/dsr-integration-guide/dsr-integration-guide.md"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "assetId": "asset-0013",
+      "name": "Sky Dollar",
+      "representationKind": "issued",
+      "stableCurrency": "USD",
+      "underlyingAssetId": null,
+      "economicReferenceAssetId": null,
+      "evidence": [
+        "https://github.com/sky-ecosystem/spells-mainnet/blob/master/src/test/addresses_mainnet.sol",
+        "https://developers.skyeco.com/guides/skylink/usds-ethereum-solana-bridge/"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "assetId": "asset-0014",
+      "name": "Bridged Sky Dollar",
+      "representationKind": "bridged",
+      "stableCurrency": "USD",
+      "underlyingAssetId": null,
+      "economicReferenceAssetId": "asset-0013",
+      "evidence": [
+        "https://github.com/sky-ecosystem/spells-mainnet/blob/master/src/test/addresses_mainnet.sol",
+        "https://developers.skyeco.com/guides/skylink/usds-ethereum-solana-bridge/"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "assetId": "asset-0015",
+      "name": "PayPal USD (PYUSD)",
+      "representationKind": "issued",
+      "stableCurrency": "USD",
+      "underlyingAssetId": null,
+      "economicReferenceAssetId": null,
+      "evidence": [
+        "https://docs.paxos.com/guides/stablecoin/pyusd/mainnet",
+        "https://www.paypal.com/uk/cshelp/article/what-is-paypal-usd-pyusd-help1005"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "assetId": "asset-0016",
+      "name": "Global Dollar (USDG)",
+      "representationKind": "issued",
+      "stableCurrency": "USD",
+      "underlyingAssetId": null,
+      "economicReferenceAssetId": null,
+      "evidence": [
+        "https://docs.paxos.com/guides/stablecoin/usdg/mainnet"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "assetId": "asset-0017",
+      "name": "Pax Dollar (USDP)",
+      "representationKind": "issued",
+      "stableCurrency": "USD",
+      "underlyingAssetId": null,
+      "economicReferenceAssetId": null,
+      "evidence": [
+        "https://docs.sandbox.paxos.com/guides/stablecoin/usdp/mainnet",
+        "https://support.paxos.com/articles/3639591263-pax-dollar-usdp"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "assetId": "asset-0018",
+      "name": "USDe",
+      "representationKind": "issued",
+      "stableCurrency": "USD",
+      "underlyingAssetId": null,
+      "economicReferenceAssetId": null,
+      "evidence": [
+        "https://docs.ethena.fi/api-documentation/overview"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "assetId": "asset-0019",
+      "name": "GHO",
+      "representationKind": "issued",
+      "stableCurrency": "USD",
+      "underlyingAssetId": null,
+      "economicReferenceAssetId": null,
+      "evidence": [
+        "https://raw.githubusercontent.com/aave-dao/aave-address-book/main/tokenlist.json"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "assetId": "asset-0020",
+      "name": "Bridged GHO",
+      "representationKind": "bridged",
+      "stableCurrency": "USD",
+      "underlyingAssetId": null,
+      "economicReferenceAssetId": "asset-0019",
+      "evidence": [
+        "https://raw.githubusercontent.com/aave-dao/aave-address-book/main/tokenlist.json",
+        "https://www.aave.com/help/gho-stablecoin/bridging-gho"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "assetId": "asset-0021",
+      "name": "First Digital USD",
+      "representationKind": "issued",
+      "stableCurrency": "USD",
+      "underlyingAssetId": null,
+      "economicReferenceAssetId": null,
+      "evidence": [
+        "https://www.firstdigitallabs.com/fdusd"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "assetId": "asset-0022",
+      "name": "Ripple USD",
+      "representationKind": "issued",
+      "stableCurrency": "USD",
+      "underlyingAssetId": null,
+      "economicReferenceAssetId": null,
+      "evidence": [
+        "https://docs.ripple.com/products/stablecoin/overview/token-addresses"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "assetId": "asset-0023",
+      "name": "Agora USD",
+      "representationKind": "issued",
+      "stableCurrency": "USD",
+      "underlyingAssetId": null,
+      "economicReferenceAssetId": null,
+      "evidence": [
+        "https://docs.agora.finance/developer/contract-deployments"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "assetId": "asset-0024",
+      "name": "Jupiter USD",
+      "representationKind": "issued",
+      "stableCurrency": "USD",
+      "underlyingAssetId": null,
+      "economicReferenceAssetId": null,
+      "evidence": [
+        "https://docs.jup.ag/user-docs/earn/jupusd"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "assetId": "asset-0025",
+      "name": "JPY Coin",
+      "representationKind": "issued",
+      "stableCurrency": "JPY",
+      "underlyingAssetId": null,
+      "economicReferenceAssetId": null,
+      "evidence": [
+        "https://github.com/jpycoin"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "assetId": "asset-0026",
+      "name": "Euro CoinVertible",
+      "representationKind": "issued",
+      "stableCurrency": "EUR",
+      "underlyingAssetId": null,
+      "economicReferenceAssetId": null,
+      "evidence": [
+        "https://www.sgforge.com/wp-content/uploads/2025/10/EURCV-White-Paper_iXBRL_202510.html"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "assetId": "asset-0027",
+      "name": "EURAU",
+      "representationKind": "issued",
+      "stableCurrency": "EUR",
+      "underlyingAssetId": null,
+      "economicReferenceAssetId": null,
+      "evidence": [
+        "https://allunity.com/eurau"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "assetId": "asset-0028",
+      "name": "EUROP",
+      "representationKind": "issued",
+      "stableCurrency": "EUR",
+      "underlyingAssetId": null,
+      "economicReferenceAssetId": null,
+      "evidence": [
+        "https://schuman.io/smart-contracts/"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "assetId": "asset-0029",
+      "name": "GYEN",
+      "representationKind": "issued",
+      "stableCurrency": "JPY",
+      "underlyingAssetId": null,
+      "economicReferenceAssetId": null,
+      "evidence": [
+        "https://stablecoin.z.com/multi-chain-gyen-and-zusd/",
+        "https://support.stablecoin.z.com/hc/en-us/articles/60491926674585-GYEN-and-ZUSD-Wind-down-How-to-Redeem-Before-the-November-11-2026-Deadline"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "assetId": "asset-0030",
+      "name": "ZUSD",
+      "representationKind": "issued",
+      "stableCurrency": "USD",
+      "underlyingAssetId": null,
+      "economicReferenceAssetId": null,
+      "evidence": [
+        "https://stablecoin.z.com/multi-chain-gyen-and-zusd/",
+        "https://support.stablecoin.z.com/hc/en-us/articles/60491926674585-GYEN-and-ZUSD-Wind-down-How-to-Redeem-Before-the-November-11-2026-Deadline"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "assetId": "asset-0031",
+      "name": "Angle EURA",
+      "representationKind": "issued",
+      "stableCurrency": "EUR",
+      "underlyingAssetId": null,
+      "economicReferenceAssetId": null,
+      "evidence": [
+        "https://angle.money/",
+        "https://developers.angle.money/overview/smart-contracts/mainnet-contracts"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "assetId": "asset-0032",
+      "name": "STASIS EURS",
+      "representationKind": "issued",
+      "stableCurrency": "EUR",
+      "underlyingAssetId": null,
+      "economicReferenceAssetId": null,
+      "evidence": [
+        "https://github.com/STASISNET/STASIS-EURS-token-smart-contract"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "assetId": "asset-0033",
+      "name": "Monerium EURe",
+      "representationKind": "issued",
+      "stableCurrency": "EUR",
+      "underlyingAssetId": null,
+      "economicReferenceAssetId": null,
+      "evidence": [
+        "https://docs.monerium.com/contracts-v2/",
+        "https://docs.monerium.com/tokens/"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "assetId": "asset-0034",
+      "name": "Uniswap",
+      "representationKind": "issued",
+      "stableCurrency": null,
+      "underlyingAssetId": null,
+      "economicReferenceAssetId": null,
+      "evidence": [
+        "https://developers.uniswap.org/docs/ecosystem/governance/technical-reference"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "assetId": "asset-0035",
+      "name": "Aave",
+      "representationKind": "issued",
+      "stableCurrency": null,
+      "underlyingAssetId": null,
+      "economicReferenceAssetId": null,
+      "evidence": [
+        "https://github.com/aave-dao/aave-address-book/blob/main/src/AaveV3Ethereum.sol"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "assetId": "asset-0036",
+      "name": "Chainlink",
+      "representationKind": "issued",
+      "stableCurrency": null,
+      "underlyingAssetId": null,
+      "economicReferenceAssetId": null,
+      "evidence": [
+        "https://docs.chain.link/resources/link-token-contracts"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "assetId": "asset-0037",
+      "name": "Bridged Chainlink",
+      "representationKind": "bridged",
+      "stableCurrency": null,
+      "underlyingAssetId": null,
+      "economicReferenceAssetId": "asset-0036",
+      "evidence": [
+        "https://docs.chain.link/resources/link-token-contracts"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "assetId": "asset-0038",
+      "name": "Trader Joe",
+      "representationKind": "issued",
+      "stableCurrency": null,
+      "underlyingAssetId": null,
+      "economicReferenceAssetId": null,
+      "evidence": [
+        "https://docs.lfj.gg/lfj-dex/contracts"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "assetId": "asset-0039",
+      "name": "Jupiter",
+      "representationKind": "issued",
+      "stableCurrency": null,
+      "underlyingAssetId": null,
+      "economicReferenceAssetId": null,
+      "evidence": [
+        "https://developers.jup.ag/docs/guides/how-to-get-token-information"
+      ],
+      "asOfDate": "2026-09-15"
+    }
+  ],
+  "deployments": [
+    {
+      "deploymentId": "deployment-0001",
+      "assetId": "asset-0001",
+      "chainId": "eip155:1",
+      "symbol": "ETH",
+      "decimals": 18,
+      "standard": "native",
+      "address": null,
+      "status": "active",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://ethereum.org/whitepaper/"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "deploymentId": "deployment-0002",
+      "assetId": "asset-0002",
+      "chainId": "eip155:1",
+      "symbol": "WETH",
+      "decimals": 18,
+      "standard": "erc20",
+      "address": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+      "status": "active",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://github.com/gnosis/canonical-weth"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "deploymentId": "deployment-0003",
+      "assetId": "asset-0003",
+      "chainId": "eip155:43114",
+      "symbol": "AVAX",
+      "decimals": 18,
+      "standard": "native",
+      "address": null,
+      "status": "active",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://build.avax.network/docs/primary-network",
+        "https://build.avax.network/academy/blockchain/x402-payment-infrastructure/04-x402-on-avalanche/02-network-setup"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "deploymentId": "deployment-0004",
+      "assetId": "asset-0004",
+      "chainId": "eip155:43114",
+      "symbol": "WAVAX",
+      "decimals": 18,
+      "standard": "erc20",
+      "address": "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+      "status": "active",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://build.avax.network/docs/primary-network",
+        "https://build.avax.network/academy/blockchain/x402-payment-infrastructure/04-x402-on-avalanche/02-network-setup"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "deploymentId": "deployment-0005",
+      "assetId": "asset-0005",
+      "chainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+      "symbol": "SOL",
+      "decimals": 9,
+      "standard": "native",
+      "address": null,
+      "status": "active",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://solana.com/docs/tokens/basics/sync-native"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "deploymentId": "deployment-0006",
+      "assetId": "asset-0006",
+      "chainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+      "symbol": "WSOL",
+      "decimals": 9,
+      "standard": "spl-token",
+      "address": "So11111111111111111111111111111111111111112",
+      "status": "active",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://solana.com/docs/tokens/basics/sync-native"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "deploymentId": "deployment-0007",
+      "assetId": "asset-0006",
+      "chainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+      "symbol": "WSOL",
+      "decimals": 9,
+      "standard": "spl-token-2022",
+      "address": "9pan9bMn5HatX4EJdBwg9VgCa7Uz5HL8N1m5D3NdXejP",
+      "status": "active",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://solana.com/docs/tokens/basics/sync-native"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "deploymentId": "deployment-0008",
+      "assetId": "asset-0007",
+      "chainId": "eip155:1",
+      "symbol": "USDC",
+      "decimals": 6,
+      "standard": "erc20",
+      "address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+      "status": "active",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://developers.circle.com/stablecoins/usdc-contract-addresses"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "deploymentId": "deployment-0009",
+      "assetId": "asset-0007",
+      "chainId": "eip155:43114",
+      "symbol": "USDC",
+      "decimals": 6,
+      "standard": "erc20",
+      "address": "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+      "status": "active",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://developers.circle.com/stablecoins/usdc-contract-addresses"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "deploymentId": "deployment-0010",
+      "assetId": "asset-0007",
+      "chainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+      "symbol": "USDC",
+      "decimals": 6,
+      "standard": "spl-token",
+      "address": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "status": "active",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://developers.circle.com/stablecoins/usdc-contract-addresses"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "deploymentId": "deployment-0011",
+      "assetId": "asset-0008",
+      "chainId": "eip155:1",
+      "symbol": "EURC",
+      "decimals": 6,
+      "standard": "erc20",
+      "address": "0x1abaea1f7c830bd89acc67ec4af516284b1bc33c",
+      "status": "active",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://developers.circle.com/stablecoins/eurc-contract-addresses"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "deploymentId": "deployment-0012",
+      "assetId": "asset-0008",
+      "chainId": "eip155:43114",
+      "symbol": "EURC",
+      "decimals": 6,
+      "standard": "erc20",
+      "address": "0xc891eb4cbdeff6e073e859e987815ed1505c2acd",
+      "status": "active",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://developers.circle.com/stablecoins/eurc-contract-addresses"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "deploymentId": "deployment-0013",
+      "assetId": "asset-0008",
+      "chainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+      "symbol": "EURC",
+      "decimals": 6,
+      "standard": "spl-token",
+      "address": "HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr",
+      "status": "active",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://developers.circle.com/stablecoins/eurc-contract-addresses"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "deploymentId": "deployment-0014",
+      "assetId": "asset-0009",
+      "chainId": "eip155:1",
+      "symbol": "USDT",
+      "decimals": 6,
+      "standard": "erc20",
+      "address": "0xdac17f958d2ee523a2206206994597c13d831ec7",
+      "status": "active",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://tether.to/en/supported-protocols/"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "deploymentId": "deployment-0015",
+      "assetId": "asset-0009",
+      "chainId": "eip155:43114",
+      "symbol": "USDT",
+      "decimals": 6,
+      "standard": "erc20",
+      "address": "0x9702230a8ea53601f5cd2dc00fdbc13d4df4a8c7",
+      "status": "active",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://tether.to/en/supported-protocols/"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "deploymentId": "deployment-0016",
+      "assetId": "asset-0009",
+      "chainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+      "symbol": "USDT",
+      "decimals": 6,
+      "standard": "spl-token",
+      "address": "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+      "status": "active",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://tether.to/en/supported-protocols/"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "deploymentId": "deployment-0017",
+      "assetId": "asset-0010",
+      "chainId": "eip155:1",
+      "symbol": "EURT",
+      "decimals": 6,
+      "standard": "erc20",
+      "address": "0xc581b735a1688071a1746c968e0798d642ede491",
+      "status": "retired",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://tether.to/en/supported-protocols/"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "deploymentId": "deployment-0018",
+      "assetId": "asset-0011",
+      "chainId": "eip155:43114",
+      "symbol": "USDC.e",
+      "decimals": 6,
+      "standard": "erc20",
+      "address": "0xa7d7079b0fead91f3e65f86e8915cb59c1a4c664",
+      "status": "legacy",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://support.avax.network/en/articles/8857127-usdc-cctp-faq",
+        "https://help.circle.com/support/en/usdc-on-avalanche-vs-usdc-e?id=kb_article_view&sysparm_article=KB0010587"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "deploymentId": "deployment-0019",
+      "assetId": "asset-0012",
+      "chainId": "eip155:1",
+      "symbol": "DAI",
+      "decimals": 18,
+      "standard": "erc20",
+      "address": "0x6b175474e89094c44da98b954eedeac495271d0f",
+      "status": "active",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://github.com/sky-ecosystem/developerguides/blob/master/dai/dsr-integration-guide/dsr-integration-guide.md"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "deploymentId": "deployment-0020",
+      "assetId": "asset-0013",
+      "chainId": "eip155:1",
+      "symbol": "USDS",
+      "decimals": 18,
+      "standard": "erc20",
+      "address": "0xdc035d45d973e3ec169d2276ddab16f1e407384f",
+      "status": "active",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://github.com/sky-ecosystem/spells-mainnet/blob/master/src/test/addresses_mainnet.sol",
+        "https://developers.skyeco.com/guides/skylink/usds-ethereum-solana-bridge/"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "deploymentId": "deployment-0021",
+      "assetId": "asset-0014",
+      "chainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+      "symbol": "USDS",
+      "decimals": 6,
+      "standard": "spl-token",
+      "address": "USDSwr9ApdHk5bvJKMjzff41FfuX8bSxdKcR81vTwcA",
+      "status": "active",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://github.com/sky-ecosystem/spells-mainnet/blob/master/src/test/addresses_mainnet.sol",
+        "https://developers.skyeco.com/guides/skylink/usds-ethereum-solana-bridge/"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "deploymentId": "deployment-0022",
+      "assetId": "asset-0015",
+      "chainId": "eip155:1",
+      "symbol": "PYUSD",
+      "decimals": 6,
+      "standard": "erc20",
+      "address": "0x6c3ea9036406852006290770bedfcaba0e23a0e8",
+      "status": "active",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://docs.paxos.com/guides/stablecoin/pyusd/mainnet"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "deploymentId": "deployment-0023",
+      "assetId": "asset-0015",
+      "chainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+      "symbol": "PYUSD",
+      "decimals": 6,
+      "standard": "spl-token-2022",
+      "address": "2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
+      "status": "active",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://docs.paxos.com/guides/stablecoin/pyusd/mainnet"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "deploymentId": "deployment-0024",
+      "assetId": "asset-0016",
+      "chainId": "eip155:1",
+      "symbol": "USDG",
+      "decimals": 6,
+      "standard": "erc20",
+      "address": "0xe343167631d89b6ffc58b88d6b7fb0228795491d",
+      "status": "active",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://docs.paxos.com/guides/stablecoin/usdg/mainnet"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "deploymentId": "deployment-0025",
+      "assetId": "asset-0016",
+      "chainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+      "symbol": "USDG",
+      "decimals": 6,
+      "standard": "spl-token-2022",
+      "address": "2u1tszSeqZ3qBWF3uNGPFc8TzMk2tdiwknnRMWGWjGWH",
+      "status": "active",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://docs.paxos.com/guides/stablecoin/usdg/mainnet"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "deploymentId": "deployment-0026",
+      "assetId": "asset-0017",
+      "chainId": "eip155:1",
+      "symbol": "USDP",
+      "decimals": 18,
+      "standard": "erc20",
+      "address": "0x8e870d67f660d95d5be530380d0ec0bd388289e1",
+      "status": "active",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://docs.sandbox.paxos.com/guides/stablecoin/usdp/mainnet",
+        "https://support.paxos.com/articles/3639591263-pax-dollar-usdp"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "deploymentId": "deployment-0027",
+      "assetId": "asset-0017",
+      "chainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+      "symbol": "USDP",
+      "decimals": 6,
+      "standard": "spl-token-2022",
+      "address": "HVbpJAQGNpkgBaYBZQBR1t7yFdvaYVp2vCQQfKKEN4tM",
+      "status": "active",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://docs.sandbox.paxos.com/guides/stablecoin/usdp/mainnet",
+        "https://support.paxos.com/articles/3639591263-pax-dollar-usdp"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "deploymentId": "deployment-0028",
+      "assetId": "asset-0018",
+      "chainId": "eip155:1",
+      "symbol": "USDe",
+      "decimals": 18,
+      "standard": "erc20",
+      "address": "0x4c9edd5852cd905f086c759e8383e09bff1e68b3",
+      "status": "active",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://docs.ethena.fi/api-documentation/overview"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "deploymentId": "deployment-0029",
+      "assetId": "asset-0019",
+      "chainId": "eip155:1",
+      "symbol": "GHO",
+      "decimals": 18,
+      "standard": "erc20",
+      "address": "0x40d16fc0246ad3160ccc09b8d0d3a2cd28ae6c2f",
+      "status": "active",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://raw.githubusercontent.com/aave-dao/aave-address-book/main/tokenlist.json"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "deploymentId": "deployment-0030",
+      "assetId": "asset-0020",
+      "chainId": "eip155:43114",
+      "symbol": "GHO",
+      "decimals": 18,
+      "standard": "erc20",
+      "address": "0xfc421ad3c883bf9e7c4f42de845c4e4405799e73",
+      "status": "active",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://raw.githubusercontent.com/aave-dao/aave-address-book/main/tokenlist.json",
+        "https://www.aave.com/help/gho-stablecoin/bridging-gho"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "deploymentId": "deployment-0031",
+      "assetId": "asset-0021",
+      "chainId": "eip155:1",
+      "symbol": "FDUSD",
+      "decimals": 18,
+      "standard": "erc20",
+      "address": "0xc5f0f7b66764f6ec8c8dff7ba683102295e16409",
+      "status": "active",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://www.firstdigitallabs.com/fdusd"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "deploymentId": "deployment-0032",
+      "assetId": "asset-0021",
+      "chainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+      "symbol": "FDUSD",
+      "decimals": 6,
+      "standard": "spl-token",
+      "address": "9zNQRsGLjNKwCUU5Gq5LR8beUCPzQMVMqKAi3SSZh54u",
+      "status": "active",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://www.firstdigitallabs.com/fdusd"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "deploymentId": "deployment-0033",
+      "assetId": "asset-0022",
+      "chainId": "eip155:1",
+      "symbol": "RLUSD",
+      "decimals": 18,
+      "standard": "erc20",
+      "address": "0x8292bb45bf1ee4d140127049757c2e0ff06317ed",
+      "status": "active",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://docs.ripple.com/products/stablecoin/overview/token-addresses"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "deploymentId": "deployment-0034",
+      "assetId": "asset-0023",
+      "chainId": "eip155:1",
+      "symbol": "AUSD",
+      "decimals": 6,
+      "standard": "erc20",
+      "address": "0x00000000efe302beaa2b3e6e1b18d08d69a9012a",
+      "status": "active",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://docs.agora.finance/developer/contract-deployments"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "deploymentId": "deployment-0035",
+      "assetId": "asset-0023",
+      "chainId": "eip155:43114",
+      "symbol": "AUSD",
+      "decimals": 6,
+      "standard": "erc20",
+      "address": "0x00000000efe302beaa2b3e6e1b18d08d69a9012a",
+      "status": "active",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://docs.agora.finance/developer/contract-deployments"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "deploymentId": "deployment-0036",
+      "assetId": "asset-0023",
+      "chainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+      "symbol": "AUSD",
+      "decimals": 6,
+      "standard": "spl-token-2022",
+      "address": "AUSD1jCcCyPLybk1YnvPWsHQSrZ46dxwoMniN4N2UEB9",
+      "status": "active",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://docs.agora.finance/developer/contract-deployments"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "deploymentId": "deployment-0037",
+      "assetId": "asset-0024",
+      "chainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+      "symbol": "JupUSD",
+      "decimals": 6,
+      "standard": "spl-token",
+      "address": "JuprjznTrTSp2UFa3ZBUFgwdAmtZCq4MQCwysN55USD",
+      "status": "active",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://docs.jup.ag/user-docs/earn/jupusd"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "deploymentId": "deployment-0038",
+      "assetId": "asset-0025",
+      "chainId": "eip155:1",
+      "symbol": "JPYC",
+      "decimals": 18,
+      "standard": "erc20",
+      "address": "0xe7c3d8c9a439fede00d2600032d5db0be71c3c29",
+      "status": "active",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://github.com/jpycoin"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "deploymentId": "deployment-0039",
+      "assetId": "asset-0025",
+      "chainId": "eip155:43114",
+      "symbol": "JPYC",
+      "decimals": 18,
+      "standard": "erc20",
+      "address": "0xe7c3d8c9a439fede00d2600032d5db0be71c3c29",
+      "status": "active",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://github.com/jpycoin"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "deploymentId": "deployment-0040",
+      "assetId": "asset-0026",
+      "chainId": "eip155:1",
+      "symbol": "EURCV",
+      "decimals": 18,
+      "standard": "erc20",
+      "address": "0x5f7827fdeb7c20b443265fc2f40845b715385ff2",
+      "status": "active",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://www.sgforge.com/wp-content/uploads/2025/10/EURCV-White-Paper_iXBRL_202510.html"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "deploymentId": "deployment-0041",
+      "assetId": "asset-0026",
+      "chainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+      "symbol": "EURCV",
+      "decimals": 2,
+      "standard": "spl-token-2022",
+      "address": "DghpMkatCiUsofbTmid3M3kAbDTPqDwKiYHnudXeGG52",
+      "status": "active",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://www.sgforge.com/wp-content/uploads/2025/10/EURCV-White-Paper_iXBRL_202510.html"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "deploymentId": "deployment-0042",
+      "assetId": "asset-0027",
+      "chainId": "eip155:1",
+      "symbol": "EURAU",
+      "decimals": 6,
+      "standard": "erc20",
+      "address": "0x4933a85b5b5466fbaf179f72d3de273c287ec2c2",
+      "status": "active",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://allunity.com/eurau"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "deploymentId": "deployment-0043",
+      "assetId": "asset-0027",
+      "chainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+      "symbol": "EURAU",
+      "decimals": 6,
+      "standard": "spl-token-2022",
+      "address": "9pCWprxbZMW2rYSMhPTeoyLMV2sN2WJqshdT7DQVt6hS",
+      "status": "active",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://allunity.com/eurau"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "deploymentId": "deployment-0044",
+      "assetId": "asset-0028",
+      "chainId": "eip155:1",
+      "symbol": "EUROP",
+      "decimals": 6,
+      "standard": "erc20",
+      "address": "0x888883b5f5d21fb10dfeb70e8f9722b9fb0e5e51",
+      "status": "active",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://schuman.io/smart-contracts/"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "deploymentId": "deployment-0045",
+      "assetId": "asset-0028",
+      "chainId": "eip155:43114",
+      "symbol": "EUROP",
+      "decimals": 6,
+      "standard": "erc20",
+      "address": "0x8835a2f66a7aaccb297cb985831a616b75e2e16c",
+      "status": "active",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://schuman.io/smart-contracts/"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "deploymentId": "deployment-0046",
+      "assetId": "asset-0028",
+      "chainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+      "symbol": "EUROP",
+      "decimals": 6,
+      "standard": "spl-token-2022",
+      "address": "euro5sNHrZC2wu2RoLvy6xxoVMc3Qnd1vjxoWf4MftA",
+      "status": "active",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://schuman.io/smart-contracts/"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "deploymentId": "deployment-0047",
+      "assetId": "asset-0029",
+      "chainId": "eip155:1",
+      "symbol": "GYEN",
+      "decimals": 6,
+      "standard": "erc20",
+      "address": "0xc08512927d12348f6620a698105e1baac6ecd911",
+      "status": "winding-down",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://stablecoin.z.com/multi-chain-gyen-and-zusd/",
+        "https://support.stablecoin.z.com/hc/en-us/articles/60491926674585-GYEN-and-ZUSD-Wind-down-How-to-Redeem-Before-the-November-11-2026-Deadline"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "deploymentId": "deployment-0048",
+      "assetId": "asset-0029",
+      "chainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+      "symbol": "GYEN",
+      "decimals": 6,
+      "standard": "spl-token-2022",
+      "address": "Crn4x1Y2HUKko7ox2EZMT6N2t2ZyH7eKtwkBGVnhEq1g",
+      "status": "winding-down",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://stablecoin.z.com/multi-chain-gyen-and-zusd/",
+        "https://support.stablecoin.z.com/hc/en-us/articles/60491926674585-GYEN-and-ZUSD-Wind-down-How-to-Redeem-Before-the-November-11-2026-Deadline"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "deploymentId": "deployment-0049",
+      "assetId": "asset-0030",
+      "chainId": "eip155:1",
+      "symbol": "ZUSD",
+      "decimals": 6,
+      "standard": "erc20",
+      "address": "0xc56c2b7e71b54d38aab6d52e94a04cbfa8f604fa",
+      "status": "winding-down",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://stablecoin.z.com/multi-chain-gyen-and-zusd/",
+        "https://support.stablecoin.z.com/hc/en-us/articles/60491926674585-GYEN-and-ZUSD-Wind-down-How-to-Redeem-Before-the-November-11-2026-Deadline"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "deploymentId": "deployment-0050",
+      "assetId": "asset-0030",
+      "chainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+      "symbol": "ZUSD",
+      "decimals": 6,
+      "standard": "spl-token-2022",
+      "address": "FrBfWJ4qE5sCzKm3k3JaAtqZcXUh4LvJygDeketsrsH4",
+      "status": "winding-down",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://stablecoin.z.com/multi-chain-gyen-and-zusd/",
+        "https://support.stablecoin.z.com/hc/en-us/articles/60491926674585-GYEN-and-ZUSD-Wind-down-How-to-Redeem-Before-the-November-11-2026-Deadline"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "deploymentId": "deployment-0051",
+      "assetId": "asset-0031",
+      "chainId": "eip155:1",
+      "symbol": "EURA",
+      "decimals": 18,
+      "standard": "erc20",
+      "address": "0x1a7e4e63778b4f12a199c062f3efdd288afcbce8",
+      "status": "winding-down",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://angle.money/",
+        "https://developers.angle.money/overview/smart-contracts/mainnet-contracts"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "deploymentId": "deployment-0052",
+      "assetId": "asset-0032",
+      "chainId": "eip155:1",
+      "symbol": "EURS",
+      "decimals": 2,
+      "standard": "erc20",
+      "address": "0xdb25f211ab05b1c97d595516f45794528a807ad8",
+      "status": "active",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://github.com/STASISNET/STASIS-EURS-token-smart-contract"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "deploymentId": "deployment-0053",
+      "assetId": "asset-0033",
+      "chainId": "eip155:1",
+      "symbol": "EURe",
+      "decimals": 18,
+      "standard": "erc20",
+      "address": "0x3231cb76718cdef2155fc47b5286d82e6eda273f",
+      "status": "legacy",
+      "replacedByDeploymentId": "deployment-0054",
+      "evidence": [
+        "https://docs.monerium.com/contracts-v2/",
+        "https://docs.monerium.com/tokens/"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "deploymentId": "deployment-0054",
+      "assetId": "asset-0033",
+      "chainId": "eip155:1",
+      "symbol": "EURe",
+      "decimals": 18,
+      "standard": "erc20",
+      "address": "0x39b8b6385416f4ca36a20319f70d28621895279d",
+      "status": "active",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://docs.monerium.com/contracts-v2/",
+        "https://docs.monerium.com/tokens/"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "deploymentId": "deployment-0055",
+      "assetId": "asset-0034",
+      "chainId": "eip155:1",
+      "symbol": "UNI",
+      "decimals": 18,
+      "standard": "erc20",
+      "address": "0x1f9840a85d5af5bf1d1762f925bdaddc4201f984",
+      "status": "active",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://developers.uniswap.org/docs/ecosystem/governance/technical-reference"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "deploymentId": "deployment-0056",
+      "assetId": "asset-0035",
+      "chainId": "eip155:1",
+      "symbol": "AAVE",
+      "decimals": 18,
+      "standard": "erc20",
+      "address": "0x7fc66500c84a76ad7e9c93437bfc5ac33e2ddae9",
+      "status": "active",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://github.com/aave-dao/aave-address-book/blob/main/src/AaveV3Ethereum.sol"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "deploymentId": "deployment-0057",
+      "assetId": "asset-0036",
+      "chainId": "eip155:1",
+      "symbol": "LINK",
+      "decimals": 18,
+      "standard": "erc20",
+      "address": "0x514910771af9ca656af840dff83e8264ecf986ca",
+      "status": "active",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://docs.chain.link/resources/link-token-contracts"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "deploymentId": "deployment-0058",
+      "assetId": "asset-0037",
+      "chainId": "eip155:43114",
+      "symbol": "LINK",
+      "decimals": 18,
+      "standard": "erc20",
+      "address": "0x5947bb275c521040051d82396192181b413227a3",
+      "status": "active",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://docs.chain.link/resources/link-token-contracts"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "deploymentId": "deployment-0059",
+      "assetId": "asset-0038",
+      "chainId": "eip155:43114",
+      "symbol": "JOE",
+      "decimals": 18,
+      "standard": "erc20",
+      "address": "0x6e84a6216ea6dacc71ee8e6b0a5b7322eebc0fdd",
+      "status": "active",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://docs.lfj.gg/lfj-dex/contracts"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "deploymentId": "deployment-0060",
+      "assetId": "asset-0039",
+      "chainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+      "symbol": "JUP",
+      "decimals": 6,
+      "standard": "spl-token",
+      "address": "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN",
+      "status": "active",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://developers.jup.ag/docs/guides/how-to-get-token-information"
+      ],
+      "asOfDate": "2026-09-15"
+    }
+  ],
+  "aliases": [
+    {
+      "namespace": "ethereum",
+      "name": "ETH",
+      "deploymentId": "deployment-0001"
+    },
+    {
+      "namespace": "ethereum",
+      "name": "WETH",
+      "deploymentId": "deployment-0002"
+    },
+    {
+      "namespace": "avalancheC",
+      "name": "AVAX",
+      "deploymentId": "deployment-0003"
+    },
+    {
+      "namespace": "avalancheC",
+      "name": "WAVAX",
+      "deploymentId": "deployment-0004"
+    },
+    {
+      "namespace": "solana",
+      "name": "SOL",
+      "deploymentId": "deployment-0005"
+    },
+    {
+      "namespace": "solana",
+      "name": "WSOL",
+      "deploymentId": "deployment-0006"
+    },
+    {
+      "namespace": "solana",
+      "name": "WSOL_TOKEN_2022",
+      "deploymentId": "deployment-0007"
+    },
+    {
+      "namespace": "ethereum",
+      "name": "USDC",
+      "deploymentId": "deployment-0008"
+    },
+    {
+      "namespace": "avalancheC",
+      "name": "USDC",
+      "deploymentId": "deployment-0009"
+    },
+    {
+      "namespace": "solana",
+      "name": "USDC",
+      "deploymentId": "deployment-0010"
+    },
+    {
+      "namespace": "ethereum",
+      "name": "EURC",
+      "deploymentId": "deployment-0011"
+    },
+    {
+      "namespace": "avalancheC",
+      "name": "EURC",
+      "deploymentId": "deployment-0012"
+    },
+    {
+      "namespace": "solana",
+      "name": "EURC",
+      "deploymentId": "deployment-0013"
+    },
+    {
+      "namespace": "ethereum",
+      "name": "USDT",
+      "deploymentId": "deployment-0014"
+    },
+    {
+      "namespace": "avalancheC",
+      "name": "USDT",
+      "deploymentId": "deployment-0015"
+    },
+    {
+      "namespace": "solana",
+      "name": "USDT",
+      "deploymentId": "deployment-0016"
+    },
+    {
+      "namespace": "ethereum",
+      "name": "EURT",
+      "deploymentId": "deployment-0017"
+    },
+    {
+      "namespace": "avalancheC",
+      "name": "USDC_E",
+      "deploymentId": "deployment-0018"
+    },
+    {
+      "namespace": "ethereum",
+      "name": "DAI",
+      "deploymentId": "deployment-0019"
+    },
+    {
+      "namespace": "ethereum",
+      "name": "USDS",
+      "deploymentId": "deployment-0020"
+    },
+    {
+      "namespace": "solana",
+      "name": "USDS",
+      "deploymentId": "deployment-0021"
+    },
+    {
+      "namespace": "ethereum",
+      "name": "PYUSD",
+      "deploymentId": "deployment-0022"
+    },
+    {
+      "namespace": "solana",
+      "name": "PYUSD",
+      "deploymentId": "deployment-0023"
+    },
+    {
+      "namespace": "ethereum",
+      "name": "USDG",
+      "deploymentId": "deployment-0024"
+    },
+    {
+      "namespace": "solana",
+      "name": "USDG",
+      "deploymentId": "deployment-0025"
+    },
+    {
+      "namespace": "ethereum",
+      "name": "USDP",
+      "deploymentId": "deployment-0026"
+    },
+    {
+      "namespace": "solana",
+      "name": "USDP",
+      "deploymentId": "deployment-0027"
+    },
+    {
+      "namespace": "ethereum",
+      "name": "USDE",
+      "deploymentId": "deployment-0028"
+    },
+    {
+      "namespace": "ethereum",
+      "name": "GHO",
+      "deploymentId": "deployment-0029"
+    },
+    {
+      "namespace": "avalancheC",
+      "name": "GHO",
+      "deploymentId": "deployment-0030"
+    },
+    {
+      "namespace": "ethereum",
+      "name": "FDUSD",
+      "deploymentId": "deployment-0031"
+    },
+    {
+      "namespace": "solana",
+      "name": "FDUSD",
+      "deploymentId": "deployment-0032"
+    },
+    {
+      "namespace": "ethereum",
+      "name": "RLUSD",
+      "deploymentId": "deployment-0033"
+    },
+    {
+      "namespace": "ethereum",
+      "name": "AUSD",
+      "deploymentId": "deployment-0034"
+    },
+    {
+      "namespace": "avalancheC",
+      "name": "AUSD",
+      "deploymentId": "deployment-0035"
+    },
+    {
+      "namespace": "solana",
+      "name": "AUSD",
+      "deploymentId": "deployment-0036"
+    },
+    {
+      "namespace": "solana",
+      "name": "JUPUSD",
+      "deploymentId": "deployment-0037"
+    },
+    {
+      "namespace": "ethereum",
+      "name": "JPYC",
+      "deploymentId": "deployment-0038"
+    },
+    {
+      "namespace": "avalancheC",
+      "name": "JPYC",
+      "deploymentId": "deployment-0039"
+    },
+    {
+      "namespace": "ethereum",
+      "name": "EURCV",
+      "deploymentId": "deployment-0040"
+    },
+    {
+      "namespace": "solana",
+      "name": "EURCV",
+      "deploymentId": "deployment-0041"
+    },
+    {
+      "namespace": "ethereum",
+      "name": "EURAU",
+      "deploymentId": "deployment-0042"
+    },
+    {
+      "namespace": "solana",
+      "name": "EURAU",
+      "deploymentId": "deployment-0043"
+    },
+    {
+      "namespace": "ethereum",
+      "name": "EUROP",
+      "deploymentId": "deployment-0044"
+    },
+    {
+      "namespace": "avalancheC",
+      "name": "EUROP",
+      "deploymentId": "deployment-0045"
+    },
+    {
+      "namespace": "solana",
+      "name": "EUROP",
+      "deploymentId": "deployment-0046"
+    },
+    {
+      "namespace": "ethereum",
+      "name": "GYEN",
+      "deploymentId": "deployment-0047"
+    },
+    {
+      "namespace": "solana",
+      "name": "GYEN",
+      "deploymentId": "deployment-0048"
+    },
+    {
+      "namespace": "ethereum",
+      "name": "ZUSD",
+      "deploymentId": "deployment-0049"
+    },
+    {
+      "namespace": "solana",
+      "name": "ZUSD",
+      "deploymentId": "deployment-0050"
+    },
+    {
+      "namespace": "ethereum",
+      "name": "EURA",
+      "deploymentId": "deployment-0051"
+    },
+    {
+      "namespace": "ethereum",
+      "name": "EURS",
+      "deploymentId": "deployment-0052"
+    },
+    {
+      "namespace": "ethereum",
+      "name": "EURE_V1",
+      "deploymentId": "deployment-0053"
+    },
+    {
+      "namespace": "ethereum",
+      "name": "EURE",
+      "deploymentId": "deployment-0054"
+    },
+    {
+      "namespace": "ethereum",
+      "name": "UNI",
+      "deploymentId": "deployment-0055"
+    },
+    {
+      "namespace": "ethereum",
+      "name": "AAVE",
+      "deploymentId": "deployment-0056"
+    },
+    {
+      "namespace": "ethereum",
+      "name": "LINK",
+      "deploymentId": "deployment-0057"
+    },
+    {
+      "namespace": "avalancheC",
+      "name": "LINK",
+      "deploymentId": "deployment-0058"
+    },
+    {
+      "namespace": "avalancheC",
+      "name": "JOE",
+      "deploymentId": "deployment-0059"
+    },
+    {
+      "namespace": "solana",
+      "name": "JUP",
+      "deploymentId": "deployment-0060"
+    }
+  ]
+}

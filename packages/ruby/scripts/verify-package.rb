@@ -24,7 +24,14 @@ Dir.mktmpdir("erpc-sdk-gem-") do |directory|
     "-I#{library}",
     "-rerpc_sdk",
     "-e",
-    "abort unless ERPC::VERSION == #{ERPC::VERSION.inspect}"
+    <<~RUBY
+      abort unless ERPC::VERSION == #{ERPC::VERSION.inspect}
+      catalog = ERPC::TokenCatalog
+      chain = ERPC::TokenChainIDs::ETHEREUM_MAINNET
+      abort unless catalog.get_native_token_deployment(chain)&.fetch(:symbol) == "ETH"
+      abort unless catalog.find_token_deployments_by_symbol(chain, "USDC").any?
+      abort unless catalog.list_token_deployments(chain_id: chain).any?
+    RUBY
   )
   raise "Packaged gem smoke test failed: #{output}" unless status.success?
 end

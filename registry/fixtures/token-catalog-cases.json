@@ -1,0 +1,150 @@
+{
+  "schemaVersion": 1,
+  "description": "Deterministic in-memory cases for the canonical token catalog validator, renderer, and history guard.",
+  "codegen": [
+    {
+      "name": "literal-escaping",
+      "assetName": "Quoted \"value\"; slash \\\\; unicode ☃; backtick `; ${globalThis.process?.exit?.()}; Ruby#{Kernel.exit}",
+      "symbol": "SYM\\\\\"`$\\{literal\\}",
+      "expect": {
+        "allLanguages": "literal-only",
+        "mustNotExecute": true,
+        "provenanceFieldsOmitted": true
+      }
+    },
+    {
+      "name": "stable-output",
+      "expect": {
+        "sameCatalogSameBytes": true,
+        "sameCatalogSameDigest": true,
+        "sourceOnlyRefreshSameBytes": true
+      }
+    }
+  ],
+  "behavior": [
+    {
+      "name": "native-deployments-have-null-address",
+      "expect": "one native deployment per supported chain and no fake address"
+    },
+    {
+      "name": "evm-address-normalization",
+      "expect": "lowercase canonical storage and case-insensitive lookup"
+    },
+    {
+      "name": "solana-address-identity",
+      "expect": "byte-for-byte string identity; no lowercasing"
+    },
+    {
+      "name": "wrapped-and-token-2022-identity",
+      "expect": "classic WSOL and Token-2022 WSOL remain distinct deployment IDs and standards; both share the wrapped-SOL asset ID and are never auto-converted"
+    },
+    {
+      "name": "lifecycle-visibility",
+      "expect": "active, legacy, winding-down, and retired records remain queryable"
+    },
+    {
+      "name": "offline-lookup",
+      "expect": "lookup and filtering require no RPC, API key, client, or network"
+    }
+  ],
+  "history": {
+    "previous": {
+      "source": "canonical catalog snapshot at manualAsOf 2026-09-15",
+      "identity": "assetId and deploymentId values are opaque and immutable",
+      "binding": "assetId + chainId + standard + normalized address",
+      "alias": "namespace + uppercase name + deploymentId",
+      "deletionPolicy": "historical assets, deployments, and aliases may not be deleted"
+    },
+    "validMigration": {
+      "name": "lifecycle-only-update",
+      "operation": "setDeploymentStatus",
+      "deploymentId": "deployment-0054",
+      "value": "legacy",
+      "expect": "compareHistory accepts status changes while identity, binding, and aliases remain fixed"
+    },
+    "invalidCases": [
+      {
+        "name": "deployment-deletion",
+        "operation": "removeDeployment",
+        "expectError": "historical deployment ID removed"
+      },
+      {
+        "name": "deployment-rebind",
+        "operation": "rebindDeployment",
+        "expectError": "historical deployment re-bound"
+      },
+      {
+        "name": "asset-deletion",
+        "operation": "removeAsset",
+        "expectError": "historical asset ID removed"
+      },
+      {
+        "name": "alias-deletion",
+        "operation": "removeAlias",
+        "expectError": "historical alias removed"
+      },
+      {
+        "name": "alias-retarget",
+        "operation": "retargetAlias",
+        "expectError": "historical alias retargeted"
+      }
+    ]
+  },
+  "invalidCases": [
+    {
+      "name": "extra-top-level-key",
+      "operation": "addExtraCatalogKey",
+      "expectError": "catalog keys must be exactly"
+    },
+    {
+      "name": "unknown-chain",
+      "operation": "setUnknownChain",
+      "expectError": "chainId is unsupported"
+    },
+    {
+      "name": "uppercase-evm-address",
+      "operation": "uppercaseEvmAddress",
+        "expectError": "address must be"
+    },
+    {
+      "name": "invalid-solana-address",
+      "operation": "invalidSolanaAddress",
+      "expectError": "32-byte Solana base58 address"
+    },
+    {
+      "name": "decimal-out-of-range",
+      "operation": "setDecimalOutOfRange",
+      "expectError": "decimals must be an integer from 0 through 255"
+    },
+    {
+      "name": "native-address",
+      "operation": "setNativeAddress",
+      "expectError": "native deployment"
+    },
+    {
+      "name": "alias-not-portable",
+      "operation": "setInvalidAliasName",
+      "expectError": "uppercase ASCII"
+    },
+    {
+      "name": "alias-unknown-namespace",
+      "operation": "setUnknownAliasNamespace",
+      "expectError": "namespace must be one of ethereum, solana, avalancheC"
+    },
+    {
+      "name": "alias-wrong-chain",
+      "operation": "setWrongAliasChain",
+      "expectError": "namespace ethereum must target a deployment on eip155:1"
+    },
+    {
+      "name": "unknown-reference",
+      "operation": "setUnknownAssetReference",
+      "expectError": "unknown underlying asset"
+    },
+    {
+      "name": "replacement-cross-chain",
+      "operation": "setCrossChainReplacement",
+      "expectError": "replacement"
+    }
+  ]
+}

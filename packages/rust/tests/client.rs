@@ -28,6 +28,212 @@ fn config(server: &MockServer, api_key: &str) -> ErpcClientConfig {
         .with_user_endpoint(server.uri())
 }
 
+fn rpc_result(id: u64, result: &Value) -> ResponseTemplate {
+    ResponseTemplate::new(200).set_body_json(json!({
+        "jsonrpc": "2.0",
+        "id": id,
+        "result": result
+    }))
+}
+
+async fn mount_rpc_result(
+    server: &MockServer,
+    id: u64,
+    rpc_method: &str,
+    params: &Value,
+    result: &Value,
+) {
+    Mock::given(method("POST"))
+        .and(path("/"))
+        .and(query_param("api-key", "key"))
+        .and(body_json(json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "method": rpc_method,
+            "params": params
+        })))
+        .respond_with(rpc_result(id, result))
+        .expect(1)
+        .mount(server)
+        .await;
+}
+
+const OPAQUE_SIGNATURE: &str = "opaque-signature";
+
+fn solana_v1_transaction_options() -> Value {
+    json!({
+        "commitment": "finalized",
+        "encoding": "json",
+        "maxSupportedTransactionVersion": 1
+    })
+}
+
+fn solana_v1_block_options() -> Value {
+    json!({
+        "commitment": "finalized",
+        "encoding": "json",
+        "maxSupportedTransactionVersion": 1,
+        "rewards": true,
+        "transactionDetails": "full"
+    })
+}
+
+fn solana_zero_transaction_options() -> Value {
+    json!({
+        "commitment": "finalized",
+        "encoding": "json",
+        "maxSupportedTransactionVersion": 0
+    })
+}
+
+fn solana_zero_block_options() -> Value {
+    json!({
+        "commitment": "finalized",
+        "encoding": "json",
+        "maxSupportedTransactionVersion": 0,
+        "rewards": true,
+        "transactionDetails": "full"
+    })
+}
+
+fn solana_v1_transaction_fixture() -> Value {
+    json!({
+        "blockTime": 1_700_000_001,
+        "meta": {
+            "err": null,
+            "fee": 5000,
+            "unrelatedField": {"preserve": true}
+        },
+        "slot": 42,
+        "transaction": {
+            "message": {
+                "accountKeys": [],
+                "header": {
+                    "numReadonlySignedAccounts": 0,
+                    "numReadonlyUnsignedAccounts": 0,
+                    "numRequiredSignatures": 1
+                },
+                "instructions": [],
+                "recentBlockhash": "opaque-blockhash",
+                "transactionConfig": {
+                    "computeUnitLimit": 30_000,
+                    "loadedAccountsDataSizeLimit": 200_000,
+                    "heapSize": null,
+                    "priorityFee": null,
+                    "unrelatedField": {"preserve": true}
+                }
+            },
+            "signatures": [OPAQUE_SIGNATURE]
+        },
+        "version": 1,
+        "unrelatedResponseField": ["preserve", 7]
+    })
+}
+
+fn solana_v1_numeric_priority_fee_transaction_fixture() -> Value {
+    let mut fixture = solana_v1_transaction_fixture();
+    *fixture
+        .pointer_mut("/transaction/message/transactionConfig/priorityFee")
+        .expect("v1 fixture includes priorityFee") = json!(5000);
+    fixture
+}
+
+fn solana_v1_block_fixture() -> Value {
+    json!({
+        "blockHeight": 900,
+        "blockTime": 1_700_000_001,
+        "blockhash": "opaque-blockhash",
+        "parentSlot": 41,
+        "previousBlockhash": "opaque-parent-blockhash",
+        "rewards": [],
+        "transactions": [
+            solana_v1_transaction_fixture(),
+            solana_v1_numeric_priority_fee_transaction_fixture()
+        ],
+        "unrelatedBlockField": {"preserve": true}
+    })
+}
+
+fn solana_legacy_transaction_fixture() -> Value {
+    json!({
+        "blockTime": null,
+        "meta": {"err": null, "fee": 5000},
+        "slot": 42,
+        "transaction": {
+            "message": {
+                "accountKeys": [],
+                "instructions": [],
+                "recentBlockhash": "legacy-blockhash"
+            },
+            "signatures": ["legacy-signature"]
+        },
+        "version": "legacy"
+    })
+}
+
+fn solana_v0_transaction_fixture() -> Value {
+    json!({
+        "blockTime": null,
+        "meta": {"err": null, "fee": 5000},
+        "slot": 42,
+        "transaction": {
+            "message": {
+                "accountKeys": [],
+                "addressTableLookups": [],
+                "instructions": [],
+                "recentBlockhash": "v0-blockhash"
+            },
+            "signatures": ["v0-signature"]
+        },
+        "version": 0
+    })
+}
+
+async fn mount_solana_version_fixtures(server: &MockServer) {
+    let v1_transaction_options = solana_v1_transaction_options();
+    let v1_block_options = solana_v1_block_options();
+    let zero_transaction_options = solana_zero_transaction_options();
+    let zero_block_options = solana_zero_block_options();
+    let v1_transaction = solana_v1_transaction_fixture();
+    let v1_block = solana_v1_block_fixture();
+    let legacy_transaction = solana_legacy_transaction_fixture();
+    let v0_transaction = solana_v0_transaction_fixture();
+
+    let v1_transaction_params = json!([OPAQUE_SIGNATURE, v1_transaction_options]);
+    mount_rpc_result(
+        server,
+        1,
+        "getTransaction",
+        &v1_transaction_params,
+        &v1_transaction,
+    )
+    .await;
+    let v1_block_params = json!([4242, v1_block_options]);
+    mount_rpc_result(server, 2, "getBlock", &v1_block_params, &v1_block).await;
+    let zero_transaction_params = json!([OPAQUE_SIGNATURE, zero_transaction_options]);
+    mount_rpc_result(
+        server,
+        3,
+        "getTransaction",
+        &zero_transaction_params,
+        &legacy_transaction,
+    )
+    .await;
+    let omitted_transaction_params = json!([OPAQUE_SIGNATURE]);
+    mount_rpc_result(
+        server,
+        4,
+        "getTransaction",
+        &omitted_transaction_params,
+        &v0_transaction,
+    )
+    .await;
+    let zero_block_params = json!([4242, zero_block_options]);
+    mount_rpc_result(server, 5, "getBlock", &zero_block_params, &Value::Null).await;
+    let omitted_block_params = json!([4242]);
+    mount_rpc_result(server, 6, "getBlock", &omitted_block_params, &Value::Null).await;
+}
+
 #[tokio::test]
 async fn avalanche_uses_its_c_chain_endpoint() {
     assert_eq!(
@@ -352,6 +558,189 @@ async fn transaction_submission_is_not_retried() {
         .await
         .unwrap_err();
     assert!(matches!(error, ErpcError::Http { status: 503 }));
+}
+
+#[tokio::test]
+async fn solana_transaction_methods_preserve_v1_payloads_and_version_options() {
+    let server = MockServer::start().await;
+    mount_solana_version_fixtures(&server).await;
+
+    let client = ErpcClient::new(config(&server, "key")).unwrap();
+    let received_v1_transaction = client
+        .solana
+        .rpc
+        .get_transaction(json!([OPAQUE_SIGNATURE, solana_v1_transaction_options()]))
+        .unwrap()
+        .send()
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(received_v1_transaction, solana_v1_transaction_fixture());
+
+    let received_v1_block = client
+        .solana
+        .rpc
+        .get_block(json!([4242, solana_v1_block_options()]))
+        .unwrap()
+        .send()
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(received_v1_block, solana_v1_block_fixture());
+
+    let received_legacy = client
+        .solana
+        .rpc
+        .get_transaction(json!([OPAQUE_SIGNATURE, solana_zero_transaction_options()]))
+        .unwrap()
+        .send()
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(received_legacy, solana_legacy_transaction_fixture());
+    assert!(
+        received_legacy
+            .pointer("/transaction/message/transactionConfig")
+            .is_none()
+    );
+
+    let received_v0 = client
+        .solana
+        .rpc
+        .get_transaction([OPAQUE_SIGNATURE])
+        .unwrap()
+        .send()
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(received_v0, solana_v0_transaction_fixture());
+    assert!(
+        received_v0
+            .pointer("/transaction/message/transactionConfig")
+            .is_none()
+    );
+
+    assert!(
+        client
+            .solana
+            .rpc
+            .get_block(json!([4242, solana_zero_block_options()]))
+            .unwrap()
+            .send()
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        client
+            .solana
+            .rpc
+            .get_block([4242])
+            .unwrap()
+            .send()
+            .await
+            .unwrap()
+            .is_none()
+    );
+}
+
+#[tokio::test]
+async fn solana_transaction_submission_and_simulation_forward_large_base64_once() {
+    let server = MockServer::start().await;
+    // Synthetic opaque transport fixture for 4096 zero bytes: this is NOT a valid
+    // signed transaction and is NOT proof of chain acceptance.
+    let transaction = format!("{}==", "A".repeat(5462));
+    assert_eq!(transaction.len(), 5464);
+    assert_eq!((transaction.len() / 4) * 3 - 2, 4096);
+    let options = json!({"encoding": "base64"});
+
+    let send_params = json!([transaction.clone(), options.clone()]);
+    let send_result = json!("synthetic-signature");
+    mount_rpc_result(&server, 1, "sendTransaction", &send_params, &send_result).await;
+    let simulate_params = json!([transaction.clone(), options]);
+    let simulate_result = json!({"err": null, "logs": [], "unrelatedField": "preserve"});
+    mount_rpc_result(
+        &server,
+        2,
+        "simulateTransaction",
+        &simulate_params,
+        &simulate_result,
+    )
+    .await;
+
+    let client = ErpcClient::new(config(&server, "key")).unwrap();
+    assert_eq!(
+        client
+            .solana
+            .rpc
+            .send_transaction(json!([transaction.clone(), options.clone()]))
+            .unwrap()
+            .send()
+            .await
+            .unwrap(),
+        "synthetic-signature"
+    );
+    assert_eq!(
+        client
+            .solana
+            .rpc
+            .simulate_transaction(json!([transaction, options]))
+            .unwrap()
+            .send()
+            .await
+            .unwrap(),
+        simulate_result
+    );
+    assert_eq!(server.received_requests().await.unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn solana_transaction_version_rpc_error_surfaces_once_without_fallback() {
+    let server = MockServer::start().await;
+    let error_data = json!({
+        "maxSupportedTransactionVersion": 1,
+        "unrelatedField": {"preserve": true}
+    });
+    Mock::given(method("POST"))
+        .and(path("/"))
+        .and(query_param("api-key", "key"))
+        .and(body_json(json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "getTransaction",
+            "params": ["opaque-signature", {"maxSupportedTransactionVersion": 0}]
+        })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "error": {
+                "code": -32015,
+                "message": "Transaction version is unsupported",
+                "data": error_data.clone()
+            }
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let client = ErpcClient::new(config(&server, "key")).unwrap();
+    let error = client
+        .solana
+        .rpc
+        .get_transaction(json!(["opaque-signature", {"maxSupportedTransactionVersion": 0}]))
+        .unwrap()
+        .send()
+        .await
+        .unwrap_err();
+    assert!(matches!(
+        error,
+        ErpcError::JsonRpc {
+            code: -32015,
+            ref message,
+            ref data
+        } if message == "Transaction version is unsupported" && data == &Some(error_data)
+    ));
+    assert_eq!(server.received_requests().await.unwrap().len(), 1);
 }
 
 #[tokio::test]

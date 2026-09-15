@@ -41,6 +41,9 @@ RPC helpers return an inert `PendingRpcRequest`. Network I/O starts when
 or vector; named indexed-asset methods accept serializable structs or JSON
 objects. The wire method names remain unchanged.
 
+For Solana transaction-version options and response handling, see the
+[Solana v1 guide](https://github.com/elsoul/erpc-sdk/blob/main/packages/typescript/docs/solana-v1.md).
+
 ## Namespaces
 
 | Namespace | Purpose |
@@ -138,6 +141,35 @@ Non-streaming price reads and every Cloud read also provide a `_with` variant
 that accepts an optional `CancellationToken`. The timeout configured with
 `ErpcClientConfig::with_timeout` or `ErpcCloudClientConfig::with_timeout`
 covers both response headers and the complete response body.
+
+## Offline token catalog
+
+The crate ships a generated token catalog that needs no client, API key, or
+network request. Deployment aliases contain immutable deployment IDs, while
+the lookup functions return the complete canonical records and preserve every
+lifecycle status.
+
+```rust
+use erpc_sdk::{
+    find_token_deployment_by_address, get_token_deployment, token_chain_ids, tokens,
+};
+
+let usdc_id = tokens::ethereum::USDC;
+let usdc = get_token_deployment(usdc_id).expect("catalogued deployment");
+assert_eq!(usdc.chain_id, token_chain_ids::ETHEREUM_MAINNET);
+
+let mixed_case = "0xa0B86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
+let same_usdc = find_token_deployment_by_address(
+    token_chain_ids::ETHEREUM_MAINNET,
+    mixed_case,
+);
+assert_eq!(same_usdc.map(|deployment| deployment.deployment_id), Some(usdc_id));
+```
+
+Use `find_token_deployments_by_symbol` when a symbol has multiple deployments,
+and `list_token_deployments(Some(chain_id), Some("EUR"))` for a chain and
+stable-currency filter. See the [canonical token registry](https://github.com/elsoul/erpc-sdk/blob/main/registry/README.md)
+for the source records, evidence, and generation workflow.
 
 ## Safety boundaries
 

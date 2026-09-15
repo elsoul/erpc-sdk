@@ -7,11 +7,13 @@ mod cloud;
 mod config;
 mod error;
 mod ethereum;
+mod generated;
 mod price;
 mod rest;
 mod rpc;
 mod solana;
 mod subscriptions;
+pub mod token_catalog;
 mod usage;
 
 pub use account::{AccountClient, ErpcPlan, TokenBalance};
@@ -62,6 +64,14 @@ pub use solana::{
     ValidatorsInformationResult,
 };
 pub use subscriptions::{RpcNotification, RpcSubscription, SubscriptionId};
+pub use token_catalog::{
+    TOKEN_ALIASES, TOKEN_ASSETS, TOKEN_CATALOG_AS_OF_DATE, TOKEN_CATALOG_CONTENT_DIGEST,
+    TOKEN_CATALOG_VERSION, TOKEN_CHAIN_IDS, TOKEN_DEPLOYMENTS, TokenAlias, TokenAsset,
+    TokenChainId, TokenDeployment, TokenRepresentationKind, TokenStandard, TokenStatus,
+    find_token_deployment_by_address, find_token_deployments_by_symbol,
+    get_native_token_deployment, get_token_asset, get_token_deployment, list_token_deployments,
+    token_chain_ids, tokens,
+};
 pub use tokio_util::sync::CancellationToken;
 pub use usage::{
     MonthlyApiKeyChainUsage, MonthlyApiKeyMethodUsage, MonthlyApiKeyUsage, MonthlyApiKeyUsageEntry,
