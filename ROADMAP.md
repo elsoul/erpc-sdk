@@ -59,6 +59,31 @@
 - Keep native API batching disabled locally while preserving C-Chain EVM batch
   behavior.
 
+## 0.7 — Canonical token catalog (UNRELEASED)
+
+The bounded catalog is present on `main` and planned for `0.7.0`. The current
+published package baseline, latest GitHub release, and package manifests remain
+`0.6.0`, so the catalog is not available from the currently published package.
+
+- Bundle 39 assets, 60 deployments, and 60 aliases across Ethereum, Solana,
+  and Avalanche C-Chain in all five SDKs.
+- Expose local asset and deployment lookup, chain and stable-currency filters,
+  symbol and address lookup, native-token lookup, and lifecycle metadata.
+- Keep `USD`, `EUR`, and `JPY` as explicit stable-currency labels. The bounded
+  catalog does not claim complete coverage, ranking, or market data.
+- Run the installed Tuesday 03:17 UTC observation PR and Thursday 03:47 UTC
+  release-preparation PR workflows. They create or update reviewable PRs and
+  CI; package publication remains a human-invoked release action.
+
+## Next phase — DEX, pools, and local swaps
+
+- Define DEX and pool records and a reviewed quote, route, and transaction-build
+  contract using configured RPC endpoints and local logic.
+- Keep hosted Jupiter and 0x dependencies out of the SDK registry.
+- Keep bridging as separate research covering exact source and destination
+  chains, native versus wrapped addresses, proof or attestation rules, and
+  relayer dependencies.
+
 ## Service-dependent expansion
 
 The following SDK work starts only after the corresponding server capability
@@ -70,4 +95,5 @@ is publicly available and contract-tested:
 - Ethereum debug, trace, execution-client, and consensus-layer namespaces;
 - optional add-on namespaces.
 
-Releases are manually approved. Merging a change never publishes a package.
+Releases are manually approved and publication is human-invoked. Merging a
+change never publishes a package.

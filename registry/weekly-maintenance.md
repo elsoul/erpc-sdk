@@ -1,30 +1,54 @@
 # Weekly maintenance runbook
 
-This runbook describes the reviewable weekly maintenance stage for the SDK
-repository. It prepares a bounded candidate and a reviewable pull request. It
-does not approve, merge, tag, publish, or activate a release. The existing
-release command remains human invoked.
+This runbook describes the installed weekly maintenance workflows for the SDK
+repository. They observe the bounded catalog, prepare reviewable pull requests,
+and run CI. They do not approve, merge, tag, publish, or activate a release;
+package publication remains human-invoked.
 
 ## Cadence and ownership
 
-The suggested UTC schedule is Tuesday at 03:17 and Thursday at 03:47. A run
-stays quiet while the observed state is unchanged. It reports a changed
-catalog, a prepared candidate, a failed check, or a required human action.
+The workflows are installed on `main` with these UTC schedules:
+
+| Workflow | Schedule | Reviewable PR | Network behavior |
+| --- | --- | --- | --- |
+| [`registry-maintenance.yml`](../.github/workflows/registry-maintenance.yml) | Tuesday 03:17 UTC | Observation findings on `codex/registry-maintenance` | Observer reads configured RPC endpoints and reviewed HTTP sources online; catalog/runtime checks are local |
+| [`release-preparation.yml`](../.github/workflows/release-preparation.yml) | Thursday 03:47 UTC | Release preparation on `codex/release-preparation` | Observer reads configured RPC endpoints and reviewed HTTP sources online; release inspection and catalog reads are local |
+
+Both workflows also support an explicit manual dispatch. A run stays quiet
+while the observed state is unchanged; otherwise it reports a changed catalog,
+a prepared candidate, a failed check, or a required human action. The bot
+creates or updates reviewable PRs and dispatches CI for review. It does not
+approve, merge, tag, or publish.
+
+The first successful workflow and its idempotent rerun were manual dispatches:
+[`run 35006595913`](https://github.com/elsoul/erpc-sdk/actions/runs/35006595913)
+and
+[`run 35007810328`](https://github.com/elsoul/erpc-sdk/actions/runs/35007810328).
+The first run used source SHA
+`c3d0de8d1f4d77a96eb6a169290ed096ad2a2645`; the idempotent rerun used latest
+`main` SHA
+`75f01b3ed2e3d9749d3f4fd7f4faf60e89562da1`. These are dated manual-dispatch
+evidence; they do not show that a scheduled run occurred. The first run
+reported 55 matching observations, two Avalanche symbol differences, three
+RPC errors, and 35 of 41 sources usable. Its result was partial and had no
+eligible source-baseline bootstrap.
 
 Root and Rydia own the catalog observation. Bahamut owns the workflow details.
 Sephiroth owns release preparation. A human legal owner is still to be
 assigned; engineering review is due before acceptance of a release candidate.
 The next manual review is due 2026-10-15 or earlier after a material event.
 
-The public repository was checked at `main` across four environments. No
-reviewer requirement or ruleset protection was verified. Planned pull-request
-checks are therefore workflow controls and review evidence, not claims about
-platform protections.
+On 2026-09-15, a read-only settings check returned `protection_rules[]` for
+each of the four release environments (`npm`, `crates-io`, `pypi`, and
+`rubygems`) and `rulesets[]` for `main`; no settings were changed. These
+responses are evidence of the observed API state only and do not assert active
+reviewer or ruleset protection.
 
 ## Stage 1: inspect the source and baseline
 
-Use the expected source commit explicitly. Inspection is offline and read-only
-unless `--report` is supplied.
+Use the expected source commit explicitly. Release inspection is offline and
+read-only unless `--report` is supplied. The observer stage separately reads
+configured RPC endpoints and reviewed HTTP sources online.
 
 ```sh
 node registry/release-prep.mjs inspect \
@@ -205,4 +229,5 @@ or bulk source-text copy is issued by this process.
 
 Existing temporary drivers are the only native-capture evidence available.
 The maintenance stage does not claim an automatic native capture. Ranking,
-actual package publication, swaps, and bridging remain separate future work.
+actual package publication, DEX/pool work, RPC-local swaps, and bridging remain
+separate future work.

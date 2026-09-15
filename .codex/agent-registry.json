@@ -312,7 +312,10 @@
       },
       {
         "id": "future-assets-registry",
-        "exactPaths": [],
+        "exactPaths": [
+          "README.md",
+          "ROADMAP.md"
+        ],
         "pathPrefixes": [
           "assets/",
           "registry/"
