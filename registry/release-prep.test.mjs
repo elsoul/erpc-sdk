@@ -42,9 +42,15 @@ function removeWorktree(root) {
 function newIsolatedRepo() {
   const root = mkdtempSync(path.join(tmpdir(), "erpc-release-prep-repo-"));
   execFileSync("git", ["clone", "--local", "--no-hardlinks", REPOSITORY_ROOT, root], { encoding: "utf8", stdio: "ignore" });
-  writeFileSync(path.join(root, "registry/release-plan.json"), readFileSync(path.join(REPOSITORY_ROOT, "registry/release-plan.json"), "utf8"));
-  execFileSync("git", ["-C", root, "add", "registry/release-plan.json"], { encoding: "utf8", stdio: "ignore" });
-  execFileSync("git", ["-C", root, "-c", "user.name=Release Prep Test", "-c", "user.email=release-prep-test@example.invalid", "commit", "-m", "fixture approved release plan"], { encoding: "utf8", stdio: "ignore" });
+  const planTarget = path.join(root, "registry/release-plan.json");
+  const expectedPlan = readFileSync(path.join(REPOSITORY_ROOT, "registry/release-plan.json"), "utf8");
+  const existingPlan = readFileSync(planTarget, "utf8");
+  if (existingPlan !== expectedPlan) {
+    writeFileSync(planTarget, expectedPlan);
+    execFileSync("git", ["-C", root, "add", "registry/release-plan.json"], { encoding: "utf8", stdio: "ignore" });
+    execFileSync("git", ["-C", root, "-c", "user.name=Release Prep Test", "-c", "user.email=release-prep-test@example.invalid", "commit", "-m", "fixture approved release plan"], { encoding: "utf8", stdio: "ignore" });
+  }
+  assert.equal(git(root, ["status", "--porcelain"]), "", "isolated fixture must be clean after plan checkout");
   return root;
 }
 
@@ -55,7 +61,11 @@ function removeIsolatedRepo(root) {
 async function withWorktree(callback) {
   const root = newWorktree();
   const expectedHead = git(root, ["rev-parse", "HEAD"]);
-  try { return await callback(root, expectedHead); } finally { removeWorktree(root); }
+  try {
+    assert.equal(git(root, ["status", "--porcelain"]), "", "post-checkout fixture must be clean");
+    assert.equal(git(root, ["rev-parse", "--abbrev-ref", "HEAD"]), "HEAD", "candidate fixture must remain detached like a PR merge checkout");
+    return await callback(root, expectedHead);
+  } finally { removeWorktree(root); }
 }
 
 function commitAll(root, message) {

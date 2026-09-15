@@ -29,7 +29,7 @@ import {
 import { prepareRelease } from "./release-prep.mjs";
 
 const config = JSON.parse(readFileSync(new URL("./observer-config.json", import.meta.url), "utf8"));
-const SOURCE_SHA = "1eed9b24790dfe8267173a06ffdf3155e7c14057";
+const SOURCE_SHA = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
 const BASE_SHA = SOURCE_SHA;
 const COMMIT_SHA = "c".repeat(40);
 
@@ -175,6 +175,15 @@ test("complete clean no-action returns no PR without touching the adapter", asyn
   const result = await writeMaintenancePr({ adapter, payload, frozenMainSha: BASE_SHA, dryRun: false });
   assert.equal(result.status, "NO_ACTION");
   assert.deepEqual(adapter.calls, []);
+});
+
+test("stale remote main is rejected before any branch or PR mutation", async () => {
+  const { payload } = await makePayload();
+  const adapter = makeAdapter({ branch: payload.branch });
+  const original = adapter.getBranchSha;
+  adapter.getBranchSha = async (name) => name === "main" ? "d".repeat(40) : original(name);
+  await assert.rejects(() => writeMaintenancePr({ adapter, payload, frozenMainSha: BASE_SHA, dryRun: false, dispatch: false }), { code: "STALE_MAIN" });
+  assert.equal(adapter.calls.some((call) => call[0] === "commitFiles" || call[0] === "createPullRequest" || call[0] === "updatePullRequest"), false);
 });
 
 test("successful reads persist a PR that clears a previously stored finding", async () => {
