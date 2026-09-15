@@ -38,6 +38,24 @@ if (
   throw new Error('ESM export check failed')
 }
 if (
+  typeof esm.getTokenAsset !== 'function' ||
+  typeof esm.getTokenDeployment !== 'function' ||
+  typeof esm.listTokenDeployments !== 'function' ||
+  typeof esm.findTokenDeploymentsBySymbol !== 'function' ||
+  typeof esm.findTokenDeploymentByAddress !== 'function' ||
+  typeof esm.getNativeTokenDeployment !== 'function' ||
+  !Array.isArray(esm.TOKEN_ASSETS) ||
+  !Array.isArray(esm.TOKEN_DEPLOYMENTS) ||
+  !Array.isArray(esm.TOKEN_ALIASES) ||
+  !esm.TOKEN_CHAIN_IDS ||
+  !esm.tokens ||
+  typeof esm.TOKEN_CATALOG_VERSION !== 'string' ||
+  typeof esm.TOKEN_CATALOG_AS_OF_DATE !== 'string' ||
+  typeof esm.TOKEN_CATALOG_CONTENT_DIGEST !== 'string'
+) {
+  throw new Error('ESM token catalog export check failed')
+}
+if (
   typeof cjs.createErpcClient !== 'function' ||
   typeof cjs.createErpcCloudClient !== 'function' ||
   typeof cjs.CloudCatalogClient !== 'function' ||
@@ -47,6 +65,44 @@ if (
   cjs.DEFAULT_AVALANCHE_ENDPOINT !== 'https://ava-rpc.erpc.global'
 ) {
   throw new Error('CommonJS export check failed')
+}
+if (
+  typeof cjs.getTokenAsset !== 'function' ||
+  typeof cjs.getTokenDeployment !== 'function' ||
+  typeof cjs.listTokenDeployments !== 'function' ||
+  typeof cjs.findTokenDeploymentsBySymbol !== 'function' ||
+  typeof cjs.findTokenDeploymentByAddress !== 'function' ||
+  typeof cjs.getNativeTokenDeployment !== 'function' ||
+  !Array.isArray(cjs.TOKEN_ASSETS) ||
+  !Array.isArray(cjs.TOKEN_DEPLOYMENTS) ||
+  !Array.isArray(cjs.TOKEN_ALIASES) ||
+  !cjs.TOKEN_CHAIN_IDS ||
+  !cjs.tokens ||
+  typeof cjs.TOKEN_CATALOG_VERSION !== 'string' ||
+  typeof cjs.TOKEN_CATALOG_AS_OF_DATE !== 'string' ||
+  typeof cjs.TOKEN_CATALOG_CONTENT_DIGEST !== 'string'
+) {
+  throw new Error('CommonJS token catalog export check failed')
+}
+
+const firstDeployment = esm.TOKEN_DEPLOYMENTS[0]
+if (!firstDeployment || typeof firstDeployment.deploymentId !== 'string') {
+  throw new Error('Token catalog data check failed')
+}
+if (esm.getTokenDeployment(firstDeployment.deploymentId) !== firstDeployment) {
+  throw new Error('Token catalog lookup check failed')
+}
+if (cjs.getTokenDeployment(firstDeployment.deploymentId)?.deploymentId !== firstDeployment.deploymentId) {
+  throw new Error('CommonJS token catalog lookup check failed')
+}
+if (esm.findTokenDeploymentsBySymbol(firstDeployment.chainId, firstDeployment.symbol).length === 0) {
+  throw new Error('Token catalog symbol lookup check failed')
+}
+if (esm.listTokenDeployments().length !== esm.TOKEN_DEPLOYMENTS.length) {
+  throw new Error('Token catalog list check failed')
+}
+if (esm.getTokenAsset('__missing__') !== undefined) {
+  throw new Error('Token catalog unknown lookup check failed')
 }
 
 const client = esm.createErpcClient({

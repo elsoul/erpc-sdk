@@ -36,6 +36,41 @@ erpc.close()
 JSON-RPC method calls return pending requests. Call `.send()` to perform the
 network request.
 
+## Offline token catalog
+
+The token catalog is bundled with the package, so lookups do not need an
+`ErpcClient`, API key, or network request. Deployment IDs are opaque and the
+chain aliases expose those IDs directly:
+
+```ts
+import {
+  TOKEN_CHAIN_IDS,
+  findTokenDeploymentsBySymbol,
+  listTokenDeployments,
+  tokens,
+} from '@elsoul/erpc-sdk'
+
+const usdcByChain = {
+  ethereum: findTokenDeploymentsBySymbol(
+    TOKEN_CHAIN_IDS.ethereumMainnet,
+    'USDC',
+  ),
+  solana: findTokenDeploymentsBySymbol(TOKEN_CHAIN_IDS.solanaMainnet, 'USDC'),
+  avalancheC: findTokenDeploymentsBySymbol(
+    TOKEN_CHAIN_IDS.avalancheCMainnet,
+    'USDC',
+  ),
+}
+
+const canonicalEthereumUsdcId = tokens.ethereum.USDC
+const usdDeployments = listTokenDeployments({ stableCurrency: 'USD' })
+```
+
+The result includes every matching deployment and its status, decimals,
+standard, address, and flattened asset metadata. See the
+[canonical registry guide](https://github.com/elsoul/erpc-sdk/blob/main/registry/README.md)
+for the source data and ID policy.
+
 ## Namespaces
 
 | Namespace | Purpose |
@@ -141,6 +176,7 @@ const result = await erpc.solana.rpc
 ## Documentation
 
 - [Complete guide](https://github.com/elsoul/erpc-sdk#readme)
+- [Solana transaction v1 guide](https://github.com/elsoul/erpc-sdk/blob/main/packages/typescript/docs/solana-v1.md)
 - [Method availability](https://github.com/elsoul/erpc-sdk/blob/main/docs/METHODS.md)
 - [Roadmap](https://github.com/elsoul/erpc-sdk/blob/main/ROADMAP.md)
 - [Security policy](https://github.com/elsoul/erpc-sdk/blob/main/SECURITY.md)

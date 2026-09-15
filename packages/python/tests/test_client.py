@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 from typing import cast
 
@@ -289,5 +290,252 @@ async def test_unexpected_batch_id_is_invalid_and_not_exposed() -> None:
     with pytest.raises(ErpcInvalidResponseError, match="unexpected") as captured:
         await erpc.ethereum.rpc.batch(calls).send()
     assert "999999" not in str(captured.value)
+    await erpc.close()
+    await http.aclose()
+
+
+@pytest.mark.asyncio
+async def test_solana_v1_transaction_options_and_opaque_responses() -> None:
+    received: list[dict[str, object]] = []
+    transaction_v1 = {
+        "slot": 123_456,
+        "blockTime": 1_700_000_001,
+        "meta": {
+            "err": None,
+            "fee": 5_000,
+            "computeUnitsConsumed": 80_000,
+            "unrelatedMetaField": {"preserve": [True, 7]},
+        },
+        "transaction": {
+            "signatures": ["synthetic-signature"],
+            "message": {
+                "accountKeys": ["synthetic-account"],
+                "instructions": [],
+                "recentBlockhash": "synthetic-blockhash",
+                "transactionConfig": {
+                    "computeUnitLimit": 1_400_000,
+                    "loadedAccountsDataSizeLimit": 64_000,
+                    "heapSize": None,
+                    "priorityFee": None,
+                    "unrelatedConfigField": "preserve",
+                },
+                "unrelatedMessageField": {"keep": "opaque"},
+            },
+            "unrelatedTransactionField": ["preserve", 9],
+        },
+        "version": 1,
+        "unrelatedTopLevelField": {"keep": "opaque"},
+    }
+    block_v1 = {
+        "blockhash": "synthetic-blockhash",
+        "blockTime": 1_700_000_001,
+        "blockHeight": 98_765,
+        "parentSlot": 123_455,
+        "previousBlockhash": "synthetic-previous-blockhash",
+        "rewards": [],
+        "signatures": ["synthetic-signature"],
+        "transactions": [
+            {
+                "meta": {
+                    "err": None,
+                    "fee": 5_000,
+                    "computeUnitsConsumed": 80_000,
+                    "unrelatedMetaField": {"preserve": [True, 7]},
+                },
+                "transaction": {
+                    "signatures": ["synthetic-signature"],
+                    "message": {
+                        "accountKeys": ["synthetic-account"],
+                        "instructions": [],
+                        "recentBlockhash": "synthetic-blockhash",
+                        "transactionConfig": {
+                            "computeUnitLimit": 1_400_000,
+                            "loadedAccountsDataSizeLimit": 64_000,
+                            "heapSize": None,
+                            "priorityFee": 5_000,
+                            "unrelatedConfigField": "preserve",
+                        },
+                        "unrelatedMessageField": {"keep": "opaque"},
+                    },
+                    "unrelatedTransactionField": ["preserve", 9],
+                },
+                "version": 1,
+                "unrelatedTransactionEnvelopeField": "preserve",
+            }
+        ],
+        "unrelatedTopLevelField": {"keep": "opaque"},
+    }
+    legacy = {
+        "slot": 123_457,
+        "transaction": {
+            "signatures": [],
+            "message": {
+                "accountKeys": [],
+                "instructions": [],
+                "recentBlockhash": "legacy-blockhash",
+            },
+        },
+        "version": "legacy",
+        "unrelatedField": "preserve",
+    }
+    v0 = {
+        "slot": 123_458,
+        "transaction": {
+            "signatures": [],
+            "message": {
+                "accountKeys": [],
+                "instructions": [],
+                "recentBlockhash": "v0-blockhash",
+            },
+        },
+        "version": 0,
+        "unrelatedField": {"preserve": True},
+    }
+    assert "transactionConfig" not in legacy["transaction"]["message"]
+    assert "transactionConfig" not in v0["transaction"]["message"]
+
+    transaction_options = {
+        "commitment": "finalized",
+        "encoding": "jsonParsed",
+        "maxSupportedTransactionVersion": 1,
+    }
+    block_options = {
+        "commitment": "finalized",
+        "encoding": "jsonParsed",
+        "transactionDetails": "full",
+        "rewards": True,
+        "maxSupportedTransactionVersion": 1,
+    }
+    responses = {
+        ("getTransaction", "v1-signature"): transaction_v1,
+        ("getBlock", 123_456): block_v1,
+        ("getTransaction", "v0-signature"): v0,
+        ("getBlock", 123_458): v0,
+        ("getTransaction", "legacy-signature"): legacy,
+        ("getBlock", 123_457): legacy,
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        received.append(body)
+        if (
+            body["method"] in {"getTransaction", "getBlock"}
+            and len(body["params"]) == 2
+        ):
+            version = body["params"][1]["maxSupportedTransactionVersion"]
+            assert type(version) is int
+            if body["params"][0] in {"v1-signature", 123_456}:
+                assert version == 1
+            else:
+                assert version == 0
+        result = responses[(body["method"], body["params"][0])]
+        return httpx.Response(
+            200,
+            json={"jsonrpc": "2.0", "id": body["id"], "result": result},
+        )
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    erpc = ErpcClient(ErpcClientConfig("key"), http_client=http)
+    assert await erpc.solana.rpc.get_transaction(
+        "v1-signature", transaction_options
+    ).send() == transaction_v1
+    assert await erpc.solana.rpc.get_block(123_456, block_options).send() == block_v1
+    assert await erpc.solana.rpc.get_transaction(
+        "v0-signature", {"maxSupportedTransactionVersion": 0}
+    ).send() == v0
+    assert await erpc.solana.rpc.get_block(
+        123_458, {"maxSupportedTransactionVersion": 0}
+    ).send() == v0
+    assert await erpc.solana.rpc.get_transaction("legacy-signature").send() == legacy
+    assert await erpc.solana.rpc.get_block(123_457).send() == legacy
+
+    assert [(body["method"], body["params"]) for body in received] == [
+        ("getTransaction", ["v1-signature", transaction_options]),
+        ("getBlock", [123_456, block_options]),
+        ("getTransaction", ["v0-signature", {"maxSupportedTransactionVersion": 0}]),
+        ("getBlock", [123_458, {"maxSupportedTransactionVersion": 0}]),
+        ("getTransaction", ["legacy-signature"]),
+        ("getBlock", [123_457]),
+    ]
+    await erpc.close()
+    await http.aclose()
+
+
+@pytest.mark.asyncio
+async def test_solana_transaction_submission_forwards_base64_once() -> None:
+    # Synthetic opaque transport fixture: NOT a valid signed transaction and NOT
+    # proof of chain acceptance.
+    transaction = "A" * 5462 + "=="
+    received: list[dict[str, object]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        received.append(body)
+        result: object = (
+            "synthetic-signature"
+            if body["method"] == "sendTransaction"
+            else {"value": ["synthetic"], "err": None}
+        )
+        return httpx.Response(
+            200,
+            json={"jsonrpc": "2.0", "id": body["id"], "result": result},
+        )
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    erpc = ErpcClient(ErpcClientConfig("key"), http_client=http)
+    options = {"encoding": "base64"}
+    assert await erpc.solana.rpc.send_transaction(transaction, options).send() == (
+        "synthetic-signature"
+    )
+    assert await erpc.solana.rpc.simulate_transaction(transaction, options).send() == {
+        "value": ["synthetic"],
+        "err": None,
+    }
+
+    assert len(transaction) == 5464
+    assert base64.b64decode(transaction, validate=True) == bytes(4096)
+    assert [body["method"] for body in received] == [
+        "sendTransaction",
+        "simulateTransaction",
+    ]
+    assert len(received) == 2
+    assert all(body["params"] == [transaction, options] for body in received)
+    await erpc.close()
+    await http.aclose()
+
+
+@pytest.mark.asyncio
+async def test_solana_transaction_version_error_surfaces_once_without_retry() -> None:
+    received: list[dict[str, object]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        received.append(body)
+        return httpx.Response(
+            200,
+            json={
+                "jsonrpc": "2.0",
+                "id": body["id"],
+                "error": {
+                    "code": -32015,
+                    "message": "transaction version is not supported",
+                    "data": {"maxSupportedTransactionVersion": 1, "retryable": False},
+                },
+            },
+        )
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    erpc = ErpcClient(ErpcClientConfig("key"), http_client=http)
+    with pytest.raises(ErpcJsonRpcError) as captured:
+        await erpc.solana.rpc.get_transaction(
+            "unsupported-signature", {"maxSupportedTransactionVersion": 1}
+        ).send()
+    assert captured.value.rpc_code == -32015
+    assert captured.value.data == {
+        "maxSupportedTransactionVersion": 1,
+        "retryable": False,
+    }
+    assert len(received) == 1
+    assert received[0]["method"] == "getTransaction"
     await erpc.close()
     await http.aclose()

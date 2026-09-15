@@ -31,10 +31,39 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
+## Offline token catalog
+
+The token catalog is bundled with the package, so lookups need no client, API
+key, or network request. Deployment IDs are opaque and aliases expose stable
+uppercase names:
+
+```python
+from erpc_sdk import (
+    TokenChainIds,
+    find_token_deployments_by_symbol,
+    list_token_deployments,
+    tokens,
+)
+
+ethereum_usdc = find_token_deployments_by_symbol(
+    TokenChainIds.ETHEREUM_MAINNET,
+    "USDC",
+)
+canonical_ethereum_usdc_id = tokens.ethereum.USDC
+usd_deployments = list_token_deployments(stable_currency="USD")
+```
+
+Results include every matching deployment and its status, decimals, standard,
+address, and flattened asset metadata. See the [canonical token registry](https://github.com/elsoul/erpc-sdk/blob/main/registry/README.md)
+for source records, evidence, and the generation workflow.
+
 Both exact wire names (`getSlot`, `eth_chainId`) and Python snake-case aliases
 (`get_slot`, `eth_chain_id`) create inert requests. Network I/O starts only
 when `send()` is awaited. `request()` restricts calls to the namespace catalog;
 `raw()` is the forward-compatible escape hatch.
+
+For Solana transaction-version options and response handling, see the
+[Solana v1 guide](https://github.com/elsoul/erpc-sdk/blob/main/packages/typescript/docs/solana-v1.md).
 
 ## Namespaces
 
