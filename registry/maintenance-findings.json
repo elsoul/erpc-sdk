@@ -1,8 +1,23 @@
 {
   "schemaVersion": 1,
   "artifactKind": "maintenance-findings",
-  "status": "complete",
+  "status": "partial",
   "catalogDigest": "62879dfe8bb49a154d2a1bff356321e5dbe78d8cef0cd3409ef2b22cfd3445a4",
   "configDigest": "46ac5c3fe1c50ca0e097263cefd489cce5ee3794896347346d5d6184bd23cb73",
-  "findings": []
+  "findings": [
+    {
+      "category": "rpc-observation",
+      "subjectId": "deployment-0015",
+      "fingerprint": "1efc9e7913b18a4803feb4f77b4b6e6e3ce3d81331ea525c60f1a51a471927fd",
+      "code": "EVM_SYMBOL_MISMATCH",
+      "severity": "action"
+    },
+    {
+      "category": "rpc-observation",
+      "subjectId": "deployment-0058",
+      "fingerprint": "3311b1fa5474e6d127f7ed8906ad52711941cba55db05d749f8cc4b70889b7d5",
+      "code": "EVM_SYMBOL_MISMATCH",
+      "severity": "action"
+    }
+  ]
 }

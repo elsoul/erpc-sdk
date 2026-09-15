@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "artifactKind": "maintenance-review-candidate",
+  "status": "partial",
+  "sourceSha": "c3d0de8d1f4d77a96eb6a169290ed096ad2a2645",
+  "catalogDigest": "62879dfe8bb49a154d2a1bff356321e5dbe78d8cef0cd3409ef2b22cfd3445a4",
+  "configDigest": "46ac5c3fe1c50ca0e097263cefd489cce5ee3794896347346d5d6184bd23cb73",
+  "workspace": {
+    "clean": true,
+    "pinned": true,
+    "promotable": true
+  },
+  "baseline": {
+    "present": false,
+    "eligibleBootstrap": false
+  },
+  "actionRequired": true,
+  "proposals": [
+    {
+      "category": "rpc-observation",
+      "subjectId": "deployment-0015",
+      "fingerprint": "1efc9e7913b18a4803feb4f77b4b6e6e3ce3d81331ea525c60f1a51a471927fd",
+      "reasonCode": "EVM_SYMBOL_MISMATCH",
+      "manualReview": "Review the cited evidence and decide whether a human-approved registry change is warranted."
+    },
+    {
+      "category": "rpc-observation",
+      "subjectId": "deployment-0058",
+      "fingerprint": "3311b1fa5474e6d127f7ed8906ad52711941cba55db05d749f8cc4b70889b7d5",
+      "reasonCode": "EVM_SYMBOL_MISMATCH",
+      "manualReview": "Review the cited evidence and decide whether a human-approved registry change is warranted."
+    }
+  ],
+  "manualReviewInstructions": [
+    "Treat source changes as review evidence only.",
+    "Do not infer issuer, lifecycle, economics, authenticity, ranking, or new assets from this observer.",
+    "A human owns any write to registry/maintenance-findings.json, registry/source-baseline.json, or registry/evidence/maintenance-review files."
+  ]
+}
