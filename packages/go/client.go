@@ -12,6 +12,7 @@ type Client struct {
 	Solana    *SolanaClient
 	Ethereum  *EthereumClient
 	Avalanche *AvalancheClient
+	Swap      *SwapClient
 	Price     *PriceClient
 	Account   *AccountClient
 	Usage     *UsageClient
@@ -59,6 +60,7 @@ func NewClient(config Config) (*Client, error) {
 		Solana:    newSolanaClient(solanaHTTP, solanaWS),
 		Ethereum:  newEthereumClient(ethereumHTTP, ethereumWS),
 		Avalanche: newAvalancheClient(avalancheHTTP, avalancheWS, avalancheIndex),
+		Swap:      newSwapClient(ethereumHTTP, avalancheHTTP),
 		Price:     &PriceClient{transport: sharedREST},
 		Account:   &AccountClient{transport: accountREST},
 		Usage:     &UsageClient{transport: userREST},

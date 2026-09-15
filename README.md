@@ -32,10 +32,10 @@ analytics, subscriptions, and account balance information.
 | Ruby | [`erpc-sdk`](https://rubygems.org/gems/erpc-sdk) | Published 0.6.0 |
 
 The current published package baseline, [latest GitHub release](https://github.com/elsoul/erpc-sdk/releases/latest),
-and package manifests remain `0.6.0`. The canonical token catalog is on
-`main` and is
-planned for `0.7.0` (`UNRELEASED`); installing the current published package
-does not provide the catalog exports yet.
+and package manifests remain `0.6.0`. The token catalog is on `main`; the DEX,
+pool, and quote slice is in the source tree and planned for `0.7.0`
+(`UNRELEASED`). Installing the current published package does not provide
+these new exports yet.
 
 ## Install
 
@@ -127,9 +127,51 @@ catalog makes no claim of complete coverage, ranking, or market data. See the
 [canonical registry guide](registry/README.md) and its
 [source notes](registry/SOURCES.md) for fields, evidence, and lookup rules.
 
-The catalog is planned for the unreleased `0.7.0` package. Until that release
-is published, `npm install @elsoul/erpc-sdk` resolves to the published `0.6.0`
-package and its exports do not include this catalog.
+These catalog and quote exports are planned for the unreleased `0.7.0`
+package. Until that release is published, `npm install @elsoul/erpc-sdk`
+resolves to the published `0.6.0` package and its exports do not include them.
+
+## DEX catalog and RPC-only quotes
+
+The source tree contains four DEX deployments, four pool definitions, three
+native-to-wrapped relationships, and eight chain-qualified aliases across the
+five SDKs. Ethereum Uniswap V2 (WETH/USDC) and Avalanche LFJ legacy (WAVAX/USDC)
+support exact-input quotes through the configured RPC. Solana Orca Whirlpools
+and Raydium CLMM (classic WSOL/EURC) are available for lookup only.
+
+`amountIn` is a positive decimal string in the input token's base units.
+
+```ts
+import {
+  createErpcClient,
+  DEX_CHAIN_IDS,
+  pools,
+  tokens,
+} from '@elsoul/erpc-sdk'
+
+const apiKey = process.env.ERPC_API_KEY
+if (!apiKey) throw new Error('ERPC_API_KEY is required')
+
+const erpc = createErpcClient({ apiKey })
+const quote = await erpc.swap.quoteExactInput({
+  chainId: DEX_CHAIN_IDS.ethereum,
+  poolDefinitionId: pools.ethereum.UNISWAP_V2_USDC_WETH,
+  inputTokenDeploymentId: tokens.ethereum.WETH,
+  outputTokenDeploymentId: tokens.ethereum.USDC,
+  amountIn: '1000000000000000000',
+})
+
+console.log(quote.amountOut)
+erpc.close()
+```
+
+`quoteExactInput` is a composite async operation and is awaited directly; it
+does not have a `.send()` step. Low-level JSON-RPC methods remain pending
+requests and still use `.send()`. The quote reads the configured EVM RPC and
+calculates locally from one block snapshot. Native-to-wrapped definitions are
+metadata only; no automatic wrapping is performed. Route selection,
+transaction building, signing, simulation, sending, bridging, and Solana CLMM
+quotes remain future work.
 
 ## Quick starts
 
@@ -506,6 +548,7 @@ enter shell history. Never commit credentials.
 ## Documentation
 
 - [Method availability](docs/METHODS.md)
+- [DEX and pool catalog](registry/DEX.md)
 - [Solana transaction v1 guide](packages/typescript/docs/solana-v1.md)
 - [Changelog](CHANGELOG.md)
 - [Roadmap](ROADMAP.md)

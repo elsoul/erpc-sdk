@@ -168,6 +168,68 @@ fmt.Println(len(eur))
 The canonical source and update evidence live in the
 [token catalog registry README](https://github.com/elsoul/erpc-sdk/blob/main/registry/README.md).
 
+## Offline DEX and pool catalog
+
+The source tree also contains a generated, network-free catalog of four DEX
+deployments, four pool definitions, three native-to-wrapped relationships,
+and chain-qualified aliases. The records keep opaque IDs, chain IDs, token
+deployment IDs, pool or program addresses, adapter kinds, and lifecycle
+status together. Lookups return independent values, so mutating a returned
+record cannot change a later lookup.
+
+```go
+pool, ok := erpc.GetPoolDefinition(erpc.PoolEthereumUNISWAP_V2_USDC_WETH)
+if !ok {
+	panic("Ethereum WETH/USDC pool is not in the catalog")
+}
+
+matches := erpc.FindPoolDefinitionsByPair(
+	erpc.TokenChainSolanaMainnet,
+	erpc.TokenSolanaWSOL,
+	erpc.TokenSolanaEURC,
+)
+fmt.Println(pool.Address, len(matches))
+```
+
+Use `GetDexDeployment`, `GetPoolDefinition`, `FindPoolDefinitionByAddress`,
+`FindPoolDefinitionsByPair`, `ListPoolDefinitions`, and
+`GetNativeWrapDefinition` for the six catalog lookup operations. Solana pool
+records are available for deterministic lookup and pair discovery; their CLMM
+adapters do not produce quotes in this release.
+
+## RPC-only swap quotes
+
+`Client.Swap.QuoteExactInput` reads a consistent snapshot from the configured
+Ethereum or Avalanche C-Chain RPC and calculates an exact-input quote locally.
+It uses the two catalogued EVM constant-product pools and returns decimal
+strings for token amounts and block quantities. No hosted routing or market
+data API is used.
+
+```go
+quote, err := client.Swap.QuoteExactInput(ctx, erpc.ExactInputQuoteRequest{
+	ChainID:                 erpc.TokenChainEthereumMainnet,
+	PoolDefinitionID:        erpc.PoolEthereumUNISWAP_V2_USDC_WETH,
+	InputTokenDeploymentID:  erpc.TokenEthereumWETH,
+	OutputTokenDeploymentID: erpc.TokenEthereumUSDC,
+	AmountIn:                "1000000000000000000",
+})
+if err != nil {
+	panic(err)
+}
+fmt.Println(quote.AmountOut, quote.Snapshot.BlockNumber)
+```
+
+The quote path validates the catalog binding, factory and pool identities,
+ordered token addresses, EIP-1898 block selectors, ABI widths, freshness, and
+uint256 arithmetic before returning. It reads `eth_chainId`, two latest block
+headers, two code values, five `eth_call` values, and one snapshot-block
+reread. It only returns a quote; transaction building, signing, broadcasting,
+native wrapping, routing, and bridging are separate capabilities.
+
+The DEX catalog is present in the source tree for the next unreleased SDK
+version. Published package versions remain unchanged until the release
+preparation process approves the catalog and quote implementation.
+
 ## License
 
 MIT

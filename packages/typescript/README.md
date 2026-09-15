@@ -71,6 +71,58 @@ standard, address, and flattened asset metadata. See the
 [canonical registry guide](https://github.com/elsoul/erpc-sdk/blob/main/registry/README.md)
 for the source data and ID policy.
 
+## Offline DEX and pool catalog
+
+DEX deployments, pool addresses, native/wrapped relationships, and
+chain-qualified aliases are bundled as generated data. These lookups are
+offline and use opaque IDs, so an Ethereum USDC address cannot be confused
+with an Avalanche or Solana deployment:
+
+The published package baseline is currently `0.6.0`. The DEX catalog and swap
+exports described below are in the source tree for the unreleased `0.7.0`
+line and are not part of published `0.6.0` packages yet.
+
+```ts
+import {
+  DEX_CHAIN_IDS,
+  dexes,
+  findPoolDefinitionsByPair,
+  getNativeWrapDefinition,
+  pools,
+  tokens,
+} from '@elsoul/erpc-sdk'
+
+const ethereumPools = findPoolDefinitionsByPair(
+  DEX_CHAIN_IDS.ethereum,
+  tokens.ethereum.WETH,
+  tokens.ethereum.USDC,
+)
+const uniswap = dexes.ethereum.UNISWAP_V2
+const weth = getNativeWrapDefinition(tokens.ethereum.ETH)
+const pool = pools.ethereum.UNISWAP_V2_USDC_WETH
+```
+
+The initial Ethereum Uniswap V2 and Avalanche LFJ legacy constant-product
+pools support RPC-only exact-input quotes. Solana Orca and Raydium records are
+available for lookup while their CLMM quote adapters are being added:
+
+```ts
+const quote = await erpc.swap.quoteExactInput({
+  chainId: DEX_CHAIN_IDS.ethereum,
+  poolDefinitionId: pool,
+  inputTokenDeploymentId: tokens.ethereum.WETH,
+  outputTokenDeploymentId: tokens.ethereum.USDC,
+  amountIn: '1000000000000000000',
+})
+
+console.log(quote.amountOut)
+```
+
+Quotes read the configured EVM RPC at one EIP-1898 block snapshot and apply
+the constant-product formula locally. The request does not build, sign,
+simulate, or broadcast a transaction; route selection, slippage, bridging,
+and Solana CLMM execution are separate capabilities.
+
 ## Namespaces
 
 | Namespace | Purpose |

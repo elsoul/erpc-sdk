@@ -57,6 +57,52 @@ Results include every matching deployment and its status, decimals, standard,
 address, and flattened asset metadata. See the [canonical token registry](https://github.com/elsoul/erpc-sdk/blob/main/registry/README.md)
 for source records, evidence, and the generation workflow.
 
+## Offline DEX catalog and RPC quotes
+
+DEX deployments, pools, native-to-wrapped relationships, and chain-qualified
+aliases are bundled in the package as immutable generated data. The six
+lookups are network-free:
+
+```python
+from erpc_sdk import (
+    DexChainIds,
+    find_pool_definitions_by_pair,
+    get_native_wrap_definition,
+    list_pool_definitions,
+    pools,
+)
+
+eth_pools = list_pool_definitions({"chainId": DexChainIds.ETHEREUM_MAINNET})
+pair = find_pool_definitions_by_pair(
+    DexChainIds.ETHEREUM_MAINNET,
+    "deployment-0002",  # WETH
+    "deployment-0008",  # USDC
+)
+weth = get_native_wrap_definition("deployment-0001")
+pool_id = pools.ethereum.UNISWAP_V2_USDC_WETH
+```
+
+The quote client reads the selected EVM V2 pool directly through the
+configured ERPC JSON-RPC transport. It performs an exact-input quote from a
+single canonical block snapshot, with no hosted router or market-data API:
+
+```python
+quote = await erpc.swap.quote_exact_input({
+    "chainId": DexChainIds.ETHEREUM_MAINNET,
+    "poolDefinitionId": pool_id,
+    "inputTokenDeploymentId": "deployment-0002",  # WETH
+    "outputTokenDeploymentId": "deployment-0008",  # USDC
+    "amountIn": "1000000000000000000",
+})
+print(quote["amountOut"])
+```
+
+The first catalog release supports quotes for the Ethereum Uniswap V2 and
+Avalanche LFJ legacy constant-product pools. Solana Orca and Raydium records
+are available for lookup while their CLMM quote adapters are being added.
+The DEX catalog is in the source tree for the upcoming 0.7.0 release; the
+published package remains 0.6.0 until that release is approved.
+
 Both exact wire names (`getSlot`, `eth_chainId`) and Python snake-case aliases
 (`get_slot`, `eth_chain_id`) create inert requests. Network I/O starts only
 when `send()` is awaited. `request()` restricts calls to the namespace catalog;

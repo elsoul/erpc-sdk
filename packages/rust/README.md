@@ -171,6 +171,53 @@ and `list_token_deployments(Some(chain_id), Some("EUR"))` for a chain and
 stable-currency filter. See the [canonical token registry](https://github.com/elsoul/erpc-sdk/blob/main/registry/README.md)
 for the source records, evidence, and generation workflow.
 
+## DEX catalog and exact-input quotes
+
+The source tree currently contains the unreleased 0.7.0 DEX and swap exports;
+the published 0.6.0 package does not include them yet. The source tree also
+ships an offline DEX and pool catalog. The six lookup functions
+(`get_dex_deployment`, `get_pool_definition`,
+`find_pool_definition_by_address`, `find_pool_definitions_by_pair`,
+`list_pool_definitions`, and `get_native_wrap_definition`) never access an RPC
+endpoint. Chain-qualified alias constants are available under `dexes` and
+`pools`.
+
+The configured client provides direct asynchronous exact-input quotes for the
+two catalogued EVM constant-product pools. The request uses decimal base-unit
+strings and optional block freshness limits; the result reports the block
+snapshot and decimal output.
+
+```rust,no_run
+use erpc_sdk::{
+    pools, token_chain_ids, tokens, ErpcClient, ErpcClientConfig,
+    ExactInputQuoteRequest,
+};
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let erpc = ErpcClient::new(ErpcClientConfig::new("api-key"))?;
+    let quote = erpc
+        .swap
+        .quote_exact_input(ExactInputQuoteRequest {
+            chain_id: token_chain_ids::ETHEREUM_MAINNET.to_owned(),
+            pool_definition_id: pools::ethereum::UNISWAP_V2_USDC_WETH.to_owned(),
+            input_token_deployment_id: tokens::ethereum::WETH.to_owned(),
+            output_token_deployment_id: tokens::ethereum::USDC.to_owned(),
+            amount_in: "1000000000000000000".to_owned(),
+            freshness: None,
+        })
+        .await?;
+    println!("amount out: {}", quote.amount_out);
+    erpc.close().await;
+    Ok(())
+}
+```
+
+Quotes read the selected pool through the configured Ethereum or Avalanche
+transport and use a single canonical block selector for the seven code and
+state reads. Solana Orca and Raydium records are lookup-only in this release;
+the quote API does not build, sign, simulate, or send transactions.
+
 ## Safety boundaries
 
 - API keys and access tokens are redacted from configuration debug output,

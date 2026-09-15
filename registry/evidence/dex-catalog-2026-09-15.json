@@ -1,0 +1,282 @@
+{
+  "schemaVersion": 1,
+  "packetKind": "dex-pool-rpc-evidence",
+  "asOfDate": "2026-09-15",
+  "boundary": "Read-only planning and engineering evidence. No transaction was built, signed, or submitted. Hosted DEX APIs were used only for candidate discovery; admitted addresses were independently bound through configured public RPC state. Liquidity values are observations, not guarantees.",
+  "sourcePacket": {
+    "path": "/private/tmp/erpc-dex-pool-rpc-evidence-2026-09-15.json",
+    "sha256": "a76e61a48e3d3297ce3b8f8c68aeca317d6c376c9286899ecd8433a49379bfdd",
+    "readAt": "2026-09-15",
+    "scope": "Original factual records, RPC receipts, and source pointers; no SDK or protocol source copied."
+  },
+  "blockHeaderPacket": {
+    "path": "/private/tmp/erpc-dex-block-headers.json",
+    "sha256": "596a8bb9faeb8347a6f4e1f52c352f6219b0377001f08c29c0bf6b55965a870e",
+    "records": [
+      {
+        "chainId": "eip155:1",
+        "rpcChainId": "0x1",
+        "hostname": "ethereum-rpc.publicnode.com",
+        "number": "0x18c7f20",
+        "hash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+        "timestamp": "0x6aa99537",
+        "timestampDecimal": "1789498679",
+        "parentHash": "0x6ae652119397059f398af590e45f8cbf92313d9d36718624ccb24ba4c4f3d3a5",
+        "observedAt": "2026-09-15T19:25:30.656Z"
+      },
+      {
+        "chainId": "eip155:43114",
+        "rpcChainId": "0xa86a",
+        "hostname": "api.avax.network",
+        "number": "0x5af2cac",
+        "hash": "0x782561de07be8fa1af1da86cf19a859eedd0377f6f3582cec4623e5566fb8c30",
+        "timestamp": "0x6aa9953b",
+        "timestampDecimal": "1789498683",
+        "parentHash": "0x105ff5832c50b8075f6623f837db4260cc20acc9584709b366e633ae5b0fa372",
+        "observedAt": "2026-09-15T19:25:30.649Z"
+      }
+    ]
+  },
+  "evmQuoteSeeds": [
+    {
+      "chainId": "eip155:1",
+      "protocol": "Uniswap V2",
+      "rpc": "https://ethereum-rpc.publicnode.com",
+      "blockNumber": "0x18c7f20",
+      "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+      "blockSelector": {
+        "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+        "requireCanonical": true
+      },
+      "factory": "0x5c69bee701ef814a2b6a3edd4b1652cb9cc5aa6f",
+      "factoryGetPairResult": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+      "pair": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+      "pairCodeBytes": 11293,
+      "pairCodeSha256": "8b5db55fa9ab3b9527508d4abe0b39eb588bf310270c8e04b3f38214e8ba63b4",
+      "pairFactoryResult": "0x5c69bee701ef814a2b6a3edd4b1652cb9cc5aa6f",
+      "token0": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+      "token1": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+      "token0DeploymentId": "deployment-0008",
+      "token1DeploymentId": "deployment-0002",
+      "getReservesRaw": "0x000000000000000000000000000000000000000000000000000009062f045c0e0000000000000000000000000000000000000000000000dff6a46ca772d53232000000000000000000000000000000000000000000000000000000006aa99537",
+      "reserve0": "9922163268622",
+      "reserve1": "4131396377933182743090",
+      "feeFractionNumerator": "3",
+      "feeFractionDenominator": "1000",
+      "inputMultiplierNumerator": "997",
+      "inputMultiplierDenominator": "1000",
+      "quoteVectors": [
+        {
+          "inputDeploymentId": "deployment-0002",
+          "outputDeploymentId": "deployment-0008",
+          "amountIn": "1000000000000000000",
+          "amountOut": "2393866186"
+        },
+        {
+          "inputDeploymentId": "deployment-0008",
+          "outputDeploymentId": "deployment-0002",
+          "amountIn": "1000000",
+          "amountOut": "415131424811295"
+        }
+      ],
+      "eip1898": {
+        "allCodeAndCallsUseBlockHash": true,
+        "requireCanonical": true,
+        "numericOrLatestFallbackUsed": false
+      }
+    },
+    {
+      "chainId": "eip155:43114",
+      "protocol": "LFJ legacy constant-product (Joe V1)",
+      "rpc": "https://api.avax.network/ext/bc/C/rpc",
+      "blockNumber": "0x5af2cac",
+      "blockHash": "0x782561de07be8fa1af1da86cf19a859eedd0377f6f3582cec4623e5566fb8c30",
+      "blockSelector": {
+        "blockHash": "0x782561de07be8fa1af1da86cf19a859eedd0377f6f3582cec4623e5566fb8c30",
+        "requireCanonical": true
+      },
+      "factory": "0x9ad6c38be94206ca50bb0d90783181662f0cfa10",
+      "factoryGetPairResult": "0xf4003f4efbe8691b60249e6afbd307abe7758adb",
+      "pair": "0xf4003f4efbe8691b60249e6afbd307abe7758adb",
+      "pairCodeBytes": 8945,
+      "pairCodeSha256": "dae54156d7bd80c437374b5d70f4178da0ecebcdacdcf68ca684fa6f0f8feece",
+      "pairFactoryResult": "0x9ad6c38be94206ca50bb0d90783181662f0cfa10",
+      "token0": "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+      "token1": "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+      "token0DeploymentId": "deployment-0004",
+      "token1DeploymentId": "deployment-0009",
+      "getReservesRaw": "0x000000000000000000000000000000000000000000000552dd7d192b41d38bc20000000000000000000000000000000000000000000000000000002b08ae3a68000000000000000000000000000000000000000000000000000000006aa994c5",
+      "reserve0": "25140425368720458877890",
+      "reserve1": "184829229672",
+      "feeFractionNumerator": "3",
+      "feeFractionDenominator": "1000",
+      "inputMultiplierNumerator": "997",
+      "inputMultiplierDenominator": "1000",
+      "quoteVectors": [
+        {
+          "inputDeploymentId": "deployment-0004",
+          "outputDeploymentId": "deployment-0009",
+          "amountIn": "1000000000000000000",
+          "amountOut": "7329527"
+        },
+        {
+          "inputDeploymentId": "deployment-0009",
+          "outputDeploymentId": "deployment-0004",
+          "amountIn": "1000000",
+          "amountOut": "135610957925700603"
+        }
+      ],
+      "eip1898": {
+        "allCodeAndCallsUseBlockHash": true,
+        "requireCanonical": true,
+        "numericOrLatestFallbackUsed": false
+      }
+    }
+  ],
+  "solanaLookupSeeds": {
+    "chainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+    "genesisHash": "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d",
+    "rpc": "https://api.mainnet-beta.solana.com",
+    "orca": {
+      "protocol": "Orca Whirlpools",
+      "program": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
+      "programExecutable": true,
+      "pool": "FgH1dEvyRQoAqJjbUzzKVoM1HYdxTqPwjEF82kDH1kVe",
+      "mintADeploymentId": "deployment-0006",
+      "mintBDeploymentId": "deployment-0013",
+      "tickSpacing": 256,
+      "feeTierIndex": 1033,
+      "adaptiveFeeEnabled": true,
+      "storedFeeRateHundredthsBps": 20000,
+      "pdaVerified": true,
+      "observedSlot": 447324388,
+      "accountSha256": "a321f13bd34a5ebebc2a96037d7f1278b1e6ab2525edabb7f3091e0e504c62ca",
+      "quoteCapabilityInThisStage": false,
+      "warning": "Adaptive fees are observed state and are not emitted as a fixed rational runtime quote fee."
+    },
+    "raydium": {
+      "protocol": "Raydium CLMM",
+      "program": "CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK",
+      "programExecutable": true,
+      "pool": "AwaVyGAF3N6K4YRUJk55Ui1GquKhKdD6vTCmVvCzXpKf",
+      "poolOwner": "CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK",
+      "mint0DeploymentId": "deployment-0006",
+      "mint1DeploymentId": "deployment-0013",
+      "poolDataLength": 1544,
+      "poolDiscriminator": [247, 237, 227, 245, 215, 195, 222, 70],
+      "pdaVerified": true,
+      "observedSlot": 447324388,
+      "accountSha256": "4bb5711f32bed91427a4276405a2ea7f27950bfdd4302832803fde86ad0141c4",
+      "quoteCapabilityInThisStage": false
+    }
+  },
+  "sourceRevisions": [
+    { "repository": "Uniswap/v2-sdk", "commit": "5174518d5b50d21e6e920fe57e2db914550eddf9", "commitDate": "2024-04-25T16:29:18Z" },
+    { "repository": "Uniswap/v2-core", "commit": "6a9e7c97860676e0992f22a49665760444c1cdf5", "commitDate": "2026-04-02T19:50:41Z" },
+    { "repository": "lfj-gg/joe-core", "commit": "5bec2f3d86500bfd81038c99afe702ee7e67af3e", "commitDate": "2023-12-06T19:39:13Z" },
+    { "repository": "raydium-io/raydium-clmm", "commit": "ed7c84a54ced59c55981780546adb0b4583dcf85", "commitDate": "2026-08-19T05:57:43Z" },
+    { "repository": "orca-so/whirlpools", "commit": "408c945fef4c49ab70def4303377cfaf8f0f3c99", "commitDate": "2026-09-03T09:56:53Z" }
+  ],
+  "primarySources": [
+    "https://github.com/Uniswap/v2-sdk/blob/5174518d5b50d21e6e920fe57e2db914550eddf9/src/constants.ts",
+    "https://github.com/Uniswap/v2-core/blob/6a9e7c97860676e0992f22a49665760444c1cdf5/contracts/UniswapV2Factory.sol",
+    "https://github.com/Uniswap/v2-core/blob/6a9e7c97860676e0992f22a49665760444c1cdf5/contracts/UniswapV2Pair.sol",
+    "https://docs.lfj.gg/lfj-dex/contracts",
+    "https://github.com/lfj-gg/joe-core/blob/5bec2f3d86500bfd81038c99afe702ee7e67af3e/contracts/traderjoe/JoePair.sol",
+    "https://docs.raydium.io/reference/program-addresses",
+    "https://github.com/raydium-io/raydium-clmm/blob/ed7c84a54ced59c55981780546adb0b4583dcf85/programs/amm/src/states/pool.rs",
+    "https://docs.orca.so/developers/architecture/whirlpool-parameters",
+    "https://github.com/orca-so/whirlpools/blob/408c945fef4c49ab70def4303377cfaf8f0f3c99/programs/whirlpool/src/state/whirlpool.rs"
+  ],
+  "abiAndMath": {
+    "selectors": {
+      "factoryGetPair": "0xe6a43905",
+      "pairFactory": "0xc45a0155",
+      "pairToken0": "0x0dfe1681",
+      "pairToken1": "0xd21220a7",
+      "pairGetReserves": "0x0902f1ac"
+    },
+    "formula": "adjusted = amountIn * (feeDenominator - feeNumerator); amountOut = floor(adjusted * reserveOut / (reserveIn * feeDenominator + adjusted))",
+    "bounds": "All decimal quantities are strings; input and every Solidity-equivalent intermediate are <= uint256; reserves are strict uint112; output and reserves must be positive.",
+    "sourceDeclaration": "The formula and ABI encodings are independently written engineering logic. No protocol SDK, IDL, comments, or source implementation is copied."
+  },
+  "licenseBoundaries": [
+    {
+      "protocol": "Uniswap V2 core",
+      "status": "GPL-3.0 repository LICENSE; inspected Pair.sol does not carry the claimed SPDX header",
+      "source": "https://github.com/Uniswap/v2-core/blob/6a9e7c97860676e0992f22a49665760444c1cdf5/LICENSE"
+    },
+    {
+      "protocol": "LFJ JoePair",
+      "status": "GPL-3.0 SPDX source header",
+      "source": "https://github.com/lfj-gg/joe-core/blob/5bec2f3d86500bfd81038c99afe702ee7e67af3e/contracts/traderjoe/JoePair.sol"
+    },
+    {
+      "protocol": "Raydium CLMM program",
+      "status": "Apache-2.0",
+      "source": "https://github.com/raydium-io/raydium-clmm/blob/ed7c84a54ced59c55981780546adb0b4583dcf85/LICENSE"
+    },
+    {
+      "protocol": "Orca Whirlpools",
+      "status": "Custom restrictive Orca License since 2025-02-27; no code or package use planned",
+      "source": "https://github.com/orca-so/whirlpools/blob/408c945fef4c49ab70def4303377cfaf8f0f3c99/LICENSE"
+    }
+  ],
+  "euOssPlanning": {
+    "packetPath": "/private/tmp/erpc-num-bigint-preflight-2026-09-15-e__fm0yq/eu-oss-dependency-packet.json",
+    "packetSha256": "06c70a05e6fca044bff3f5f87c27a2599f79d17f2272378f10ffcb12431f699f",
+    "packetKind": "eu-oss-num-bigint-dex-money-path-preflight",
+    "asOfDate": "2026-09-15",
+    "applicabilityStatus": "UNDETERMINED",
+    "companyLegalRole": "UNDETERMINED",
+    "productClassification": "UNDETERMINED",
+    "complianceStatus": "UNDETERMINED",
+    "engineeringBoundary": "Planning evidence only. No legal compliance, CE certification, statutory steward designation, filing, or vulnerability disclosure is asserted.",
+    "dependencyRecommendation": "num-bigint = 0.5.1 with std only; exact dependency and license evidence remains with the routed Rust path. This registry slice adds no dependency.",
+    "preExistingSecurityIssue": "The rustls advisory was remediated in the routed engineering tree by approving rustls 0.23.45 in Cargo.lock; this evidence records the engineering state and does not make a legal or security certification.",
+    "engineeringResolution": {
+      "asOfDate": "2026-09-15",
+      "status": "ENGINEERING_RESOLUTION_RECORDED",
+      "cargoLock": {
+        "path": "Cargo.lock",
+        "sha256AtCurrentTree": "e8b965431f28d4758ca9024d12e5767760dfafcadce6aa183793624f0c590d07",
+        "rustls": "0.23.45",
+        "advisoryRemediation": "Routed engineering update recorded; inspect the current lock and upstream advisory for scope."
+      },
+      "numBigintDependencyGraph": [
+        "num-bigint 0.5.1",
+        "num-integer 0.1.47",
+        "num-traits 0.2.19",
+        "autocfg 1.5.1"
+      ],
+      "steinerDependencyGate": "PASS",
+      "licenseReview": "Checked the dependency license expressions, MIT notice hashes, and required copyright notices recorded in this packet.",
+      "rustToolchain": "Rust 1.85 passed the routed dependency and lock validation.",
+      "legalBoundary": "Engineering resolution only. Applicability, company role, product classification, support commitments, and compliance status remain UNDETERMINED; no compliance certification or CE conclusion is asserted."
+    },
+    "owner": "eu-oss-compliance evidence contributor reporting to Edgar",
+    "dueDate": "2026-09-15 for review evidence; acceptance actions before change acceptance",
+    "nextReview": "2026-10-15 or earlier on release, dependency, security, source-copy, provider-data, or applicability change"
+  },
+  "thirdPartyNotices": [
+    {
+      "package": "num-bigint 0.5.1; num-integer 0.1.47; num-traits 0.2.19",
+      "license": "MIT OR Apache-2.0",
+      "copyright": "Copyright (c) 2014 The Rust Project Developers",
+      "mitLicenseSha256": "6485b8ed310d3f0340bf1ad1f47645069ce4069dcc6bb46c7d5c6faf41de1fdb",
+      "notice": "Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the Software), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions: The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software. THE SOFTWARE IS PROVIDED AS IS, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE."
+    },
+    {
+      "package": "autocfg 1.5.1",
+      "license": "Apache-2.0 OR MIT",
+      "copyright": "Copyright (c) 2018 Josh Stone",
+      "mitLicenseSha256": "27995d58ad5c1145c1a8cd86244ce844886958a35eb2b78c6b772748669999ac",
+      "notice": "Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the Software), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions: The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software. THE SOFTWARE IS PROVIDED AS IS, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE."
+    }
+  ],
+  "knownGaps": [
+    "The first quote slice does not quote EURC on EVM; absent or low-liquidity pairs remain outside the catalog.",
+    "Solana concentrated-liquidity quote math, tick-array freshness, instruction building, signing, and sending are out of this stage.",
+    "No ranking, complete DEX coverage, canonical-liquidity claim, or future-liquidity guarantee is made."
+  ]
+}

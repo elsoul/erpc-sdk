@@ -40,6 +40,7 @@ from .subscriptions import (
     SolanaSubscriptions,
     WebSocketJsonRpcTransport,
 )
+from .swap import SwapClient
 from .transport import HttpJsonRpcTransport, RestTransport
 
 
@@ -239,6 +240,7 @@ class ErpcClient:
             ),
             subscriptions=EthereumSubscriptions(avalanche_ws),
         )
+        self.swap = SwapClient(ethereum_transport, avalanche_transport)
         self.price = PriceClient(
             RestTransport(
                 credential=config.api_key,

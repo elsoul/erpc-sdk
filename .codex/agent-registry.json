@@ -260,7 +260,9 @@
       },
       {
         "id": "rust",
-        "exactPaths": [],
+        "exactPaths": [
+          "Cargo.lock"
+        ],
         "pathPrefixes": [
           "packages/rust/"
         ],

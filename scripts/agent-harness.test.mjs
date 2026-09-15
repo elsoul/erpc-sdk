@@ -35,6 +35,16 @@ test('root README and ROADMAP route through the future assets registry with a Cy
   }
   for (const target of ['docs/README.md', 'README.md.bak', 'ROADMAP.md.bak']) { const unresolved = route(registry, target); assert.equal(unresolved.status, 'ROUTE_UNRESOLVED'); assert.equal(unresolved.dispatchL3, false); assert.deepEqual(unresolved.roles, ['el', 'edgar']); }
 });
+test('root Cargo.lock routes through Rust ownership while lookalikes stay unresolved', () => {
+  const target = 'Cargo.lock'; const rule = selected(target); assert.equal(rule.id, 'rust'); assert.equal(rule.implementer, 'backend-l3-pokemon-haganeil');
+  const planning = route(registry, target, { phase: 'planning' }); assert.deepEqual(planning.roles, ['edgar', 'bartz', 'steiner']); assert.deepEqual(planning.requiredGates, ['steiner']); assert.equal(planning.dispatchL3, false);
+  const required = route(registry, target); assert.equal(required.status, 'BRIEF_REQUIRED'); assert.equal(required.dispatchL3, false); assert.equal(required.candidateImplementer, 'backend-l3-pokemon-haganeil'); assert.deepEqual(required.roles, ['edgar', 'bartz']);
+  const ready = route(registry, target, { taskBrief: brief(target, rule) }); assert.equal(ready.status, 'READY'); assert.equal(ready.actionable, true); assert.equal(ready.dispatchL3, true); assert.deepEqual(ready.requiredGates, ['steiner']); assert.deepEqual(ready.roles, ['edgar', 'bartz', 'backend-l3-pokemon-haganeil']);
+  const invalid = route(registry, target, { taskBrief: { ...brief(target, rule), approvedBy: 'luida' } }); assert.equal(invalid.status, 'BRIEF_INVALID'); assert.equal(invalid.actionable, false); assert.equal(invalid.dispatchL3, false); assert.deepEqual(invalid.roles, ['edgar', 'bartz']);
+  for (const category of ['security', 'eu-oss-compliance']) { const result = route(registry, target, { phase: 'planning', category }); assert.ok(result.roles.includes('eu-oss-compliance')); assert.ok(result.roles.includes('cyan')); assert.ok(result.requiredGates.includes('cyan')); }
+  const release = route(registry, target, { category: 'release-readiness', taskBrief: brief(target, rule) }); assert.ok(release.roles.includes('sephiroth')); assert.ok(release.roles.includes('eu-oss-compliance')); assert.deepEqual(release.requiredGates, ['steiner', 'cyan']);
+  for (const unresolvedTarget of ['Cargo.lock.bak', 'docs/Cargo.lock', 'Cargo.toml']) { const unresolved = route(registry, unresolvedTarget); assert.equal(unresolved.status, 'ROUTE_UNRESOLVED'); assert.equal(unresolved.dispatchL3, false); assert.deepEqual(unresolved.roles, ['el', 'edgar']); }
+});
 test('categories append contributors and gates while bridge research stays planning only', () => {
   const target = 'packages/typescript/src/client'; const rule = selected(target);
   const parity = route(registry, target, { category: 'codegen-parity', taskBrief: brief(target, rule) }); assert.ok(parity.roles.includes('gogo')); assert.equal(parity.candidateImplementer, rule.implementer);

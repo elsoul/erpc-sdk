@@ -1,0 +1,3484 @@
+{
+  "schemaVersion": 1,
+  "contract": {
+    "requestKeys": [
+      "chainId",
+      "poolDefinitionId",
+      "inputTokenDeploymentId",
+      "outputTokenDeploymentId",
+      "amountIn",
+      "freshness"
+    ],
+    "resultKeys": [
+      "quoteKind",
+      "chainId",
+      "poolDefinitionId",
+      "dexDeploymentId",
+      "adapterKind",
+      "inputTokenDeploymentId",
+      "outputTokenDeploymentId",
+      "amountIn",
+      "amountOut",
+      "fee",
+      "snapshot",
+      "tokenCatalogDigest",
+      "dexCatalogDigest"
+    ],
+    "validationPrecedence": [
+      "SWAP_INVALID_ARGUMENT",
+      "SWAP_UNSUPPORTED_CHAIN",
+      "SWAP_UNKNOWN_POOL",
+      "SWAP_CHAIN_MISMATCH",
+      "SWAP_INVALID_POOL_STATE",
+      "SWAP_UNKNOWN_TOKEN",
+      "SWAP_CHAIN_MISMATCH",
+      "SWAP_TOKEN_NOT_ACTIVE",
+      "SWAP_UNSUPPORTED_TOKEN_STANDARD",
+      "SWAP_POOL_TOKEN_MISMATCH",
+      "SWAP_UNSUPPORTED_ADAPTER",
+      "SWAP_UNSUPPORTED_TOKEN_STANDARD",
+      "RPC_OR_STATE_VALIDATION"
+    ],
+    "freshnessDefaults": {
+      "maxBlockAgeSeconds": 120,
+      "maxBlockLag": 3,
+      "maxClockSkewSeconds": 5
+    },
+    "freshnessRanges": {
+      "maxBlockAgeSeconds": [
+        0,
+        86400
+      ],
+      "maxBlockLag": [
+        0,
+        1024
+      ],
+      "maxClockSkewSeconds": [
+        0,
+        300
+      ]
+    },
+    "rpcCallSequence": [
+      "eth_chainId",
+      "eth_getBlockByNumber:latest",
+      "eth_getCode:factory",
+      "eth_getCode:pool",
+      "eth_call:factory.getPair",
+      "eth_call:pool.factory",
+      "eth_call:pool.token0",
+      "eth_call:pool.token1",
+      "eth_call:pool.getReserves",
+      "eth_getBlockByNumber:latest",
+      "eth_getBlockByNumber:snapshot-number"
+    ],
+    "stateReadSelector": {
+      "requireCanonical": true
+    },
+    "rpcErrorMap": {
+      "emptyFactoryCode": "SWAP_PROGRAM_MISMATCH",
+      "emptyPoolCode": "SWAP_INVALID_POOL_STATE",
+      "factoryPairMismatch": "SWAP_PROGRAM_MISMATCH",
+      "pairFactoryMismatch": "SWAP_PROGRAM_MISMATCH",
+      "pairTokenMismatch": "SWAP_POOL_TOKEN_MISMATCH",
+      "malformedAbiOrPadding": "SWAP_INVALID_POOL_STATE",
+      "reserveOutsideUint112": "SWAP_INVALID_POOL_STATE",
+      "staleOrReorg": "SWAP_STATE_STALE",
+      "transportFailure": "source-error-preserved",
+      "cancellation": "source-error-preserved"
+    }
+  },
+  "validCases": [
+    {
+      "caseId": "ethereum-weth-usdc-forward",
+      "request": {
+        "chainId": "eip155:1",
+        "poolDefinitionId": "pool-0001",
+        "inputTokenDeploymentId": "deployment-0002",
+        "outputTokenDeploymentId": "deployment-0008",
+        "amountIn": "1000000000000000000"
+      },
+      "snapshot": {
+        "kind": "evm-block",
+        "blockNumber": "0x18c7f20",
+        "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+        "blockTimestamp": "0x6aa99537",
+        "reserve0": "9922163268622",
+        "reserve1": "4131396377933182743090"
+      },
+      "nowSeconds": 1789498700,
+      "rpcResponses": [
+        "0x1",
+        {
+          "number": "0x18c7f20",
+          "hash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+          "timestamp": "0x6aa99537"
+        },
+        "0x6001600055",
+        "0x6001600055",
+        "0x000000000000000000000000b4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+        "0x0000000000000000000000005c69bee701ef814a2b6a3edd4b1652cb9cc5aa6f",
+        "0x000000000000000000000000a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+        "0x000000000000000000000000c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+        "0x000000000000000000000000000000000000000000000000000009062f045c0e0000000000000000000000000000000000000000000000dff6a46ca772d53232000000000000000000000000000000000000000000000000000000006aa994c5",
+        {
+          "number": "0x18c7f20",
+          "hash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+          "timestamp": "0x6aa99537"
+        },
+        {
+          "number": "0x18c7f20",
+          "hash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+          "timestamp": "0x6aa99537"
+        }
+      ],
+      "outcome": {
+        "kind": "success",
+        "value": {
+          "quoteKind": "exact-input",
+          "chainId": "eip155:1",
+          "poolDefinitionId": "pool-0001",
+          "dexDeploymentId": "dex-deployment-0001",
+          "adapterKind": "evm-constant-product-v2",
+          "inputTokenDeploymentId": "deployment-0002",
+          "outputTokenDeploymentId": "deployment-0008",
+          "amountIn": "1000000000000000000",
+          "amountOut": "2393866186",
+          "fee": {
+            "numerator": "3",
+            "denominator": "1000"
+          },
+          "snapshot": {
+            "kind": "evm-block",
+            "blockNumber": "25984800",
+            "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+            "blockTimestamp": "1789498679"
+          },
+          "tokenCatalogDigest": "62879dfe8bb49a154d2a1bff356321e5dbe78d8cef0cd3409ef2b22cfd3445a4",
+          "dexCatalogDigest": "002c05c3c2d5d3917f73a5c2e7b55af9ceb9a682fb49ae28d2421046ee2faa50"
+        }
+      },
+      "rpcTrace": [
+        {
+          "method": "eth_chainId",
+          "params": []
+        },
+        {
+          "method": "eth_getBlockByNumber",
+          "params": [
+            "latest",
+            false
+          ]
+        },
+        {
+          "method": "eth_getCode",
+          "params": [
+            "0x5c69bee701ef814a2b6a3edd4b1652cb9cc5aa6f",
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_getCode",
+          "params": [
+            "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0x5c69bee701ef814a2b6a3edd4b1652cb9cc5aa6f",
+              "data": "0xe6a43905000000000000000000000000a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48000000000000000000000000c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+              "data": "0xc45a0155"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+              "data": "0x0dfe1681"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+              "data": "0xd21220a7"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+              "data": "0x0902f1ac"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_getBlockByNumber",
+          "params": [
+            "latest",
+            false
+          ]
+        },
+        {
+          "method": "eth_getBlockByNumber",
+          "params": [
+            "0x18c7f20",
+            false
+          ]
+        }
+      ]
+    },
+    {
+      "caseId": "ethereum-usdc-weth-reverse",
+      "request": {
+        "chainId": "eip155:1",
+        "poolDefinitionId": "pool-0001",
+        "inputTokenDeploymentId": "deployment-0008",
+        "outputTokenDeploymentId": "deployment-0002",
+        "amountIn": "1000000"
+      },
+      "snapshot": {
+        "kind": "evm-block",
+        "blockNumber": "0x18c7f20",
+        "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+        "blockTimestamp": "0x6aa99537",
+        "reserve0": "9922163268622",
+        "reserve1": "4131396377933182743090"
+      },
+      "nowSeconds": 1789498700,
+      "rpcResponses": [
+        "0x1",
+        {
+          "number": "0x18c7f20",
+          "hash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+          "timestamp": "0x6aa99537"
+        },
+        "0x6001600055",
+        "0x6001600055",
+        "0x000000000000000000000000b4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+        "0x0000000000000000000000005c69bee701ef814a2b6a3edd4b1652cb9cc5aa6f",
+        "0x000000000000000000000000a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+        "0x000000000000000000000000c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+        "0x000000000000000000000000000000000000000000000000000009062f045c0e0000000000000000000000000000000000000000000000dff6a46ca772d53232000000000000000000000000000000000000000000000000000000006aa994c5",
+        {
+          "number": "0x18c7f20",
+          "hash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+          "timestamp": "0x6aa99537"
+        },
+        {
+          "number": "0x18c7f20",
+          "hash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+          "timestamp": "0x6aa99537"
+        }
+      ],
+      "outcome": {
+        "kind": "success",
+        "value": {
+          "quoteKind": "exact-input",
+          "chainId": "eip155:1",
+          "poolDefinitionId": "pool-0001",
+          "dexDeploymentId": "dex-deployment-0001",
+          "adapterKind": "evm-constant-product-v2",
+          "inputTokenDeploymentId": "deployment-0008",
+          "outputTokenDeploymentId": "deployment-0002",
+          "amountIn": "1000000",
+          "amountOut": "415131424811295",
+          "fee": {
+            "numerator": "3",
+            "denominator": "1000"
+          },
+          "snapshot": {
+            "kind": "evm-block",
+            "blockNumber": "25984800",
+            "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+            "blockTimestamp": "1789498679"
+          },
+          "tokenCatalogDigest": "62879dfe8bb49a154d2a1bff356321e5dbe78d8cef0cd3409ef2b22cfd3445a4",
+          "dexCatalogDigest": "002c05c3c2d5d3917f73a5c2e7b55af9ceb9a682fb49ae28d2421046ee2faa50"
+        }
+      },
+      "rpcTrace": [
+        {
+          "method": "eth_chainId",
+          "params": []
+        },
+        {
+          "method": "eth_getBlockByNumber",
+          "params": [
+            "latest",
+            false
+          ]
+        },
+        {
+          "method": "eth_getCode",
+          "params": [
+            "0x5c69bee701ef814a2b6a3edd4b1652cb9cc5aa6f",
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_getCode",
+          "params": [
+            "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0x5c69bee701ef814a2b6a3edd4b1652cb9cc5aa6f",
+              "data": "0xe6a43905000000000000000000000000a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48000000000000000000000000c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+              "data": "0xc45a0155"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+              "data": "0x0dfe1681"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+              "data": "0xd21220a7"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+              "data": "0x0902f1ac"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_getBlockByNumber",
+          "params": [
+            "latest",
+            false
+          ]
+        },
+        {
+          "method": "eth_getBlockByNumber",
+          "params": [
+            "0x18c7f20",
+            false
+          ]
+        }
+      ]
+    },
+    {
+      "caseId": "avalanche-wavax-usdc-forward",
+      "request": {
+        "chainId": "eip155:43114",
+        "poolDefinitionId": "pool-0002",
+        "inputTokenDeploymentId": "deployment-0004",
+        "outputTokenDeploymentId": "deployment-0009",
+        "amountIn": "1000000000000000000"
+      },
+      "snapshot": {
+        "kind": "evm-block",
+        "blockNumber": "0x5af2cac",
+        "blockHash": "0x782561de07be8fa1af1da86cf19a859eedd0377f6f3582cec4623e5566fb8c30",
+        "blockTimestamp": "0x6aa9953b",
+        "reserve0": "25140425368720458877890",
+        "reserve1": "184829229672"
+      },
+      "nowSeconds": 1789498700,
+      "rpcResponses": [
+        "0xa86a",
+        {
+          "number": "0x5af2cac",
+          "hash": "0x782561de07be8fa1af1da86cf19a859eedd0377f6f3582cec4623e5566fb8c30",
+          "timestamp": "0x6aa9953b"
+        },
+        "0x6001600055",
+        "0x6001600055",
+        "0x000000000000000000000000f4003f4efbe8691b60249e6afbd307abe7758adb",
+        "0x0000000000000000000000009ad6c38be94206ca50bb0d90783181662f0cfa10",
+        "0x000000000000000000000000b31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+        "0x000000000000000000000000b97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+        "0x000000000000000000000000000000000000000000000552dd7d192b41d38bc20000000000000000000000000000000000000000000000000000002b08ae3a68000000000000000000000000000000000000000000000000000000006aa994c5",
+        {
+          "number": "0x5af2cac",
+          "hash": "0x782561de07be8fa1af1da86cf19a859eedd0377f6f3582cec4623e5566fb8c30",
+          "timestamp": "0x6aa9953b"
+        },
+        {
+          "number": "0x5af2cac",
+          "hash": "0x782561de07be8fa1af1da86cf19a859eedd0377f6f3582cec4623e5566fb8c30",
+          "timestamp": "0x6aa9953b"
+        }
+      ],
+      "outcome": {
+        "kind": "success",
+        "value": {
+          "quoteKind": "exact-input",
+          "chainId": "eip155:43114",
+          "poolDefinitionId": "pool-0002",
+          "dexDeploymentId": "dex-deployment-0002",
+          "adapterKind": "evm-constant-product-v2",
+          "inputTokenDeploymentId": "deployment-0004",
+          "outputTokenDeploymentId": "deployment-0009",
+          "amountIn": "1000000000000000000",
+          "amountOut": "7329527",
+          "fee": {
+            "numerator": "3",
+            "denominator": "1000"
+          },
+          "snapshot": {
+            "kind": "evm-block",
+            "blockNumber": "95366316",
+            "blockHash": "0x782561de07be8fa1af1da86cf19a859eedd0377f6f3582cec4623e5566fb8c30",
+            "blockTimestamp": "1789498683"
+          },
+          "tokenCatalogDigest": "62879dfe8bb49a154d2a1bff356321e5dbe78d8cef0cd3409ef2b22cfd3445a4",
+          "dexCatalogDigest": "002c05c3c2d5d3917f73a5c2e7b55af9ceb9a682fb49ae28d2421046ee2faa50"
+        }
+      },
+      "rpcTrace": [
+        {
+          "method": "eth_chainId",
+          "params": []
+        },
+        {
+          "method": "eth_getBlockByNumber",
+          "params": [
+            "latest",
+            false
+          ]
+        },
+        {
+          "method": "eth_getCode",
+          "params": [
+            "0x9ad6c38be94206ca50bb0d90783181662f0cfa10",
+            {
+              "blockHash": "0x782561de07be8fa1af1da86cf19a859eedd0377f6f3582cec4623e5566fb8c30",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_getCode",
+          "params": [
+            "0xf4003f4efbe8691b60249e6afbd307abe7758adb",
+            {
+              "blockHash": "0x782561de07be8fa1af1da86cf19a859eedd0377f6f3582cec4623e5566fb8c30",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0x9ad6c38be94206ca50bb0d90783181662f0cfa10",
+              "data": "0xe6a43905000000000000000000000000b31f66aa3c1e785363f0875a1b74e27b85fd66c7000000000000000000000000b97ef9ef8734c71904d8002f8b6bc66dd9c48a6e"
+            },
+            {
+              "blockHash": "0x782561de07be8fa1af1da86cf19a859eedd0377f6f3582cec4623e5566fb8c30",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xf4003f4efbe8691b60249e6afbd307abe7758adb",
+              "data": "0xc45a0155"
+            },
+            {
+              "blockHash": "0x782561de07be8fa1af1da86cf19a859eedd0377f6f3582cec4623e5566fb8c30",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xf4003f4efbe8691b60249e6afbd307abe7758adb",
+              "data": "0x0dfe1681"
+            },
+            {
+              "blockHash": "0x782561de07be8fa1af1da86cf19a859eedd0377f6f3582cec4623e5566fb8c30",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xf4003f4efbe8691b60249e6afbd307abe7758adb",
+              "data": "0xd21220a7"
+            },
+            {
+              "blockHash": "0x782561de07be8fa1af1da86cf19a859eedd0377f6f3582cec4623e5566fb8c30",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xf4003f4efbe8691b60249e6afbd307abe7758adb",
+              "data": "0x0902f1ac"
+            },
+            {
+              "blockHash": "0x782561de07be8fa1af1da86cf19a859eedd0377f6f3582cec4623e5566fb8c30",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_getBlockByNumber",
+          "params": [
+            "latest",
+            false
+          ]
+        },
+        {
+          "method": "eth_getBlockByNumber",
+          "params": [
+            "0x5af2cac",
+            false
+          ]
+        }
+      ]
+    },
+    {
+      "caseId": "avalanche-usdc-wavax-reverse",
+      "request": {
+        "chainId": "eip155:43114",
+        "poolDefinitionId": "pool-0002",
+        "inputTokenDeploymentId": "deployment-0009",
+        "outputTokenDeploymentId": "deployment-0004",
+        "amountIn": "1000000"
+      },
+      "snapshot": {
+        "kind": "evm-block",
+        "blockNumber": "0x5af2cac",
+        "blockHash": "0x782561de07be8fa1af1da86cf19a859eedd0377f6f3582cec4623e5566fb8c30",
+        "blockTimestamp": "0x6aa9953b",
+        "reserve0": "25140425368720458877890",
+        "reserve1": "184829229672"
+      },
+      "nowSeconds": 1789498700,
+      "rpcResponses": [
+        "0xa86a",
+        {
+          "number": "0x5af2cac",
+          "hash": "0x782561de07be8fa1af1da86cf19a859eedd0377f6f3582cec4623e5566fb8c30",
+          "timestamp": "0x6aa9953b"
+        },
+        "0x6001600055",
+        "0x6001600055",
+        "0x000000000000000000000000f4003f4efbe8691b60249e6afbd307abe7758adb",
+        "0x0000000000000000000000009ad6c38be94206ca50bb0d90783181662f0cfa10",
+        "0x000000000000000000000000b31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+        "0x000000000000000000000000b97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+        "0x000000000000000000000000000000000000000000000552dd7d192b41d38bc20000000000000000000000000000000000000000000000000000002b08ae3a68000000000000000000000000000000000000000000000000000000006aa994c5",
+        {
+          "number": "0x5af2cac",
+          "hash": "0x782561de07be8fa1af1da86cf19a859eedd0377f6f3582cec4623e5566fb8c30",
+          "timestamp": "0x6aa9953b"
+        },
+        {
+          "number": "0x5af2cac",
+          "hash": "0x782561de07be8fa1af1da86cf19a859eedd0377f6f3582cec4623e5566fb8c30",
+          "timestamp": "0x6aa9953b"
+        }
+      ],
+      "outcome": {
+        "kind": "success",
+        "value": {
+          "quoteKind": "exact-input",
+          "chainId": "eip155:43114",
+          "poolDefinitionId": "pool-0002",
+          "dexDeploymentId": "dex-deployment-0002",
+          "adapterKind": "evm-constant-product-v2",
+          "inputTokenDeploymentId": "deployment-0009",
+          "outputTokenDeploymentId": "deployment-0004",
+          "amountIn": "1000000",
+          "amountOut": "135610957925700603",
+          "fee": {
+            "numerator": "3",
+            "denominator": "1000"
+          },
+          "snapshot": {
+            "kind": "evm-block",
+            "blockNumber": "95366316",
+            "blockHash": "0x782561de07be8fa1af1da86cf19a859eedd0377f6f3582cec4623e5566fb8c30",
+            "blockTimestamp": "1789498683"
+          },
+          "tokenCatalogDigest": "62879dfe8bb49a154d2a1bff356321e5dbe78d8cef0cd3409ef2b22cfd3445a4",
+          "dexCatalogDigest": "002c05c3c2d5d3917f73a5c2e7b55af9ceb9a682fb49ae28d2421046ee2faa50"
+        }
+      },
+      "rpcTrace": [
+        {
+          "method": "eth_chainId",
+          "params": []
+        },
+        {
+          "method": "eth_getBlockByNumber",
+          "params": [
+            "latest",
+            false
+          ]
+        },
+        {
+          "method": "eth_getCode",
+          "params": [
+            "0x9ad6c38be94206ca50bb0d90783181662f0cfa10",
+            {
+              "blockHash": "0x782561de07be8fa1af1da86cf19a859eedd0377f6f3582cec4623e5566fb8c30",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_getCode",
+          "params": [
+            "0xf4003f4efbe8691b60249e6afbd307abe7758adb",
+            {
+              "blockHash": "0x782561de07be8fa1af1da86cf19a859eedd0377f6f3582cec4623e5566fb8c30",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0x9ad6c38be94206ca50bb0d90783181662f0cfa10",
+              "data": "0xe6a43905000000000000000000000000b31f66aa3c1e785363f0875a1b74e27b85fd66c7000000000000000000000000b97ef9ef8734c71904d8002f8b6bc66dd9c48a6e"
+            },
+            {
+              "blockHash": "0x782561de07be8fa1af1da86cf19a859eedd0377f6f3582cec4623e5566fb8c30",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xf4003f4efbe8691b60249e6afbd307abe7758adb",
+              "data": "0xc45a0155"
+            },
+            {
+              "blockHash": "0x782561de07be8fa1af1da86cf19a859eedd0377f6f3582cec4623e5566fb8c30",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xf4003f4efbe8691b60249e6afbd307abe7758adb",
+              "data": "0x0dfe1681"
+            },
+            {
+              "blockHash": "0x782561de07be8fa1af1da86cf19a859eedd0377f6f3582cec4623e5566fb8c30",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xf4003f4efbe8691b60249e6afbd307abe7758adb",
+              "data": "0xd21220a7"
+            },
+            {
+              "blockHash": "0x782561de07be8fa1af1da86cf19a859eedd0377f6f3582cec4623e5566fb8c30",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xf4003f4efbe8691b60249e6afbd307abe7758adb",
+              "data": "0x0902f1ac"
+            },
+            {
+              "blockHash": "0x782561de07be8fa1af1da86cf19a859eedd0377f6f3582cec4623e5566fb8c30",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_getBlockByNumber",
+          "params": [
+            "latest",
+            false
+          ]
+        },
+        {
+          "method": "eth_getBlockByNumber",
+          "params": [
+            "0x5af2cac",
+            false
+          ]
+        }
+      ]
+    }
+  ],
+  "invalidCases": [
+    {
+      "caseId": "request-has-rpc",
+      "request": {
+        "chainId": "eip155:1",
+        "poolDefinitionId": "pool-0001",
+        "inputTokenDeploymentId": "deployment-0002",
+        "outputTokenDeploymentId": "deployment-0008",
+        "amountIn": "1000000000000000000",
+        "rpc": {}
+      },
+      "nowSeconds": 1789498700,
+      "rpcResponses": [],
+      "outcome": {
+        "kind": "sdk-error",
+        "code": "SWAP_INVALID_ARGUMENT"
+      },
+      "rpcTrace": [],
+        "applicability": "language-local"
+    },
+    {
+      "caseId": "malformed-pool-identifier",
+      "request": {
+        "chainId": "eip155:1",
+        "poolDefinitionId": "pool bad",
+        "inputTokenDeploymentId": "deployment-0002",
+        "outputTokenDeploymentId": "deployment-0008",
+        "amountIn": "1000000000000000000"
+      },
+      "nowSeconds": 1789498700,
+      "rpcResponses": [],
+      "outcome": {
+        "kind": "sdk-error",
+        "code": "SWAP_INVALID_ARGUMENT"
+      },
+      "rpcTrace": [],
+      "applicability": "shared"
+    },
+    {
+      "caseId": "explicit-null-freshness",
+      "request": {
+        "chainId": "eip155:1",
+        "poolDefinitionId": "pool-0001",
+        "inputTokenDeploymentId": "deployment-0002",
+        "outputTokenDeploymentId": "deployment-0008",
+        "amountIn": "1000000000000000000",
+        "freshness": {
+          "maxBlockAgeSeconds": null
+        }
+      },
+      "nowSeconds": 1789498700,
+      "rpcResponses": [],
+      "outcome": {
+        "kind": "sdk-error",
+        "code": "SWAP_INVALID_ARGUMENT"
+      },
+      "rpcTrace": [],
+      "applicability": "language-local"
+    },
+    {
+      "caseId": "decimal-leading-zero",
+      "request": {
+        "chainId": "eip155:1",
+        "poolDefinitionId": "pool-0001",
+        "inputTokenDeploymentId": "deployment-0002",
+        "outputTokenDeploymentId": "deployment-0008",
+        "amountIn": "01"
+      },
+      "nowSeconds": 1789498700,
+      "rpcResponses": [],
+      "outcome": {
+        "kind": "sdk-error",
+        "code": "SWAP_INVALID_ARGUMENT"
+      },
+      "rpcTrace": [],
+      "applicability": "shared"
+    },
+    {
+      "caseId": "decimal-fraction",
+      "request": {
+        "chainId": "eip155:1",
+        "poolDefinitionId": "pool-0001",
+        "inputTokenDeploymentId": "deployment-0002",
+        "outputTokenDeploymentId": "deployment-0008",
+        "amountIn": "1.0"
+      },
+      "nowSeconds": 1789498700,
+      "rpcResponses": [],
+      "outcome": {
+        "kind": "sdk-error",
+        "code": "SWAP_INVALID_ARGUMENT"
+      },
+      "rpcTrace": [],
+      "applicability": "shared"
+    },
+    {
+      "caseId": "zero-amount",
+      "request": {
+        "chainId": "eip155:1",
+        "poolDefinitionId": "pool-0001",
+        "inputTokenDeploymentId": "deployment-0002",
+        "outputTokenDeploymentId": "deployment-0008",
+        "amountIn": "0"
+      },
+      "nowSeconds": 1789498700,
+      "rpcResponses": [],
+      "outcome": {
+        "kind": "sdk-error",
+        "code": "SWAP_INVALID_ARGUMENT"
+      },
+      "rpcTrace": [],
+      "applicability": "shared"
+    },
+    {
+      "caseId": "uint256-overflow",
+      "request": {
+        "chainId": "eip155:1",
+        "poolDefinitionId": "pool-0001",
+        "inputTokenDeploymentId": "deployment-0002",
+        "outputTokenDeploymentId": "deployment-0008",
+        "amountIn": "115792089237316195423570985008687907853269984665640564039457584007913129639936"
+      },
+      "nowSeconds": 1789498700,
+      "rpcResponses": [],
+      "outcome": {
+        "kind": "sdk-error",
+        "code": "SWAP_INVALID_ARGUMENT"
+      },
+      "rpcTrace": [],
+      "applicability": "shared"
+    },
+    {
+      "caseId": "unsupported-chain",
+      "request": {
+        "chainId": "eip155:999",
+        "poolDefinitionId": "pool-0001",
+        "inputTokenDeploymentId": "deployment-0002",
+        "outputTokenDeploymentId": "deployment-0008",
+        "amountIn": "1000000000000000000"
+      },
+      "nowSeconds": 1789498700,
+      "rpcResponses": [],
+      "outcome": {
+        "kind": "sdk-error",
+        "code": "SWAP_UNSUPPORTED_CHAIN"
+      },
+      "rpcTrace": [],
+      "applicability": "shared"
+    },
+    {
+      "caseId": "unknown-pool",
+      "request": {
+        "chainId": "eip155:1",
+        "poolDefinitionId": "pool-unknown",
+        "inputTokenDeploymentId": "deployment-0002",
+        "outputTokenDeploymentId": "deployment-0008",
+        "amountIn": "1000000000000000000"
+      },
+      "nowSeconds": 1789498700,
+      "rpcResponses": [],
+      "outcome": {
+        "kind": "sdk-error",
+        "code": "SWAP_UNKNOWN_POOL"
+      },
+      "rpcTrace": [],
+      "applicability": "shared"
+    },
+    {
+      "caseId": "wrong-pool-chain",
+      "request": {
+        "chainId": "eip155:43114",
+        "poolDefinitionId": "pool-0001",
+        "inputTokenDeploymentId": "deployment-0002",
+        "outputTokenDeploymentId": "deployment-0008",
+        "amountIn": "1000000000000000000"
+      },
+      "nowSeconds": 1789498700,
+      "rpcResponses": [],
+      "outcome": {
+        "kind": "sdk-error",
+        "code": "SWAP_CHAIN_MISMATCH"
+      },
+      "rpcTrace": [],
+      "applicability": "shared"
+    },
+    {
+      "caseId": "unknown-input",
+      "request": {
+        "chainId": "eip155:1",
+        "poolDefinitionId": "pool-0001",
+        "inputTokenDeploymentId": "deployment-unknown",
+        "outputTokenDeploymentId": "deployment-0008",
+        "amountIn": "1000000000000000000"
+      },
+      "nowSeconds": 1789498700,
+      "rpcResponses": [],
+      "outcome": {
+        "kind": "sdk-error",
+        "code": "SWAP_UNKNOWN_TOKEN"
+      },
+      "rpcTrace": [],
+      "applicability": "shared"
+    },
+    {
+      "caseId": "native-input",
+      "request": {
+        "chainId": "eip155:1",
+        "poolDefinitionId": "pool-0001",
+        "inputTokenDeploymentId": "deployment-0001",
+        "outputTokenDeploymentId": "deployment-0008",
+        "amountIn": "1000000000000000000"
+      },
+      "nowSeconds": 1789498700,
+      "rpcResponses": [],
+      "outcome": {
+        "kind": "sdk-error",
+        "code": "SWAP_UNSUPPORTED_TOKEN_STANDARD"
+      },
+      "rpcTrace": [],
+      "applicability": "shared"
+    },
+    {
+      "caseId": "token-2022-input",
+      "request": {
+        "chainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+        "poolDefinitionId": "pool-0004",
+        "inputTokenDeploymentId": "deployment-0007",
+        "outputTokenDeploymentId": "deployment-0013",
+        "amountIn": "1"
+      },
+      "nowSeconds": 1789498700,
+      "rpcResponses": [],
+      "outcome": {
+        "kind": "sdk-error",
+        "code": "SWAP_UNSUPPORTED_TOKEN_STANDARD"
+      },
+      "rpcTrace": [],
+      "applicability": "shared"
+    },
+    {
+      "caseId": "classic-spl-unsupported-adapter",
+      "request": {
+        "chainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+        "poolDefinitionId": "pool-0003",
+        "inputTokenDeploymentId": "deployment-0006",
+        "outputTokenDeploymentId": "deployment-0013",
+        "amountIn": "1"
+      },
+      "nowSeconds": 1789498700,
+      "rpcResponses": [],
+      "outcome": {
+        "kind": "sdk-error",
+        "code": "SWAP_UNSUPPORTED_ADAPTER"
+      },
+      "rpcTrace": [],
+      "applicability": "shared"
+    },
+    {
+      "caseId": "unsupported-adapter-before-rpc",
+      "request": {
+        "chainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+        "poolDefinitionId": "pool-0004",
+        "inputTokenDeploymentId": "deployment-0006",
+        "outputTokenDeploymentId": "deployment-0013",
+        "amountIn": "1"
+      },
+      "nowSeconds": 1789498700,
+      "rpcResponses": [],
+      "outcome": {
+        "kind": "sdk-error",
+        "code": "SWAP_UNSUPPORTED_ADAPTER"
+      },
+      "rpcTrace": [],
+      "applicability": "shared"
+    }
+  ],
+  "rpcCases": [
+    {
+      "caseId": "malformed-address-padding",
+      "request": {
+        "chainId": "eip155:1",
+        "poolDefinitionId": "pool-0001",
+        "inputTokenDeploymentId": "deployment-0002",
+        "outputTokenDeploymentId": "deployment-0008",
+        "amountIn": "1000000000000000000"
+      },
+      "nowSeconds": 1789498700,
+      "rpcResponses": [
+        "0x1",
+        {
+          "number": "0x18c7f20",
+          "hash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+          "timestamp": "0x6aa99537"
+        },
+        "0x6001600055",
+        "0x6001600055",
+        "0x1111111111111111111111111111111111111111111111111111111111111111",
+        "0x0000000000000000000000005c69bee701ef814a2b6a3edd4b1652cb9cc5aa6f",
+        "0x000000000000000000000000a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+        "0x000000000000000000000000c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+        "0x000000000000000000000000000000000000000000000000000009062f045c0e0000000000000000000000000000000000000000000000dff6a46ca772d53232000000000000000000000000000000000000000000000000000000006aa994c5",
+        {
+          "number": "0x18c7f20",
+          "hash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+          "timestamp": "0x6aa99537"
+        },
+        {
+          "number": "0x18c7f20",
+          "hash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+          "timestamp": "0x6aa99537"
+        }
+      ],
+      "outcome": {
+        "kind": "sdk-error",
+        "code": "SWAP_INVALID_POOL_STATE"
+      },
+      "rpcTrace": [
+        {
+          "method": "eth_chainId",
+          "params": []
+        },
+        {
+          "method": "eth_getBlockByNumber",
+          "params": [
+            "latest",
+            false
+          ]
+        },
+        {
+          "method": "eth_getCode",
+          "params": [
+            "0x5c69bee701ef814a2b6a3edd4b1652cb9cc5aa6f",
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_getCode",
+          "params": [
+            "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0x5c69bee701ef814a2b6a3edd4b1652cb9cc5aa6f",
+              "data": "0xe6a43905000000000000000000000000a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48000000000000000000000000c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+              "data": "0xc45a0155"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+              "data": "0x0dfe1681"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+              "data": "0xd21220a7"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+              "data": "0x0902f1ac"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_getBlockByNumber",
+          "params": [
+            "latest",
+            false
+          ]
+        },
+        {
+          "method": "eth_getBlockByNumber",
+          "params": [
+            "0x18c7f20",
+            false
+          ]
+        }
+      ],
+      "mutation": "factoryReturnNonZeroPadding"
+    },
+    {
+      "caseId": "malformed-reserve-padding",
+      "request": {
+        "chainId": "eip155:1",
+        "poolDefinitionId": "pool-0001",
+        "inputTokenDeploymentId": "deployment-0002",
+        "outputTokenDeploymentId": "deployment-0008",
+        "amountIn": "1000000000000000000"
+      },
+      "nowSeconds": 1789498700,
+      "rpcResponses": [
+        "0x1",
+        {
+          "number": "0x18c7f20",
+          "hash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+          "timestamp": "0x6aa99537"
+        },
+        "0x6001600055",
+        "0x6001600055",
+        "0x000000000000000000000000b4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+        "0x0000000000000000000000005c69bee701ef814a2b6a3edd4b1652cb9cc5aa6f",
+        "0x000000000000000000000000a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+        "0x000000000000000000000000c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+        "0x00000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000000000000dff6a46ca772d53232000000000000000000000000000000000000000000000000000000006aa994c5",
+        {
+          "number": "0x18c7f20",
+          "hash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+          "timestamp": "0x6aa99537"
+        },
+        {
+          "number": "0x18c7f20",
+          "hash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+          "timestamp": "0x6aa99537"
+        }
+      ],
+      "outcome": {
+        "kind": "sdk-error",
+        "code": "SWAP_INVALID_POOL_STATE"
+      },
+      "rpcTrace": [
+        {
+          "method": "eth_chainId",
+          "params": []
+        },
+        {
+          "method": "eth_getBlockByNumber",
+          "params": [
+            "latest",
+            false
+          ]
+        },
+        {
+          "method": "eth_getCode",
+          "params": [
+            "0x5c69bee701ef814a2b6a3edd4b1652cb9cc5aa6f",
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_getCode",
+          "params": [
+            "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0x5c69bee701ef814a2b6a3edd4b1652cb9cc5aa6f",
+              "data": "0xe6a43905000000000000000000000000a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48000000000000000000000000c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+              "data": "0xc45a0155"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+              "data": "0x0dfe1681"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+              "data": "0xd21220a7"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+              "data": "0x0902f1ac"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_getBlockByNumber",
+          "params": [
+            "latest",
+            false
+          ]
+        },
+        {
+          "method": "eth_getBlockByNumber",
+          "params": [
+            "0x18c7f20",
+            false
+          ]
+        }
+      ],
+      "mutation": "reserveExceedsUint112"
+    },
+    {
+      "caseId": "forged-factory-pair",
+      "request": {
+        "chainId": "eip155:1",
+        "poolDefinitionId": "pool-0001",
+        "inputTokenDeploymentId": "deployment-0002",
+        "outputTokenDeploymentId": "deployment-0008",
+        "amountIn": "1000000000000000000"
+      },
+      "nowSeconds": 1789498700,
+      "rpcResponses": [
+        "0x1",
+        {
+          "number": "0x18c7f20",
+          "hash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+          "timestamp": "0x6aa99537"
+        },
+        "0x6001600055",
+        "0x6001600055",
+        "0x000000000000000000000000aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "0x0000000000000000000000005c69bee701ef814a2b6a3edd4b1652cb9cc5aa6f",
+        "0x000000000000000000000000a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+        "0x000000000000000000000000c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+        "0x000000000000000000000000000000000000000000000000000009062f045c0e0000000000000000000000000000000000000000000000dff6a46ca772d53232000000000000000000000000000000000000000000000000000000006aa994c5",
+        {
+          "number": "0x18c7f20",
+          "hash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+          "timestamp": "0x6aa99537"
+        },
+        {
+          "number": "0x18c7f20",
+          "hash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+          "timestamp": "0x6aa99537"
+        }
+      ],
+      "outcome": {
+        "kind": "sdk-error",
+        "code": "SWAP_PROGRAM_MISMATCH"
+      },
+      "rpcTrace": [
+        {
+          "method": "eth_chainId",
+          "params": []
+        },
+        {
+          "method": "eth_getBlockByNumber",
+          "params": [
+            "latest",
+            false
+          ]
+        },
+        {
+          "method": "eth_getCode",
+          "params": [
+            "0x5c69bee701ef814a2b6a3edd4b1652cb9cc5aa6f",
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_getCode",
+          "params": [
+            "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0x5c69bee701ef814a2b6a3edd4b1652cb9cc5aa6f",
+              "data": "0xe6a43905000000000000000000000000a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48000000000000000000000000c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+              "data": "0xc45a0155"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+              "data": "0x0dfe1681"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+              "data": "0xd21220a7"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+              "data": "0x0902f1ac"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_getBlockByNumber",
+          "params": [
+            "latest",
+            false
+          ]
+        },
+        {
+          "method": "eth_getBlockByNumber",
+          "params": [
+            "0x18c7f20",
+            false
+          ]
+        }
+      ],
+      "mutation": "factoryReturnsOtherPair"
+    },
+    {
+      "caseId": "forged-pair-factory",
+      "request": {
+        "chainId": "eip155:1",
+        "poolDefinitionId": "pool-0001",
+        "inputTokenDeploymentId": "deployment-0002",
+        "outputTokenDeploymentId": "deployment-0008",
+        "amountIn": "1000000000000000000"
+      },
+      "nowSeconds": 1789498700,
+      "rpcResponses": [
+        "0x1",
+        {
+          "number": "0x18c7f20",
+          "hash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+          "timestamp": "0x6aa99537"
+        },
+        "0x6001600055",
+        "0x6001600055",
+        "0x000000000000000000000000b4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+        "0x000000000000000000000000aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "0x000000000000000000000000a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+        "0x000000000000000000000000c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+        "0x000000000000000000000000000000000000000000000000000009062f045c0e0000000000000000000000000000000000000000000000dff6a46ca772d53232000000000000000000000000000000000000000000000000000000006aa994c5",
+        {
+          "number": "0x18c7f20",
+          "hash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+          "timestamp": "0x6aa99537"
+        },
+        {
+          "number": "0x18c7f20",
+          "hash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+          "timestamp": "0x6aa99537"
+        }
+      ],
+      "outcome": {
+        "kind": "sdk-error",
+        "code": "SWAP_PROGRAM_MISMATCH"
+      },
+      "rpcTrace": [
+        {
+          "method": "eth_chainId",
+          "params": []
+        },
+        {
+          "method": "eth_getBlockByNumber",
+          "params": [
+            "latest",
+            false
+          ]
+        },
+        {
+          "method": "eth_getCode",
+          "params": [
+            "0x5c69bee701ef814a2b6a3edd4b1652cb9cc5aa6f",
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_getCode",
+          "params": [
+            "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0x5c69bee701ef814a2b6a3edd4b1652cb9cc5aa6f",
+              "data": "0xe6a43905000000000000000000000000a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48000000000000000000000000c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+              "data": "0xc45a0155"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+              "data": "0x0dfe1681"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+              "data": "0xd21220a7"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+              "data": "0x0902f1ac"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_getBlockByNumber",
+          "params": [
+            "latest",
+            false
+          ]
+        },
+        {
+          "method": "eth_getBlockByNumber",
+          "params": [
+            "0x18c7f20",
+            false
+          ]
+        }
+      ],
+      "mutation": "pairReturnsOtherFactory"
+    },
+    {
+      "caseId": "pair-token-mismatch",
+      "request": {
+        "chainId": "eip155:1",
+        "poolDefinitionId": "pool-0001",
+        "inputTokenDeploymentId": "deployment-0002",
+        "outputTokenDeploymentId": "deployment-0008",
+        "amountIn": "1000000000000000000"
+      },
+      "nowSeconds": 1789498700,
+      "rpcResponses": [
+        "0x1",
+        {
+          "number": "0x18c7f20",
+          "hash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+          "timestamp": "0x6aa99537"
+        },
+        "0x6001600055",
+        "0x6001600055",
+        "0x000000000000000000000000b4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+        "0x0000000000000000000000005c69bee701ef814a2b6a3edd4b1652cb9cc5aa6f",
+        "0x000000000000000000000000c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+        "0x000000000000000000000000c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+        "0x000000000000000000000000000000000000000000000000000009062f045c0e0000000000000000000000000000000000000000000000dff6a46ca772d53232000000000000000000000000000000000000000000000000000000006aa994c5",
+        {
+          "number": "0x18c7f20",
+          "hash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+          "timestamp": "0x6aa99537"
+        },
+        {
+          "number": "0x18c7f20",
+          "hash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+          "timestamp": "0x6aa99537"
+        }
+      ],
+      "outcome": {
+        "kind": "sdk-error",
+        "code": "SWAP_POOL_TOKEN_MISMATCH"
+      },
+      "rpcTrace": [
+        {
+          "method": "eth_chainId",
+          "params": []
+        },
+        {
+          "method": "eth_getBlockByNumber",
+          "params": [
+            "latest",
+            false
+          ]
+        },
+        {
+          "method": "eth_getCode",
+          "params": [
+            "0x5c69bee701ef814a2b6a3edd4b1652cb9cc5aa6f",
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_getCode",
+          "params": [
+            "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0x5c69bee701ef814a2b6a3edd4b1652cb9cc5aa6f",
+              "data": "0xe6a43905000000000000000000000000a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48000000000000000000000000c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+              "data": "0xc45a0155"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+              "data": "0x0dfe1681"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+              "data": "0xd21220a7"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+              "data": "0x0902f1ac"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_getBlockByNumber",
+          "params": [
+            "latest",
+            false
+          ]
+        },
+        {
+          "method": "eth_getBlockByNumber",
+          "params": [
+            "0x18c7f20",
+            false
+          ]
+        }
+      ],
+      "mutation": "pairTokenMismatch"
+    },
+    {
+      "caseId": "empty-factory-code",
+      "request": {
+        "chainId": "eip155:1",
+        "poolDefinitionId": "pool-0001",
+        "inputTokenDeploymentId": "deployment-0002",
+        "outputTokenDeploymentId": "deployment-0008",
+        "amountIn": "1000000000000000000"
+      },
+      "nowSeconds": 1789498700,
+      "rpcResponses": [
+        "0x1",
+        {
+          "number": "0x18c7f20",
+          "hash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+          "timestamp": "0x6aa99537"
+        },
+        "0x",
+        "0x6001600055",
+        "0x000000000000000000000000b4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+        "0x0000000000000000000000005c69bee701ef814a2b6a3edd4b1652cb9cc5aa6f",
+        "0x000000000000000000000000a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+        "0x000000000000000000000000c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+        "0x000000000000000000000000000000000000000000000000000009062f045c0e0000000000000000000000000000000000000000000000dff6a46ca772d53232000000000000000000000000000000000000000000000000000000006aa994c5",
+        {
+          "number": "0x18c7f20",
+          "hash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+          "timestamp": "0x6aa99537"
+        },
+        {
+          "number": "0x18c7f20",
+          "hash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+          "timestamp": "0x6aa99537"
+        }
+      ],
+      "outcome": {
+        "kind": "sdk-error",
+        "code": "SWAP_PROGRAM_MISMATCH"
+      },
+      "rpcTrace": [
+        {
+          "method": "eth_chainId",
+          "params": []
+        },
+        {
+          "method": "eth_getBlockByNumber",
+          "params": [
+            "latest",
+            false
+          ]
+        },
+        {
+          "method": "eth_getCode",
+          "params": [
+            "0x5c69bee701ef814a2b6a3edd4b1652cb9cc5aa6f",
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_getCode",
+          "params": [
+            "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0x5c69bee701ef814a2b6a3edd4b1652cb9cc5aa6f",
+              "data": "0xe6a43905000000000000000000000000a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48000000000000000000000000c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+              "data": "0xc45a0155"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+              "data": "0x0dfe1681"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+              "data": "0xd21220a7"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+              "data": "0x0902f1ac"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_getBlockByNumber",
+          "params": [
+            "latest",
+            false
+          ]
+        },
+        {
+          "method": "eth_getBlockByNumber",
+          "params": [
+            "0x18c7f20",
+            false
+          ]
+        }
+      ],
+      "mutation": "emptyFactoryCode"
+    },
+    {
+      "caseId": "empty-pool-code",
+      "request": {
+        "chainId": "eip155:1",
+        "poolDefinitionId": "pool-0001",
+        "inputTokenDeploymentId": "deployment-0002",
+        "outputTokenDeploymentId": "deployment-0008",
+        "amountIn": "1000000000000000000"
+      },
+      "nowSeconds": 1789498700,
+      "rpcResponses": [
+        "0x1",
+        {
+          "number": "0x18c7f20",
+          "hash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+          "timestamp": "0x6aa99537"
+        },
+        "0x6001600055",
+        "0x",
+        "0x000000000000000000000000b4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+        "0x0000000000000000000000005c69bee701ef814a2b6a3edd4b1652cb9cc5aa6f",
+        "0x000000000000000000000000a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+        "0x000000000000000000000000c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+        "0x000000000000000000000000000000000000000000000000000009062f045c0e0000000000000000000000000000000000000000000000dff6a46ca772d53232000000000000000000000000000000000000000000000000000000006aa994c5",
+        {
+          "number": "0x18c7f20",
+          "hash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+          "timestamp": "0x6aa99537"
+        },
+        {
+          "number": "0x18c7f20",
+          "hash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+          "timestamp": "0x6aa99537"
+        }
+      ],
+      "outcome": {
+        "kind": "sdk-error",
+        "code": "SWAP_INVALID_POOL_STATE"
+      },
+      "rpcTrace": [
+        {
+          "method": "eth_chainId",
+          "params": []
+        },
+        {
+          "method": "eth_getBlockByNumber",
+          "params": [
+            "latest",
+            false
+          ]
+        },
+        {
+          "method": "eth_getCode",
+          "params": [
+            "0x5c69bee701ef814a2b6a3edd4b1652cb9cc5aa6f",
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_getCode",
+          "params": [
+            "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0x5c69bee701ef814a2b6a3edd4b1652cb9cc5aa6f",
+              "data": "0xe6a43905000000000000000000000000a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48000000000000000000000000c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+              "data": "0xc45a0155"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+              "data": "0x0dfe1681"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+              "data": "0xd21220a7"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+              "data": "0x0902f1ac"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_getBlockByNumber",
+          "params": [
+            "latest",
+            false
+          ]
+        },
+        {
+          "method": "eth_getBlockByNumber",
+          "params": [
+            "0x18c7f20",
+            false
+          ]
+        }
+      ],
+      "mutation": "emptyPoolCode"
+    },
+    {
+      "caseId": "reorg-at-latest-reread",
+      "request": {
+        "chainId": "eip155:1",
+        "poolDefinitionId": "pool-0001",
+        "inputTokenDeploymentId": "deployment-0002",
+        "outputTokenDeploymentId": "deployment-0008",
+        "amountIn": "1000000000000000000"
+      },
+      "nowSeconds": 1789498700,
+      "rpcResponses": [
+        "0x1",
+        {
+          "number": "0x18c7f20",
+          "hash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+          "timestamp": "0x6aa99537"
+        },
+        "0x6001600055",
+        "0x6001600055",
+        "0x000000000000000000000000b4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+        "0x0000000000000000000000005c69bee701ef814a2b6a3edd4b1652cb9cc5aa6f",
+        "0x000000000000000000000000a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+        "0x000000000000000000000000c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+        "0x000000000000000000000000000000000000000000000000000009062f045c0e0000000000000000000000000000000000000000000000dff6a46ca772d53232000000000000000000000000000000000000000000000000000000006aa994c5",
+        {
+          "number": "0x18c7f20",
+          "hash": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "timestamp": "0x6aa99537"
+        },
+        {
+          "number": "0x18c7f20",
+          "hash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+          "timestamp": "0x6aa99537"
+        }
+      ],
+      "outcome": {
+        "kind": "sdk-error",
+        "code": "SWAP_STATE_STALE"
+      },
+      "rpcTrace": [
+        {
+          "method": "eth_chainId",
+          "params": []
+        },
+        {
+          "method": "eth_getBlockByNumber",
+          "params": [
+            "latest",
+            false
+          ]
+        },
+        {
+          "method": "eth_getCode",
+          "params": [
+            "0x5c69bee701ef814a2b6a3edd4b1652cb9cc5aa6f",
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_getCode",
+          "params": [
+            "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0x5c69bee701ef814a2b6a3edd4b1652cb9cc5aa6f",
+              "data": "0xe6a43905000000000000000000000000a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48000000000000000000000000c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+              "data": "0xc45a0155"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+              "data": "0x0dfe1681"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+              "data": "0xd21220a7"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+              "data": "0x0902f1ac"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_getBlockByNumber",
+          "params": [
+            "latest",
+            false
+          ]
+        },
+        {
+          "method": "eth_getBlockByNumber",
+          "params": [
+            "0x18c7f20",
+            false
+          ]
+        }
+      ],
+      "mutation": "latestHashChanges"
+    },
+    {
+      "caseId": "stale-block-age",
+      "request": {
+        "chainId": "eip155:1",
+        "poolDefinitionId": "pool-0001",
+        "inputTokenDeploymentId": "deployment-0002",
+        "outputTokenDeploymentId": "deployment-0008",
+        "amountIn": "1000000000000000000"
+      },
+      "nowSeconds": 1789498700,
+      "rpcResponses": [
+        "0x1",
+        {
+          "number": "0x18c7f20",
+          "hash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+          "timestamp": "0x0"
+        },
+        "0x6001600055",
+        "0x6001600055",
+        "0x000000000000000000000000b4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+        "0x0000000000000000000000005c69bee701ef814a2b6a3edd4b1652cb9cc5aa6f",
+        "0x000000000000000000000000a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+        "0x000000000000000000000000c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+        "0x000000000000000000000000000000000000000000000000000009062f045c0e0000000000000000000000000000000000000000000000dff6a46ca772d53232000000000000000000000000000000000000000000000000000000006aa994c5",
+        {
+          "number": "0x18c7f20",
+          "hash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+          "timestamp": "0x0"
+        },
+        {
+          "number": "0x18c7f20",
+          "hash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+          "timestamp": "0x0"
+        }
+      ],
+      "outcome": {
+        "kind": "sdk-error",
+        "code": "SWAP_STATE_STALE"
+      },
+      "rpcTrace": [
+        {
+          "method": "eth_chainId",
+          "params": []
+        },
+        {
+          "method": "eth_getBlockByNumber",
+          "params": [
+            "latest",
+            false
+          ]
+        },
+        {
+          "method": "eth_getCode",
+          "params": [
+            "0x5c69bee701ef814a2b6a3edd4b1652cb9cc5aa6f",
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_getCode",
+          "params": [
+            "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0x5c69bee701ef814a2b6a3edd4b1652cb9cc5aa6f",
+              "data": "0xe6a43905000000000000000000000000a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48000000000000000000000000c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+              "data": "0xc45a0155"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+              "data": "0x0dfe1681"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+              "data": "0xd21220a7"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+              "data": "0x0902f1ac"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_getBlockByNumber",
+          "params": [
+            "latest",
+            false
+          ]
+        },
+        {
+          "method": "eth_getBlockByNumber",
+          "params": [
+            "0x18c7f20",
+            false
+          ]
+        }
+      ],
+      "mutation": "oldTimestamp"
+    },
+    {
+      "caseId": "latest-header-future-time",
+      "request": {
+        "chainId": "eip155:1",
+        "poolDefinitionId": "pool-0001",
+        "inputTokenDeploymentId": "deployment-0002",
+        "outputTokenDeploymentId": "deployment-0008",
+        "amountIn": "1000000000000000000"
+      },
+      "nowSeconds": 1789498700,
+      "rpcResponses": [
+        "0x1",
+        {
+          "number": "0x18c7f20",
+          "hash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+          "timestamp": "0x6aa99537"
+        },
+        "0x6001600055",
+        "0x6001600055",
+        "0x000000000000000000000000b4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+        "0x0000000000000000000000005c69bee701ef814a2b6a3edd4b1652cb9cc5aa6f",
+        "0x000000000000000000000000a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+        "0x000000000000000000000000c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+        "0x000000000000000000000000000000000000000000000000000009062f045c0e0000000000000000000000000000000000000000000000dff6a46ca772d53232000000000000000000000000000000000000000000000000000000006aa994c5",
+        {
+          "number": "0x18c7f20",
+          "hash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+          "timestamp": "0xffffffffffffffff"
+        },
+        {
+          "number": "0x18c7f20",
+          "hash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+          "timestamp": "0x6aa99537"
+        }
+      ],
+      "outcome": {
+        "kind": "sdk-error",
+        "code": "SWAP_STATE_STALE"
+      },
+      "rpcTrace": [
+        {
+          "method": "eth_chainId",
+          "params": []
+        },
+        {
+          "method": "eth_getBlockByNumber",
+          "params": [
+            "latest",
+            false
+          ]
+        },
+        {
+          "method": "eth_getCode",
+          "params": [
+            "0x5c69bee701ef814a2b6a3edd4b1652cb9cc5aa6f",
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_getCode",
+          "params": [
+            "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0x5c69bee701ef814a2b6a3edd4b1652cb9cc5aa6f",
+              "data": "0xe6a43905000000000000000000000000a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48000000000000000000000000c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+              "data": "0xc45a0155"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+              "data": "0x0dfe1681"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+              "data": "0xd21220a7"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+              "data": "0x0902f1ac"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_getBlockByNumber",
+          "params": [
+            "latest",
+            false
+          ]
+        },
+        {
+          "method": "eth_getBlockByNumber",
+          "params": [
+            "0x18c7f20",
+            false
+          ]
+        }
+      ],
+      "mutation": "latestFutureTimestamp"
+    },
+    {
+      "caseId": "latest-header-time-regression",
+      "request": {
+        "chainId": "eip155:1",
+        "poolDefinitionId": "pool-0001",
+        "inputTokenDeploymentId": "deployment-0002",
+        "outputTokenDeploymentId": "deployment-0008",
+        "amountIn": "1000000000000000000"
+      },
+      "nowSeconds": 1789498700,
+      "rpcResponses": [
+        "0x1",
+        {
+          "number": "0x18c7f20",
+          "hash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+          "timestamp": "0x6aa99537"
+        },
+        "0x6001600055",
+        "0x6001600055",
+        "0x000000000000000000000000b4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+        "0x0000000000000000000000005c69bee701ef814a2b6a3edd4b1652cb9cc5aa6f",
+        "0x000000000000000000000000a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+        "0x000000000000000000000000c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+        "0x000000000000000000000000000000000000000000000000000009062f045c0e0000000000000000000000000000000000000000000000dff6a46ca772d53232000000000000000000000000000000000000000000000000000000006aa994c5",
+        {
+          "number": "0x18c7f21",
+          "hash": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "timestamp": "0x0"
+        },
+        {
+          "number": "0x18c7f20",
+          "hash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+          "timestamp": "0x6aa99537"
+        }
+      ],
+      "outcome": {
+        "kind": "sdk-error",
+        "code": "SWAP_STATE_STALE"
+      },
+      "rpcTrace": [
+        {
+          "method": "eth_chainId",
+          "params": []
+        },
+        {
+          "method": "eth_getBlockByNumber",
+          "params": [
+            "latest",
+            false
+          ]
+        },
+        {
+          "method": "eth_getCode",
+          "params": [
+            "0x5c69bee701ef814a2b6a3edd4b1652cb9cc5aa6f",
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_getCode",
+          "params": [
+            "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0x5c69bee701ef814a2b6a3edd4b1652cb9cc5aa6f",
+              "data": "0xe6a43905000000000000000000000000a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48000000000000000000000000c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+              "data": "0xc45a0155"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+              "data": "0x0dfe1681"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+              "data": "0xd21220a7"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+              "data": "0x0902f1ac"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_getBlockByNumber",
+          "params": [
+            "latest",
+            false
+          ]
+        },
+        {
+          "method": "eth_getBlockByNumber",
+          "params": [
+            "0x18c7f20",
+            false
+          ]
+        }
+      ],
+      "mutation": "latestBackwardsTimestamp"
+    },
+    {
+      "caseId": "stale-wins-malformed-abi",
+      "request": {
+        "chainId": "eip155:1",
+        "poolDefinitionId": "pool-0001",
+        "inputTokenDeploymentId": "deployment-0002",
+        "outputTokenDeploymentId": "deployment-0008",
+        "amountIn": "1000000000000000000"
+      },
+      "nowSeconds": 1789498700,
+      "rpcResponses": [
+        "0x1",
+        {
+          "number": "0x18c7f20",
+          "hash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+          "timestamp": "0x6aa99537"
+        },
+        "0x6001600055",
+        "0x6001600055",
+        "0x1111111111111111111111111111111111111111111111111111111111111111",
+        "0x0000000000000000000000005c69bee701ef814a2b6a3edd4b1652cb9cc5aa6f",
+        "0x000000000000000000000000a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+        "0x000000000000000000000000c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+        "0x000000000000000000000000000000000000000000000000000009062f045c0e0000000000000000000000000000000000000000000000dff6a46ca772d53232000000000000000000000000000000000000000000000000000000006aa994c5",
+        {
+          "number": "0x18c7f20",
+          "hash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+          "timestamp": "0x6aa99537"
+        },
+        {
+          "number": "0x18c7f20",
+          "hash": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "timestamp": "0x6aa99537"
+        }
+      ],
+      "outcome": {
+        "kind": "sdk-error",
+        "code": "SWAP_STATE_STALE"
+      },
+      "rpcTrace": [
+        {
+          "method": "eth_chainId",
+          "params": []
+        },
+        {
+          "method": "eth_getBlockByNumber",
+          "params": [
+            "latest",
+            false
+          ]
+        },
+        {
+          "method": "eth_getCode",
+          "params": [
+            "0x5c69bee701ef814a2b6a3edd4b1652cb9cc5aa6f",
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_getCode",
+          "params": [
+            "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0x5c69bee701ef814a2b6a3edd4b1652cb9cc5aa6f",
+              "data": "0xe6a43905000000000000000000000000a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48000000000000000000000000c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+              "data": "0xc45a0155"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+              "data": "0x0dfe1681"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+              "data": "0xd21220a7"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+              "data": "0x0902f1ac"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_getBlockByNumber",
+          "params": [
+            "latest",
+            false
+          ]
+        },
+        {
+          "method": "eth_getBlockByNumber",
+          "params": [
+            "0x18c7f20",
+            false
+          ]
+        }
+      ],
+      "mutation": "reorgAndMalformedAbi"
+    },
+    {
+      "caseId": "upstream-error-preserved",
+      "request": {
+        "chainId": "eip155:1",
+        "poolDefinitionId": "pool-0001",
+        "inputTokenDeploymentId": "deployment-0002",
+        "outputTokenDeploymentId": "deployment-0008",
+        "amountIn": "1000000000000000000"
+      },
+      "nowSeconds": 1789498700,
+      "rpcResponses": [],
+      "outcome": {
+        "kind": "transport-error",
+        "sourcePreserved": true
+      },
+      "rpcTrace": [
+        {
+          "method": "eth_chainId",
+          "params": []
+        }
+      ],
+      "mutation": "throwSourceError",
+      "applicability": "language-local"
+    },
+    {
+      "caseId": "cancellation-one-attempt",
+      "request": {
+        "chainId": "eip155:1",
+        "poolDefinitionId": "pool-0001",
+        "inputTokenDeploymentId": "deployment-0002",
+        "outputTokenDeploymentId": "deployment-0008",
+        "amountIn": "1000000000000000000"
+      },
+      "nowSeconds": 1789498700,
+      "rpcResponses": [],
+      "outcome": {
+        "kind": "transport-error",
+        "sourcePreserved": true
+      },
+      "rpcTrace": [],
+      "mutation": "abortBeforeRequest",
+      "applicability": "language-local"
+    }
+  ],
+  "arithmeticCases": [
+    {
+      "caseId": "above-javascript-safe-integer",
+      "request": {
+        "chainId": "eip155:1",
+        "poolDefinitionId": "pool-0001",
+        "inputTokenDeploymentId": "deployment-0002",
+        "outputTokenDeploymentId": "deployment-0008",
+        "amountIn": "9007199254740993"
+      },
+      "snapshot": {
+        "kind": "evm-block",
+        "blockNumber": "0x18c7f20",
+        "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+        "blockTimestamp": "0x6aa99537",
+        "reserve0": "9922163268622",
+        "reserve1": "4131396377933182743090"
+      },
+      "nowSeconds": 1789498700,
+      "outcome": {
+        "kind": "success",
+        "value": {
+          "quoteKind": "exact-input",
+          "chainId": "eip155:1",
+          "poolDefinitionId": "pool-0001",
+          "dexDeploymentId": "dex-deployment-0001",
+          "adapterKind": "evm-constant-product-v2",
+          "inputTokenDeploymentId": "deployment-0002",
+          "outputTokenDeploymentId": "deployment-0008",
+          "amountIn": "9007199254740993",
+          "amountOut": "21567186",
+          "fee": {
+            "numerator": "3",
+            "denominator": "1000"
+          },
+          "snapshot": {
+            "kind": "evm-block",
+            "blockNumber": "25984800",
+            "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+            "blockTimestamp": "1789498679"
+          },
+          "tokenCatalogDigest": "62879dfe8bb49a154d2a1bff356321e5dbe78d8cef0cd3409ef2b22cfd3445a4",
+          "dexCatalogDigest": "002c05c3c2d5d3917f73a5c2e7b55af9ceb9a682fb49ae28d2421046ee2faa50"
+        }
+      },
+      "rpcResponses": [
+        "0x1",
+        {
+          "number": "0x18c7f20",
+          "hash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+          "timestamp": "0x6aa99537"
+        },
+        "0x6001600055",
+        "0x6001600055",
+        "0x000000000000000000000000b4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+        "0x0000000000000000000000005c69bee701ef814a2b6a3edd4b1652cb9cc5aa6f",
+        "0x000000000000000000000000a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+        "0x000000000000000000000000c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+        "0x000000000000000000000000000000000000000000000000000009062f045c0e0000000000000000000000000000000000000000000000dff6a46ca772d53232000000000000000000000000000000000000000000000000000000006aa994c5",
+        {
+          "number": "0x18c7f20",
+          "hash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+          "timestamp": "0x6aa99537"
+        },
+        {
+          "number": "0x18c7f20",
+          "hash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+          "timestamp": "0x6aa99537"
+        }
+      ],
+      "rpcTrace": [
+        {
+          "method": "eth_chainId",
+          "params": []
+        },
+        {
+          "method": "eth_getBlockByNumber",
+          "params": [
+            "latest",
+            false
+          ]
+        },
+        {
+          "method": "eth_getCode",
+          "params": [
+            "0x5c69bee701ef814a2b6a3edd4b1652cb9cc5aa6f",
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_getCode",
+          "params": [
+            "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0x5c69bee701ef814a2b6a3edd4b1652cb9cc5aa6f",
+              "data": "0xe6a43905000000000000000000000000a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48000000000000000000000000c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+              "data": "0xc45a0155"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+              "data": "0x0dfe1681"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+              "data": "0xd21220a7"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+              "data": "0x0902f1ac"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_getBlockByNumber",
+          "params": [
+            "latest",
+            false
+          ]
+        },
+        {
+          "method": "eth_getBlockByNumber",
+          "params": [
+            "0x18c7f20",
+            false
+          ]
+        }
+      ],
+      "applicability": "shared"
+    },
+    {
+      "caseId": "uint256-maximum",
+      "request": {
+        "chainId": "eip155:1",
+        "poolDefinitionId": "pool-0001",
+        "inputTokenDeploymentId": "deployment-0002",
+        "outputTokenDeploymentId": "deployment-0008",
+        "amountIn": "115792089237316195423570985008687907853269984665640564039457584007913129639935"
+      },
+      "snapshot": {
+        "kind": "evm-block",
+        "blockNumber": "0x18c7f20",
+        "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+        "blockTimestamp": "0x6aa99537",
+        "reserve0": "1",
+        "reserve1": "1"
+      },
+      "nowSeconds": 1789498700,
+      "outcome": {
+        "kind": "sdk-error",
+        "code": "SWAP_ARITHMETIC"
+      },
+      "rpcResponses": [
+        "0x1",
+        {
+          "number": "0x18c7f20",
+          "hash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+          "timestamp": "0x6aa99537"
+        },
+        "0x6001600055",
+        "0x6001600055",
+        "0x000000000000000000000000b4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+        "0x0000000000000000000000005c69bee701ef814a2b6a3edd4b1652cb9cc5aa6f",
+        "0x000000000000000000000000a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+        "0x000000000000000000000000c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+        "0x00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000006aa994c5",
+        {
+          "number": "0x18c7f20",
+          "hash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+          "timestamp": "0x6aa99537"
+        },
+        {
+          "number": "0x18c7f20",
+          "hash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+          "timestamp": "0x6aa99537"
+        }
+      ],
+      "rpcTrace": [
+        {
+          "method": "eth_chainId",
+          "params": []
+        },
+        {
+          "method": "eth_getBlockByNumber",
+          "params": [
+            "latest",
+            false
+          ]
+        },
+        {
+          "method": "eth_getCode",
+          "params": [
+            "0x5c69bee701ef814a2b6a3edd4b1652cb9cc5aa6f",
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_getCode",
+          "params": [
+            "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0x5c69bee701ef814a2b6a3edd4b1652cb9cc5aa6f",
+              "data": "0xe6a43905000000000000000000000000a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48000000000000000000000000c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+              "data": "0xc45a0155"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+              "data": "0x0dfe1681"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+              "data": "0xd21220a7"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+              "data": "0x0902f1ac"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_getBlockByNumber",
+          "params": [
+            "latest",
+            false
+          ]
+        },
+        {
+          "method": "eth_getBlockByNumber",
+          "params": [
+            "0x18c7f20",
+            false
+          ]
+        }
+      ],
+      "applicability": "shared"
+    },
+    {
+      "caseId": "zero-output",
+      "request": {
+        "chainId": "eip155:1",
+        "poolDefinitionId": "pool-0001",
+        "inputTokenDeploymentId": "deployment-0002",
+        "outputTokenDeploymentId": "deployment-0008",
+        "amountIn": "1"
+      },
+      "snapshot": {
+        "kind": "evm-block",
+        "blockNumber": "0x18c7f20",
+        "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+        "blockTimestamp": "0x6aa99537",
+        "reserve0": "1",
+        "reserve1": "1"
+      },
+      "nowSeconds": 1789498700,
+      "outcome": {
+        "kind": "sdk-error",
+        "code": "SWAP_INSUFFICIENT_LIQUIDITY"
+      },
+      "rpcResponses": [
+        "0x1",
+        {
+          "number": "0x18c7f20",
+          "hash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+          "timestamp": "0x6aa99537"
+        },
+        "0x6001600055",
+        "0x6001600055",
+        "0x000000000000000000000000b4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+        "0x0000000000000000000000005c69bee701ef814a2b6a3edd4b1652cb9cc5aa6f",
+        "0x000000000000000000000000a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+        "0x000000000000000000000000c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+        "0x00000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000006aa994c5",
+        {
+          "number": "0x18c7f20",
+          "hash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+          "timestamp": "0x6aa99537"
+        },
+        {
+          "number": "0x18c7f20",
+          "hash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+          "timestamp": "0x6aa99537"
+        }
+      ],
+      "rpcTrace": [
+        {
+          "method": "eth_chainId",
+          "params": []
+        },
+        {
+          "method": "eth_getBlockByNumber",
+          "params": [
+            "latest",
+            false
+          ]
+        },
+        {
+          "method": "eth_getCode",
+          "params": [
+            "0x5c69bee701ef814a2b6a3edd4b1652cb9cc5aa6f",
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_getCode",
+          "params": [
+            "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0x5c69bee701ef814a2b6a3edd4b1652cb9cc5aa6f",
+              "data": "0xe6a43905000000000000000000000000a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48000000000000000000000000c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+              "data": "0xc45a0155"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+              "data": "0x0dfe1681"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+              "data": "0xd21220a7"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_call",
+          "params": [
+            {
+              "to": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+              "data": "0x0902f1ac"
+            },
+            {
+              "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+              "requireCanonical": true
+            }
+          ]
+        },
+        {
+          "method": "eth_getBlockByNumber",
+          "params": [
+            "latest",
+            false
+          ]
+        },
+        {
+          "method": "eth_getBlockByNumber",
+          "params": [
+            "0x18c7f20",
+            false
+          ]
+        }
+      ],
+      "applicability": "shared"
+    }
+  ]
+}

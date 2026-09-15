@@ -1,0 +1,268 @@
+{
+  "schemaVersion": 1,
+  "catalogVersion": "1.0.0",
+  "manualAsOf": "2026-09-15",
+  "contentDigest": "002c05c3c2d5d3917f73a5c2e7b55af9ceb9a682fb49ae28d2421046ee2faa50",
+  "dexDeployments": [
+    {
+      "dexDeploymentId": "dex-deployment-0001",
+      "protocolId": "uniswap-v2",
+      "name": "Uniswap V2",
+      "chainId": "eip155:1",
+      "programAddress": "0x5c69bee701ef814a2b6a3edd4b1652cb9cc5aa6f",
+      "adapterKind": "evm-constant-product-v2",
+      "status": "active",
+      "replacedByDexDeploymentId": null,
+      "evidence": [
+        "https://github.com/Uniswap/v2-core/blob/6a9e7c97860676e0992f22a49665760444c1cdf5/contracts/UniswapV2Factory.sol",
+        "https://github.com/Uniswap/v2-core/blob/6a9e7c97860676e0992f22a49665760444c1cdf5/contracts/UniswapV2Pair.sol"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "dexDeploymentId": "dex-deployment-0002",
+      "protocolId": "lfj-legacy-constant-product",
+      "name": "LFJ legacy constant-product (Joe V1)",
+      "chainId": "eip155:43114",
+      "programAddress": "0x9ad6c38be94206ca50bb0d90783181662f0cfa10",
+      "adapterKind": "evm-constant-product-v2",
+      "status": "active",
+      "replacedByDexDeploymentId": null,
+      "evidence": [
+        "https://docs.lfj.gg/lfj-dex/contracts",
+        "https://github.com/lfj-gg/joe-core/blob/5bec2f3d86500bfd81038c99afe702ee7e67af3e/contracts/traderjoe/JoePair.sol"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "dexDeploymentId": "dex-deployment-0003",
+      "protocolId": "orca-whirlpools",
+      "name": "Orca Whirlpools",
+      "chainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+      "programAddress": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
+      "adapterKind": "solana-orca-whirlpool",
+      "status": "active",
+      "replacedByDexDeploymentId": null,
+      "evidence": [
+        "https://docs.orca.so/developers/architecture/whirlpool-parameters",
+        "https://github.com/orca-so/whirlpools/blob/408c945fef4c49ab70def4303377cfaf8f0f3c99/programs/whirlpool/src/state/whirlpool.rs"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "dexDeploymentId": "dex-deployment-0004",
+      "protocolId": "raydium-clmm",
+      "name": "Raydium CLMM",
+      "chainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+      "programAddress": "CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK",
+      "adapterKind": "solana-raydium-clmm",
+      "status": "active",
+      "replacedByDexDeploymentId": null,
+      "evidence": [
+        "https://docs.raydium.io/reference/program-addresses",
+        "https://github.com/raydium-io/raydium-clmm/blob/ed7c84a54ced59c55981780546adb0b4583dcf85/programs/amm/src/states/pool.rs"
+      ],
+      "asOfDate": "2026-09-15"
+    }
+  ],
+  "poolDefinitions": [
+    {
+      "poolDefinitionId": "pool-0001",
+      "dexDeploymentId": "dex-deployment-0001",
+      "chainId": "eip155:1",
+      "address": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+      "token0DeploymentId": "deployment-0008",
+      "token1DeploymentId": "deployment-0002",
+      "adapter": {
+        "kind": "evm-constant-product-v2",
+        "feeNumerator": "3",
+        "feeDenominator": "1000"
+      },
+      "status": "active",
+      "replacedByPoolDefinitionId": null,
+      "evidence": [
+        "https://developers.uniswap.org/docs/protocols/v2/guides/getting-pair-addresses",
+        "https://github.com/Uniswap/v2-core/blob/6a9e7c97860676e0992f22a49665760444c1cdf5/contracts/UniswapV2Pair.sol"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "poolDefinitionId": "pool-0002",
+      "dexDeploymentId": "dex-deployment-0002",
+      "chainId": "eip155:43114",
+      "address": "0xf4003f4efbe8691b60249e6afbd307abe7758adb",
+      "token0DeploymentId": "deployment-0004",
+      "token1DeploymentId": "deployment-0009",
+      "adapter": {
+        "kind": "evm-constant-product-v2",
+        "feeNumerator": "3",
+        "feeDenominator": "1000"
+      },
+      "status": "active",
+      "replacedByPoolDefinitionId": null,
+      "evidence": [
+        "https://docs.lfj.gg/lfj-dex/contracts",
+        "https://github.com/lfj-gg/joe-core/blob/5bec2f3d86500bfd81038c99afe702ee7e67af3e/contracts/traderjoe/JoePair.sol"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "poolDefinitionId": "pool-0003",
+      "dexDeploymentId": "dex-deployment-0003",
+      "chainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+      "address": "FgH1dEvyRQoAqJjbUzzKVoM1HYdxTqPwjEF82kDH1kVe",
+      "token0DeploymentId": "deployment-0006",
+      "token1DeploymentId": "deployment-0013",
+      "adapter": {
+        "kind": "solana-orca-whirlpool",
+        "feeNumerator": null,
+        "feeDenominator": null
+      },
+      "status": "active",
+      "replacedByPoolDefinitionId": null,
+      "evidence": [
+        "https://docs.orca.so/developers/architecture/whirlpool-parameters",
+        "https://github.com/orca-so/whirlpools/blob/408c945fef4c49ab70def4303377cfaf8f0f3c99/programs/whirlpool/src/state/whirlpool.rs"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "poolDefinitionId": "pool-0004",
+      "dexDeploymentId": "dex-deployment-0004",
+      "chainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+      "address": "AwaVyGAF3N6K4YRUJk55Ui1GquKhKdD6vTCmVvCzXpKf",
+      "token0DeploymentId": "deployment-0006",
+      "token1DeploymentId": "deployment-0013",
+      "adapter": {
+        "kind": "solana-raydium-clmm",
+        "feeNumerator": null,
+        "feeDenominator": null
+      },
+      "status": "active",
+      "replacedByPoolDefinitionId": null,
+      "evidence": [
+        "https://docs.raydium.io/reference/program-addresses",
+        "https://github.com/raydium-io/raydium-clmm/blob/ed7c84a54ced59c55981780546adb0b4583dcf85/programs/amm/src/states/pool.rs"
+      ],
+      "asOfDate": "2026-09-15"
+    }
+  ],
+  "nativeWrapDefinitions": [
+    {
+      "nativeWrapDefinitionId": "native-wrap-0001",
+      "chainId": "eip155:1",
+      "nativeTokenDeploymentId": "deployment-0001",
+      "wrappedTokenDeploymentId": "deployment-0002",
+      "status": "active",
+      "evidence": [
+        "https://github.com/gnosis/canonical-weth"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "nativeWrapDefinitionId": "native-wrap-0002",
+      "chainId": "eip155:43114",
+      "nativeTokenDeploymentId": "deployment-0003",
+      "wrappedTokenDeploymentId": "deployment-0004",
+      "status": "active",
+      "evidence": [
+        "https://build.avax.network/docs/primary-network",
+        "https://build.avax.network/academy/blockchain/x402-payment-infrastructure/04-x402-on-avalanche/02-network-setup"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "nativeWrapDefinitionId": "native-wrap-0003",
+      "chainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+      "nativeTokenDeploymentId": "deployment-0005",
+      "wrappedTokenDeploymentId": "deployment-0006",
+      "status": "active",
+      "evidence": [
+        "https://solana.com/docs/tokens/basics/sync-native"
+      ],
+      "asOfDate": "2026-09-15"
+    }
+  ],
+  "aliases": [
+    {
+      "namespace": "ethereum",
+      "name": "UNISWAP_V2",
+      "dexDeploymentId": "dex-deployment-0001",
+      "poolDefinitionId": null,
+      "evidence": [
+        "https://github.com/Uniswap/v2-core/blob/6a9e7c97860676e0992f22a49665760444c1cdf5/contracts/UniswapV2Factory.sol"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "namespace": "ethereum",
+      "name": "UNISWAP_V2_USDC_WETH",
+      "dexDeploymentId": null,
+      "poolDefinitionId": "pool-0001",
+      "evidence": [
+        "https://developers.uniswap.org/docs/protocols/v2/guides/getting-pair-addresses"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "namespace": "avalancheC",
+      "name": "LFJ_LEGACY",
+      "dexDeploymentId": "dex-deployment-0002",
+      "poolDefinitionId": null,
+      "evidence": [
+        "https://docs.lfj.gg/lfj-dex/contracts"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "namespace": "avalancheC",
+      "name": "LFJ_LEGACY_WAVAX_USDC",
+      "dexDeploymentId": null,
+      "poolDefinitionId": "pool-0002",
+      "evidence": [
+        "https://docs.lfj.gg/lfj-dex/contracts"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "namespace": "solana",
+      "name": "ORCA_WHIRLPOOLS",
+      "dexDeploymentId": "dex-deployment-0003",
+      "poolDefinitionId": null,
+      "evidence": [
+        "https://docs.orca.so/developers/architecture/whirlpool-parameters"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "namespace": "solana",
+      "name": "ORCA_WHIRLPOOLS_WSOL_EURC",
+      "dexDeploymentId": null,
+      "poolDefinitionId": "pool-0003",
+      "evidence": [
+        "https://docs.orca.so/developers/architecture/whirlpool-parameters"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "namespace": "solana",
+      "name": "RAYDIUM_CLMM",
+      "dexDeploymentId": "dex-deployment-0004",
+      "poolDefinitionId": null,
+      "evidence": [
+        "https://docs.raydium.io/reference/program-addresses"
+      ],
+      "asOfDate": "2026-09-15"
+    },
+    {
+      "namespace": "solana",
+      "name": "RAYDIUM_CLMM_WSOL_EURC",
+      "dexDeploymentId": null,
+      "poolDefinitionId": "pool-0004",
+      "evidence": [
+        "https://docs.raydium.io/reference/program-addresses"
+      ],
+      "asOfDate": "2026-09-15"
+    }
+  ]
+}

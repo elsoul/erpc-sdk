@@ -1,6 +1,15 @@
-# Token catalog roadmap
+# Token, DEX, and pool roadmap
 
-Status: the bounded offline token catalog, deterministic code generation, all five package outputs, native parity capture, and the Steiner and Cyan catalog reviews are implemented and recorded as passed on 2026-09-15. The catalog is on `main` and planned for the unreleased `0.7.0` package. The current published package baseline, latest GitHub release, and package manifests remain `0.6.0`. This status covers the catalog gate and does not establish overall release or legal readiness.
+Status: the bounded offline token catalog and the DEX/pool catalog are
+implemented in the source tree with deterministic generation and five-SDK
+outputs. Token native parity capture and the Steiner and Cyan token-catalog
+reviews are recorded as passed on 2026-09-15. The DEX slice contains four DEX
+deployments, four pools, three native-to-wrapped relationships, eight aliases,
+and RPC-only exact-input quotes for two EVM pools; its two Solana pools remain
+lookup-only. These features are planned for the unreleased `0.7.0` package.
+The current published package baseline, latest GitHub release, and package
+manifests remain `0.6.0`. This status covers the catalog and quote scope and
+does not establish overall release or legal readiness.
 
 The weekly maintenance implementation is installed as reviewable tooling:
 [`weekly-maintenance.md`](./weekly-maintenance.md),
@@ -12,12 +21,18 @@ and reviewed HTTP sources online; release inspection and the catalog runtime
 remain offline. The bot creates or updates reviewable PRs and CI. Package
 publication and release approval remain human-invoked actions.
 
+The approved `0.7.0` plan was created from reviewed source basis `1eed9b2`.
+Its durable package-change guard requires a reviewed source-basis refresh
+whenever SDK shipping code changes before automatic preparation can apply. This
+controls preparation and makes no publication claim.
+
 ## Current acceptance gates
 
 | Gate | State | Owner / evidence |
 | --- | --- | --- |
 | Canonical schema, deterministic digest, and history guard | Implemented; central tests pass | Registry owner; `token-catalog.schema.json`, tests, and `--previous` |
 | Five generated package outputs | Implemented; all five byte checks and package validations passed | TypeScript, Rust, Python, Go, Ruby owners |
+| DEX/pool generated outputs and lookup/quote slice | Implemented across all five SDKs: four DEX deployments, four pools, three native wraps, and eight aliases; CI checks 32 shared native quote cases | [`DEX.md`](./DEX.md), generated outputs, and `dex-catalog.test.mjs` |
 | Cross-language catalog gate | PASS: native snapshots match all records, metadata, behavior probes, and alias constants | `verify-token-parity.mjs`; final digest and receipts in evidence |
 | Independent SDK code/package gate | PASS | Steiner |
 | Cross-domain catalog review gate | PASS (bounded catalog scope) | Cyan; final review 2026-09-15 |
@@ -40,18 +55,31 @@ candidate updates, reviewable PR writers, and CI dispatch are installed. They
 prepare evidence and candidates for review; package publication, release
 approval, merge, and tag creation remain human-invoked actions.
 
+The weekly observer remains token-only. It does not maintain DEX or pool state
+online. DEX catalog checks and the 32 shared native quote cases run in CI from
+the checked-out source and fixtures; they are not automatic online DEX
+maintenance.
+
+### Current DEX and RPC-only quote slice
+
+Ethereum Uniswap V2 WETH/USDC and Avalanche LFJ legacy WAVAX/USDC support
+configured-RPC exact-input quotes with local calculation. Solana Orca
+Whirlpools and Raydium CLMM records support deterministic lookup and pair
+discovery only. Native-to-wrapped definitions describe relationships and do
+not wrap assets automatically.
+
 ## Explicitly pending future work
 
 ### Rankings and coverage
 
 Ranking, “top” labels, market data, complete stablecoin coverage, and freshness claims remain pending a source-backed methodology and review. The current catalog is a bounded factual seed.
 
-### DEX, pools, and RPC-local swap flow
+### Routes and transaction execution
 
-DEX and pool records plus quotes, routes, and transaction builds remain pending
-their separate contract, test vectors, and money-path gate. They must use
-configured RPC endpoints and local logic. Hosted Jupiter or 0x dependencies are
-not part of this registry.
+Route selection, transaction building, signing, simulation, and sending remain
+pending separate contracts, test vectors, and money-path review. Solana CLMM
+quote math and bridging also remain future work. Hosted Jupiter and 0x
+dependencies are not part of this registry.
 
 ### Separate bridging research
 

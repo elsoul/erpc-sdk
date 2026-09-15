@@ -14,6 +14,11 @@ The workflows are installed on `main` with these UTC schedules:
 | [`registry-maintenance.yml`](../.github/workflows/registry-maintenance.yml) | Tuesday 03:17 UTC | Observation findings on `codex/registry-maintenance` | Observer reads configured RPC endpoints and reviewed HTTP sources online; catalog/runtime checks are local |
 | [`release-preparation.yml`](../.github/workflows/release-preparation.yml) | Thursday 03:47 UTC | Release preparation on `codex/release-preparation` | Observer reads configured RPC endpoints and reviewed HTTP sources online; release inspection and catalog reads are local |
 
+The weekly observer remains token-only. It does not perform online DEX or pool
+maintenance. DEX catalog checks and 32 shared native quote cases run in CI
+against the checked-out source and fixtures; these checks are not automatic
+online DEX maintenance.
+
 Both workflows also support an explicit manual dispatch. A run stays quiet
 while the observed state is unchanged; otherwise it reports a changed catalog,
 a prepared candidate, a failed check, or a required human action. The bot
@@ -70,6 +75,12 @@ The comparison uses the catalog digest and generated runtime bytes. A source
 evidence or per-record `asOfDate` refresh with an unchanged digest and
 unchanged runtime output does not create a release candidate.
 
+The approved plan's package-change guard intentionally rejects SDK shipping code
+outside its reviewed source basis. Whenever SDK shipping code changes, refresh
+that reviewed source basis before automatic preparation can apply. Documentation
+and other non-shipping operations may advance the source head while the plan
+remains applicable.
+
 The principal status values are:
 
 | Status | Meaning |
@@ -104,8 +115,8 @@ node registry/release-prep.mjs prepare \
 When the source commit and package-change provenance match
 [`release-plan.json`](./release-plan.json), `--version` may be omitted and the
 approved `0.7.0` plan supplies it. Later unexpected package code changes
-invalidate that default and require a manual stable version. Operations and
-documentation may advance the source head while the plan remains applicable.
+invalidate that default until the reviewed source basis is refreshed. This
+preparation rule does not publish a package or create a release tag.
 
 The `--changelog-file` option is accepted only for `CHANGELOG.md`; other paths
 are refused. The preparation allowlist is exactly the five package version sources,
@@ -152,7 +163,7 @@ registry/evidence/maintenance-review.json
 registry/evidence/maintenance-review.md
 ```
 
-`maintenance-pr.mjs` validates the same-run source SHA, catalog digest, and
+`maintenance-pr.mjs` validates the same-run source SHA, token-catalog digest, and
 trusted `observer-config.json` digest with the observer's strict validator. It
 treats JSON and Markdown as data; it never imports artifact paths or executes
 a patch. Canonical records and generated SDK files are not observer outputs.
@@ -227,7 +238,9 @@ open-source page (updated 2026-07-31), the Commission reporting page (updated
 remains a challenge gap. No legal certification, CE claim, regulatory filing,
 or bulk source-text copy is issued by this process.
 
-Existing temporary drivers are the only native-capture evidence available.
-The maintenance stage does not claim an automatic native capture. Ranking,
-actual package publication, DEX/pool work, RPC-local swaps, and bridging remain
-separate future work.
+Existing temporary drivers are historical native-capture evidence for the token
+catalog. DEX native runtime captures are produced and checked by the CI parity
+jobs; the weekly observer remains token-only. Ranking, actual package
+publication, route selection, transaction building/signing/sending, Solana
+CLMM quotes, and bridging remain separate future work. DEX catalog CI checks do
+not turn the weekly token observer into online DEX maintenance.

@@ -121,6 +121,9 @@ jobs:
           test -n "$DISPATCH_SHA"
           BASELINE_JSON="$RUNNER_TEMP/validated-catalog-baseline.json"
           VERIFIED_BASE="$RUNNER_TEMP/verified-base-token-catalog.json"
+          DEX_VERIFIED_BASE="$RUNNER_TEMP/verified-base-dex-catalog.json"
+          DEX_BASELINE_PRESENT="$RUNNER_TEMP/dex-catalog-baseline-present"
+          rm -f "$DEX_VERIFIED_BASE" "$DEX_BASELINE_PRESENT"
           node registry/ci-catalog-baseline.mjs \
             --base-sha "$BASE_SHA" \
             --push-before-sha "$PUSH_SHA" \
@@ -128,12 +131,33 @@ jobs:
             --head-sha "$HEAD_SHA" \
             --format=json > "$BASELINE_JSON"
           git show "$BASE_SHA:registry/token-catalog.json" > "$VERIFIED_BASE"
+          git cat-file -e "$BASE_SHA^{commit}"
+          DEX_TREE_PATHS="$(git ls-tree -r --name-only "$BASE_SHA" -- registry/dex-catalog.json)"
+          if [ "$DEX_TREE_PATHS" = "registry/dex-catalog.json" ]; then
+            test "$(git cat-file -t "$BASE_SHA:registry/dex-catalog.json")" = "blob"
+            git show "$BASE_SHA:registry/dex-catalog.json" > "$DEX_VERIFIED_BASE"
+            test -s "$DEX_VERIFIED_BASE"
+            printf '%s\n' true > "$DEX_BASELINE_PRESENT"
+          elif [ -n "$DEX_TREE_PATHS" ]; then
+            echo "validated base has an unexpected DEX catalog tree entry" >&2
+            exit 64
+          else
+            if ! DEX_HISTORY="$(git log -1 "$BASE_SHA" -- registry/dex-catalog.json)"; then
+              echo "could not inspect DEX catalog history at the validated base" >&2
+              exit 64
+            fi
+            test -z "$DEX_HISTORY"
+            printf '%s\n' false > "$DEX_BASELINE_PRESENT"
+          fi
           {
             echo "base_sha=$BASE_SHA"
             echo "baseline_json=$BASELINE_JSON"
             echo "verified_base=$VERIFIED_BASE"
+            echo "dex_verified_base=$DEX_VERIFIED_BASE"
+            DEX_BASELINE_STATE="$(tr -d '\r\n' < "$DEX_BASELINE_PRESENT")"
+            echo "dex_baseline_present=$DEX_BASELINE_STATE"
           } >> "$GITHUB_OUTPUT"
-      - name: Run agent harness (19 tests)
+      - name: Run agent harness tests
         run: |
           node --test scripts/agent-harness.test.mjs
           node scripts/agent-harness.mjs check
@@ -146,10 +170,29 @@ jobs:
           registry/maintenance-pr.test.mjs
           registry/ci-catalog-baseline.test.mjs
           registry/release-command.test.mjs
+          registry/dex-catalog.test.mjs
       - name: Verify generated catalogs against the validated base
         env:
           VERIFIED_BASE: ${{ steps.baseline.outputs.verified_base }}
         run: node registry/generate-token-catalog.mjs --check --language all --previous "$VERIFIED_BASE"
+      - name: Verify generated DEX catalogs against the validated base
+        env:
+          DEX_BASELINE_PRESENT: ${{ steps.baseline.outputs.dex_baseline_present }}
+          DEX_VERIFIED_BASE: ${{ steps.baseline.outputs.dex_verified_base }}
+        run: |
+          set -euo pipefail
+          case "$DEX_BASELINE_PRESENT" in
+            true)
+              node registry/generate-dex-catalog.mjs --check --language all --previous "$DEX_VERIFIED_BASE"
+              ;;
+            false)
+              node registry/generate-dex-catalog.mjs --check --language all
+              ;;
+            *)
+              echo "invalid DEX catalog baseline state" >&2
+              exit 64
+              ;;
+          esac
 
   typescript:
     name: TypeScript build, test, and package
@@ -173,12 +216,29 @@ jobs:
       - run: corepack pnpm test
       - run: corepack pnpm build
       - run: corepack pnpm pack:check
+      - name: Capture TypeScript DEX parity from the built public package
+        env:
+          ERPC_SDK_DEX_PARITY_OUTPUT: ${{ runner.temp }}/dex-parity/typescript.json
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/dex-parity"
+          rm -f "$ERPC_SDK_DEX_PARITY_OUTPUT"
+          corepack pnpm --filter @elsoul/erpc-sdk test
+          test -s "$ERPC_SDK_DEX_PARITY_OUTPUT"
       - name: Switch to the minimum supported Node.js version
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: 20
       - name: Verify built package on Node.js 20
         run: node packages/typescript/scripts/verify-package.mjs
+      - name: Upload TypeScript DEX parity
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: dex-parity-typescript-${{ github.sha }}
+          path: ${{ runner.temp }}/dex-parity/typescript.json
+          overwrite: true
+          if-no-files-found: error
+          retention-days: 7
 
   rust:
     name: Rust lint, test, docs, and package
@@ -205,7 +265,14 @@ jobs:
       - name: Lint
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - name: Test
-        run: cargo test --workspace --locked
+        env:
+          ERPC_SDK_DEX_PARITY_OUTPUT: ${{ runner.temp }}/dex-parity/rust.json
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/dex-parity"
+          rm -f "$ERPC_SDK_DEX_PARITY_OUTPUT"
+          cargo test --workspace --locked
+          test -s "$ERPC_SDK_DEX_PARITY_OUTPUT"
       - name: Build documentation
         env:
           RUSTDOCFLAGS: -D warnings
@@ -216,6 +283,14 @@ jobs:
         run: |
           cargo package --locked --package erpc-sdk --list
           cargo package --locked --package erpc-sdk
+      - name: Upload Rust DEX parity
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: dex-parity-rust-${{ github.sha }}
+          path: ${{ runner.temp }}/dex-parity/rust.json
+          overwrite: true
+          if-no-files-found: error
+          retention-days: 7
 
   python:
     name: Python lint, test, and package
@@ -247,6 +322,46 @@ jobs:
         run: python -m build --outdir dist
       - name: Inspect Python distributions
         run: python -m twine check dist/*
+      - name: Set up pinned Python 3.14 for wheel capture
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.14.7'
+      - name: Capture Python DEX parity from the installed wheel
+        env:
+          ERPC_SDK_DEX_PARITY_OUTPUT: ${{ runner.temp }}/dex-parity/python.json
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/dex-parity"
+          rm -f "$ERPC_SDK_DEX_PARITY_OUTPUT"
+          DEX_PYTHON_VENV="$RUNNER_TEMP/dex-python-venv"
+          rm -rf "$DEX_PYTHON_VENV"
+          python -m venv "$DEX_PYTHON_VENV"
+          WHEELS=("$GITHUB_WORKSPACE"/packages/python/dist/erpc_sdk-*.whl)
+          test "${#WHEELS[@]}" -eq 1
+          WHEEL_PATH="${WHEELS[0]}"
+          test -f "$WHEEL_PATH"
+          "$DEX_PYTHON_VENV/bin/python" -m pip install --disable-pip-version-check "$WHEEL_PATH[dev]"
+          "$DEX_PYTHON_VENV/bin/python" -I - <<'PY'
+          import pathlib
+          import sys
+
+          import erpc_sdk
+
+          module_path = pathlib.Path(erpc_sdk.__file__).resolve()
+          venv_path = pathlib.Path(sys.prefix).resolve()
+          if venv_path not in module_path.parents:
+              raise SystemExit(f"erpc_sdk loaded outside the capture venv: {module_path}")
+          PY
+          "$DEX_PYTHON_VENV/bin/python" -I -m pytest --import-mode=importlib "$GITHUB_WORKSPACE/packages/python/tests"
+          test -s "$ERPC_SDK_DEX_PARITY_OUTPUT"
+      - name: Upload Python DEX parity
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: dex-parity-python-${{ github.sha }}
+          path: ${{ runner.temp }}/dex-parity/python.json
+          overwrite: true
+          if-no-files-found: error
+          retention-days: 7
 
   go:
     name: Go format, vet, test, and module
@@ -280,9 +395,24 @@ jobs:
       - name: Vet
         run: go vet ./...
       - name: Test with the race detector
-        run: go test -race ./...
+        env:
+          ERPC_SDK_DEX_PARITY_OUTPUT: ${{ runner.temp }}/dex-parity/go.json
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/dex-parity"
+          rm -f "$ERPC_SDK_DEX_PARITY_OUTPUT"
+          go test -race -count=1 ./...
+          test -s "$ERPC_SDK_DEX_PARITY_OUTPUT"
       - name: Inspect module packages
         run: go list ./...
+      - name: Upload Go DEX parity
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: dex-parity-go-${{ github.sha }}
+          path: ${{ runner.temp }}/dex-parity/go.json
+          overwrite: true
+          if-no-files-found: error
+          retention-days: 7
 
   ruby:
     name: Ruby syntax, test, and gem
@@ -319,3 +449,127 @@ jobs:
         run: |
           bundle exec rake package
           ruby scripts/verify-package.rb
+      - name: Capture Ruby DEX parity from the installed gem
+        env:
+          ERPC_SDK_DEX_PARITY_OUTPUT: ${{ runner.temp }}/dex-parity/ruby.json
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/dex-parity"
+          rm -f "$ERPC_SDK_DEX_PARITY_OUTPUT"
+          DEX_GEM_HOME="$RUNNER_TEMP/dex-ruby-gems"
+          rm -rf "$DEX_GEM_HOME"
+          mkdir -p "$DEX_GEM_HOME"
+          DEV_GEM_PATHS="$(bundle exec ruby -e 'puts Gem.path.join(File::PATH_SEPARATOR)')"
+          GEM_PACKAGES=("$GITHUB_WORKSPACE"/packages/ruby/pkg/erpc-sdk-*.gem)
+          test "${#GEM_PACKAGES[@]}" -eq 1
+          GEM_PACKAGE="${GEM_PACKAGES[0]}"
+          test -f "$GEM_PACKAGE"
+          GEM_HOME="$DEX_GEM_HOME" GEM_PATH="$DEX_GEM_HOME" gem install --local "$GEM_PACKAGE" --no-document
+          mapfile -t TEST_FILES < <(find "$GITHUB_WORKSPACE/packages/ruby/test" -maxdepth 1 -type f -name 'test_*.rb' -print | sort)
+          test "${#TEST_FILES[@]}" -gt 0
+          env -u RUBYOPT -u RUBYLIB -u BUNDLE_GEMFILE \
+            GEM_HOME="$DEX_GEM_HOME" \
+            GEM_PATH="$DEX_GEM_HOME:$DEV_GEM_PATHS" \
+            ruby - "${TEST_FILES[@]}" <<'RUBY'
+          require "erpc_sdk"
+
+          gem_path = File.realpath(Gem.loaded_specs.fetch("erpc-sdk").full_gem_path)
+          gem_home = File.realpath(ENV.fetch("GEM_HOME"))
+          unless gem_path.start_with?("#{gem_home}#{File::SEPARATOR}")
+            abort "erpc-sdk was not loaded from the fresh gem home: #{gem_path}"
+          end
+
+          ARGV.sort.each { |file| load File.expand_path(file) }
+          RUBY
+          test -s "$ERPC_SDK_DEX_PARITY_OUTPUT"
+      - name: Upload Ruby DEX parity
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: dex-parity-ruby-${{ github.sha }}
+          path: ${{ runner.temp }}/dex-parity/ruby.json
+          overwrite: true
+          if-no-files-found: error
+          retention-days: 7
+
+  dex-parity:
+    name: Verify native DEX runtime parity
+    needs:
+      - validate-source
+      - catalog
+      - typescript
+      - rust
+      - python
+      - go
+      - ruby
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Require every DEX parity producer to pass
+        env:
+          VALIDATE_SOURCE_RESULT: ${{ needs.validate-source.result }}
+          CATALOG_RESULT: ${{ needs.catalog.result }}
+          TYPESCRIPT_RESULT: ${{ needs.typescript.result }}
+          RUST_RESULT: ${{ needs.rust.result }}
+          PYTHON_RESULT: ${{ needs.python.result }}
+          GO_RESULT: ${{ needs.go.result }}
+          RUBY_RESULT: ${{ needs.ruby.result }}
+        run: |
+          set -euo pipefail
+          test "$VALIDATE_SOURCE_RESULT" = success
+          test "$CATALOG_RESULT" = success
+          test "$TYPESCRIPT_RESULT" = success
+          test "$RUST_RESULT" = success
+          test "$PYTHON_RESULT" = success
+          test "$GO_RESULT" = success
+          test "$RUBY_RESULT" = success
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 1
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Assert immutable parity checkout
+        env:
+          EXPECTED_HEAD_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+      - name: Download TypeScript DEX parity from this run
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: dex-parity-typescript-${{ github.sha }}
+          path: ${{ runner.temp }}/dex-parity
+      - name: Download Rust DEX parity from this run
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: dex-parity-rust-${{ github.sha }}
+          path: ${{ runner.temp }}/dex-parity
+      - name: Download Python DEX parity from this run
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: dex-parity-python-${{ github.sha }}
+          path: ${{ runner.temp }}/dex-parity
+      - name: Download Go DEX parity from this run
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: dex-parity-go-${{ github.sha }}
+          path: ${{ runner.temp }}/dex-parity
+      - name: Download Ruby DEX parity from this run
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: dex-parity-ruby-${{ github.sha }}
+          path: ${{ runner.temp }}/dex-parity
+      - name: Verify native DEX runtime parity
+        run: |
+          set -euo pipefail
+          node registry/verify-dex-parity.mjs \
+            --snapshot "$RUNNER_TEMP/dex-parity/typescript.json" \
+            --snapshot "$RUNNER_TEMP/dex-parity/rust.json" \
+            --snapshot "$RUNNER_TEMP/dex-parity/python.json" \
+            --snapshot "$RUNNER_TEMP/dex-parity/go.json" \
+            --snapshot "$RUNNER_TEMP/dex-parity/ruby.json"

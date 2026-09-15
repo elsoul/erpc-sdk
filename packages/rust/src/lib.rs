@@ -5,6 +5,7 @@ mod account;
 mod avalanche;
 mod cloud;
 mod config;
+pub mod dex_catalog;
 mod error;
 mod ethereum;
 mod generated;
@@ -13,6 +14,7 @@ mod rest;
 mod rpc;
 mod solana;
 mod subscriptions;
+mod swap;
 pub mod token_catalog;
 mod usage;
 
@@ -33,6 +35,14 @@ pub use cloud::{
 pub use config::{
     DEFAULT_ACCOUNT_ENDPOINT, DEFAULT_AVALANCHE_ENDPOINT, DEFAULT_ENDPOINT, DEFAULT_TIMEOUT,
     DEFAULT_USER_ENDPOINT, ErpcClientConfig,
+};
+pub use dex_catalog::{
+    DEX_ALIASES, DEX_CATALOG_AS_OF_DATE, DEX_CATALOG_CONTENT_DIGEST, DEX_CATALOG_VERSION,
+    DEX_CHAIN_IDS, DEX_DEPLOYMENTS, DexAlias, DexChainId, DexDeployment,
+    ListPoolDefinitionsOptions, NATIVE_WRAP_DEFINITIONS, NativeWrapDefinition, POOL_DEFINITIONS,
+    PoolAdapter, PoolDefinition, dexes, find_pool_definition_by_address,
+    find_pool_definitions_by_pair, get_dex_deployment, get_native_wrap_definition,
+    get_pool_definition, list_pool_definitions, pools,
 };
 pub use error::{ErpcError, ErpcErrorCode, JsonRpcErrorObject, Result};
 pub use ethereum::{
@@ -64,6 +74,10 @@ pub use solana::{
     ValidatorsInformationResult,
 };
 pub use subscriptions::{RpcNotification, RpcSubscription, SubscriptionId};
+pub use swap::{
+    EvmBlockSnapshot, ExactInputQuoteRequest, ExactInputQuoteResult, QuoteFee, SwapClient,
+    SwapFreshness, SwapQuoteError, SwapQuoteErrorCode, SwapQuoteRequest, SwapResult,
+};
 pub use token_catalog::{
     TOKEN_ALIASES, TOKEN_ASSETS, TOKEN_CATALOG_AS_OF_DATE, TOKEN_CATALOG_CONTENT_DIGEST,
     TOKEN_CATALOG_VERSION, TOKEN_CHAIN_IDS, TOKEN_DEPLOYMENTS, TokenAlias, TokenAsset,
@@ -131,6 +145,8 @@ pub struct ErpcClient {
     pub price: PriceClient,
     /// Standard and extended Solana JSON-RPC and subscriptions.
     pub solana: SolanaClient,
+    /// RPC-backed exact-input DEX quote client.
+    pub swap: SwapClient,
     /// Monthly API key usage API.
     pub usage: UsageClient,
 }
@@ -185,6 +201,10 @@ impl ErpcClient {
             resolved.timeout,
             http,
         );
+        let swap = SwapClient::new(
+            Arc::clone(&ethereum_transport),
+            Arc::clone(&avalanche_transport),
+        );
 
         Ok(Self {
             account: AccountClient::new(account_rest),
@@ -192,8 +212,20 @@ impl ErpcClient {
             ethereum: EthereumClient::new(ethereum_transport, ethereum_ws),
             price: PriceClient::new(shared_rest),
             solana: SolanaClient::new(solana_transport, solana_ws),
+            swap,
             usage: UsageClient::new(user_rest),
         })
+    }
+
+    /// Builds a test client with a private deterministic swap clock.
+    #[cfg(test)]
+    pub(crate) fn new_with_swap_clock(
+        config: ErpcClientConfig,
+        clock: fn() -> u64,
+    ) -> Result<Self> {
+        let mut client = Self::new(config)?;
+        client.swap = client.swap.with_clock(clock);
+        Ok(client)
     }
 
     /// Closes all subscription connections. HTTP clients need no explicit close.

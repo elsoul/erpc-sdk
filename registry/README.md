@@ -1,4 +1,4 @@
-# Canonical token catalog
+# Canonical token, DEX, and pool catalogs
 
 ## Weekly maintenance
 
@@ -6,8 +6,11 @@ The reviewable weekly maintenance stage is documented in
 [`weekly-maintenance.md`](./weekly-maintenance.md). The installed Tuesday
 observation and Thursday release-preparation workflows use an online observer
 for configured RPC endpoints and reviewed HTTP source reads, then create or
-update reviewable PRs and CI. Release inspection and the catalog runtime remain
-offline. The approved 0.7.0 provenance and package-change guard are recorded in
+update reviewable PRs and CI. The observer remains token-only; it does not
+perform online DEX or pool maintenance. CI checks the DEX catalog and 32
+shared native quote cases across the five SDK runtimes. Release inspection and
+the catalog runtime remain offline. The approved 0.7.0 provenance and
+package-change guard are recorded in
 [`release-plan.json`](./release-plan.json). These tools prepare evidence and a
 reviewable candidate; approval, merge, tag, and publication remain human
 actions, while swaps, rankings, and bridging remain separate future work. The
@@ -21,10 +24,10 @@ source: it does not call an RPC, require an API key, or bundle a third-party
 token database. It does not claim to list every token, rank assets, or provide
 a top-N list.
 
-The catalog is on `main` and planned for the unreleased `0.7.0` package. The
-current published package baseline, latest GitHub release, and package
-manifests remain `0.6.0`; current package installs do not include these catalog
-exports yet.
+The token catalog is on `main`; the DEX, pool, and quote slice is in the source
+tree and planned for the unreleased `0.7.0` package. The current published
+package baseline, latest GitHub release, and package manifests remain `0.6.0`;
+current package installs do not include these new catalog or quote exports yet.
 
 `token-catalog.json` is the canonical source. Its asset and deployment records retain `evidence` and `asOfDate` for source review. Generated SDK records contain the runtime fields below and omit per-record provenance; only the catalog-wide `asOfDate` and `contentDigest` are emitted as metadata.
 
@@ -48,10 +51,32 @@ means euro, and `JPY` means Japanese yen. These labels describe catalog
 metadata and do not imply complete coverage or a ranking. Source links for the
 records are maintained in [`SOURCES.md`](./SOURCES.md).
 
-DEX and pool records, quotes, routes, and transaction builds are outside this
-catalog and remain pending for a later phase. That work will use configured RPC
-endpoints and local logic; hosted Jupiter and 0x dependencies are not implied.
-Bridging remains separate research.
+## DEX and pool catalog
+
+The source tree contains four DEX deployments, four pool definitions, three
+native-to-wrapped relationships, and eight chain-qualified aliases. Generated
+DEX and pool data, including the `dexes` and `pools` aliases, and lookup
+wrappers are provided for all five SDKs. The canonical records and quote
+boundaries are in [`DEX.md`](./DEX.md).
+
+The six lookup operations are `getDexDeployment`, `getPoolDefinition`,
+`findPoolDefinitionByAddress`, `findPoolDefinitionsByPair`,
+`listPoolDefinitions`, and `getNativeWrapDefinition`. They are deterministic
+and network-free. Native-to-wrapped records describe chain-bound relationships;
+they do not perform automatic wrapping.
+
+The two EVM constant-product pools support RPC-only exact-input quotes:
+Ethereum Uniswap V2 for WETH/USDC and Avalanche LFJ legacy for WAVAX/USDC.
+Solana Orca Whirlpools and Raydium CLMM records cover classic WSOL/EURC lookup
+and pair discovery only. Quote amounts are positive decimal strings in token
+base units, and results include a block snapshot and decimal output. In
+TypeScript, this composite quote is awaited directly and has no `.send()` step;
+low-level TypeScript RPC requests retain their pending `.send()` method. Other
+SDKs expose language-appropriate async or synchronous wrappers.
+
+The quote API does not select routes, build, sign, simulate, or send
+transactions. Solana CLMM quote math and bridging remain separate future work;
+hosted Jupiter and 0x dependencies are not implied.
 
 ## Generate and check
 

@@ -18,6 +18,7 @@ include = ["Cargo.toml", "LICENSE", "README.md", "examples/**/*.rs", "src/**/*.r
 [dependencies]
 async-stream = "0.3.6"
 futures-util = "0.3.31"
+num-bigint = { version = "=0.5.1", default-features = false, features = ["std"] }
 percent-encoding = "2.3.1"
 reqwest = { version = "0.12.15", default-features = false, features = ["json", "rustls-tls", "stream"] }
 serde = { version = "1.0.219", features = ["derive"] }

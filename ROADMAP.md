@@ -59,11 +59,13 @@
 - Keep native API batching disabled locally while preserving C-Chain EVM batch
   behavior.
 
-## 0.7 — Canonical token catalog (UNRELEASED)
+## 0.7 — Token, DEX, and pool catalogs (UNRELEASED)
 
-The bounded catalog is present on `main` and planned for `0.7.0`. The current
-published package baseline, latest GitHub release, and package manifests remain
-`0.6.0`, so the catalog is not available from the currently published package.
+The bounded token catalog is on `main`; the DEX and pool catalogs and quote
+slice are in the source tree and planned for `0.7.0`. The current published
+package baseline, latest GitHub release, and package manifests remain `0.6.0`,
+so these new catalog and quote exports are not available from the currently
+published package.
 
 - Bundle 39 assets, 60 deployments, and 60 aliases across Ethereum, Solana,
   and Avalanche C-Chain in all five SDKs.
@@ -71,14 +73,24 @@ published package baseline, latest GitHub release, and package manifests remain
   symbol and address lookup, native-token lookup, and lifecycle metadata.
 - Keep `USD`, `EUR`, and `JPY` as explicit stable-currency labels. The bounded
   catalog does not claim complete coverage, ranking, or market data.
+- Bundle four DEX deployments, four pool definitions, three native-to-wrapped
+  relationships, and eight chain-qualified aliases in all five SDKs.
+- Provide RPC-only exact-input quotes for Ethereum Uniswap V2 WETH/USDC and
+  Avalanche LFJ legacy WAVAX/USDC. Keep Solana Orca Whirlpools and Raydium CLMM
+  WSOL/EURC records available for lookup while CLMM quote support is pending.
 - Run the installed Tuesday 03:17 UTC observation PR and Thursday 03:47 UTC
   release-preparation PR workflows. They create or update reviewable PRs and
   CI; package publication remains a human-invoked release action.
+- Keep release preparation tied to a reviewed source basis: SDK shipping-code
+  changes require a source-basis refresh before automatic preparation can apply.
+  See the [weekly maintenance runbook](registry/weekly-maintenance.md).
 
-## Next phase — DEX, pools, and local swaps
+## Next phase — routes and transaction execution
 
-- Define DEX and pool records and a reviewed quote, route, and transaction-build
-  contract using configured RPC endpoints and local logic.
+- Add route selection and transaction build, signing, sending, and simulation
+  only after separate contracts, test vectors, and money-path review.
+- Add Solana concentrated-liquidity quote math only after its state, freshness,
+  and execution boundaries are reviewed.
 - Keep hosted Jupiter and 0x dependencies out of the SDK registry.
 - Keep bridging as separate research covering exact source and destination
   chains, native versus wrapped addresses, proof or attestation rules, and
