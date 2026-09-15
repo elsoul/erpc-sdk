@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "artifactKind": "maintenance-findings",
+  "status": "complete",
+  "catalogDigest": "62879dfe8bb49a154d2a1bff356321e5dbe78d8cef0cd3409ef2b22cfd3445a4",
+  "configDigest": "46ac5c3fe1c50ca0e097263cefd489cce5ee3794896347346d5d6184bd23cb73",
+  "findings": [
+    {
+      "category": "source-change",
+      "subjectId": "source-allunity-com-eurau",
+      "fingerprint": "1111111111111111111111111111111111111111111111111111111111111111",
+      "code": "SOURCE_SIGNALS_CHANGED",
+      "severity": "review"
+    },
+    {
+      "category": "rpc-observation",
+      "subjectId": "deployment-0002",
+      "fingerprint": "2222222222222222222222222222222222222222222222222222222222222222",
+      "code": "EVM_SYMBOL_MISMATCH",
+      "severity": "action"
+    }
+  ]
+}

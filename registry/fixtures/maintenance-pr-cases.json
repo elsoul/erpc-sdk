@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "description": "Canonical observer envelope, deterministic allowlisted output plan, and bounded PR-writer refusal cases.",
+  "allowedArtifacts": [
+    "registry/maintenance-findings.json",
+    "registry/source-baseline.json",
+    "registry/evidence/maintenance-review.json",
+    "registry/evidence/maintenance-review.md",
+    "packages/typescript/package.json",
+    "packages/rust/Cargo.toml",
+    "packages/python/pyproject.toml",
+    "packages/python/src/erpc_sdk/__init__.py",
+    "packages/ruby/lib/erpc_sdk/version.rb",
+    "Cargo.lock",
+    "CHANGELOG.md"
+  ],
+  "canonicalEnvelopeKeys": ["receipts", "findings", "reviewCandidate"],
+  "trustedCheckoutInputs": [
+    "registry/token-catalog.json",
+    "registry/observer-config.json",
+    "registry/maintenance-findings.json",
+    "registry/source-baseline.json"
+  ],
+  "refuse": [
+    "observer envelope keys other than receipts, findings, and reviewCandidate",
+    "runtime catalog or generated SDK artifact paths",
+    "absolute paths and traversal segments",
+    "artifact code execution or patch application",
+    "source/catalog/config digest mismatch",
+    "malformed or stale same-run receipts/findings/reviewCandidate",
+    "human-edited bot branch without matching managed provenance",
+    "main moving after the frozen lease",
+    "workspace that is not clean, pinned, and promotable",
+    "unexpected paths in the existing or proposed branch diff",
+    "compare-and-swap branch conflicts",
+    "managed branch parent, declared output path set, or byte-exact content digest mismatch",
+    "workflow run whose returned head or run identity is not bound to the bot commit",
+    "automatic approval, merge, tag, release, or publication"
+  ],
+  "workflowDispatch": {
+    "workflowPath": ".github/workflows/ci.yml",
+    "refs": ["codex/registry-maintenance", "codex/release-preparation"],
+    "inputs": ["expected_head_sha", "base_sha"],
+    "apiVersion": "2026-03-10"
+  },
+  "managedProvenance": {
+    "required": ["managedBy", "branch", "baseSha", "parentSha", "headSha", "semanticFingerprint", "outputDigest", "contentDigest", "outputPaths"],
+    "replacement": "GraphQL updateRefs with exact beforeOid and force=true for the one authenticated bot ref"
+  },
+  "releaseOutputPaths": [
+    "packages/typescript/package.json",
+    "packages/rust/Cargo.toml",
+    "packages/python/pyproject.toml",
+    "packages/python/src/erpc_sdk/__init__.py",
+    "packages/ruby/lib/erpc_sdk/version.rb",
+    "Cargo.lock",
+    "CHANGELOG.md"
+  ],
+  "bootstrap": {
+    "sourceCount": 41,
+    "requiresStatus": "complete",
+    "neverWritesPlaceholder": true
+  }
+}
