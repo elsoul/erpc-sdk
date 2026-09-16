@@ -150,7 +150,7 @@ from .token_rankings import (
 from .transport import HttpJsonRpcTransport
 from .types import *  # noqa: F403
 
-__version__ = "0.6.0"
+__version__ = "0.7.0"
 
 __all__ = [
     "AVALANCHE_AVAX_METHODS",
