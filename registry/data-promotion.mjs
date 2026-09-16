@@ -85,6 +85,12 @@ export const CANONICAL_DATA_PATHS = Object.freeze([
   "registry/discovery-state.json",
 ].sort());
 export const CANDIDATE_OUTPUT_PATHS = Object.freeze([...CANONICAL_DATA_PATHS, ...GENERATED_PATHS].sort());
+export const LEGACY_OBSERVER_OUTPUT_PATHS = Object.freeze([
+  "registry/maintenance-findings.json",
+  "registry/source-baseline.json",
+  "registry/evidence/maintenance-review.json",
+  "registry/evidence/maintenance-review.md",
+].sort());
 export const DATA_BRANCH = "codex/registry-maintenance";
 export const DATA_WORKFLOW_PATH = ".github/workflows/ci.yml";
 export const REQUIRED_CI_CONTEXT = "required-ci";
@@ -122,6 +128,8 @@ const ADMISSION_TOKEN_CAP = 8;
 const ADMISSION_POOL_CAP = 8;
 const DEFERRED_POOL_REQUEUE_REASONS = new Set(["pool-cap", "missing-token-dependency"]);
 const MAX_DISCOVERY_PENDING = Number.isSafeInteger(DISCOVERY_LIMITS?.maxPending) ? DISCOVERY_LIMITS.maxPending : 1024;
+const LEGACY_OBSERVER_OUTPUT_SET = new Set(LEGACY_OBSERVER_OUTPUT_PATHS);
+const LEGACY_MANAGED_BY = "erpc-sdk-weekly-maintenance";
 
 export class DataPromotionError extends Error {
   constructor(message, code = "DATA_PROMOTION_INVALID") {
@@ -1495,6 +1503,147 @@ export function normalizeChangedPaths(value) {
   return sorted;
 }
 
+function branchHead(value) {
+  return value?.sha ?? value?.headSha ?? value?.head_sha ?? value?.head?.sha ?? null;
+}
+
+function branchMetadata(value) {
+  return value?.metadata ?? value;
+}
+
+function declaredPaths(value, allowed, expected, label) {
+  if (!Array.isArray(value) || value.length === 0 || value.some((pathValue) => !allowed.has(pathValue)) || new Set(value).size !== value.length) {
+    fail(`${label} contains an invalid output path set`, "HUMAN_BRANCH_EDIT");
+  }
+  const sorted = [...value].sort();
+  if (value.join("\0") !== sorted.join("\0")) fail(`${label} output paths are not sorted`, "HUMAN_BRANCH_EDIT");
+  if (expected !== undefined && value.join("\0") !== expected.join("\0")) fail(`${label} output paths do not match the candidate`, "HUMAN_BRANCH_EDIT");
+  return value;
+}
+
+function validateManagedDataMetadata(metadata, payload, branchSha) {
+  if (!isRecord(metadata) || metadata.managedBy !== payload.managedBy || metadata.branch !== DATA_BRANCH) fail("existing data branch has no matching managed provenance", "HUMAN_BRANCH_EDIT");
+  requireSha(metadata.baseSha, "managed data branch base SHA");
+  requireSha(metadata.parentSha, "managed data branch parent SHA");
+  if (metadata.parentSha !== metadata.baseSha) fail("managed data branch parent does not match its frozen base", "HUMAN_BRANCH_EDIT");
+  const sourceShas = [metadata.expectedSourceSha, metadata.sourceSha].filter((value) => value !== undefined);
+  if (sourceShas.length === 0) fail("managed data branch source SHA provenance is missing", "HUMAN_BRANCH_EDIT");
+  for (const sourceSha of sourceShas) {
+    requireSha(sourceSha, "managed data branch source SHA");
+    if (sourceSha !== metadata.baseSha) fail("managed data branch source does not match its frozen base", "HUMAN_BRANCH_EDIT");
+  }
+  requireSha(metadata.headSha, "managed data branch recorded head SHA");
+  if (metadata.headSha !== branchSha) fail("data branch changed outside its recorded managed head", "HUMAN_BRANCH_EDIT");
+  requireDigest(metadata.semanticFingerprint, "managed data branch semantic fingerprint");
+  requireDigest(metadata.outputDigest, "managed data branch output provenance");
+  requireDigest(metadata.contentDigest, "managed data branch byte content provenance");
+  for (const [key, label] of [["actualOutputDigest", "managed data branch actual output digest"], ["actualContentDigest", "managed data branch actual content digest"]]) {
+    if (metadata[key] !== undefined) {
+      requireDigest(metadata[key], label);
+      if (metadata[key] !== metadata[key === "actualOutputDigest" ? "outputDigest" : "contentDigest"]) fail(`${label} differs from its recorded digest`, "HUMAN_BRANCH_EDIT");
+    }
+  }
+  declaredPaths(metadata.outputPaths, new Set(CANDIDATE_OUTPUT_PATHS), payload.outputPaths, "managed data branch");
+  return metadata;
+}
+
+function repositoryName(value) {
+  if (typeof value === "string") return value;
+  return value?.full_name ?? value?.fullName ?? value?.nameWithOwner ?? value?.name_with_owner ?? null;
+}
+
+function pullHeadRef(value) {
+  return value?.head?.ref ?? value?.headRef ?? value?.head_ref ?? value?.headRefName ?? null;
+}
+
+function pullBaseRef(value) {
+  return value?.base?.ref ?? value?.baseRef ?? value?.base_ref ?? value?.baseRefName ?? null;
+}
+
+function pullHeadSha(value) {
+  return value?.head?.sha ?? value?.headSha ?? value?.head_sha ?? value?.headRefOid ?? value?.head_ref_oid ?? null;
+}
+
+function pullBaseSha(value) {
+  return value?.base?.sha ?? value?.baseSha ?? value?.base_sha ?? value?.baseRefOid ?? value?.base_ref_oid ?? null;
+}
+
+function pullMergeSha(value) {
+  const merge = value?.mergeCommit ?? value?.merge_commit ?? value?.merge_commit_sha ?? value?.mergeCommitSha;
+  return typeof merge === "string" ? merge : merge?.sha ?? merge?.oid ?? null;
+}
+
+function pullMerged(value) {
+  if (value?.merged === false) return false;
+  const state = String(value?.state ?? "").toLowerCase();
+  const mergedAt = value?.mergedAt ?? value?.merged_at ?? null;
+  return value?.merged === true || state === "merged" || typeof mergedAt === "string" && mergedAt.length > 0;
+}
+
+async function requireAncestor(adapter, ancestor, descendant, label) {
+  requireSha(ancestor, `${label} ancestor SHA`);
+  requireSha(descendant, `${label} descendant SHA`);
+  if (ancestor === descendant) return true;
+  if (typeof adapter?.isAncestor !== "function") fail(`${label} ancestry cannot be verified`, "GITHUB_ADAPTER_INVALID");
+  let result;
+  try { result = await adapter.isAncestor(ancestor, descendant); } catch (error) {
+    fail(`${label} ancestry could not be verified: ${error?.message ?? "adapter failure"}`, "HUMAN_BRANCH_EDIT");
+  }
+  if (result !== true && result?.isAncestor !== true) fail(`${label} is not an ancestor of the current frozen base`, "HUMAN_BRANCH_EDIT");
+  return true;
+}
+
+function validateFileMap(files, paths, label) {
+  if (!isRecord(files) || Object.keys(files).sort().join("\0") !== [...paths].sort().join("\0") || paths.some((pathValue) => typeof files[pathValue] !== "string")) {
+    fail(`${label} bytes are incomplete`, "HUMAN_BRANCH_EDIT");
+  }
+  return files;
+}
+
+async function validateLegacyHandoff({ adapter, metadata, branchSha, currentBaseSha, repo }) {
+  const oldBaseSha = requireSha(metadata.baseSha, "legacy branch base SHA");
+  if (metadata.branch !== DATA_BRANCH) fail("legacy branch provenance names a different branch", "HUMAN_BRANCH_EDIT");
+  const sourceShas = [metadata.expectedSourceSha, metadata.sourceSha].filter((value) => value !== undefined);
+  if (sourceShas.length === 0) fail("legacy branch source SHA provenance is missing", "HUMAN_BRANCH_EDIT");
+  for (const sourceSha of sourceShas) {
+    requireSha(sourceSha, "legacy branch source SHA");
+    if (sourceSha !== oldBaseSha) fail("legacy branch source does not match its frozen base", "HUMAN_BRANCH_EDIT");
+  }
+  requireSha(metadata.parentSha, "legacy branch parent SHA");
+  if (metadata.parentSha !== oldBaseSha) fail("legacy branch parent does not match its frozen base", "HUMAN_BRANCH_EDIT");
+  requireSha(metadata.headSha, "legacy branch recorded head SHA");
+  if (metadata.headSha !== branchSha) fail("legacy branch changed outside its recorded managed head", "HUMAN_BRANCH_EDIT");
+  requireDigest(metadata.semanticFingerprint, "legacy branch semantic fingerprint");
+  requireDigest(metadata.outputDigest, "legacy branch output digest");
+  requireDigest(metadata.contentDigest, "legacy branch content digest");
+  requireDigest(metadata.actualOutputDigest, "legacy branch actual output digest");
+  requireDigest(metadata.actualContentDigest, "legacy branch actual content digest");
+  if (metadata.actualOutputDigest !== metadata.outputDigest || metadata.actualContentDigest !== metadata.contentDigest) fail("legacy branch bytes do not match their recorded digests", "HUMAN_BRANCH_EDIT");
+  const paths = declaredPaths(metadata.outputPaths, LEGACY_OBSERVER_OUTPUT_SET, undefined, "legacy branch");
+  if (typeof adapter?.getChangedPaths !== "function" || typeof adapter?.getBranchFiles !== "function" || typeof adapter?.getBaseFiles !== "function") fail("legacy handoff requires exact old-base file and diff checks", "GITHUB_ADAPTER_INVALID");
+  await requireAncestor(adapter, oldBaseSha, currentBaseSha, "legacy branch base");
+  const changed = normalizeChangedPaths(await adapter.getChangedPaths(DATA_BRANCH, { baseSha: oldBaseSha, headSha: branchSha }));
+  if (changed.join("\0") !== paths.join("\0")) fail("legacy branch changed paths do not match its declared observer outputs", "HUMAN_BRANCH_EDIT");
+  const oldFiles = await adapter.getBaseFiles(oldBaseSha, paths);
+  if (!isRecord(oldFiles) || Object.keys(oldFiles).sort().join("\0") !== paths.join("\0") || paths.some((pathValue) => oldFiles[pathValue] !== null && typeof oldFiles[pathValue] !== "string")) fail("legacy branch base file response is invalid", "HUMAN_BRANCH_EDIT");
+  const branchFiles = validateFileMap(await adapter.getBranchFiles(DATA_BRANCH, paths, { headSha: branchSha }), paths, "legacy branch");
+  if (computeOutputDigest(branchFiles) !== metadata.contentDigest) fail("legacy branch bytes do not match their content digest", "HUMAN_BRANCH_EDIT");
+  if (typeof adapter?.listPullRequests !== "function") fail("legacy handoff requires authenticated pull request history", "GITHUB_ADAPTER_INVALID");
+  const listed = await adapter.listPullRequests({ head: DATA_BRANCH, base: "main", state: "all" });
+  const prs = Array.isArray(listed) ? listed : listed?.items ?? listed?.pullRequests ?? [];
+  if (!Array.isArray(prs)) fail("legacy pull request history is invalid", "GITHUB_ADAPTER_INVALID");
+  if (prs.some((entry) => pullHeadRef(entry) === DATA_BRANCH && String(entry?.state ?? "").toLowerCase() === "open")) fail("legacy branch still has an open pull request", "HUMAN_BRANCH_EDIT");
+  const merged = prs.filter((entry) => pullHeadRef(entry) === DATA_BRANCH && pullHeadSha(entry) === branchSha && pullBaseRef(entry) === "main" && pullBaseSha(entry) === oldBaseSha && pullMerged(entry));
+  if (merged.length !== 1) fail("legacy branch lacks one exact merged main pull request", "HUMAN_BRANCH_EDIT");
+  const pull = merged[0];
+  const headRepository = repositoryName(pull.headRepository ?? pull.head_repository ?? pull.head?.repo);
+  const baseRepository = repositoryName(pull.baseRepository ?? pull.base_repository ?? pull.base?.repo);
+  if (pull.isCrossRepository === true || !headRepository || !baseRepository || headRepository !== baseRepository || repo !== undefined && headRepository !== repo) fail("legacy pull request must belong to the same repository", "HUMAN_BRANCH_EDIT");
+  const mergeSha = requireSha(pullMergeSha(pull), "legacy pull request merge SHA");
+  await requireAncestor(adapter, mergeSha, currentBaseSha, "legacy pull request merge");
+  return { oldBaseSha, mergeSha, pull };
+}
+
 function normalizePr(pr, expectedRepository = undefined) {
   if (!isRecord(pr)) fail("managed PR record is invalid", "PR_INVALID");
   const head = pr.head?.sha ?? pr.headSha ?? pr.head_sha;
@@ -1636,23 +1785,32 @@ export async function writeDataMaintenancePr({ candidate, observation, adapter, 
       if (!/not found|404/u.test(String(error?.message ?? "")) && error?.status !== 404 && error?.code !== 404) throw error;
     }
   }
-  const branchSha = branch?.sha ?? branch?.headSha ?? branch?.head_sha ?? branch?.head?.sha ?? null;
-  const managed = branch?.metadata ?? branch;
+  const branchSha = branchHead(branch);
+  const managed = branchMetadata(branch);
   let branchNeedsRefresh = false;
   if (branchSha !== null && branchSha !== undefined) {
-    if (!isRecord(managed) || managed.managedBy !== payload.managedBy || managed.branch !== DATA_BRANCH || managed.baseSha !== value.baseSha || managed.parentSha !== undefined && managed.parentSha !== value.baseSha || managed.headSha !== undefined && managed.headSha !== branchSha || !Array.isArray(managed.outputPaths) || managed.outputPaths.join("\0") !== outputPaths.join("\0") || typeof managed.outputDigest !== "string" || typeof managed.contentDigest !== "string") fail("existing data branch has no matching managed provenance", "HUMAN_BRANCH_EDIT");
-    const changed = await adapter.getChangedPaths(DATA_BRANCH, { baseSha: value.baseSha, headSha: branchSha });
-    const paths = normalizeChangedPaths(changed);
-    const branchFiles = await adapter.getBranchFiles(DATA_BRANCH, CANDIDATE_OUTPUT_PATHS, { headSha: branchSha });
-    if (!isRecord(branchFiles) || CANDIDATE_OUTPUT_PATHS.some((pathValue) => typeof branchFiles[pathValue] !== "string")) fail("existing data branch bytes are incomplete", "HUMAN_BRANCH_EDIT");
-    if (dataOutputDigest(branchFiles) !== managed.outputDigest || computeOutputDigest(branchFiles) !== managed.contentDigest) fail("existing data branch bytes do not match their managed provenance", "HUMAN_BRANCH_EDIT");
-    if (paths.some((pathValue) => !CANDIDATE_OUTPUT_PATHS.includes(pathValue))) fail("existing data branch changed an unexpected path", "HUMAN_BRANCH_EDIT");
-    const matchesCandidate = managed.semanticFingerprint === value.semanticFingerprint && managed.outputDigest === value.outputDigest && managed.contentDigest === payload.contentDigest;
-    if (matchesCandidate) {
-      const expectedChanged = await expectedCandidateChangedPaths(value, { root, baseSha: value.baseSha, adapter });
-      if (paths.join("\0") !== expectedChanged.join("\0")) fail("existing data branch changed bytes outside the exact candidate subset", "HUMAN_BRANCH_EDIT");
-      if (CANDIDATE_OUTPUT_PATHS.some((pathValue) => branchFiles[pathValue] !== value.files[pathValue])) fail("existing data branch bytes differ from the candidate", "HUMAN_BRANCH_EDIT");
-    } else branchNeedsRefresh = true;
+    if (!isRecord(managed) || typeof managed.managedBy !== "string") fail("existing data branch has no matching managed provenance", "HUMAN_BRANCH_EDIT");
+    if (managed.managedBy === payload.managedBy) {
+      validateManagedDataMetadata(managed, payload, branchSha);
+      if (managed.baseSha !== value.baseSha) await requireAncestor(adapter, managed.baseSha, value.baseSha, "managed data branch base");
+      const changed = await adapter.getChangedPaths(DATA_BRANCH, { baseSha: managed.baseSha, headSha: branchSha });
+      const paths = normalizeChangedPaths(changed);
+      const branchFiles = validateFileMap(await adapter.getBranchFiles(DATA_BRANCH, CANDIDATE_OUTPUT_PATHS, { headSha: branchSha }), CANDIDATE_OUTPUT_PATHS, "existing data branch");
+      const branchDigest = computeOutputDigest(branchFiles);
+      if (branchDigest !== managed.outputDigest || branchDigest !== managed.contentDigest) fail("existing data branch bytes do not match their recorded digests", "HUMAN_BRANCH_EDIT");
+      if (paths.some((pathValue) => !CANDIDATE_OUTPUT_PATHS.includes(pathValue))) fail("existing data branch changed an unexpected path", "HUMAN_BRANCH_EDIT");
+      const matchesCandidate = managed.baseSha === value.baseSha && managed.semanticFingerprint === value.semanticFingerprint && managed.outputDigest === value.outputDigest && managed.contentDigest === payload.contentDigest;
+      if (matchesCandidate) {
+        const expectedChanged = await expectedCandidateChangedPaths(value, { root, baseSha: value.baseSha, adapter });
+        if (paths.join("\0") !== expectedChanged.join("\0")) fail("existing data branch changed bytes outside the exact candidate subset", "HUMAN_BRANCH_EDIT");
+        if (CANDIDATE_OUTPUT_PATHS.some((pathValue) => branchFiles[pathValue] !== value.files[pathValue])) fail("existing data branch bytes differ from the candidate", "HUMAN_BRANCH_EDIT");
+      } else branchNeedsRefresh = true;
+    } else if (managed.managedBy === LEGACY_MANAGED_BY) {
+      await validateLegacyHandoff({ adapter, metadata: managed, branchSha, currentBaseSha: value.baseSha, repo });
+      branchNeedsRefresh = true;
+    } else {
+      fail("existing data branch has no matching managed provenance", "HUMAN_BRANCH_EDIT");
+    }
   }
   let headSha = branchSha;
   let commit = null;

@@ -6,6 +6,8 @@ on:
   workflow_run:
     workflows: [CI]
     types: [completed]
+    branches:
+      - codex/release-preparation
   workflow_dispatch:
     inputs:
       version:

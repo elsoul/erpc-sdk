@@ -7,6 +7,8 @@ on:
   workflow_run:
     workflows: [CI]
     types: [completed]
+    branches:
+      - codex/registry-maintenance
   # The manual entry point is retained for a dry-run review. `apply` remains
   # off by default and the standing policy variable is also required to merge.
   workflow_dispatch:

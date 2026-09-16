@@ -70,6 +70,8 @@ export const BOT_BRANCH_REF = `refs/heads/${BOT_BRANCH}`;
 export const DEFAULT_BASE_BRANCH = "main";
 export const GITHUB_API_VERSION = "2026-03-10";
 export const WORKFLOW_DISPATCH_INPUTS = Object.freeze(["expected_head_sha", "base_sha"]);
+const COMPARE_METADATA_JQ = "{base_commit: {sha: .base_commit.sha}, merge_base_commit: {sha: .merge_base_commit.sha}, status: .status}";
+const MERGED_PR_METADATA_FIELDS = "number,headRefOid,baseRefOid,headRefName,baseRefName,mergeCommit,mergedAt";
 export const OBSERVATION_SCHEMA_VERSION = 1;
 export const OBSERVATION_KIND = "erpc-sdk-weekly-maintenance-observation";
 export const MANAGED_BY = "erpc-sdk-weekly-maintenance";
@@ -844,6 +846,74 @@ function parseTrailer(message, name) {
   return String(message ?? "").match(new RegExp(`^ERPC-Maintenance-${name}: ([^\\r\\n]+)$`, "mu"))?.[1] ?? null;
 }
 
+function objectValue(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : null;
+}
+
+function repositoryFullName(value) {
+  if (typeof value === "string") return value;
+  const record = objectValue(value);
+  return record?.full_name ?? record?.fullName ?? record?.nameWithOwner ?? null;
+}
+
+function normalizeRepository(value) {
+  const fullName = repositoryFullName(value);
+  if (typeof fullName !== "string" || !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u.test(fullName)) return null;
+  const record = objectValue(value) ?? {};
+  return {
+    ...record,
+    full_name: fullName,
+    fullName: record.fullName ?? fullName,
+    nameWithOwner: record.nameWithOwner ?? fullName,
+  };
+}
+
+function normalizePullRequest(value, expectedNumber = undefined) {
+  const record = objectValue(value);
+  if (!record) fail("GitHub pull request response is not an object", "GITHUB_API_FAILED");
+  const number = Number(record.number);
+  if (!Number.isSafeInteger(number) || number < 1 || expectedNumber !== undefined && number !== expectedNumber) fail("GitHub pull request response has the wrong identity", "GITHUB_API_FAILED");
+  const rawHead = objectValue(record.head) ?? {};
+  const rawBase = objectValue(record.base) ?? {};
+  const headRef = rawHead.ref ?? record.headRefName ?? record.headRef ?? record.head_ref;
+  const baseRef = rawBase.ref ?? record.baseRefName ?? record.baseRef ?? record.base_ref;
+  const headSha = rawHead.sha ?? record.headRefOid ?? record.headSha ?? record.head_sha;
+  const baseSha = rawBase.sha ?? record.baseRefOid ?? record.baseSha ?? record.base_sha;
+  if (typeof headRef !== "string" || typeof baseRef !== "string") fail("GitHub pull request response has no exact head/base refs", "GITHUB_API_FAILED");
+  requireSha(headSha, "GitHub pull request head SHA");
+  requireSha(baseSha, "GitHub pull request base SHA");
+  const headRepository = normalizeRepository(rawHead.repo ?? record.headRepository ?? record.head_repository);
+  const baseRepository = normalizeRepository(rawBase.repo ?? record.baseRepository ?? record.base_repository);
+  const mergedAt = record.mergedAt ?? record.merged_at ?? null;
+  if (mergedAt !== null && typeof mergedAt !== "string") fail("GitHub pull request merge timestamp is invalid", "GITHUB_API_FAILED");
+  const rawMergeCommit = objectValue(record.mergeCommit) ?? objectValue(record.merge_commit);
+  const mergeCommitSha = record.mergeCommitSha ?? record.merge_commit_sha ?? rawMergeCommit?.sha ?? rawMergeCommit?.oid ?? null;
+  if (mergeCommitSha !== null) requireSha(mergeCommitSha, "GitHub pull request merge commit SHA");
+  const mergeCommit = record.mergeCommit ?? (mergeCommitSha === null ? null : { oid: mergeCommitSha });
+  const crossRepository = record.isCrossRepository ?? (headRepository && baseRepository ? repositoryFullName(headRepository) !== repositoryFullName(baseRepository) : undefined);
+  return {
+    ...record,
+    number,
+    body: record.body ?? "",
+    title: record.title ?? "",
+    merged: record.merged === true || mergedAt !== null,
+    mergedAt,
+    merged_at: record.merged_at ?? mergedAt,
+    mergeCommit,
+    mergeCommitSha,
+    merge_commit_sha: record.merge_commit_sha ?? mergeCommitSha,
+    headRefName: headRef,
+    baseRefName: baseRef,
+    headRefOid: headSha,
+    baseRefOid: baseSha,
+    headRepository,
+    baseRepository,
+    isCrossRepository: crossRepository,
+    head: { ...rawHead, ref: headRef, sha: headSha, repo: headRepository },
+    base: { ...rawBase, ref: baseRef, sha: baseSha, repo: baseRepository },
+  };
+}
+
 /** A real GitHub adapter using the gh CLI's HTTPS API client. */
 export function createGhAdapter({ repo = process.env.GITHUB_REPOSITORY, root = REPOSITORY_ROOT, env = process.env } = {}) {
   const repoValue = ghRepoValue(repo);
@@ -865,6 +935,23 @@ export function createGhAdapter({ repo = process.env.GITHUB_REPOSITORY, root = R
   const api = (pathValue, method = undefined, body = undefined, { allowFailure = false } = {}) => {
     const prepared = apiArgs(method, apiPath(pathValue), body);
     return ghJson(prepared.args, { root, env, input: prepared.input, allowFailure });
+  };
+  const enrichMergedPullRequest = (rawValue, normalized, number) => {
+    if (!normalized.merged || normalized.mergeCommitSha !== null) return normalized;
+    const result = ghResult(["pr", "view", String(number), "--repo", repoValue, "--json", MERGED_PR_METADATA_FIELDS], { root, env });
+    let value;
+    try { value = JSON.parse(result.stdout); } catch (error) { fail(`GitHub merged PR metadata was not valid JSON: ${error.message}`, "GITHUB_API_FAILED"); }
+    const metadata = objectValue(value);
+    const metadataHead = metadata?.headRefOid;
+    const metadataBase = metadata?.baseRefOid;
+    const metadataNumber = Number(metadata?.number);
+    if (!Number.isSafeInteger(metadataNumber) || metadataNumber !== number || metadata.headRefName !== normalized.headRefName || metadata.baseRefName !== normalized.baseRefName || metadataHead !== normalized.headRefOid || metadataBase !== normalized.baseRefOid || metadata.mergedAt !== normalized.mergedAt) fail("GitHub merged PR metadata is not bound to the REST pull request", "GITHUB_API_FAILED");
+    requireSha(metadataHead, "GitHub merged PR head SHA");
+    requireSha(metadataBase, "GitHub merged PR base SHA");
+    const mergeCommit = objectValue(metadata.mergeCommit);
+    const mergeCommitSha = mergeCommit?.oid ?? mergeCommit?.sha ?? metadata.mergeCommitSha ?? metadata.merge_commit_sha;
+    requireSha(mergeCommitSha, "GitHub merged PR merge commit SHA");
+    return normalizePullRequest({ ...rawValue, mergeCommit, mergedAt: normalized.mergedAt }, number);
   };
   const readFilesAt = async (headSha, paths, { allowMissing = false } = {}) => {
     requireSha(headSha, "commit SHA");
@@ -899,18 +986,36 @@ export function createGhAdapter({ repo = process.env.GITHUB_REPOSITORY, root = R
     async getMainSha() {
       return this.getBranchSha(DEFAULT_BASE_BRANCH);
     },
+    async isAncestor(ancestorSha, descendantSha) {
+      requireSha(ancestorSha, "ancestor commit SHA");
+      requireSha(descendantSha, "descendant commit SHA");
+      const comparePath = apiPath(`/compare/${encodeURIComponent(ancestorSha)}...${encodeURIComponent(descendantSha)}`);
+      const compare = ghJson(["api", comparePath, "--header", `X-GitHub-Api-Version: ${GITHUB_API_VERSION}`, "--jq", COMPARE_METADATA_JQ], { root, env });
+      const compareRecord = objectValue(compare);
+      const baseCommit = objectValue(compareRecord?.base_commit ?? compareRecord?.baseCommit);
+      const mergeBase = objectValue(compareRecord?.merge_base_commit ?? compareRecord?.mergeBaseCommit ?? compareRecord?.merge_base ?? compareRecord?.mergeBase);
+      const baseSha = baseCommit?.sha;
+      const mergeBaseSha = mergeBase?.sha;
+      const status = compareRecord?.status;
+      if (!SHA_RE.test(String(baseSha ?? "")) || baseSha !== ancestorSha || !SHA_RE.test(String(mergeBaseSha ?? ""))) fail("GitHub compare response is not bound to the requested commits", "GITHUB_API_FAILED");
+      const headCommitSha = compareRecord?.head_commit?.sha ?? compareRecord?.headCommit?.sha;
+      if (headCommitSha !== undefined && headCommitSha !== descendantSha) fail("GitHub compare response has the wrong descendant commit", "GITHUB_API_FAILED");
+      const compareRepository = repositoryFullName(compareRecord?.repository ?? compareRecord?.repo);
+      if (compareRepository !== null && compareRepository !== repoValue) fail("GitHub compare response is for a different repository", "GITHUB_API_FAILED");
+      if (status === "ahead" || status === "identical") {
+        if (mergeBaseSha !== ancestorSha) fail("GitHub compare merge base is not the requested ancestor", "GITHUB_API_FAILED");
+        if (status === "identical" && ancestorSha !== descendantSha || status === "ahead" && ancestorSha === descendantSha) fail("GitHub compare status is inconsistent with the requested commits", "GITHUB_API_FAILED");
+        return true;
+      }
+      if (status === "behind" || status === "diverged") return false;
+      fail("GitHub compare response has an invalid status", "GITHUB_API_FAILED");
+    },
     async getPullRequest(number) {
       if (!Number.isSafeInteger(Number(number)) || Number(number) < 1) fail("pull request number is invalid", "GITHUB_API_FAILED");
-      const result = ghResult(["pr", "view", String(number), "--repo", repoValue, "--json", "number,state,merged,mergeCommit,headRefName,baseRefName,headRefOid,baseRefOid,headRepository,baseRepository,body"], { root, env });
-      try {
-        const value = JSON.parse(result.stdout);
-        return {
-          ...value,
-          number: Number(value.number),
-          head: { ref: value.headRefName, sha: value.headRefOid, repo: { full_name: value.headRepository?.full_name ?? value.headRepository?.fullName ?? value.headRepository?.nameWithOwner } },
-          base: { ref: value.baseRefName, sha: value.baseRefOid, repo: { full_name: value.baseRepository?.full_name ?? value.baseRepository?.fullName ?? value.baseRepository?.nameWithOwner } },
-        };
-      } catch (error) { fail(`GitHub PR response was not valid JSON: ${error.message}`, "GITHUB_API_FAILED"); }
+      const integerNumber = Number(number);
+      const value = api(`/pulls/${encodeURIComponent(String(integerNumber))}`);
+      const normalized = normalizePullRequest(value, integerNumber);
+      return enrichMergedPullRequest(value, normalized, integerNumber);
     },
     async getBranchMetadata(branch) {
       if (!ALLOWED_BOT_BRANCHES.includes(branch)) fail("branch metadata read is outside the fixed policy", "BRANCH_POLICY");
@@ -991,10 +1096,16 @@ export function createGhAdapter({ repo = process.env.GITHUB_REPOSITORY, root = R
         : updateRefCas(branch, current, commitSha);
       return { ...commit, sha: commitSha, ref };
     },
-    async listPullRequests({ head = BOT_BRANCH, base = DEFAULT_BASE_BRANCH } = {}) {
+    async listPullRequests({ head = BOT_BRANCH, base = DEFAULT_BASE_BRANCH, state = "all" } = {}) {
       if (!ALLOWED_BOT_BRANCHES.includes(head) || base !== DEFAULT_BASE_BRANCH) fail("pull request query is outside the maintenance policy", "BRANCH_POLICY");
-      const result = ghResult(["pr", "list", "--repo", repoValue, "--state", "all", "--head", head, "--base", base, "--limit", "20", "--json", "number,state,headRefName,baseRefName,body,title"], { root, env });
-      try { return JSON.parse(result.stdout); } catch (error) { fail(`GitHub PR list returned invalid JSON: ${error.message}`, "GITHUB_API_FAILED"); }
+      if (!["open", "closed", "all"].includes(state)) fail("pull request query state is invalid", "BRANCH_POLICY");
+      const query = new URLSearchParams({ state, head: `${owner}:${head}`, base, per_page: "20", page: "1" });
+      const result = api(`/pulls?${query.toString()}`);
+      if (!Array.isArray(result)) fail("GitHub pull request list response is not an array", "GITHUB_API_FAILED");
+      return result.map((value) => {
+        const normalized = normalizePullRequest(value);
+        return enrichMergedPullRequest(value, normalized, normalized.number);
+      });
     },
     async createPullRequest({ title, body, head, base }) {
       if (!ALLOWED_BOT_BRANCHES.includes(head) || base !== DEFAULT_BASE_BRANCH) fail("pull request head/base is outside the maintenance policy", "BRANCH_POLICY");
