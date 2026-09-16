@@ -185,7 +185,7 @@ jobs:
               reviewCandidate,
             }
             writeFileSync(join(outputDir, 'observation-envelope.json'), `${JSON.stringify(envelope, null, 2)}\n`)
-            NODE
+          NODE
           fi
           exit 0
       - name: Upload bounded preparation diagnostics
@@ -215,7 +215,7 @@ jobs:
             if (typeof report.prepareAllowed !== 'boolean') throw new Error('release report prepareAllowed must be a boolean')
             console.log(`status=${report.status ?? 'INVALID_INPUT'}`)
             console.log(`prepare_allowed=${report.prepareAllowed ? 'true' : 'false'}`)
-            NODE
+          NODE
             then
               echo "release report preparation decision is missing or invalid" >&2
               exit 64
@@ -227,9 +227,6 @@ jobs:
               esac
             done < "$classification_file"
           fi
-          echo "observer_exit_code=$observer_status" >> "$GITHUB_OUTPUT"
-          echo "prep_exit_code=$prep_exit_code" >> "$GITHUB_OUTPUT"
-          echo "prep_status=$prep_status" >> "$GITHUB_OUTPUT"
           case "$prepare_allowed" in
             true|false) ;;
             *)
@@ -237,7 +234,12 @@ jobs:
               exit 64
               ;;
           esac
-          echo "prepare_allowed=$prepare_allowed" >> "$GITHUB_OUTPUT"
+          {
+            echo "observer_exit_code=$observer_status"
+            echo "prep_exit_code=$prep_exit_code"
+            echo "prep_status=$prep_status"
+            echo "prepare_allowed=$prepare_allowed"
+          } >> "$GITHUB_OUTPUT"
           if [ "$observer_status" != 0 ] && [ "$observer_status" != 2 ] && [ "$observer_status" != 3 ]; then exit "$observer_status"; fi
           if [ "$prep_exit_code" != 0 ]; then exit "$prep_exit_code"; fi
 
