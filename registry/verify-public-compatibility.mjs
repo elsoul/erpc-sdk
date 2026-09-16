@@ -28,6 +28,7 @@ import {
 } from "./dex-catalog.mjs";
 import { OUTPUTS as DEX_OUTPUTS, renderLanguage as renderDexLanguage } from "./generate-dex-catalog.mjs";
 import { OUTPUTS as RANKING_OUTPUTS, renderLanguage as renderRankingLanguage } from "./generate-token-rankings.mjs";
+import { normalizeRubyLockVersion, rubyLockVersion } from "./ruby-lockfile.mjs";
 import { validateRankingArtifact } from "./token-rankings.mjs";
 
 const MODULE_DIRECTORY = dirname(fileURLToPath(import.meta.url));
@@ -41,6 +42,7 @@ export const RELEASE_VERSION_PATHS = Object.freeze([
   "packages/python/pyproject.toml",
   "packages/python/src/erpc_sdk/__init__.py",
   "packages/ruby/lib/erpc_sdk/version.rb",
+  "packages/ruby/Gemfile.lock",
   "Cargo.lock",
   "CHANGELOG.md",
 ]);
@@ -253,6 +255,7 @@ function packageVersion(text, pathValue) {
   if (pathValue === "packages/python/pyproject.toml") return text.match(/^\[project\][\s\S]*?^version\s*=\s*"([^"]+)"/mu)?.[1] ?? null;
   if (pathValue === "packages/python/src/erpc_sdk/__init__.py") return text.match(/^__version__\s*=\s*"([^"]+)"$/mu)?.[1] ?? null;
   if (pathValue === "packages/ruby/lib/erpc_sdk/version.rb") return text.match(/^\s*VERSION\s*=\s*"([^"]+)"$/mu)?.[1] ?? null;
+  if (pathValue === "packages/ruby/Gemfile.lock") return rubyLockVersion(text);
   if (pathValue === "Cargo.lock") {
     const blocks = text.split(/^\[\[package\]\]\s*$/mu).slice(1).filter((block) => /^name\s*=\s*"erpc-sdk"\s*$/mu.test(block) && !/^source\s*=/mu.test(block));
     return blocks.length === 1 ? blocks[0].match(/^version\s*=\s*"([^"]+)"$/mu)?.[1] ?? null : null;
@@ -321,6 +324,7 @@ function normalizeVersionText(text, pathValue) {
     "packages/ruby/lib/erpc_sdk/version.rb": /(^\s*VERSION\s*=\s*")[^"]+("\s*$)/mu,
   };
   const pattern = patterns[pathValue];
+  if (pathValue === "packages/ruby/Gemfile.lock") return normalizeRubyLockVersion(text);
   if (!pattern) return null;
   const matches = [...text.matchAll(new RegExp(pattern.source, `${pattern.flags.replace("g", "")}g`))];
   if (matches.length !== 1) return null;
@@ -517,7 +521,7 @@ export function verifyPublicCompatibility({ root = REPOSITORY_ROOT, baseSha, hea
   if (!baseline.verified && releasedTag) reasons.push(baseline.reason);
   if (releasedTag && baseline.verified && publishedUnexpected.length > 0) reasons.push(`published baseline includes non-data changes: ${publishedUnexpected.join(", ")}`);
   if (releasedTag && baseline.verified && !publishedHistoryPreserved) reasons.push("published baseline public projections are not preserved at the candidate head");
-  if (releasePathsChanged.length > 0 && !releaseCheck.eligible) reasons.push("release edits are outside the narrow seven-file patch/version rule");
+  if (releasePathsChanged.length > 0 && !releaseCheck.eligible) reasons.push("release edits are outside the narrow eight-file patch/version rule");
   const manualReleaseRequired = dataCoreEligible && !autoPatchReleaseEligible;
   const status = autoPatchReleaseEligible
     ? "AUTO_PATCH_RELEASE_ELIGIBLE"

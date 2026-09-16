@@ -193,8 +193,9 @@ invalidate that default until the reviewed source basis is refreshed. This
 preparation rule does not publish a package or create a release tag.
 
 The `--changelog-file` option is accepted only for `CHANGELOG.md`; other paths
-are refused. The preparation allowlist is exactly the five package version sources,
-`Cargo.lock`'s unique source-less `erpc-sdk` version, and `CHANGELOG.md`:
+are refused. The preparation allowlist is exactly the five package version
+sources, the root `Cargo.lock` source-less `erpc-sdk` version, the local Ruby
+`Gemfile.lock` `erpc-sdk` version, and `CHANGELOG.md`:
 
 ```text
 packages/typescript/package.json
@@ -202,9 +203,14 @@ packages/rust/Cargo.toml
 packages/python/pyproject.toml
 packages/python/src/erpc_sdk/__init__.py
 packages/ruby/lib/erpc_sdk/version.rb
+packages/ruby/Gemfile.lock
 Cargo.lock
 CHANGELOG.md
 ```
+
+The Ruby lockfile is an anchored local-package version check. It does not
+permit dependency updates as part of release preparation, and Ruby's frozen
+install must continue to use the committed lock data.
 
 An optional `--report` output must stay inside the checkout, use an existing
 parent, and target a new file. Traversal, source overwrites, dangling links,

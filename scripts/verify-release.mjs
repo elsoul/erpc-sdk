@@ -1,5 +1,7 @@
 import { readFile } from 'node:fs/promises'
 
+import { rubyLockVersion } from '../registry/ruby-lockfile.mjs'
+
 const tag = process.argv[2]
 const root = new URL('../', import.meta.url)
 const packageJson = JSON.parse(
@@ -29,6 +31,10 @@ const rubyVersionSource = await readFile(
   new URL('packages/ruby/lib/erpc_sdk/version.rb', root),
   'utf8',
 )
+const rubyLockSource = await readFile(
+  new URL('packages/ruby/Gemfile.lock', root),
+  'utf8',
+)
 const cargoName = cargoManifest.match(/^name = "([^"]+)"$/m)?.[1]
 const cargoVersion = cargoManifest.match(/^version = "([^"]+)"$/m)?.[1]
 const pythonName = pythonManifest.match(/^name = "([^"]+)"$/m)?.[1]
@@ -39,6 +45,7 @@ const pythonRuntimeVersion = pythonVersionSource.match(
 const goModule = goManifest.match(/^module (\S+)$/m)?.[1]
 const rubyName = rubyManifest.match(/^\s*spec\.name = "([^"]+)"$/m)?.[1]
 const rubyVersion = rubyVersionSource.match(/^\s*VERSION = "([^"]+)"$/m)?.[1]
+const rubyLockVersionValue = rubyLockVersion(rubyLockSource)
 const expectedTag = `v${packageJson.version}`
 
 if (tag && tag !== expectedTag) {
@@ -63,11 +70,13 @@ if (
   cargoVersion !== packageJson.version ||
   pythonVersion !== packageJson.version ||
   pythonRuntimeVersion !== packageJson.version ||
-  rubyVersion !== packageJson.version
+  rubyVersion !== packageJson.version ||
+  rubyLockVersionValue !== packageJson.version
 ) {
   throw new Error(
     `Package versions differ: npm=${packageJson.version}, crates.io=${cargoVersion}, ` +
-      `PyPI=${pythonVersion}, Python runtime=${pythonRuntimeVersion}, RubyGems=${rubyVersion}`,
+      `PyPI=${pythonVersion}, Python runtime=${pythonRuntimeVersion}, RubyGems=${rubyVersion}, ` +
+      `Ruby Gemfile.lock=${rubyLockVersionValue}`,
   )
 }
 if (packageJson.publishConfig?.access !== 'public') {

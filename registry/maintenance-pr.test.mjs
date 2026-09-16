@@ -147,6 +147,7 @@ test("fresh manual 0.7.1 preparation is canonicalized and rejects an extra packa
   try {
     execFileSync("git", ["clone", "--local", "--no-hardlinks", process.cwd(), previewRoot], { stdio: "pipe" });
     cpSync("registry/release-prep.mjs", join(previewRoot, "registry/release-prep.mjs"));
+    cpSync("registry/ruby-lockfile.mjs", join(previewRoot, "registry/ruby-lockfile.mjs"));
     cpSync("registry/release-plan.json", join(previewRoot, "registry/release-plan.json"));
     cpSync("registry/observer-config.json", join(previewRoot, "registry/observer-config.json"));
     // The observer capture below uses the populated checkout's catalog. Keep
@@ -155,7 +156,7 @@ test("fresh manual 0.7.1 preparation is canonicalized and rejects an extra packa
     cpSync("registry/token-catalog.json", join(previewRoot, "registry/token-catalog.json"));
     const changelogPath = join(previewRoot, "CHANGELOG.md");
     writeFileSync(changelogPath, readFileSync(changelogPath, "utf8").replace("## Unreleased\n", "## Unreleased\n\n- Exercise a manual patch candidate.\n"));
-    execFileSync("git", ["add", "registry/release-prep.mjs", "registry/release-plan.json", "registry/observer-config.json", "registry/token-catalog.json", "CHANGELOG.md"], { cwd: previewRoot, stdio: "pipe" });
+    execFileSync("git", ["add", "registry/release-prep.mjs", "registry/ruby-lockfile.mjs", "registry/release-plan.json", "registry/observer-config.json", "registry/token-catalog.json", "CHANGELOG.md"], { cwd: previewRoot, stdio: "pipe" });
     execFileSync("git", ["-c", "user.name=Maintenance Test", "-c", "user.email=maintenance@example.invalid", "commit", "--quiet", "-m", "Add release preparation helpers"], { cwd: previewRoot, stdio: "pipe" });
     const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: previewRoot, encoding: "utf8" }).trim();
     const report = prepareRelease({ root: previewRoot, expectedHead: head, version: "0.7.1", releaseDate: "2026-09-15" });
@@ -164,7 +165,7 @@ test("fresh manual 0.7.1 preparation is canonicalized and rejects an extra packa
     const payload = buildMaintenancePayload({ observation: artifacts, releaseReport: report, baseSha: head, expectedSourceSha: head, catalogDigest: artifacts.receipts.catalogDigest, configDigest: artifacts.receipts.configDigest, trustedState });
     assert.equal(payload.branch, RELEASE_BRANCH);
     assert.deepEqual(payload.outputPaths, ["CHANGELOG.md", ...PACKAGE_VERSION_PATHS].sort());
-    assert.equal(payload.outputPaths.length, 7);
+    assert.equal(payload.outputPaths.length, 8);
     assert.equal(payload.baseline, null);
     assert.ok(payload.observation.receipts && payload.observation.findings && payload.observation.reviewCandidate);
     assert.equal(Object.hasOwn(payload.files, "registry/maintenance-findings.json"), false);
@@ -234,6 +235,102 @@ test("existing managed branch and PR are reused on semantic repeats", async () =
   const result = await writeMaintenancePr({ adapter, payload, frozenMainSha: BASE_SHA, dryRun: false });
   assert.equal(result.status, "REUSED");
   assert.equal(adapter.calls.some((call) => call[0] === "commitFiles" || call[0] === "updatePullRequest" || call[0] === "dispatchWorkflow"), false);
+});
+
+test("equal managed bytes are refreshed when their recorded base is stale", async () => {
+  const { payload } = await makePayload();
+  const oldBase = "d".repeat(40);
+  const existingPr = { number: 5, state: "open", head: { ref: payload.branch }, base: { ref: "main" } };
+  const adapter = makeAdapter({
+    branch: payload.branch,
+    branchSha: COMMIT_SHA,
+    metadata: {
+      managedBy: MANAGED_BY,
+      branch: payload.branch,
+      baseSha: oldBase,
+      parentSha: oldBase,
+      headSha: COMMIT_SHA,
+      semanticFingerprint: payload.semanticFingerprint,
+      outputDigest: payload.outputDigest,
+      actualOutputDigest: payload.outputDigest,
+      contentDigest: payload.contentDigest,
+      actualContentDigest: payload.contentDigest,
+      outputPaths: payload.outputPaths,
+    },
+    pullRequests: [existingPr],
+    changedPaths: payload.outputPaths,
+  });
+  const result = await writeMaintenancePr({ adapter, payload, frozenMainSha: BASE_SHA, dryRun: false, dispatch: false });
+  assert.equal(result.status, "UPDATED");
+  const commit = adapter.calls.find((call) => call[0] === "commitFiles");
+  assert.equal(commit[1].parentSha, BASE_SHA);
+  assert.equal(commit[1].expectedOldSha, COMMIT_SHA);
+});
+
+test("an authenticated legacy seven-file release branch is refreshed to the eight-file allowlist", async () => {
+  const { payload: observationPayload } = await makePayload();
+  const outputPaths = ["CHANGELOG.md", ...PACKAGE_VERSION_PATHS].sort();
+  const files = Object.fromEntries(outputPaths.map((pathValue) => [pathValue, `${pathValue}\n`]));
+  const payload = {
+    ...observationPayload,
+    kind: "erpc-sdk-weekly-maintenance-payload",
+    branch: RELEASE_BRANCH,
+    release: { status: "PREPARED_UNPUBLISHED", selectedVersion: "0.7.1" },
+    files,
+    outputPaths,
+    semanticFingerprint: "a".repeat(64),
+    outputDigest: "b".repeat(64),
+    contentDigest: "c".repeat(64),
+    actionRequired: true,
+  };
+  const legacyPaths = outputPaths.filter((pathValue) => pathValue !== "packages/ruby/Gemfile.lock");
+  const oldBase = "d".repeat(40);
+  const existingPr = { number: 6, state: "open", head: { ref: RELEASE_BRANCH }, base: { ref: "main" } };
+  const oldMetadata = {
+    managedBy: MANAGED_BY,
+    branch: RELEASE_BRANCH,
+    baseSha: oldBase,
+    parentSha: oldBase,
+    headSha: COMMIT_SHA,
+    semanticFingerprint: "d".repeat(64),
+    outputDigest: "e".repeat(64),
+    actualOutputDigest: "e".repeat(64),
+    contentDigest: "f".repeat(64),
+    actualContentDigest: "f".repeat(64),
+    outputPaths: legacyPaths,
+  };
+  const adapter = makeAdapter({
+    branch: RELEASE_BRANCH,
+    branchSha: COMMIT_SHA,
+    metadata: oldMetadata,
+    pullRequests: [existingPr],
+    changedPaths: legacyPaths,
+  });
+  const result = await writeMaintenancePr({ adapter, payload, frozenMainSha: BASE_SHA, dryRun: false, dispatch: false });
+  assert.equal(result.status, "UPDATED");
+  const commit = adapter.calls.find((call) => call[0] === "commitFiles");
+  assert.equal(commit[1].expectedOldSha, COMMIT_SHA);
+  assert.equal(commit[1].parentSha, BASE_SHA);
+  assert.equal(commit[1].baseSha, BASE_SHA);
+  assert.deepEqual(Object.keys(commit[1].files).sort(), outputPaths);
+  assert.deepEqual(adapter.state.metadata.outputPaths, outputPaths);
+  assert.equal(result.pullRequest.number, existingPr.number);
+  const update = adapter.calls.find((call) => call[0] === "updatePullRequest");
+  assert.equal(update[1], existingPr.number);
+  assert.equal(update[2].head, RELEASE_BRANCH);
+  assert.equal(update[2].base, "main");
+  assert.equal(adapter.calls.some((call) => call[0] === "createPullRequest"), false);
+
+  const tampered = makeAdapter({
+    branch: RELEASE_BRANCH,
+    branchSha: COMMIT_SHA,
+    metadata: { ...oldMetadata, actualContentDigest: "0".repeat(64) },
+    pullRequests: [existingPr],
+    changedPaths: legacyPaths,
+  });
+  await assert.rejects(() => writeMaintenancePr({ adapter: tampered, payload, frozenMainSha: BASE_SHA, dryRun: false, dispatch: false }), { code: "HUMAN_BRANCH_EDIT" });
+  assert.equal(tampered.state.branchSha, COMMIT_SHA);
+  assert.equal(tampered.calls.some((call) => ["commitFiles", "updatePullRequest", "createPullRequest"].includes(call[0])), false);
 });
 
 test("dry-run never dispatches a matching open candidate", async () => {
