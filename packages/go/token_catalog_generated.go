@@ -60,7 +60,7 @@ func tokenString(value string) *string { copied := value; return &copied }
 
 const TOKEN_CATALOG_VERSION = "1.0.0"
 const TOKEN_CATALOG_AS_OF_DATE = "2026-09-15"
-const TOKEN_CATALOG_CONTENT_DIGEST = "5a7ed7f57a8cfaed87c46512586da8123e94fae80f1ce18ebb3861ccb95a9f70"
+const TOKEN_CATALOG_CONTENT_DIGEST = "28318f4f6a6bc2cdeef51368eeb17c86685c6f12d1723b0b4dd27f7e54d7235d"
 const TokenEthereumChainID TokenChainID = "eip155:1"
 const TokenSolanaChainID TokenChainID = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
 const TokenAvalancheCChainID TokenChainID = "eip155:43114"
@@ -232,11 +232,31 @@ func TokenAssets() []TokenAsset {
 			StableCurrency: nil, UnderlyingAssetID: nil, EconomicReferenceAssetID: nil,
 		},
 		{
+			AssetID: "discovered-token-054d80a64e1f36a756129763ca2f1e7a140b50b04c83876ff01dd5fd497a74c5", Name: "Unclassified token at 0x0f5d2fb29fb7d3cfee444a200298f468908cc942", RepresentationKind: TokenRepresentationKind("unclassified"),
+			StableCurrency: nil, UnderlyingAssetID: nil, EconomicReferenceAssetID: nil,
+		},
+		{
 			AssetID: "discovered-token-0a7f98c8752f15ee02ce0d801f25df8ff78864a1d70aff7e204f7bdb3f8a0692", Name: "Unclassified token at 0x49d5c2bdffac6ce2bfdb6640f4f80f226bc10bab", RepresentationKind: TokenRepresentationKind("unclassified"),
 			StableCurrency: nil, UnderlyingAssetID: nil, EconomicReferenceAssetID: nil,
 		},
 		{
+			AssetID: "discovered-token-1847342426b765add3c8b4feb724c6b15121f25097cb7917c967c285ca77e804", Name: "Unclassified token at 0x02e955e93055e5a9d7fe6e9ee65126b321acef76", RepresentationKind: TokenRepresentationKind("unclassified"),
+			StableCurrency: nil, UnderlyingAssetID: nil, EconomicReferenceAssetID: nil,
+		},
+		{
 			AssetID: "discovered-token-288036a90ee0fa72a2751a78a6934cc6ced9e16de91c97ae8e109e2ee6189bc5", Name: "Unclassified token at 0xc7198437980c041c805a1edcba50c1ce5db95118", RepresentationKind: TokenRepresentationKind("unclassified"),
+			StableCurrency: nil, UnderlyingAssetID: nil, EconomicReferenceAssetID: nil,
+		},
+		{
+			AssetID: "discovered-token-323d07c442f0d089197ae7eea9b3ebb829910177c5b780161a7623aaed5e4371", Name: "Unclassified token at 0x3ceeb67533e494c0dc6be579585e3c62916062e0", RepresentationKind: TokenRepresentationKind("unclassified"),
+			StableCurrency: nil, UnderlyingAssetID: nil, EconomicReferenceAssetID: nil,
+		},
+		{
+			AssetID: "discovered-token-611597bd13daa43d01a23caa9cca6a98797c64be7fb5b2677370ddbcdeaf01ec", Name: "Unclassified token at 0x2b591e99afe9f32eaa6214f7b7629768c40eeb39", RepresentationKind: TokenRepresentationKind("unclassified"),
+			StableCurrency: nil, UnderlyingAssetID: nil, EconomicReferenceAssetID: nil,
+		},
+		{
+			AssetID: "discovered-token-69519fd08e31445cad84b0c17a5346b7ee9c5692e270602af9308ca6d8943bb6", Name: "Unclassified token at 0x0d8775f648430679a709e98d2b0cb6250d2887ef", RepresentationKind: TokenRepresentationKind("unclassified"),
 			StableCurrency: nil, UnderlyingAssetID: nil, EconomicReferenceAssetID: nil,
 		},
 		{
@@ -617,16 +637,46 @@ func TokenDeployments() []TokenDeployment {
 			Address: tokenString("JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN"), Status: TokenStatus("active"), ReplacedByDeploymentID: nil,
 		},
 		{
+			DeploymentID: "discovered-token-054d80a64e1f36a756129763ca2f1e7a140b50b04c83876ff01dd5fd497a74c5", AssetID: "discovered-token-054d80a64e1f36a756129763ca2f1e7a140b50b04c83876ff01dd5fd497a74c5", Name: "Unclassified token at 0x0f5d2fb29fb7d3cfee444a200298f468908cc942", RepresentationKind: TokenRepresentationKind("unclassified"),
+			StableCurrency: nil, UnderlyingAssetID: nil, EconomicReferenceAssetID: nil,
+			ChainID: TokenChainID("eip155:1"), Symbol: "0x0f5d2fb29fb7d3cfee444a200298f468908cc942", Decimals: 18, Standard: TokenStandard("erc20"),
+			Address: tokenString("0x0f5d2fb29fb7d3cfee444a200298f468908cc942"), Status: TokenStatus("active"), ReplacedByDeploymentID: nil,
+		},
+		{
 			DeploymentID: "discovered-token-0a7f98c8752f15ee02ce0d801f25df8ff78864a1d70aff7e204f7bdb3f8a0692", AssetID: "discovered-token-0a7f98c8752f15ee02ce0d801f25df8ff78864a1d70aff7e204f7bdb3f8a0692", Name: "Unclassified token at 0x49d5c2bdffac6ce2bfdb6640f4f80f226bc10bab", RepresentationKind: TokenRepresentationKind("unclassified"),
 			StableCurrency: nil, UnderlyingAssetID: nil, EconomicReferenceAssetID: nil,
 			ChainID: TokenChainID("eip155:43114"), Symbol: "0x49d5c2bdffac6ce2bfdb6640f4f80f226bc10bab", Decimals: 18, Standard: TokenStandard("erc20"),
 			Address: tokenString("0x49d5c2bdffac6ce2bfdb6640f4f80f226bc10bab"), Status: TokenStatus("active"), ReplacedByDeploymentID: nil,
 		},
 		{
+			DeploymentID: "discovered-token-1847342426b765add3c8b4feb724c6b15121f25097cb7917c967c285ca77e804", AssetID: "discovered-token-1847342426b765add3c8b4feb724c6b15121f25097cb7917c967c285ca77e804", Name: "Unclassified token at 0x02e955e93055e5a9d7fe6e9ee65126b321acef76", RepresentationKind: TokenRepresentationKind("unclassified"),
+			StableCurrency: nil, UnderlyingAssetID: nil, EconomicReferenceAssetID: nil,
+			ChainID: TokenChainID("eip155:43114"), Symbol: "0x02e955e93055e5a9d7fe6e9ee65126b321acef76", Decimals: 9, Standard: TokenStandard("erc20"),
+			Address: tokenString("0x02e955e93055e5a9d7fe6e9ee65126b321acef76"), Status: TokenStatus("active"), ReplacedByDeploymentID: nil,
+		},
+		{
 			DeploymentID: "discovered-token-288036a90ee0fa72a2751a78a6934cc6ced9e16de91c97ae8e109e2ee6189bc5", AssetID: "discovered-token-288036a90ee0fa72a2751a78a6934cc6ced9e16de91c97ae8e109e2ee6189bc5", Name: "Unclassified token at 0xc7198437980c041c805a1edcba50c1ce5db95118", RepresentationKind: TokenRepresentationKind("unclassified"),
 			StableCurrency: nil, UnderlyingAssetID: nil, EconomicReferenceAssetID: nil,
 			ChainID: TokenChainID("eip155:43114"), Symbol: "0xc7198437980c041c805a1edcba50c1ce5db95118", Decimals: 6, Standard: TokenStandard("erc20"),
 			Address: tokenString("0xc7198437980c041c805a1edcba50c1ce5db95118"), Status: TokenStatus("active"), ReplacedByDeploymentID: nil,
+		},
+		{
+			DeploymentID: "discovered-token-323d07c442f0d089197ae7eea9b3ebb829910177c5b780161a7623aaed5e4371", AssetID: "discovered-token-323d07c442f0d089197ae7eea9b3ebb829910177c5b780161a7623aaed5e4371", Name: "Unclassified token at 0x3ceeb67533e494c0dc6be579585e3c62916062e0", RepresentationKind: TokenRepresentationKind("unclassified"),
+			StableCurrency: nil, UnderlyingAssetID: nil, EconomicReferenceAssetID: nil,
+			ChainID: TokenChainID("eip155:43114"), Symbol: "0x3ceeb67533e494c0dc6be579585e3c62916062e0", Decimals: 18, Standard: TokenStandard("erc20"),
+			Address: tokenString("0x3ceeb67533e494c0dc6be579585e3c62916062e0"), Status: TokenStatus("active"), ReplacedByDeploymentID: nil,
+		},
+		{
+			DeploymentID: "discovered-token-611597bd13daa43d01a23caa9cca6a98797c64be7fb5b2677370ddbcdeaf01ec", AssetID: "discovered-token-611597bd13daa43d01a23caa9cca6a98797c64be7fb5b2677370ddbcdeaf01ec", Name: "Unclassified token at 0x2b591e99afe9f32eaa6214f7b7629768c40eeb39", RepresentationKind: TokenRepresentationKind("unclassified"),
+			StableCurrency: nil, UnderlyingAssetID: nil, EconomicReferenceAssetID: nil,
+			ChainID: TokenChainID("eip155:1"), Symbol: "0x2b591e99afe9f32eaa6214f7b7629768c40eeb39", Decimals: 8, Standard: TokenStandard("erc20"),
+			Address: tokenString("0x2b591e99afe9f32eaa6214f7b7629768c40eeb39"), Status: TokenStatus("active"), ReplacedByDeploymentID: nil,
+		},
+		{
+			DeploymentID: "discovered-token-69519fd08e31445cad84b0c17a5346b7ee9c5692e270602af9308ca6d8943bb6", AssetID: "discovered-token-69519fd08e31445cad84b0c17a5346b7ee9c5692e270602af9308ca6d8943bb6", Name: "Unclassified token at 0x0d8775f648430679a709e98d2b0cb6250d2887ef", RepresentationKind: TokenRepresentationKind("unclassified"),
+			StableCurrency: nil, UnderlyingAssetID: nil, EconomicReferenceAssetID: nil,
+			ChainID: TokenChainID("eip155:1"), Symbol: "0x0d8775f648430679a709e98d2b0cb6250d2887ef", Decimals: 18, Standard: TokenStandard("erc20"),
+			Address: tokenString("0x0d8775f648430679a709e98d2b0cb6250d2887ef"), Status: TokenStatus("active"), ReplacedByDeploymentID: nil,
 		},
 		{
 			DeploymentID: "discovered-token-9f9965cc065c9becf8d2cb58071524baafea37d27fda9bf683a93ea85f2e653d", AssetID: "discovered-token-9f9965cc065c9becf8d2cb58071524baafea37d27fda9bf683a93ea85f2e653d", Name: "Unclassified token at 0x50b7545627a5162f82a992c33b87adc75187b218", RepresentationKind: TokenRepresentationKind("unclassified"),
@@ -654,7 +704,9 @@ func TokenAliases() []TokenAlias {
 		{Namespace: "avalancheC", Name: "AUSD", DeploymentID: TokenAvalancheCAUSD},
 		{Namespace: "avalancheC", Name: "AVAX", DeploymentID: TokenAvalancheCAVAX},
 		{Namespace: "avalancheC", Name: "DISCOVERED_0A7F98C8752F15EE", DeploymentID: TokenAvalancheCDISCOVERED_0A7F98C8752F15EE},
+		{Namespace: "avalancheC", Name: "DISCOVERED_1847342426B765AD", DeploymentID: TokenAvalancheCDISCOVERED_1847342426B765AD},
 		{Namespace: "avalancheC", Name: "DISCOVERED_288036A90EE0FA72", DeploymentID: TokenAvalancheCDISCOVERED_288036A90EE0FA72},
+		{Namespace: "avalancheC", Name: "DISCOVERED_323D07C442F0D089", DeploymentID: TokenAvalancheCDISCOVERED_323D07C442F0D089},
 		{Namespace: "avalancheC", Name: "DISCOVERED_9F9965CC065C9BEC", DeploymentID: TokenAvalancheCDISCOVERED_9F9965CC065C9BEC},
 		{Namespace: "avalancheC", Name: "EURC", DeploymentID: TokenAvalancheCEURC},
 		{Namespace: "avalancheC", Name: "EUROP", DeploymentID: TokenAvalancheCEUROP},
@@ -669,6 +721,9 @@ func TokenAliases() []TokenAlias {
 		{Namespace: "ethereum", Name: "AAVE", DeploymentID: TokenEthereumAAVE},
 		{Namespace: "ethereum", Name: "AUSD", DeploymentID: TokenEthereumAUSD},
 		{Namespace: "ethereum", Name: "DAI", DeploymentID: TokenEthereumDAI},
+		{Namespace: "ethereum", Name: "DISCOVERED_054D80A64E1F36A7", DeploymentID: TokenEthereumDISCOVERED_054D80A64E1F36A7},
+		{Namespace: "ethereum", Name: "DISCOVERED_611597BD13DAA43D", DeploymentID: TokenEthereumDISCOVERED_611597BD13DAA43D},
+		{Namespace: "ethereum", Name: "DISCOVERED_69519FD08E31445C", DeploymentID: TokenEthereumDISCOVERED_69519FD08E31445C},
 		{Namespace: "ethereum", Name: "DISCOVERED_B475569F6A15E97A", DeploymentID: TokenEthereumDISCOVERED_B475569F6A15E97A},
 		{Namespace: "ethereum", Name: "DISCOVERED_E375086901067FE3", DeploymentID: TokenEthereumDISCOVERED_E375086901067FE3},
 		{Namespace: "ethereum", Name: "ETH", DeploymentID: TokenEthereumETH},
@@ -723,7 +778,9 @@ type TokenAvalancheCAliases struct {
 	AUSD                        string
 	AVAX                        string
 	DISCOVERED_0A7F98C8752F15EE string
+	DISCOVERED_1847342426B765AD string
 	DISCOVERED_288036A90EE0FA72 string
+	DISCOVERED_323D07C442F0D089 string
 	DISCOVERED_9F9965CC065C9BEC string
 	EURC                        string
 	EUROP                       string
@@ -741,6 +798,9 @@ type TokenEthereumAliases struct {
 	AAVE                        string
 	AUSD                        string
 	DAI                         string
+	DISCOVERED_054D80A64E1F36A7 string
+	DISCOVERED_611597BD13DAA43D string
+	DISCOVERED_69519FD08E31445C string
 	DISCOVERED_B475569F6A15E97A string
 	DISCOVERED_E375086901067FE3 string
 	ETH                         string
@@ -805,6 +865,9 @@ func TokenAliasIDs() TokenAliasGroups {
 			AAVE:                        TokenEthereumAAVE,
 			AUSD:                        TokenEthereumAUSD,
 			DAI:                         TokenEthereumDAI,
+			DISCOVERED_054D80A64E1F36A7: TokenEthereumDISCOVERED_054D80A64E1F36A7,
+			DISCOVERED_611597BD13DAA43D: TokenEthereumDISCOVERED_611597BD13DAA43D,
+			DISCOVERED_69519FD08E31445C: TokenEthereumDISCOVERED_69519FD08E31445C,
 			DISCOVERED_B475569F6A15E97A: TokenEthereumDISCOVERED_B475569F6A15E97A,
 			DISCOVERED_E375086901067FE3: TokenEthereumDISCOVERED_E375086901067FE3,
 			ETH:                         TokenEthereumETH,
@@ -859,7 +922,9 @@ func TokenAliasIDs() TokenAliasGroups {
 			AUSD:                        TokenAvalancheCAUSD,
 			AVAX:                        TokenAvalancheCAVAX,
 			DISCOVERED_0A7F98C8752F15EE: TokenAvalancheCDISCOVERED_0A7F98C8752F15EE,
+			DISCOVERED_1847342426B765AD: TokenAvalancheCDISCOVERED_1847342426B765AD,
 			DISCOVERED_288036A90EE0FA72: TokenAvalancheCDISCOVERED_288036A90EE0FA72,
+			DISCOVERED_323D07C442F0D089: TokenAvalancheCDISCOVERED_323D07C442F0D089,
 			DISCOVERED_9F9965CC065C9BEC: TokenAvalancheCDISCOVERED_9F9965CC065C9BEC,
 			EURC:                        TokenAvalancheCEURC,
 			EUROP:                       TokenAvalancheCEUROP,
@@ -878,7 +943,9 @@ func TokenAliasIDs() TokenAliasGroups {
 const TokenAvalancheCAUSD = "deployment-0035"
 const TokenAvalancheCAVAX = "deployment-0003"
 const TokenAvalancheCDISCOVERED_0A7F98C8752F15EE = "discovered-token-0a7f98c8752f15ee02ce0d801f25df8ff78864a1d70aff7e204f7bdb3f8a0692"
+const TokenAvalancheCDISCOVERED_1847342426B765AD = "discovered-token-1847342426b765add3c8b4feb724c6b15121f25097cb7917c967c285ca77e804"
 const TokenAvalancheCDISCOVERED_288036A90EE0FA72 = "discovered-token-288036a90ee0fa72a2751a78a6934cc6ced9e16de91c97ae8e109e2ee6189bc5"
+const TokenAvalancheCDISCOVERED_323D07C442F0D089 = "discovered-token-323d07c442f0d089197ae7eea9b3ebb829910177c5b780161a7623aaed5e4371"
 const TokenAvalancheCDISCOVERED_9F9965CC065C9BEC = "discovered-token-9f9965cc065c9becf8d2cb58071524baafea37d27fda9bf683a93ea85f2e653d"
 const TokenAvalancheCEURC = "deployment-0012"
 const TokenAvalancheCEUROP = "deployment-0045"
@@ -893,6 +960,9 @@ const TokenAvalancheCWAVAX = "deployment-0004"
 const TokenEthereumAAVE = "deployment-0056"
 const TokenEthereumAUSD = "deployment-0034"
 const TokenEthereumDAI = "deployment-0019"
+const TokenEthereumDISCOVERED_054D80A64E1F36A7 = "discovered-token-054d80a64e1f36a756129763ca2f1e7a140b50b04c83876ff01dd5fd497a74c5"
+const TokenEthereumDISCOVERED_611597BD13DAA43D = "discovered-token-611597bd13daa43d01a23caa9cca6a98797c64be7fb5b2677370ddbcdeaf01ec"
+const TokenEthereumDISCOVERED_69519FD08E31445C = "discovered-token-69519fd08e31445cad84b0c17a5346b7ee9c5692e270602af9308ca6d8943bb6"
 const TokenEthereumDISCOVERED_B475569F6A15E97A = "discovered-token-b475569f6a15e97ac04e531dd813e9dcc902521c098d60d6ae4d21d53baf1395"
 const TokenEthereumDISCOVERED_E375086901067FE3 = "discovered-token-e375086901067fe3de023bcdc70f1bafca798e1719ed7e676a98f57de3350a07"
 const TokenEthereumETH = "deployment-0001"
