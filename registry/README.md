@@ -28,7 +28,7 @@ source-checkout exports yet.
 
 `token-catalog.json` is the canonical source. Its asset and deployment records retain `evidence` and `asOfDate` for source review. Generated SDK records contain the runtime fields below and omit per-record provenance; only the catalog-wide `asOfDate` and `contentDigest` are emitted as metadata.
 
-The current local candidate contains 44 assets, 65 token deployments, 65
+The initial reviewed 2026-09-16 local candidate contains 44 assets, 65 token deployments, 65
 aliases, 12 pool definitions, and 16 DEX aliases. Its token digest is
 `5a7ed7f57a8cfaed87c46512586da8123e94fae80f1ce18ebb3861ccb95a9f70` and its
 DEX digest is
@@ -63,8 +63,8 @@ its rows use reduced non-negative integer rationals in native atomic units, so
 ranking never depends on floating-point arithmetic. `listTokenRankings(chainId)`
 is offline and returns an immutable empty list for an unknown or empty chain.
 The source snapshot's `status`, `metric`, `asOf`, `coverage`, and digest are the
-authority for what has actually been configured. The current snapshot is
-`partial`, observed on 2026-09-16, contains 11 ranked records and 54 explicit
+authority for what has actually been configured. The initial reviewed
+2026-09-16 snapshot is `partial`, contains 11 ranked records and 54 explicit
 unranked records, and has digest
 `f8ae479007fa782995aaaf6aa1c414ba1b6a10a92b7abe481b055293a91ac01c`.
 

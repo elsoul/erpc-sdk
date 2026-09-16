@@ -190,9 +190,10 @@ rights-gated and disabled by default.
 
 Ranking lookups use exact chain IDs and read no network, vendor API, current
 time, or client configuration. Generated records and metadata are immutable in
-each SDK. The current source snapshot is partial, with 11 ranking records and
+each SDK. The initial reviewed 2026-09-16 source snapshot is partial, with 11 ranking records and
 54 explicit unranked rows; its metadata is the source of truth for metric,
-observation time, status, coverage, and digest. The current ranking digest is
+observation time, status, coverage, and digest. The initial reviewed snapshot
+digest is
 `f8ae479007fa782995aaaf6aa1c414ba1b6a10a92b7abe481b055293a91ac01c`.
 See [`registry/token-rankings.json`](registry/token-rankings.json),
 [`registry/token-rankings.mjs`](registry/token-rankings.mjs), and the package
@@ -209,9 +210,10 @@ observed tokens use unclassified address-only names and symbols, with
 `stableCurrency`, `underlyingAssetId`, and `economicReferenceAssetId` set to
 `null` until reviewed.
 
-Admission is capped at 8 tokens and 8 pools per run. The 2026-09-16 local
-source snapshot contains 44 assets, 65 token deployments, and 12 pools; the
-local review admitted 5 tokens and 8 pools with partial three-chain coverage.
+Admission is capped at 8 tokens and 8 pools per run. The initial reviewed
+2026-09-16 local source snapshot contains 44 assets, 65 token deployments, and
+12 pools; that local review admitted 5 tokens and 8 pools with partial
+three-chain coverage.
 Direct reviewed native pools use WETH, WAVAX, or classic WSOL and native liquidity floors of 10 ETH,
 100 AVAX, or 100 SOL in chain-native atomic units. Discovery state is bounded
 and resumable; cap- or dependency-deferred candidates are revalidated from

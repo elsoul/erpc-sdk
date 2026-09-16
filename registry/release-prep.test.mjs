@@ -200,7 +200,7 @@ test("Unreleased notes are preserved while the approved section is added", async
 
 test("catalog runtime history is PATCH_READY and preparation bumps semver", async () => {
   await withWorktree(async (root) => {
-    const catalog = JSON.parse(JSON.stringify(CATALOG));
+    const catalog = historicalTokenCatalog(root);
     catalog.manualAsOf = "2026-09-16";
     catalog.contentDigest = computeDigest(catalog);
     validateCatalog(catalog);
@@ -376,6 +376,7 @@ test("historical DEX catalog absence is distinct from malformed released data", 
   try {
     const dexPath = path.join(root, "registry/dex-catalog.json");
     writeFileSync(path.join(root, "registry/token-catalog.json"), readFileSync(path.join(REPOSITORY_ROOT, "registry/token-catalog.json"), "utf8"));
+    writeFileSync(path.join(root, "registry/token-rankings.json"), readFileSync(path.join(REPOSITORY_ROOT, "registry/token-rankings.json"), "utf8"));
     writeFileSync(dexPath, "{ malformed historical DEX catalog\n");
     const malformedHead = commitAll(root, "malformed historical DEX catalog");
     execFileSync("git", ["-C", root, "tag", "v0.7.0", malformedHead], { encoding: "utf8", stdio: "ignore" });

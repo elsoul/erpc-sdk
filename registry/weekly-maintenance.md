@@ -51,7 +51,7 @@ reported 55 matching observations, two Avalanche symbol differences, three
 RPC errors, and 35 of 41 sources usable. Its result was partial and had no
 eligible source-baseline bootstrap.
 
-The latest source-checkout review on 2026-09-16 used frozen commit
+The initial reviewed source-checkout snapshot on 2026-09-16 used frozen commit
 `5ef97abd66f40a2db77a4f85595cf64d1032f7c8` and local execution provenance. It
 admitted 5 tokens and 8 pools, produced 11 ranking records, and retained 54
 explicit unranked rows. The candidate digests are token

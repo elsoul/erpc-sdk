@@ -20,17 +20,17 @@
     }
   ],
   "approvedNotes": [
-    "Add an offline token catalog to all five SDKs, covering 44 assets and 65 deployments across Ethereum, Solana, and Avalanche C-Chain, including five address-only unclassified tokens.",
+    "Initial reviewed 2026-09-16 local snapshot: Add an offline token catalog to all five SDKs, covering 44 assets and 65 deployments across Ethereum, Solana, and Avalanche C-Chain, including five address-only unclassified tokens.",
     "Add shared asset and deployment lookups, chain and currency filters, address and symbol searches, alias constants, and lifecycle metadata backed by deterministic generated data.",
     "Keep RPC-only, local exact-input quotes for the two reviewed seed EVM pairs: Ethereum Uniswap V2 WETH/USDC and Avalanche C-Chain LFJ Joe V1 WAVAX/USDC; newly discovered pools do not enable quote support.",
-    "Add a shared offline ranking snapshot with 11 rows and partial onchain-total-supply-value-native coverage, using total supply times direct native pool price rather than circulating market cap; add bounded RPC-only discovery with eight-token/eight-pool caps and fresh revalidation.",
+    "Initial reviewed 2026-09-16 local snapshot: Add a shared offline ranking snapshot with 11 rows and partial onchain-total-supply-value-native coverage, using total supply times direct native pool price rather than circulating market cap; add bounded RPC-only discovery with eight-token/eight-pool caps and fresh revalidation.",
     "Run daily maintenance PRs, hourly 32-pool rotation, and weekly guarded release preparation with opt-in exact-CI/protected-main gates; preserve Rust num-bigint 0.5.1 and rustls 0.23.45 as approved changes."
   ],
   "notes": [
-    "Add an offline token catalog to all five SDKs, covering 44 assets and 65 deployments across Ethereum, Solana, and Avalanche C-Chain, including five address-only unclassified tokens.",
+    "Initial reviewed 2026-09-16 local snapshot: Add an offline token catalog to all five SDKs, covering 44 assets and 65 deployments across Ethereum, Solana, and Avalanche C-Chain, including five address-only unclassified tokens.",
     "Add shared asset and deployment lookups, chain and currency filters, address and symbol searches, alias constants, and lifecycle metadata backed by deterministic generated data.",
     "Keep RPC-only, local exact-input quotes for the two reviewed seed EVM pairs: Ethereum Uniswap V2 WETH/USDC and Avalanche C-Chain LFJ Joe V1 WAVAX/USDC; newly discovered pools do not enable quote support.",
-    "Add a shared offline ranking snapshot with 11 rows and partial onchain-total-supply-value-native coverage, using total supply times direct native pool price rather than circulating market cap; add bounded RPC-only discovery with eight-token/eight-pool caps and fresh revalidation.",
+    "Initial reviewed 2026-09-16 local snapshot: Add a shared offline ranking snapshot with 11 rows and partial onchain-total-supply-value-native coverage, using total supply times direct native pool price rather than circulating market cap; add bounded RPC-only discovery with eight-token/eight-pool caps and fresh revalidation.",
     "Run daily maintenance PRs, hourly 32-pool rotation, and weekly guarded release preparation with opt-in exact-CI/protected-main gates; preserve Rust num-bigint 0.5.1 and rustls 0.23.45 as approved changes."
   ],
   "packageChangeProvenanceGuard": {
