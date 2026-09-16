@@ -16,6 +16,7 @@ module ERPC
       "SWAP_UNKNOWN_TOKEN" => "Swap token is unknown",
       "SWAP_TOKEN_NOT_ACTIVE" => "Swap token is not active",
       "SWAP_UNSUPPORTED_TOKEN_STANDARD" => "Swap token standard is unsupported",
+      "SWAP_UNSUPPORTED_TOKEN" => "Swap token is unsupported for the selected pool",
       "SWAP_POOL_TOKEN_MISMATCH" => "Swap pool tokens do not match the request",
       "SWAP_UNSUPPORTED_ADAPTER" => "Swap adapter is unsupported",
       "SWAP_PROGRAM_MISMATCH" => "Swap program does not match the selected records",
@@ -35,6 +36,46 @@ module ERPC
   # Configured RPC-backed exact-input quote client.
   class SwapClient
     SUPPORTED_QUOTE_ADAPTER = "evm-constant-product-v2"
+    # Quote eligibility is a handwritten review boundary. Catalog growth may
+    # add lookup or ranking records without granting them RPC quote access.
+    SUPPORTED_QUOTE_CAPABILITIES = [
+      {
+        chain_id: "eip155:1",
+        dex_deployment_id: "dex-deployment-0001",
+        factory_address: "0x5c69bee701ef814a2b6a3edd4b1652cb9cc5aa6f",
+        pool_definition_id: "pool-0001",
+        pool_address: "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+        token0_deployment_id: "deployment-0008",
+        token0_address: "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+        token0_decimals: 6,
+        token0_standard: "erc20",
+        token1_deployment_id: "deployment-0002",
+        token1_address: "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+        token1_decimals: 18,
+        token1_standard: "erc20",
+        adapter_kind: SUPPORTED_QUOTE_ADAPTER,
+        fee_numerator: "3",
+        fee_denominator: "1000"
+      }.freeze,
+      {
+        chain_id: "eip155:43114",
+        dex_deployment_id: "dex-deployment-0002",
+        factory_address: "0x9ad6c38be94206ca50bb0d90783181662f0cfa10",
+        pool_definition_id: "pool-0002",
+        pool_address: "0xf4003f4efbe8691b60249e6afbd307abe7758adb",
+        token0_deployment_id: "deployment-0004",
+        token0_address: "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+        token0_decimals: 18,
+        token0_standard: "erc20",
+        token1_deployment_id: "deployment-0009",
+        token1_address: "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+        token1_decimals: 6,
+        token1_standard: "erc20",
+        adapter_kind: SUPPORTED_QUOTE_ADAPTER,
+        fee_numerator: "3",
+        fee_denominator: "1000"
+      }.freeze
+    ].freeze
     UINT256_MAX = (1 << 256) - 1
     UINT256_DECIMAL_MAX_LENGTH = 78
     UINT112_MAX = (1 << 112) - 1
@@ -132,6 +173,7 @@ module ERPC
     private_constant :REQUEST_KEY_ALIASES
     private_constant :FRESHNESS_KEY_ALIASES
     private_constant :REQUIRED_REQUEST_KEYS
+    private_constant :SUPPORTED_QUOTE_CAPABILITIES
     private_constant :NormalizedFreshness
     private_constant :NormalizedRequest
     private_constant :BlockHeader
@@ -238,6 +280,7 @@ module ERPC
         return domain_error("SWAP_UNSUPPORTED_ADAPTER")
       end
       return domain_error("SWAP_UNSUPPORTED_TOKEN_STANDARD") unless input.fetch(:standard) == "erc20" && output.fetch(:standard) == "erc20"
+      return domain_error("SWAP_UNSUPPORTED_TOKEN") unless supported_quote_capability?(pool, dex, input, output)
 
       NormalizedRequest.new(
         chain_id: chain_id,
@@ -292,6 +335,44 @@ module ERPC
 
     def known_chain_id?(chain_id)
       DexCatalog::KNOWN_CHAIN_IDS.include?(chain_id)
+    end
+
+    def supported_quote_capability?(pool, dex, input, output)
+      capability = SUPPORTED_QUOTE_CAPABILITIES.find do |value|
+        value.fetch(:pool_definition_id) == pool.fetch(:pool_definition_id)
+      end
+      return false unless capability
+
+      input_asset = TokenCatalog.get_token_asset(input.fetch(:asset_id))
+      output_asset = TokenCatalog.get_token_asset(output.fetch(:asset_id))
+      return false if [input_asset, output_asset].any? do |asset|
+        asset && asset.fetch(:representation_kind) == "unclassified"
+      end
+
+      matches_token = lambda do |token, deployment_key, address_key, decimals_key, standard_key|
+        token.fetch(:chain_id) == capability.fetch(:chain_id) &&
+          token.fetch(:deployment_id) == capability.fetch(deployment_key) &&
+          token.fetch(:address) == capability.fetch(address_key) &&
+          token.fetch(:decimals) == capability.fetch(decimals_key) &&
+          token.fetch(:standard) == capability.fetch(standard_key)
+      end
+
+      pool.fetch(:chain_id) == capability.fetch(:chain_id) &&
+        pool.fetch(:dex_deployment_id) == capability.fetch(:dex_deployment_id) &&
+        pool.fetch(:address) == capability.fetch(:pool_address) &&
+        pool.fetch(:token0_deployment_id) == capability.fetch(:token0_deployment_id) &&
+        pool.fetch(:token1_deployment_id) == capability.fetch(:token1_deployment_id) &&
+        dex.fetch(:chain_id) == capability.fetch(:chain_id) &&
+        dex.fetch(:dex_deployment_id) == capability.fetch(:dex_deployment_id) &&
+        dex.fetch(:program_address) == capability.fetch(:factory_address) &&
+        dex.fetch(:adapter_kind) == capability.fetch(:adapter_kind) &&
+        pool.fetch(:adapter).fetch(:kind) == capability.fetch(:adapter_kind) &&
+        pool.fetch(:adapter).fetch(:fee_numerator) == capability.fetch(:fee_numerator) &&
+        pool.fetch(:adapter).fetch(:fee_denominator) == capability.fetch(:fee_denominator) &&
+        (matches_token.call(input, :token0_deployment_id, :token0_address, :token0_decimals, :token0_standard) ||
+          matches_token.call(input, :token1_deployment_id, :token1_address, :token1_decimals, :token1_standard)) &&
+        (matches_token.call(output, :token0_deployment_id, :token0_address, :token0_decimals, :token0_standard) ||
+          matches_token.call(output, :token1_deployment_id, :token1_address, :token1_decimals, :token1_standard))
     end
 
     def opaque_id?(value)

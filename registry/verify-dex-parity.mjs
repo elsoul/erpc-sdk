@@ -59,6 +59,10 @@ const BEHAVIOR_KEYS = Object.freeze([
   "quote",
 ]);
 
+function resolveTokenCatalog(value) {
+  return value?.tokenCatalog ?? value ?? tokenCatalog;
+}
+
 function parityError(message) {
   const error = new Error(message);
   error.name = "DexParityError";
@@ -84,6 +88,23 @@ function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+/**
+ * Keep golden quote amounts, ABI vectors, and RPC traces fixture-backed while
+ * binding metadata rows to the catalogs used for the current verification.
+ * This lets data-only catalog growth change digests without rewriting quote
+ * fixtures.
+ */
+export function currentQuoteOutcome(entry, catalog = CATALOG, referencedTokenCatalog = tokenCatalog) {
+  referencedTokenCatalog = resolveTokenCatalog(referencedTokenCatalog);
+  if (entry?.outcome === undefined) return undefined;
+  const outcome = clone(entry.outcome);
+  if (isRecord(outcome?.value)) {
+    if (Object.hasOwn(outcome.value, "tokenCatalogDigest")) outcome.value.tokenCatalogDigest = referencedTokenCatalog.contentDigest;
+    if (Object.hasOwn(outcome.value, "dexCatalogDigest")) outcome.value.dexCatalogDigest = catalog.contentDigest;
+  }
+  return outcome;
+}
+
 function stableValue(value) {
   if (Array.isArray(value)) return value.map(stableValue);
   if (isRecord(value)) return Object.fromEntries(Object.keys(value).sort().map((key) => [key, stableValue(value[key])]));
@@ -106,8 +127,9 @@ function sortBehavior(value) {
   return Object.fromEntries(BEHAVIOR_KEYS.map((key) => [key, sortRecords(value[key], stableJson)]));
 }
 
-function runtimeRecords(catalog = CATALOG) {
-  const model = dataModel(catalog);
+function runtimeRecords(catalog = CATALOG, referencedTokenCatalog = tokenCatalog) {
+  referencedTokenCatalog = resolveTokenCatalog(referencedTokenCatalog);
+  const model = dataModel(catalog, { tokenCatalog: referencedTokenCatalog });
   return {
     dexDeployments: model.dexDeployments,
     poolDefinitions: model.poolDefinitions,
@@ -120,8 +142,9 @@ function ids(records) {
   return records.map((record) => record.poolDefinitionId).sort(compareText);
 }
 
-function expectedBehavior(catalog = CATALOG) {
-  const model = dataModel(catalog);
+function expectedBehavior(catalog = CATALOG, referencedTokenCatalog = tokenCatalog) {
+  referencedTokenCatalog = resolveTokenCatalog(referencedTokenCatalog);
+  const model = dataModel(catalog, { tokenCatalog: referencedTokenCatalog });
   const behavior = {
     getDexDeployment: [],
     getPoolDefinition: [],
@@ -187,7 +210,7 @@ function expectedBehavior(catalog = CATALOG) {
     behavior.listPoolDefinitions.push({ filter, result: ids(result.map((entry) => ({ poolDefinitionId: entry.poolDefinitionId }))) });
   }
 
-  const nativeDeployments = tokenCatalog.deployments.filter((deployment) => deployment.standard === "native");
+  const nativeDeployments = referencedTokenCatalog.deployments.filter((deployment) => deployment.standard === "native");
   for (const deployment of nativeDeployments) {
     const wrap = model.nativeWrapDefinitions.find((entry) => entry.nativeTokenDeploymentId === deployment.deploymentId);
     behavior.getNativeWrapDefinition.push({ input: deployment.deploymentId, result: wrap?.nativeWrapDefinitionId ?? null });
@@ -210,23 +233,24 @@ function expectedBehavior(catalog = CATALOG) {
     ...quoteCases.rpcCases,
     ...quoteCases.arithmeticCases,
   ].filter((entry) => entry.applicability !== "language-local");
-  for (const entry of sharedQuoteCases) behavior.quote.push({ caseId: entry.caseId, outcome: entry.outcome, rpcTrace: entry.rpcTrace ?? [] });
+  for (const entry of sharedQuoteCases) behavior.quote.push({ caseId: entry.caseId, outcome: currentQuoteOutcome(entry, catalog, referencedTokenCatalog), rpcTrace: entry.rpcTrace ?? [] });
   return sortBehavior(behavior);
 }
 
-export function buildExpectedSnapshot(catalog = CATALOG) {
-  validateCatalog(catalog);
-  const model = dataModel(catalog);
-  const records = runtimeRecords(catalog);
+export function buildExpectedSnapshot(catalog = CATALOG, referencedTokenCatalog = tokenCatalog) {
+  referencedTokenCatalog = resolveTokenCatalog(referencedTokenCatalog);
+  validateCatalog(catalog, { tokenCatalog: referencedTokenCatalog });
+  const model = dataModel(catalog, { tokenCatalog: referencedTokenCatalog });
+  const records = runtimeRecords(catalog, referencedTokenCatalog);
   return {
     snapshotVersion: SNAPSHOT_VERSION,
     snapshotKind: SNAPSHOT_KIND,
     language: "canonical",
     runtime: "canonical-reference",
     metadata: {
-      version: tokenCatalog.catalogVersion,
-      asOfDate: tokenCatalog.manualAsOf,
-      contentDigest: tokenCatalog.contentDigest,
+      version: referencedTokenCatalog.catalogVersion,
+      asOfDate: referencedTokenCatalog.manualAsOf,
+      contentDigest: referencedTokenCatalog.contentDigest,
       chainIds: {
         ethereum: "eip155:1",
         solana: "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
@@ -239,11 +263,12 @@ export function buildExpectedSnapshot(catalog = CATALOG) {
       contentDigest: catalog.contentDigest,
     },
     ...records,
-    behavior: expectedBehavior(catalog),
+    behavior: expectedBehavior(catalog, referencedTokenCatalog),
   };
 }
 
-function normalizedSnapshot(snapshot, language, catalog = CATALOG) {
+function normalizedSnapshot(snapshot, language, catalog = CATALOG, referencedTokenCatalog = tokenCatalog) {
+  referencedTokenCatalog = resolveTokenCatalog(referencedTokenCatalog);
   if (!isRecord(snapshot)) fail(`${language} snapshot must be an object`);
   exactKeys(snapshot, [
     "snapshotVersion",
@@ -265,7 +290,7 @@ function normalizedSnapshot(snapshot, language, catalog = CATALOG) {
 
   exactKeys(snapshot.metadata, METADATA_KEYS, `${language}.metadata`);
   exactKeys(snapshot.metadata.chainIds, Object.keys(DEX_CHAIN_IDS), `${language}.metadata.chainIds`);
-  if (snapshot.metadata.version !== tokenCatalog.catalogVersion || snapshot.metadata.asOfDate !== tokenCatalog.manualAsOf || snapshot.metadata.contentDigest !== tokenCatalog.contentDigest) fail(`${language} token metadata differs from canonical catalog`);
+  if (snapshot.metadata.version !== referencedTokenCatalog.catalogVersion || snapshot.metadata.asOfDate !== referencedTokenCatalog.manualAsOf || snapshot.metadata.contentDigest !== referencedTokenCatalog.contentDigest) fail(`${language} token metadata differs from canonical catalog`);
   if (stableJson(snapshot.metadata.chainIds) !== stableJson(DEX_CHAIN_IDS)) fail(`${language} token chain IDs differ from canonical catalog`);
   exactKeys(snapshot.dexMetadata, DEX_METADATA_KEYS, `${language}.dexMetadata`);
   if (snapshot.dexMetadata.version !== catalog.catalogVersion || snapshot.dexMetadata.asOfDate !== catalog.manualAsOf || snapshot.dexMetadata.contentDigest !== catalog.contentDigest) fail(`${language} DEX metadata differs from canonical catalog`);
@@ -297,16 +322,17 @@ function comparableSnapshot(snapshot) {
   return copy;
 }
 
-export function verifySnapshots(snapshots, catalog = CATALOG) {
-  validateCatalog(catalog);
+export function verifySnapshots(snapshots, catalog = CATALOG, referencedTokenCatalog = tokenCatalog) {
+  referencedTokenCatalog = resolveTokenCatalog(referencedTokenCatalog);
+  validateCatalog(catalog, { tokenCatalog: referencedTokenCatalog });
   if (!isRecord(snapshots)) fail("snapshots must be an object keyed by language");
   const actualLanguages = Object.keys(snapshots).sort(compareText);
   const expectedLanguages = [...PARITY_LANGUAGES].sort(compareText);
   if (actualLanguages.length !== expectedLanguages.length || actualLanguages.some((language, index) => language !== expectedLanguages[index])) fail(`native snapshots must include exactly ${PARITY_LANGUAGES.join(", ")}`);
-  const expected = buildExpectedSnapshot(catalog);
+  const expected = buildExpectedSnapshot(catalog, referencedTokenCatalog);
   const results = [];
   for (const language of PARITY_LANGUAGES) {
-    const normalized = normalizedSnapshot(snapshots[language], language, catalog);
+    const normalized = normalizedSnapshot(snapshots[language], language, catalog, referencedTokenCatalog);
     const expectedForLanguage = { ...expected, language, runtime: normalized.runtime };
     if (stableJson(comparableSnapshot(normalized)) !== stableJson(comparableSnapshot(expectedForLanguage))) {
       const fields = ["metadata", "dexMetadata", "dexDeployments", "poolDefinitions", "nativeWrapDefinitions", "aliases", "behavior"];
@@ -352,11 +378,11 @@ function parseArguments(argumentsList) {
   return options;
 }
 
-function parseEnvelope(value, sourceLabel) {
+function parseEnvelope(value, sourceLabel, catalog = CATALOG) {
   if (!isRecord(value)) fail(`${sourceLabel} must contain a JSON object`);
   if (Object.hasOwn(value, "languages")) {
     exactKeys(value, ["snapshotVersion", "snapshotKind", "catalogDigest", "languages"], sourceLabel);
-    if (value.snapshotVersion !== SNAPSHOT_VERSION || value.snapshotKind !== "native-runtime-parity" || value.catalogDigest !== CATALOG.contentDigest) fail(`${sourceLabel} envelope metadata differs from canonical catalog`);
+    if (value.snapshotVersion !== SNAPSHOT_VERSION || value.snapshotKind !== "native-runtime-parity" || value.catalogDigest !== catalog.contentDigest) fail(`${sourceLabel} envelope metadata differs from canonical catalog`);
     if (!isRecord(value.languages)) fail(`${sourceLabel}.languages must be an object keyed by language`);
     return value.languages;
   }
@@ -364,7 +390,7 @@ function parseEnvelope(value, sourceLabel) {
   fail(`${sourceLabel} must be a native-runtime-parity envelope or one language snapshot`);
 }
 
-async function readSnapshots(files) {
+async function readSnapshots(files, catalog = CATALOG) {
   const result = {};
   for (const file of files) {
     const absolutePath = path.resolve(process.cwd(), file);
@@ -372,7 +398,7 @@ async function readSnapshots(files) {
     try { source = await readFile(absolutePath, "utf8"); } catch (error) { fail(`cannot read snapshot ${file}: ${error.message}`); }
     let value;
     try { value = JSON.parse(source); } catch (error) { fail(`cannot parse snapshot ${file} as JSON: ${error.message}`); }
-    for (const [language, snapshot] of Object.entries(parseEnvelope(value, file))) {
+    for (const [language, snapshot] of Object.entries(parseEnvelope(value, file, catalog))) {
       if (result[language] !== undefined) fail(`duplicate native snapshot for ${language}`);
       result[language] = snapshot;
     }

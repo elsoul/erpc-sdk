@@ -1,11 +1,14 @@
 {
   "schemaVersion": 1,
   "catalogVersion": "1.0.0",
-  "canonicalCounts": {
-    "dexDeployments": 4,
-    "poolDefinitions": 4,
-    "nativeWrapDefinitions": 3,
-    "aliases": 8
+  "seedSentinels": {
+    "dexDeploymentIds": ["dex-deployment-0001", "dex-deployment-0003"],
+    "poolDefinitionIds": ["pool-0001", "pool-0003"],
+    "nativeWrapDefinitionIds": ["native-wrap-0001", "native-wrap-0002"],
+    "aliases": [
+      { "namespace": "ethereum", "name": "UNISWAP_V2", "dexDeploymentId": "dex-deployment-0001", "poolDefinitionId": null },
+      { "namespace": "solana", "name": "ORCA_WHIRLPOOLS", "dexDeploymentId": "dex-deployment-0003", "poolDefinitionId": null }
+    ]
   },
   "codegen": [
     {

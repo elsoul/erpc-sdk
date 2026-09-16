@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "artifactKind": "pool-observations",
+  "sourceSha": "0000000000000000000000000000000000000000",
+  "configDigest": "7512dc53476195c20434208897ba96ce30b820ee6d9d31129454723ee6249b1f",
+  "tokenCatalogDigest": "62879dfe8bb49a154d2a1bff356321e5dbe78d8cef0cd3409ef2b22cfd3445a4",
+  "dexCatalogDigest": "002c05c3c2d5d3917f73a5c2e7b55af9ceb9a682fb49ae28d2421046ee2faa50",
+  "status": "complete",
+  "observations": [
+    { "dexDeploymentId": "dex-deployment-0001", "protocolId": "uniswap-v2", "chainId": "eip155:1", "poolDefinitionId": "pool-0001", "poolAddress": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc", "status": "missing", "errorCode": "NOT_OBSERVED" },
+    { "dexDeploymentId": "dex-deployment-0002", "protocolId": "lfj-legacy-constant-product", "chainId": "eip155:43114", "poolDefinitionId": "pool-0002", "poolAddress": "0xf4003f4efbe8691b60249e6afbd307abe7758adb", "status": "missing", "errorCode": "NOT_OBSERVED" },
+    { "dexDeploymentId": "dex-deployment-0003", "protocolId": "orca-whirlpools", "chainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp", "poolDefinitionId": "pool-0003", "poolAddress": "FgH1dEvyRQoAqJjbUzzKVoM1HYdxTqPwjEF82kDH1kVe", "status": "missing", "errorCode": "NOT_OBSERVED" },
+    { "dexDeploymentId": "dex-deployment-0004", "protocolId": "raydium-clmm", "chainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp", "poolDefinitionId": "pool-0004", "poolAddress": "AwaVyGAF3N6K4YRUJk55Ui1GquKhKdD6vTCmVvCzXpKf", "status": "missing", "errorCode": "NOT_OBSERVED" }
+  ],
+  "receipts": [],
+  "health": [
+    { "dexDeploymentId": "dex-deployment-0001", "status": "missing", "errorCode": "NOT_OBSERVED" },
+    { "dexDeploymentId": "dex-deployment-0002", "status": "missing", "errorCode": "NOT_OBSERVED" },
+    { "dexDeploymentId": "dex-deployment-0003", "status": "missing", "errorCode": "NOT_OBSERVED" },
+    { "dexDeploymentId": "dex-deployment-0004", "status": "missing", "errorCode": "NOT_OBSERVED" }
+  ],
+  "policy": { "readOnly": true, "canonicalMutation": false, "outageRetirement": false },
+  "coverage": { "mode": "bounded", "claim": "bounded", "poolCount": 4 }
+}

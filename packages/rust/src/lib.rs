@@ -16,6 +16,7 @@ mod solana;
 mod subscriptions;
 mod swap;
 pub mod token_catalog;
+pub mod token_rankings;
 mod usage;
 
 pub use account::{AccountClient, ErpcPlan, TokenBalance};
@@ -85,6 +86,12 @@ pub use token_catalog::{
     find_token_deployment_by_address, find_token_deployments_by_symbol,
     get_native_token_deployment, get_token_asset, get_token_deployment, list_token_deployments,
     token_chain_ids, tokens,
+};
+pub use token_rankings::{
+    TOKEN_RANKINGS, TOKEN_RANKINGS_AS_OF, TOKEN_RANKINGS_CONTENT_DIGEST, TOKEN_RANKINGS_COVERAGE,
+    TOKEN_RANKINGS_METADATA, TOKEN_RANKINGS_METRIC, TOKEN_RANKINGS_SCHEMA_VERSION,
+    TOKEN_RANKINGS_SOURCE_IDS, TOKEN_RANKINGS_STATUS, TokenRanking, TokenRankingCoverage,
+    TokenRankingMetadata, list_token_rankings,
 };
 pub use tokio_util::sync::CancellationToken;
 pub use usage::{

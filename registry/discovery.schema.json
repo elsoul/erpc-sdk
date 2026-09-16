@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/elsoul/erpc-sdk/blob/main/registry/discovery.schema.json",
+  "title": "ERPC bounded token and pool discovery artifacts",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "artifactKind"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "artifactKind": { "type": "string" },
+    "sourceSha": { "$ref": "#/$defs/sourceSha" },
+    "configDigest": { "$ref": "#/$defs/digest" },
+    "tokenCatalogDigest": { "$ref": "#/$defs/digest" },
+    "dexCatalogDigest": { "$ref": "#/$defs/digest" },
+    "status": { "enum": ["complete", "partial", "failed", "review"] },
+    "workspace": { "$ref": "#/$defs/workspace" },
+    "coverage": { "$ref": "#/$defs/coverage" },
+    "rpcTranscript": { "type": "array", "items": { "$ref": "#/$defs/transcript" } },
+    "receipts": { "type": "array", "items": { "$ref": "#/$defs/receipt" } },
+    "proposals": { "type": "array", "items": { "$ref": "#/$defs/proposal" } },
+    "findings": { "type": "array", "items": { "$ref": "#/$defs/finding" } },
+    "state": { "type": "object" },
+    "admissions": { "type": "array", "items": { "$ref": "#/$defs/proposal" } },
+    "reviewRequired": { "type": "boolean" },
+    "appendOnly": { "type": "boolean" },
+    "tokenAppend": { "type": "array", "items": { "$ref": "#/$defs/proposal" } },
+    "poolAppend": { "type": "array", "items": { "$ref": "#/$defs/proposal" } },
+    "networkStatus": { "type": "array", "items": { "$ref": "#/$defs/receipt" } }
+  },
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "sourceSha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "address": { "type": "string", "minLength": 1, "pattern": "^[^\\r\\n\\u0000]+$" },
+    "workspace": {
+      "type": "object", "additionalProperties": false,
+      "required": ["clean", "pinned", "promotable"],
+      "properties": { "clean": { "type": "boolean" }, "pinned": { "type": "boolean" }, "promotable": { "type": "boolean" } }
+    },
+    "coverage": {
+      "type": "object", "additionalProperties": false,
+      "required": ["mode", "claim", "scopes"],
+      "properties": {
+        "mode": { "const": "bounded" },
+        "claim": { "enum": ["bounded", "complete"] },
+        "scopes": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "transcript": {
+      "type": "object", "additionalProperties": false,
+      "required": ["network", "endpointId", "request", "response"],
+      "properties": {
+        "network": { "type": "string" }, "endpointId": { "type": ["string", "null"] }, "observedAt": { "type": "string" },
+        "request": { "$ref": "#/$defs/rpcRequest" }, "response": { "$ref": "#/$defs/rpcResponse" }
+      }
+    },
+    "rpcRequest": { "type": "object", "additionalProperties": false, "required": ["jsonrpc", "id", "method", "params"], "properties": { "jsonrpc": { "const": "2.0" }, "id": { "type": "integer", "minimum": 1 }, "method": { "type": "string" }, "params": { "type": "array" } } },
+    "rpcResponse": { "type": "object", "additionalProperties": false, "required": ["jsonrpc", "id"], "properties": { "jsonrpc": { "const": "2.0" }, "id": { "type": "integer", "minimum": 1 }, "result": {}, "error": { "type": "object" } }, "oneOf": [{ "required": ["result"], "not": { "required": ["error"] } }, { "required": ["error"], "not": { "required": ["result"] } }] },
+    "receipt": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "network", "status", "subjectId"],
+      "properties": {
+        "kind": { "enum": ["network", "evm-factory", "evm-pair", "evm-token", "solana-program", "solana-mint", "solana-account"] },
+        "network": { "type": "string" }, "status": { "enum": ["success", "failed", "skipped", "pending"] },
+        "subjectId": { "type": "string" }, "code": { "type": "string" }, "address": { "$ref": "#/$defs/address" },
+        "pairIndex": { "type": "integer", "minimum": 0 }, "pairCount": { "type": "integer", "minimum": 0 }, "pairIndexes": { "type": "array", "items": { "type": "integer", "minimum": 0 } }, "scannedIndexes": { "type": "array", "items": { "type": "integer", "minimum": 0 } }, "successfulIndexes": { "type": "array", "items": { "type": "integer", "minimum": 0 } }, "failedIndexes": { "type": "array", "items": { "type": "integer", "minimum": 0 } }, "blockTimestamp": { "type": "string" }, "slot": { "type": "integer", "minimum": 0 },
+        "blockNumber": { "type": "string" }, "blockHash": { "type": "string" },
+        "contextSlot": { "type": "integer", "minimum": 0 }, "cursor": { "type": "integer", "minimum": 0 }, "tokenProgram": { "$ref": "#/$defs/address" }, "tokens": { "type": "array", "items": { "$ref": "#/$defs/address" } },
+        "mints": { "type": "array", "items": { "$ref": "#/$defs/address" } }, "vaults": { "type": "array", "items": { "$ref": "#/$defs/address" } }, "vaultAmounts": { "type": "array", "items": { "type": "string" } }, "vaultFrozen": { "type": "array", "items": { "type": "boolean" } }, "gpaPubkeys": { "type": "array", "items": { "$ref": "#/$defs/address" } }, "tokenMetadata": { "type": "array", "items": { "type": "object" } },
+        "decimals": { "type": "integer", "minimum": 0, "maximum": 255 }, "supply": { "type": "string" }, "liquidity": { "type": "string" }, "sqrtPrice": { "type": "string" }, "statusByte": { "type": "integer", "minimum": 0, "maximum": 255 },
+        "reserves": { "type": "array", "items": { "type": "string" } }, "observedSymbol": { "type": "string" },
+        "program": { "$ref": "#/$defs/address" }, "factory": { "$ref": "#/$defs/address" }, "dexDeploymentId": { "type": "string" }, "request": { "type": "object" }, "raw": { "type": "object" },
+        "layout": { "type": "string" }, "queue": { "type": "string" }
+      }
+    },
+    "proposal": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "id", "alias", "chainId", "address", "canonical", "evidence", "quoteEligible"],
+      "properties": {
+        "kind": { "enum": ["token", "pool"] }, "id": { "type": "string" }, "namespace": { "type": "string" }, "assetId": { "type": "string" },
+        "deploymentId": { "type": "string" }, "poolDefinitionId": { "type": "string" }, "alias": { "type": "string", "pattern": "^DISCOVERED_(POOL_)?[0-9A-F]{16}$" },
+        "chainId": { "type": "string" }, "address": { "$ref": "#/$defs/address" },
+        "canonical": { "type": "object" }, "evidence": { "type": "array", "items": { "type": "object" } },
+        "quoteEligible": { "type": "boolean" }, "reviewRequired": { "type": "boolean" },
+        "token0Address": { "$ref": "#/$defs/address" }, "token1Address": { "$ref": "#/$defs/address" },
+        "dexDeploymentId": { "type": "string" }
+      }
+    },
+    "finding": {
+      "type": "object", "additionalProperties": false,
+      "required": ["subjectId", "code", "severity"],
+      "properties": { "subjectId": { "type": "string" }, "code": { "type": "string" }, "severity": { "enum": ["info", "review", "action"] } }
+    }
+  }
+}

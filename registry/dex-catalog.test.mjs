@@ -6,12 +6,9 @@ import path from "node:path";
 import test from "node:test";
 
 import {
-  AS_OF_DATE,
   CATALOG,
-  CONTENT_DIGEST,
   DEX_CHAIN_IDS,
   EVM_ABI_SELECTORS,
-  VERSION,
   compareHistory,
   computeDigest,
   createQuoteDriver,
@@ -27,6 +24,11 @@ import {
   validateCatalog,
 } from "./dex-catalog.mjs";
 import {
+  CATALOG as TOKEN_CATALOG,
+  computeDigest as computeTokenDigest,
+  validateCatalog as validateTokenCatalog,
+} from "./token-catalog.mjs";
+import {
   LANGUAGES,
   OUTPUTS,
   renderLanguage,
@@ -34,11 +36,13 @@ import {
 import {
   PARITY_LANGUAGES,
   buildExpectedSnapshot,
+  currentQuoteOutcome,
   verifySnapshots,
 } from "./verify-dex-parity.mjs";
 
 const REGISTRY_DIRECTORY = path.dirname(new URL(import.meta.url).pathname);
 const FIXTURE_PATH = path.join(REGISTRY_DIRECTORY, "fixtures", "dex-catalog-cases.json");
+const GROWTH_FIXTURE_PATH = path.join(REGISTRY_DIRECTORY, "fixtures", "catalog-growth-cases.json");
 const QUOTE_FIXTURE_PATH = path.join(REGISTRY_DIRECTORY, "fixtures", "swap-quote-cases.json");
 const SCHEMA_PATH = path.join(REGISTRY_DIRECTORY, "dex-catalog.schema.json");
 const GENERATOR_PATH = path.join(REGISTRY_DIRECTORY, "generate-dex-catalog.mjs");
@@ -98,17 +102,18 @@ function rpcFromFixture(entry) {
   };
 }
 
-test("canonical DEX catalog validates with frozen counts and digest", () => {
+test("canonical DEX catalog validates and preserves immutable seed sentinels", async () => {
+  const fixture = JSON.parse(await readFile(FIXTURE_PATH, "utf8"));
   assert.equal(validateCatalog(CATALOG), true);
-  assert.deepEqual({
-    dexDeployments: CATALOG.dexDeployments.length,
-    poolDefinitions: CATALOG.poolDefinitions.length,
-    nativeWrapDefinitions: CATALOG.nativeWrapDefinitions.length,
-    aliases: CATALOG.aliases.length,
-  }, { dexDeployments: 4, poolDefinitions: 4, nativeWrapDefinitions: 3, aliases: 8 });
-  assert.equal(computeDigest(CATALOG), CONTENT_DIGEST);
-  assert.equal(VERSION, "1.0.0");
-  assert.equal(AS_OF_DATE, "2026-09-15");
+  assert.equal(computeDigest(CATALOG), CATALOG.contentDigest);
+  for (const count of [CATALOG.dexDeployments.length, CATALOG.poolDefinitions.length, CATALOG.nativeWrapDefinitions.length, CATALOG.aliases.length]) assert.ok(count > 0);
+  for (const dexDeploymentId of fixture.seedSentinels.dexDeploymentIds) assert.ok(CATALOG.dexDeployments.some((entry) => entry.dexDeploymentId === dexDeploymentId), `missing seed DEX ${dexDeploymentId}`);
+  for (const poolDefinitionId of fixture.seedSentinels.poolDefinitionIds) assert.ok(CATALOG.poolDefinitions.some((entry) => entry.poolDefinitionId === poolDefinitionId), `missing seed pool ${poolDefinitionId}`);
+  for (const nativeWrapDefinitionId of fixture.seedSentinels.nativeWrapDefinitionIds) assert.ok(CATALOG.nativeWrapDefinitions.some((entry) => entry.nativeWrapDefinitionId === nativeWrapDefinitionId), `missing seed wrap ${nativeWrapDefinitionId}`);
+  for (const sentinel of fixture.seedSentinels.aliases) assert.ok(CATALOG.aliases.some((alias) => alias.namespace === sentinel.namespace
+    && alias.name === sentinel.name
+    && alias.dexDeploymentId === sentinel.dexDeploymentId
+    && alias.poolDefinitionId === sentinel.poolDefinitionId), `missing seed alias ${sentinel.namespace}:${sentinel.name}`);
 });
 
 test("strict schema declares source fields and rejects extra record fields in runtime validator", async () => {
@@ -134,7 +139,7 @@ test("runtime model omits source evidence and per-record as-of dates", () => {
   }
 });
 
-test("lookup API includes all statuses and normalizes EVM addresses", () => {
+test("lookup API includes all statuses and normalizes EVM addresses", async () => {
   assert.equal(getDexDeployment("dex-deployment-0001").programAddress, "0x5c69bee701ef814a2b6a3edd4b1652cb9cc5aa6f");
   assert.equal(getDexDeployment("unknown"), null);
   assert.equal(getPoolDefinition("pool-0001").adapter.feeNumerator, "3");
@@ -142,10 +147,28 @@ test("lookup API includes all statuses and normalizes EVM addresses", () => {
   assert.equal(findPoolDefinitionByAddress(DEX_CHAIN_IDS.ethereum, "0xB4E16D0168E52D35CACD2C6185B44281EC28C9DC").poolDefinitionId, "pool-0001");
   assert.equal(findPoolDefinitionByAddress(DEX_CHAIN_IDS.solana, "FgH1dEvyRQoAqJjbUzzKVoM1HYdxTqPwjEF82kDH1kVe").poolDefinitionId, "pool-0003");
   assert.equal(findPoolDefinitionByAddress("unknown:chain", "not-an-address"), null);
-  assert.deepEqual(findPoolDefinitionsByPair(DEX_CHAIN_IDS.ethereum, "deployment-0002", "deployment-0008").map((entry) => entry.poolDefinitionId), ["pool-0001"]);
-  assert.deepEqual(findPoolDefinitionsByPair(DEX_CHAIN_IDS.solana, "deployment-0013", "deployment-0006").map((entry) => entry.poolDefinitionId), ["pool-0003", "pool-0004"]);
+  const ethereumPairIds = findPoolDefinitionsByPair(DEX_CHAIN_IDS.ethereum, "deployment-0002", "deployment-0008").map((entry) => entry.poolDefinitionId);
+  assert.ok(ethereumPairIds.includes("pool-0001"));
+  assert.ok(ethereumPairIds.every((poolDefinitionId) => CATALOG.poolDefinitions.some((pool) => pool.poolDefinitionId === poolDefinitionId && pool.chainId === DEX_CHAIN_IDS.ethereum)));
+  const solanaPairIds = findPoolDefinitionsByPair(DEX_CHAIN_IDS.solana, "deployment-0013", "deployment-0006").map((entry) => entry.poolDefinitionId);
+  assert.ok(solanaPairIds.includes("pool-0003"));
+  assert.ok(solanaPairIds.includes("pool-0004"));
+  assert.ok(solanaPairIds.length >= 2);
   assert.deepEqual(findPoolDefinitionsByPair("unknown:chain", "deployment-0002", "deployment-0008"), []);
-  assert.deepEqual(listPoolDefinitions({ chainId: DEX_CHAIN_IDS.solana, tokenDeploymentId: "deployment-0006" }).map((entry) => entry.poolDefinitionId), ["pool-0003", "pool-0004"]);
+  const solanaWsolPools = listPoolDefinitions({ chainId: DEX_CHAIN_IDS.solana, tokenDeploymentId: "deployment-0006" }).map((entry) => entry.poolDefinitionId);
+  assert.ok(solanaWsolPools.includes("pool-0003"));
+  assert.ok(solanaWsolPools.includes("pool-0004"));
+  const growth = JSON.parse(await readFile(GROWTH_FIXTURE_PATH, "utf8"));
+  const growthCatalog = clone(CATALOG);
+  growthCatalog.poolDefinitions.push(...growth.lookupGrowth.matchingPools, ...growth.lookupGrowth.nonMatchingPools);
+  growthCatalog.contentDigest = computeDigest(growthCatalog);
+  assert.equal(validateCatalog(growthCatalog), true);
+  const growthPairIds = findPoolDefinitionsByPair(DEX_CHAIN_IDS.solana, "deployment-0006", "deployment-0013", { catalog: growthCatalog }).map((entry) => entry.poolDefinitionId);
+  assert.ok(growthPairIds.includes("pool-growth-solana-matching-0001"));
+  assert.ok(!growthPairIds.includes("pool-growth-solana-nonmatching-0001"));
+  const growthWsolPools = listPoolDefinitions({ chainId: DEX_CHAIN_IDS.solana, tokenDeploymentId: "deployment-0006", catalog: growthCatalog }).map((entry) => entry.poolDefinitionId);
+  assert.ok(growthWsolPools.includes("pool-growth-solana-matching-0001"));
+  assert.ok(growthWsolPools.includes("pool-growth-solana-nonmatching-0001"));
   assert.equal(getNativeWrapDefinition("deployment-0001").wrappedTokenDeploymentId, "deployment-0002");
   assert.equal(getNativeWrapDefinition("native-wrap-0001"), null);
 });
@@ -163,10 +186,66 @@ test("catalog history preserves immutable IDs, bindings, and aliases", () => {
 
 test("fixture invalid mutations cover strict catalog failures", async () => {
   const fixture = JSON.parse(await readFile(FIXTURE_PATH, "utf8"));
-  assert.deepEqual(fixture.canonicalCounts, { dexDeployments: 4, poolDefinitions: 4, nativeWrapDefinitions: 3, aliases: 8 });
   for (const entry of fixture.invalidCases) {
     assert.throws(() => validateCatalog(mutateCatalog(entry.operation)), new RegExp(entry.expectError), entry.name);
   }
+});
+
+test("append-only growth validates a pool that references a newly discovered token", async () => {
+  const fixture = JSON.parse(await readFile(GROWTH_FIXTURE_PATH, "utf8"));
+  const nextToken = {
+    ...clone(TOKEN_CATALOG),
+    assets: [...TOKEN_CATALOG.assets, fixture.token.asset],
+    deployments: [...TOKEN_CATALOG.deployments, fixture.token.deployment],
+    aliases: [...TOKEN_CATALOG.aliases, fixture.token.alias],
+  };
+  nextToken.contentDigest = computeTokenDigest(nextToken);
+  assert.equal(validateTokenCatalog(nextToken), true);
+  const nextDex = {
+    ...clone(CATALOG),
+    poolDefinitions: [...CATALOG.poolDefinitions, fixture.dex.pool],
+    aliases: [...CATALOG.aliases, fixture.dex.alias],
+  };
+  nextDex.contentDigest = computeDigest(nextDex);
+  assert.equal(validateCatalog(nextDex, { tokenCatalog: nextToken }), true);
+  assert.equal(nextDex.poolDefinitions.length - CATALOG.poolDefinitions.length, fixture.expected.poolDelta);
+  assert.equal(nextDex.aliases.length - CATALOG.aliases.length, fixture.expected.dexAliasDelta);
+  const reversed = {
+    ...nextDex,
+    poolDefinitions: [...nextDex.poolDefinitions].reverse(),
+    aliases: [...nextDex.aliases].reverse(),
+  };
+  reversed.contentDigest = computeDigest(reversed);
+  assert.equal(reversed.contentDigest, nextDex.contentDigest);
+  assert.equal(validateCatalog(reversed, { tokenCatalog: nextToken }), true);
+});
+
+test("paired token and DEX growth is threaded through all renderers and parity metadata", async () => {
+  const fixture = JSON.parse(await readFile(GROWTH_FIXTURE_PATH, "utf8"));
+  const nextToken = clone(TOKEN_CATALOG);
+  nextToken.assets.push(fixture.token.asset);
+  nextToken.deployments.push(fixture.token.deployment);
+  nextToken.aliases.push(fixture.token.alias);
+  nextToken.contentDigest = computeTokenDigest(nextToken);
+  const nextDex = clone(CATALOG);
+  nextDex.poolDefinitions.push(fixture.dex.pool);
+  nextDex.aliases.push(fixture.dex.alias);
+  nextDex.contentDigest = computeDigest(nextDex);
+  assert.equal(validateCatalog(nextDex, { tokenCatalog: nextToken }), true);
+  for (const language of LANGUAGES) {
+    const source = renderLanguage(language, nextDex, { tokenCatalog: nextToken });
+    assert.match(source, /deployment-growth-unclassified-0001/u, `${language} omitted paired token growth`);
+    assert.match(source, /pool-growth-unclassified-0001/u, `${language} omitted paired DEX growth`);
+  }
+  const expected = buildExpectedSnapshot(nextDex, nextToken);
+  const snapshots = Object.fromEntries(PARITY_LANGUAGES.map((language) => [language, { ...clone(expected), language, runtime: `paired-growth-${language}` }]));
+  assert.equal(verifySnapshots(snapshots, nextDex, nextToken).status, "ok");
+  const staleToken = clone(snapshots);
+  staleToken.typescript.metadata.contentDigest = TOKEN_CATALOG.contentDigest;
+  assert.throws(() => verifySnapshots(staleToken, nextDex, nextToken), /token metadata differs/u);
+  const staleDex = clone(snapshots);
+  staleDex.typescript.dexMetadata.contentDigest = CATALOG.contentDigest;
+  assert.throws(() => verifySnapshots(staleDex, nextDex, nextToken), /DEX metadata differs/u);
 });
 
 test("all five renderers are deterministic and omit record provenance", async () => {
@@ -182,6 +261,14 @@ test("all five renderers are deterministic and omit record provenance", async ()
     assert.doesNotMatch(source, /evidence|asOfDate.*pool/u);
     assert.match(source, /DEX_CATALOG_CONTENT_DIGEST|DexCatalogContentDigest/u);
     assert.match(source, /Quoted/u);
+    const aliasReference = {
+      typescript: "dexDeploymentId: dexes.ethereum.UNISWAP_V2",
+      rust: "dex_deployment_id: Some(dexes::ethereum::UNISWAP_V2)",
+      python: "dex_deployment_id=dexes.ethereum.UNISWAP_V2",
+      go: "DexDeploymentID: dexString(DexEthereumUNISWAP_V2)",
+      ruby: "dex_deployment_id: ERPC::Dexes::Ethereum[:UNISWAP_V2]",
+    }[language];
+    assert.ok(source.includes(aliasReference), `${language} DEX alias row did not reference its generated public constant`);
   }
 });
 
@@ -268,13 +355,27 @@ test("quote fixtures produce exact forward and reverse vectors with decimal stri
   assert.deepEqual(fixture.contract.requestKeys, ["chainId", "poolDefinitionId", "inputTokenDeploymentId", "outputTokenDeploymentId", "amountIn", "freshness"]);
   for (const entry of fixture.validCases) {
     const quote = quoteExactInputFromSnapshot(entry.request, entry.snapshot, { now: 1789498700 });
-    assert.deepEqual(quote, entry.outcome.value, entry.caseId);
+    const expected = currentQuoteOutcome(entry).value;
+    assert.deepEqual(quote, expected, entry.caseId);
     for (const [key, value] of Object.entries(quote)) if (["amountIn", "amountOut"].includes(key)) assert.equal(typeof value, "string");
     const rpc = rpcFromFixture(entry);
     const rpcQuote = await quoteExactInput(entry.request, { rpc: rpc.request.bind(rpc), now: 1789498700 });
-    assert.deepEqual(rpcQuote, entry.outcome.value, `${entry.caseId}: rpc quote`);
+    assert.deepEqual(rpcQuote, expected, `${entry.caseId}: rpc quote`);
     assert.deepEqual(rpc.trace, entry.rpcTrace, `${entry.caseId}: rpc trace`);
   }
+});
+
+test("quote metadata follows the current catalogs while golden vectors stay fixture-backed", async () => {
+  const fixture = JSON.parse(await readFile(QUOTE_FIXTURE_PATH, "utf8"));
+  const entry = fixture.validCases[0];
+  const refreshedCatalog = clone(CATALOG);
+  refreshedCatalog.manualAsOf = "2026-09-16";
+  refreshedCatalog.contentDigest = computeDigest(refreshedCatalog);
+  const refreshed = currentQuoteOutcome(entry, refreshedCatalog).value;
+  assert.equal(refreshed.tokenCatalogDigest, TOKEN_CATALOG.contentDigest);
+  assert.equal(refreshed.dexCatalogDigest, refreshedCatalog.contentDigest);
+  assert.equal(refreshed.amountOut, entry.outcome.value.amountOut);
+  assert.notEqual(refreshed.dexCatalogDigest, entry.outcome.value.dexCatalogDigest);
 });
 
 test("RPC driver uses the exact eleven-call EIP-1898 sequence and frozen headers", async () => {
@@ -359,7 +460,7 @@ test("RPC quote path handles every fixture arithmetic boundary", async () => {
     const rpc = rpcFromFixture(entry);
     if (entry.outcome.kind === "success") {
       const actual = await quoteExactInput(entry.request, { rpc: rpc.request.bind(rpc), now: entry.nowSeconds });
-      assert.deepEqual(actual, entry.outcome.value, entry.caseId);
+      assert.deepEqual(actual, currentQuoteOutcome(entry).value, entry.caseId);
     } else {
       await assert.rejects(() => quoteExactInput(entry.request, { rpc: rpc.request.bind(rpc), now: entry.nowSeconds }), (error) => error.code === entry.outcome.code, entry.caseId);
     }

@@ -3,6 +3,9 @@ name: Weekly release preparation
 on:
   schedule:
     - cron: '47 3 * * 4'
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
   workflow_dispatch:
     inputs:
       version:
@@ -18,13 +21,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: weekly-release-preparation-${{ github.ref }}
+  group: erpc-catalog-mutation
   cancel-in-progress: false
 
 jobs:
   reader:
     name: Inspect release preparation inputs
-    if: github.ref == 'refs/heads/main'
+    if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     permissions:
@@ -277,3 +280,298 @@ jobs:
             writer_args+=(--config-digest "$CONFIG_DIGEST")
           fi
           node registry/maintenance-pr.mjs "${writer_args[@]}"
+
+  automatic-release-controller:
+    name: Merge eligible data patch, tag atomically, and dispatch release
+    if: >-
+      github.event_name == 'workflow_run' &&
+      github.event.workflow_run.name == 'CI' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'workflow_dispatch' &&
+      github.event.workflow_run.head_branch == 'codex/release-preparation' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      github.event.workflow_run.repository.full_name == github.repository &&
+      vars.ERPC_ENABLE_AUTOMATIC_RELEASE == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    permissions:
+      contents: write
+      actions: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          ref: refs/heads/main
+          clean: true
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+      - name: Download exact release-preparation CI source binding
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: ci-source-binding-${{ github.event.workflow_run.head_sha }}-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/release-ci-binding
+      - name: Resolve exact managed release PR and CI provenance
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+          EXPECTED_HEAD: ${{ github.event.workflow_run.head_sha }}
+          BINDING_DIR: ${{ runner.temp }}/release-ci-binding
+          OUTPUT_FILE: ${{ runner.temp }}/release-binding.json
+        run: |
+          set -euo pipefail
+          gh api "/repos/$REPOSITORY/actions/runs/$RUN_ID" --header 'X-GitHub-Api-Version: 2026-03-10' > "$RUNNER_TEMP/release-ci-run.json"
+          gh api "/repos/$REPOSITORY/actions/runs/$RUN_ID/jobs?per_page=100" --header 'X-GitHub-Api-Version: 2026-03-10' > "$RUNNER_TEMP/release-ci-jobs.json"
+          gh pr list --repo "$REPOSITORY" --head codex/release-preparation --base main --state open --limit 20 --json number,headRefOid,baseRefOid,headRepository,isCrossRepository,body,state,mergedAt > "$RUNNER_TEMP/release-prs.json"
+          node --input-type=module - "$BINDING_DIR/source-binding.json" "$BINDING_DIR/ci-provenance.json" "$RUNNER_TEMP/release-ci-run.json" "$RUNNER_TEMP/release-ci-jobs.json" "$RUNNER_TEMP/release-prs.json" "$REPOSITORY" "$RUN_ID" "$RUN_ATTEMPT" "$EXPECTED_HEAD" "$OUTPUT_FILE" <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs'
+
+          const [bindingFile, provenanceFile, runFile, jobsFile, prsFile, repository, runIdText, attemptText, expectedHead, outputFile] = process.argv.slice(2)
+          const binding = JSON.parse(readFileSync(bindingFile, 'utf8'))
+          const provenance = JSON.parse(readFileSync(provenanceFile, 'utf8'))
+          const run = JSON.parse(readFileSync(runFile, 'utf8'))
+          const jobs = JSON.parse(readFileSync(jobsFile, 'utf8'))?.jobs ?? []
+          const prs = JSON.parse(readFileSync(prsFile, 'utf8'))
+          const runId = Number(runIdText)
+          const runAttempt = Number(attemptText)
+          const sha = /^[0-9a-f]{40}$/u
+          const releasePaths = [
+            'packages/typescript/package.json',
+            'packages/rust/Cargo.toml',
+            'packages/python/pyproject.toml',
+            'packages/python/src/erpc_sdk/__init__.py',
+            'packages/ruby/lib/erpc_sdk/version.rb',
+            'Cargo.lock',
+            'CHANGELOG.md',
+          ].sort()
+          const repoName = (value) => value?.nameWithOwner ?? value?.fullName ?? value?.full_name ?? null
+          if (!sha.test(expectedHead) || !Number.isSafeInteger(runId) || runId < 1 || !Number.isSafeInteger(runAttempt) || runAttempt < 1) throw new Error('release CI binding inputs are invalid')
+          if (binding.kind !== 'erpc-sdk-ci-source-binding' || binding.testedHeadSha !== expectedHead || binding.headSha !== expectedHead || !sha.test(binding.baseSha) || binding.workflowPath !== '.github/workflows/ci.yml' || Number(binding.runId) !== runId || Number(binding.runAttempt) !== runAttempt) throw new Error('release CI source binding is not exact')
+          if (provenance.kind !== 'erpc-sdk-ci-provenance' || provenance.headSha !== expectedHead || provenance.sourceSha !== expectedHead || provenance.baseSha !== binding.baseSha || provenance.workflowPath !== '.github/workflows/ci.yml' || provenance.event !== 'workflow_dispatch' || Number(provenance.runId) !== runId || Number(provenance.runAttempt) !== runAttempt) throw new Error('release CI provenance is not exact')
+          if (String(run.id) !== String(runId) || Number(run.run_attempt) !== runAttempt || run.status !== 'completed' || run.conclusion !== 'success' || run.event !== 'workflow_dispatch' || run.path !== '.github/workflows/ci.yml' || run.head_sha !== expectedHead || run.head_branch !== 'codex/release-preparation' || repoName(run.repository) !== repository || repoName(run.head_repository) !== repository) throw new Error('release CI API run is not the exact successful same-repository run')
+          if (!jobs.some((job) => job.name === 'required-ci' && job.status === 'completed' && job.conclusion === 'success')) throw new Error('release CI run lacks a successful required-ci job')
+          if (!Array.isArray(prs)) throw new Error('managed release PR query did not return an array')
+          const matches = prs.filter((pr) => pr.headRefOid === expectedHead && repoName(pr.headRepository) === repository && pr.isCrossRepository !== true && String(pr.state).toLowerCase() === 'open' && pr.mergedAt === null)
+          if (matches.length !== 1) throw new Error('exactly one open same-repository release PR must bind this CI head')
+          const pr = matches[0]
+          if (pr.baseRefOid !== binding.baseSha || !String(pr.body ?? '').includes('Branch: `codex/release-preparation`') || !String(pr.body ?? '').includes('Release preparation:')) throw new Error('managed release PR metadata is missing or stale')
+          writeFileSync(outputFile, `${JSON.stringify({ schemaVersion: 1, kind: 'erpc-sdk-release-controller-binding', repository, branch: 'codex/release-preparation', workflowPath: '.github/workflows/ci.yml', prNumber: Number(pr.number), runId, runAttempt, expectedHead, baseSha: binding.baseSha, releasePaths }, null, 2)}\n`, { flag: 'w' })
+          NODE
+      - name: Verify the exact seven-file release candidate against the published paired baseline
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          BINDING_FILE: ${{ runner.temp }}/release-binding.json
+          RELEASE_REPORT: ${{ runner.temp }}/release-prep-report.json
+          HEAD_WORKTREE: ${{ runner.temp }}/release-head
+        run: |
+          set -euo pipefail
+          node --input-type=module - "$BINDING_FILE" "$RELEASE_REPORT" "$HEAD_WORKTREE" <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs'
+          import { spawnSync } from 'node:child_process'
+          const [bindingFile, reportFile, worktree] = process.argv.slice(2)
+          const binding = JSON.parse(readFileSync(bindingFile, 'utf8'))
+          const run = (command, args, cwd = process.cwd()) => {
+            const result = spawnSync(command, args, { cwd, encoding: 'utf8', stdio: 'pipe' })
+            if (result.error || result.status !== 0) {
+              const status = result.error ? 'spawn-error' : `exit-${result.status ?? 'unknown'}`
+              throw new Error(`release-candidate command failed (${status})`)
+            }
+            return result.stdout.trim()
+          }
+          const expected = binding.releasePaths
+          run('git', ['fetch', '--no-tags', 'origin', 'refs/heads/codex/release-preparation:refs/remotes/origin/codex/release-preparation'])
+          if (run('git', ['rev-parse', 'refs/remotes/origin/codex/release-preparation']) !== binding.expectedHead) throw new Error('release branch moved after the exact CI run; refusing stale release preparation')
+          const changed = run('git', ['diff', '--name-only', `${binding.baseSha}...${binding.expectedHead}`, '--']).split(/\r?\n/u).filter(Boolean).sort()
+          if (changed.join('\0') !== expected.join('\0')) throw new Error('release PR changed paths are not exactly the seven version/changelog files')
+          run('git', ['worktree', 'add', '--detach', worktree, binding.expectedHead])
+          try {
+            const report = JSON.parse(run(process.execPath, ['registry/release-prep.mjs', 'inspect', '--root', worktree, '--expected-head', binding.expectedHead, '--format=json']))
+            if (!report.latestActualPairedTag?.paired || !report.releasedBaseline?.peelCommit || report.status !== 'PREPARED_UNPUBLISHED' || typeof report.selectedVersion !== 'string') throw new Error('release candidate is not an unpublished candidate from a verified paired baseline')
+            const [major, minor, patch] = report.releasedBaseline.version.split('.').map(Number)
+            const expectedVersion = `${major}.${minor}.${patch + 1}`
+            if (report.selectedVersion !== expectedVersion) throw new Error('release candidate is not the next patch version after the published paired baseline')
+            const read = (path) => readFileSync(`${worktree}/${path}`, 'utf8')
+            const versions = [
+              JSON.parse(read('packages/typescript/package.json')).version,
+              read('packages/rust/Cargo.toml').match(/^\[package\][\s\S]*?^version\s*=\s*"([^"]+)"/mu)?.[1],
+              read('packages/python/pyproject.toml').match(/^\[project\][\s\S]*?^version\s*=\s*"([^"]+)"/mu)?.[1],
+              read('packages/python/src/erpc_sdk/__init__.py').match(/^__version__\s*=\s*"([^"]+)"$/mu)?.[1],
+              read('packages/ruby/lib/erpc_sdk/version.rb').match(/^\s*VERSION\s*=\s*"([^"]+)"$/mu)?.[1],
+            ]
+            if (versions.some((version) => version !== report.selectedVersion)) throw new Error('release version files are not anchored to the selected next patch version')
+            const lockBlocks = read('Cargo.lock').split(/^\[\[package\]\]\s*$/mu).slice(1).filter((block) => /^name\s*=\s*"erpc-sdk"\s*$/mu.test(block) && !/^source\s*=/mu.test(block))
+            if (lockBlocks.length !== 1 || lockBlocks[0].match(/^version\s*=\s*"([^"]+)"$/mu)?.[1] !== report.selectedVersion) throw new Error('Cargo.lock has no unique anchored source-less erpc-sdk version')
+            const escaped = report.selectedVersion.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')
+            if (!new RegExp(`^##\\s+${escaped}\\s+[—-]\\s+\\d{4}-\\d{2}-\\d{2}\\s*$`, 'mu').test(read('CHANGELOG.md'))) throw new Error('CHANGELOG.md lacks the anchored selected release section')
+            writeFileSync(reportFile, `${JSON.stringify({ ...report, controller: { baseSha: binding.baseSha, expectedHead: binding.expectedHead, prNumber: binding.prNumber, runId: binding.runId, runAttempt: binding.runAttempt, releasePaths: expected } }, null, 2)}\n`, { flag: 'w' })
+          } finally {
+            const removed = spawnSync('git', ['worktree', 'remove', '--force', worktree], { encoding: 'utf8', stdio: 'pipe' })
+            if (removed.error || removed.status !== 0) throw new Error(`release candidate worktree cleanup failed: ${removed.stderr?.trim() || removed.error?.message || removed.status}`)
+          }
+          NODE
+      - name: Resolve the exact successful publication evidence for the baseline pair
+        id: baseline
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          RELEASE_REPORT: ${{ runner.temp }}/release-prep-report.json
+        run: |
+          set -euo pipefail
+          gh api "/repos/$REPOSITORY/actions/workflows/release.yml/runs?per_page=100" --header 'X-GitHub-Api-Version: 2026-03-10' > "$RUNNER_TEMP/release-workflow-runs.json"
+          node --input-type=module - "$RELEASE_REPORT" "$RUNNER_TEMP/release-workflow-runs.json" "$REPOSITORY" <<'NODE' >> "$GITHUB_OUTPUT"
+          import { readFileSync } from 'node:fs'
+          import { spawnSync } from 'node:child_process'
+
+          const [reportFile, runsFile, repository] = process.argv.slice(2)
+          const report = JSON.parse(readFileSync(reportFile, 'utf8'))
+          const runs = JSON.parse(readFileSync(runsFile, 'utf8'))?.workflow_runs ?? []
+          const rootTag = report.latestActualPairedTag?.rootTag ?? (report.releasedBaseline?.version ? `v${report.releasedBaseline.version}` : null)
+          const rootPeel = report.latestActualPairedTag?.rootPeel ?? report.releasedBaseline?.peelCommit
+          if (!rootTag || !/^[0-9a-f]{40}$/u.test(rootPeel ?? '')) throw new Error('release report has no verified published paired baseline')
+          const candidates = runs.filter((run) => run.status === 'completed' && run.conclusion === 'success' && ['push', 'workflow_dispatch'].includes(run.event) && run.head_sha === rootPeel && (run.repository?.full_name ?? run.repository?.fullName) === repository && Number.isSafeInteger(Number(run.run_attempt)) && Number(run.run_attempt) > 0).sort((left, right) => Number(right.id) - Number(left.id))
+          for (const run of candidates) {
+            const details = spawnSync('gh', ['api', `/repos/${repository}/actions/runs/${Number(run.id)}`, '--header', 'X-GitHub-Api-Version: 2026-03-10'], { encoding: 'utf8', stdio: 'pipe' })
+            if (details.error || details.status !== 0) throw new Error(`baseline release run lookup failed: ${details.stderr?.trim() || details.error?.message || details.status}`)
+            const detail = JSON.parse(details.stdout)
+            if (detail.path !== '.github/workflows/release.yml' || detail.status !== 'completed' || detail.conclusion !== 'success' || (detail.repository?.full_name ?? detail.repository?.fullName) !== repository) continue
+            const artifactName = `release-publication-evidence-${rootTag}-${Number(run.id)}-${Number(run.run_attempt)}`
+            const artifacts = spawnSync('gh', ['api', `/repos/${repository}/actions/runs/${Number(run.id)}/artifacts?per_page=100`, '--header', 'X-GitHub-Api-Version: 2026-03-10'], { encoding: 'utf8', stdio: 'pipe' })
+            if (artifacts.error || artifacts.status !== 0) throw new Error(`baseline release artifact lookup failed: ${artifacts.stderr?.trim() || artifacts.error?.message || artifacts.status}`)
+            const list = JSON.parse(artifacts.stdout)?.artifacts ?? []
+            const exact = list.find((entry) => entry?.name === artifactName && entry?.expired !== true && Number(entry?.workflow_run?.id ?? entry?.workflowRun?.id ?? entry?.workflow_run_id) === Number(run.id))
+            if (exact) {
+              console.log(`root_tag=${rootTag}`)
+              console.log(`root_peel=${rootPeel}`)
+              console.log(`run_id=${run.id}`)
+              console.log(`run_attempt=${run.run_attempt}`)
+              console.log(`artifact_name=${artifactName}`)
+              process.exit(0)
+            }
+          }
+          throw new Error(`no exact publication evidence artifact exists for ${rootTag} at ${rootPeel}`)
+          NODE
+      - name: Download exact published baseline evidence
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: ${{ steps.baseline.outputs.artifact_name }}
+          run-id: ${{ steps.baseline.outputs.run_id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/published-baseline
+      - name: Apply the trusted public compatibility and patch-release gate
+        env:
+          BINDING_FILE: ${{ runner.temp }}/release-binding.json
+          RELEASE_REPORT: ${{ runner.temp }}/release-prep-report.json
+          EVIDENCE_FILE: ${{ runner.temp }}/published-baseline/release-evidence.json
+        run: |
+          set -euo pipefail
+          test -f "$EVIDENCE_FILE"
+          node --input-type=module - "$BINDING_FILE" "$RELEASE_REPORT" "$EVIDENCE_FILE" <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs'
+          import { verifyPublicCompatibility } from './registry/verify-public-compatibility.mjs'
+
+          const [bindingFile, reportFile, evidenceFile] = process.argv.slice(2)
+          const binding = JSON.parse(readFileSync(bindingFile, 'utf8'))
+          const report = JSON.parse(readFileSync(reportFile, 'utf8'))
+          const evidence = JSON.parse(readFileSync(evidenceFile, 'utf8'))
+          const releasedTag = report.latestActualPairedTag?.rootTag ?? `v${report.releasedBaseline?.version}`
+          if (evidence.kind !== 'erpc-sdk-release-publication-evidence' || evidence.verified !== true || evidence.rootTag !== releasedTag || evidence.goTag !== `packages/go/${releasedTag}` || evidence.peelCommit !== report.releasedBaseline?.peelCommit) throw new Error('published baseline evidence is not the exact paired tag publication record')
+          const compatibility = verifyPublicCompatibility({ root: process.cwd(), baseSha: binding.baseSha, headSha: binding.expectedHead, releasedTag, releaseEvidence: evidence })
+          if (!compatibility.autoPatchReleaseEligible || !compatibility.releaseCheck?.eligible || compatibility.publishedUnexpectedPaths?.length !== 0) throw new Error(`automatic data patch release eligibility failed: ${compatibility.reasons?.join('; ') || compatibility.status}`)
+          if (compatibility.releaseCheck.headVersion !== report.selectedVersion) throw new Error('compatibility gate and release-prep selected different versions')
+          writeFileSync(reportFile, `${JSON.stringify({ ...report, compatibility }, null, 2)}\n`, { flag: 'w' })
+          NODE
+      - name: Exact-head merge, atomic paired tags, and explicit root-tag release dispatch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          BINDING_FILE: ${{ runner.temp }}/release-binding.json
+          RELEASE_REPORT: ${{ runner.temp }}/release-prep-report.json
+          RESULT_FILE: ${{ runner.temp }}/automatic-release-result.json
+        run: |
+          set -euo pipefail
+          node --input-type=module - "$BINDING_FILE" "$RELEASE_REPORT" "$REPOSITORY" "$RESULT_FILE" <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs'
+          import { spawnSync } from 'node:child_process'
+          import { createGhAdapter } from './registry/maintenance-pr.mjs'
+          import { verifyMergedCandidate } from './registry/data-promotion.mjs'
+
+          const [bindingFile, reportFile, repository, resultFile] = process.argv.slice(2)
+          const binding = JSON.parse(readFileSync(bindingFile, 'utf8'))
+          const report = JSON.parse(readFileSync(reportFile, 'utf8'))
+          const runCommand = (command, args, options = {}) => {
+            const result = spawnSync(command, args, { encoding: 'utf8', stdio: 'pipe', ...options })
+            if (result.error || result.status !== 0) {
+              const status = result.error ? 'spawn-error' : `exit-${result.status ?? 'unknown'}`
+              throw new Error(`release-controller command failed (${status})`)
+            }
+            return result.stdout.trim()
+          }
+          const adapter = createGhAdapter({ repo: repository })
+          const pull = await adapter.getPullRequest(binding.prNumber)
+          const prHead = pull.head?.sha ?? pull.headSha ?? pull.head_sha
+          const prBase = pull.base?.sha ?? pull.baseSha ?? pull.base_sha
+          const prHeadRef = pull.head?.ref ?? pull.headRef ?? pull.head_ref
+          const prBaseRef = pull.base?.ref ?? pull.baseRef ?? pull.base_ref
+          const prHeadRepo = pull.head?.repo?.full_name ?? pull.head?.repo?.fullName ?? pull.headRepo
+          const prBaseRepo = pull.base?.repo?.full_name ?? pull.base?.repo?.fullName ?? pull.baseRepo
+          if (prHead !== binding.expectedHead || prBase !== binding.baseSha || prHeadRef !== binding.branch || prBaseRef !== 'main' || prHeadRepo !== repository || prBaseRepo !== repository || String(pull.state).toLowerCase() !== 'open' || pull.merged === true) throw new Error('release PR changed or is no longer an exact open same-repository candidate')
+          const changedPaths = (await adapter.getChangedPaths(binding.branch, { baseSha: binding.baseSha, headSha: binding.expectedHead })).sort()
+          if (changedPaths.join('\0') !== binding.releasePaths.join('\0')) throw new Error('release PR changed paths no longer match the exact seven-file allowlist')
+          const run = await adapter.getWorkflowRun(binding.runId, binding.runAttempt)
+          run.baseSha = binding.baseSha
+          run.workflowPath = binding.workflowPath
+          const policy = await adapter.getMergePolicy({ base: 'main', actor: process.env.GITHUB_ACTOR })
+          if (!(policy?.protected && policy?.strict && policy?.upToDate && policy?.actorAllowed && policy.requiredChecks?.includes('required-ci'))) throw new Error('protected main required-ci policy does not apply to the release merge actor')
+          const headCommit = await adapter.getCommit(binding.expectedHead)
+          const expectedTree = headCommit?.tree?.sha ?? headCommit?.treeSha ?? headCommit?.commit?.tree?.sha
+          if (!/^[0-9a-f]{40}$/u.test(expectedTree ?? '')) throw new Error('release PR head tree SHA is unavailable')
+          const currentBefore = await adapter.getMainSha()
+          if (currentBefore !== binding.baseSha) throw new Error('main moved before release merge')
+          const merged = await adapter.mergePullRequest({ number: binding.prNumber, expectedHead: binding.expectedHead, expectedBase: binding.baseSha })
+          const mergeSha = merged?.sha ?? merged?.mergeSha ?? merged?.merge_commit_sha
+          const verified = await verifyMergedCandidate({ mergeSha, expectedBase: binding.baseSha, expectedHead: binding.expectedHead, expectedTree, adapter })
+          const currentAfter = await adapter.getMainSha()
+          if (currentAfter !== mergeSha) throw new Error('main did not advance to the verified release merge commit')
+          const version = report.selectedVersion
+          const rootTag = `v${version}`
+          const goTag = `packages/go/${rootTag}`
+          const tagAbsent = (tag) => {
+            const local = spawnSync('git', ['rev-parse', '--verify', `refs/tags/${tag}`], { encoding: 'utf8', stdio: 'pipe' })
+            if (local.status === 0) return false
+            if (local.status !== 128) throw new Error(`could not inspect local tag ${tag}`)
+            const result = spawnSync('git', ['ls-remote', '--exit-code', '--tags', 'origin', `refs/tags/${tag}`], { encoding: 'utf8', stdio: 'pipe' })
+            if (result.status === 0) return false
+            if (result.status !== 2) throw new Error(`could not inspect remote tag ${tag}`)
+            return true
+          }
+          if (!tagAbsent(rootTag) || !tagAbsent(goTag)) throw new Error('release tag pair already exists; refusing to move or replace tags')
+          runCommand('git', ['fetch', '--no-tags', 'origin', 'main'])
+          if (runCommand('git', ['rev-parse', 'origin/main']) !== mergeSha) throw new Error('origin/main does not equal the verified release merge')
+          runCommand('git', ['-c', 'user.name=ERPC SDK Release Controller', '-c', 'user.email=release-controller@example.invalid', 'tag', '-a', rootTag, '-m', `ERPC SDK ${rootTag}`, mergeSha])
+          runCommand('git', ['-c', 'user.name=ERPC SDK Release Controller', '-c', 'user.email=release-controller@example.invalid', 'tag', '-a', goTag, '-m', `ERPC Go SDK ${version}`, mergeSha])
+          runCommand('git', ['remote', 'set-url', 'origin', `https://github.com/${repository}.git`])
+          runCommand('git', ['-c', `http.extraheader=Authorization: Bearer ${process.env.GH_TOKEN}`, 'push', '--atomic', 'origin', `refs/tags/${rootTag}`, `refs/tags/${goTag}`])
+          const dispatch = spawnSync('gh', ['workflow', 'run', 'release.yml', '--repo', repository, '--ref', rootTag, '-f', `root_tag=${rootTag}`, '-f', `go_tag=${goTag}`, '-f', `expected_commit=${mergeSha}`, '-f', 'publish=true', '-f', `ci_run_id=${binding.runId}`, '-f', `ci_run_attempt=${binding.runAttempt}`, '-f', `ci_head_sha=${binding.expectedHead}`, '-f', `ci_base_sha=${binding.baseSha}`], { encoding: 'utf8', stdio: 'pipe' })
+          if (dispatch.error || dispatch.status !== 0) throw new Error(`release workflow dispatch failed: ${dispatch.stderr?.trim() || dispatch.error?.message || dispatch.status}`)
+          writeFileSync(resultFile, `${JSON.stringify({ status: 'MERGED_TAGGED_DISPATCHED', version, rootTag, goTag, mergeSha, expectedTree: verified.treeSha, ciRunId: binding.runId, ciRunAttempt: binding.runAttempt, dispatchStdout: dispatch.stdout.trim() }, null, 2)}\n`, { flag: 'w' })
+          NODE
+      - name: Upload automatic release controller evidence
+        if: always()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: automatic-release-controller-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/release-binding.json
+            ${{ runner.temp }}/release-prep-report.json
+            ${{ runner.temp }}/automatic-release-result.json
+          if-no-files-found: warn
+          retention-days: 30

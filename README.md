@@ -32,10 +32,10 @@ analytics, subscriptions, and account balance information.
 | Ruby | [`erpc-sdk`](https://rubygems.org/gems/erpc-sdk) | Published 0.6.0 |
 
 The current published package baseline, [latest GitHub release](https://github.com/elsoul/erpc-sdk/releases/latest),
-and package manifests remain `0.6.0`. The token catalog is on `main`; the DEX,
-pool, and quote slice is in the source tree and planned for `0.7.0`
-(`UNRELEASED`). Installing the current published package does not provide
-these new exports yet.
+and package manifests remain `0.6.0`. The source checkout contains the
+bounded token, DEX, pool, ranking, and RPC-only quote implementation planned
+for the unreleased `0.7.0` package. Installing the current published package
+does not provide these new exports yet.
 
 ## Install
 
@@ -82,10 +82,9 @@ versions are Rust 1.85, Python 3.11, Go 1.22, and Ruby 3.1.
 
 ## Offline token catalog
 
-The `main` source tree contains a bundled, source-backed token catalog with 39
-assets, 60 deployments, and 60 aliases across Ethereum, Solana, and Avalanche
-C-Chain. Catalog reads are local: they do not create a client, need an API key,
-or access a network.
+The source checkout contains a bounded, source-backed token catalog across
+Ethereum, Solana, and Avalanche C-Chain. Catalog reads are local: they do not
+create a client, need an API key, or access a network.
 
 The public TypeScript names use the chain-qualified constants below. Alias
 values are opaque deployment IDs; returned deployments keep their lifecycle
@@ -126,6 +125,9 @@ The `stableCurrency` filter maps `USD` to U.S. dollar, `EUR` to euro, and
 catalog makes no claim of complete coverage, ranking, or market data. See the
 [canonical registry guide](registry/README.md) and its
 [source notes](registry/SOURCES.md) for fields, evidence, and lookup rules.
+All five SDKs expose the corresponding offline list/lookup APIs and catalog
+metadata; they do not call a runtime vendor service, RPC endpoint, or current
+clock for these reads.
 
 These catalog and quote exports are planned for the unreleased `0.7.0`
 package. Until that release is published, `npm install @elsoul/erpc-sdk`
@@ -133,11 +135,11 @@ resolves to the published `0.6.0` package and its exports do not include them.
 
 ## DEX catalog and RPC-only quotes
 
-The source tree contains four DEX deployments, four pool definitions, three
-native-to-wrapped relationships, and eight chain-qualified aliases across the
-five SDKs. Ethereum Uniswap V2 (WETH/USDC) and Avalanche LFJ legacy (WAVAX/USDC)
-support exact-input quotes through the configured RPC. Solana Orca Whirlpools
-and Raydium CLMM (classic WSOL/EURC) are available for lookup only.
+The source tree contains generated DEX, pool, native/wrapped, and alias
+records across the five SDKs. The reviewed seed quote tuples are Ethereum
+Uniswap V2 (WETH/USDC) and Avalanche LFJ legacy (WAVAX/USDC). Solana Orca
+Whirlpools and Raydium CLMM records use classic WSOL/EURC for lookup and pair
+discovery; they are not quote-enabled.
 
 `amountIn` is a positive decimal string in the input token's base units.
 
@@ -172,6 +174,58 @@ calculates locally from one block snapshot. Native-to-wrapped definitions are
 metadata only; no automatic wrapping is performed. Route selection,
 transaction building, signing, simulation, sending, bridging, and Solana CLMM
 quotes remain future work.
+
+Only the reviewed seed pool/token tuples receive quote capability. Discovery
+can record new pool and token facts for review, but it does not enable new swap
+execution or bridge support.
+
+## Offline token rankings
+
+The source checkout exposes an offline ranking snapshot and its metadata. The
+ranking metric is total supply multiplied by the direct native pool price, in
+exact rational native atomic units. It is not circulating market
+capitalization. Coverage is explicit; partial coverage and unranked reasons
+remain visible in the snapshot. The optional global USD market-cap metric is
+rights-gated and disabled by default.
+
+Ranking lookups use exact chain IDs and read no network, vendor API, current
+time, or client configuration. Generated records and metadata are immutable in
+each SDK. The current source snapshot may be unconfigured; its metadata is the
+source of truth for metric, observation time, status, coverage, and digest.
+See [`registry/token-rankings.json`](registry/token-rankings.json),
+[`registry/token-rankings.mjs`](registry/token-rankings.mjs), and the package
+entry-point documentation for the language-specific `list` API.
+
+## Source-checkout maintenance
+
+The source checkout has bounded, read-only RPC discovery for Ethereum factory
+pairs, Avalanche factory pairs, and Solana program accounts. Verified address
+facts are replayed from the configured endpoints in
+[`registry/discovery.mjs`](registry/discovery.mjs) using
+[`registry/discovery-config.json`](registry/discovery-config.json). Newly
+observed tokens use unclassified address-only names and symbols, with
+`stableCurrency`, `underlyingAssetId`, and `economicReferenceAssetId` set to
+`null` until reviewed.
+
+Admission is capped at 8 tokens and 8 pools per run. Direct reviewed native
+pools use WETH, WAVAX, or classic WSOL and native liquidity floors of 10 ETH,
+100 AVAX, or 100 SOL in chain-native atomic units. Discovery state is bounded
+and resumable; cap- or dependency-deferred candidates are revalidated from
+fresh verified receipts before they can be reconsidered. IDs and aliases are
+append-only, and an RPC outage does not retire an existing record.
+
+The installed schedules are daily discovery/ranking maintenance at 03:17 UTC,
+an hourly read-only pool monitor at minute 13 with a persisted rotating batch
+of 32, and Thursday release preparation at 03:47 UTC. Automatic data merge
+and automatic release are opt-in through `ERPC_ENABLE_AUTOMATIC_DATA_MERGE`
+and `ERPC_ENABLE_AUTOMATIC_RELEASE`; both are currently `OFF`. Eligible
+additive data can merge only after exact CI and applicable branch protection.
+A later baseline-to-data merge followed by a version-only PR can produce the
+paired root and Go tags in the release workflow, followed by an explicit
+publisher dispatch when the opt-in policies and protections are enabled.
+Source, schema, adapter, and API changes, including the initial `0.7.0`
+feature release, require manual review. These schedules prepare reviewable
+work; they do not establish that a live scheduled run has succeeded.
 
 ## Quick starts
 
@@ -549,6 +603,8 @@ enter shell history. Never commit credentials.
 
 - [Method availability](docs/METHODS.md)
 - [DEX and pool catalog](registry/DEX.md)
+- [Registry roadmap](registry/ROADMAP.md)
+- [Maintenance runbook](registry/weekly-maintenance.md)
 - [Solana transaction v1 guide](packages/typescript/docs/solana-v1.md)
 - [Changelog](CHANGELOG.md)
 - [Roadmap](ROADMAP.md)

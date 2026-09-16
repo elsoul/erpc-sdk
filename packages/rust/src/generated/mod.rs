@@ -1,4 +1,4 @@
-//! Generated token-catalog data.
+//! Generated catalog and token-ranking data.
 //!
 //! The catalog source and emitters live in the repository registry. This
 //! module only wires the generated Rust data into the crate; the generated
@@ -9,3 +9,6 @@ pub mod dex_catalog;
 
 #[allow(missing_docs)]
 pub mod token_catalog;
+
+#[allow(missing_docs)]
+pub mod token_rankings;

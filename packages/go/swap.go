@@ -25,6 +25,7 @@ const (
 	SwapQuoteUnsupportedStandard   SwapQuoteErrorCode = "SWAP_UNSUPPORTED_TOKEN_STANDARD"
 	SwapQuotePoolTokenMismatch     SwapQuoteErrorCode = "SWAP_POOL_TOKEN_MISMATCH"
 	SwapQuoteUnsupportedAdapter    SwapQuoteErrorCode = "SWAP_UNSUPPORTED_ADAPTER"
+	SwapQuoteUnsupportedToken      SwapQuoteErrorCode = "SWAP_UNSUPPORTED_TOKEN"
 	SwapQuoteProgramMismatch       SwapQuoteErrorCode = "SWAP_PROGRAM_MISMATCH"
 	SwapQuoteStateStale            SwapQuoteErrorCode = "SWAP_STATE_STALE"
 	SwapQuoteInsufficientLiquidity SwapQuoteErrorCode = "SWAP_INSUFFICIENT_LIQUIDITY"
@@ -42,6 +43,7 @@ const (
 	SWAP_UNSUPPORTED_TOKEN_STANDARD = SwapQuoteUnsupportedStandard
 	SWAP_POOL_TOKEN_MISMATCH        = SwapQuotePoolTokenMismatch
 	SWAP_UNSUPPORTED_ADAPTER        = SwapQuoteUnsupportedAdapter
+	SWAP_UNSUPPORTED_TOKEN          = SwapQuoteUnsupportedToken
 	SWAP_PROGRAM_MISMATCH           = SwapQuoteProgramMismatch
 	SWAP_STATE_STALE                = SwapQuoteStateStale
 	SWAP_INSUFFICIENT_LIQUIDITY     = SwapQuoteInsufficientLiquidity
@@ -59,6 +61,7 @@ var swapQuoteMessages = map[SwapQuoteErrorCode]string{
 	SwapQuoteUnsupportedStandard:   "Swap token standard is unsupported",
 	SwapQuotePoolTokenMismatch:     "Swap pool tokens do not match the request",
 	SwapQuoteUnsupportedAdapter:    "Swap adapter is unsupported",
+	SwapQuoteUnsupportedToken:      "Swap token is unsupported for the selected pool",
 	SwapQuoteProgramMismatch:       "Swap program does not match the selected records",
 	SwapQuoteStateStale:            "Swap pool state is stale",
 	SwapQuoteInsufficientLiquidity: "Swap pool liquidity is insufficient",
@@ -176,6 +179,60 @@ type evmSwapState struct {
 }
 
 const supportedQuoteAdapter = "evm-constant-product-v2"
+
+type supportedQuoteCapability struct {
+	chainID          string
+	dexDeploymentID  string
+	factoryAddress   string
+	poolDefinitionID string
+	poolAddress      string
+	token0ID         string
+	token0Address    string
+	token0Decimals   uint8
+	token1ID         string
+	token1Address    string
+	token1Decimals   uint8
+	adapterKind      string
+	feeNumerator     string
+	feeDenominator   string
+}
+
+// Swap eligibility is deliberately a handwritten, reviewed boundary. Catalog
+// growth can add lookup and ranking records without granting RPC quote access.
+var supportedQuoteCapabilities = []supportedQuoteCapability{
+	{
+		chainID:          "eip155:1",
+		dexDeploymentID:  "dex-deployment-0001",
+		factoryAddress:   "0x5c69bee701ef814a2b6a3edd4b1652cb9cc5aa6f",
+		poolDefinitionID: "pool-0001",
+		poolAddress:      "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+		token0ID:         "deployment-0008",
+		token0Address:    "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+		token0Decimals:   6,
+		token1ID:         "deployment-0002",
+		token1Address:    "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+		token1Decimals:   18,
+		adapterKind:      supportedQuoteAdapter,
+		feeNumerator:     "3",
+		feeDenominator:   "1000",
+	},
+	{
+		chainID:          "eip155:43114",
+		dexDeploymentID:  "dex-deployment-0002",
+		factoryAddress:   "0x9ad6c38be94206ca50bb0d90783181662f0cfa10",
+		poolDefinitionID: "pool-0002",
+		poolAddress:      "0xf4003f4efbe8691b60249e6afbd307abe7758adb",
+		token0ID:         "deployment-0004",
+		token0Address:    "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+		token0Decimals:   18,
+		token1ID:         "deployment-0009",
+		token1Address:    "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+		token1Decimals:   6,
+		adapterKind:      supportedQuoteAdapter,
+		feeNumerator:     "3",
+		feeDenominator:   "1000",
+	},
+}
 
 var (
 	uint256Max                = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 256), big.NewInt(1))
@@ -340,6 +397,9 @@ func normalizeSwapRequest(request ExactInputQuoteRequest) (normalizedSwapRequest
 	if input.Standard != TokenStandardERC20 || output.Standard != TokenStandardERC20 {
 		return normalizedSwapRequest{}, swapDomainError(SwapQuoteUnsupportedStandard)
 	}
+	if !matchesSupportedQuoteCapability(pool, dex, input, output) {
+		return normalizedSwapRequest{}, swapDomainError(SwapQuoteUnsupportedToken)
+	}
 	return normalizedSwapRequest{
 		chainID:                 request.ChainID,
 		poolDefinitionID:        request.PoolDefinitionID,
@@ -353,6 +413,51 @@ func normalizeSwapRequest(request ExactInputQuoteRequest) (normalizedSwapRequest
 		input:                   input,
 		output:                  output,
 	}, nil
+}
+
+func matchesSupportedQuoteCapability(pool PoolDefinition, dex DexDeployment, input, output TokenDeployment) bool {
+	var capability *supportedQuoteCapability
+	for index := range supportedQuoteCapabilities {
+		candidate := &supportedQuoteCapabilities[index]
+		if candidate.poolDefinitionID == pool.PoolDefinitionID {
+			capability = candidate
+			break
+		}
+	}
+	if capability == nil {
+		return false
+	}
+	if input.RepresentationKind == TokenRepresentationUnclassified || output.RepresentationKind == TokenRepresentationUnclassified {
+		return false
+	}
+
+	matchesToken := func(token TokenDeployment, deploymentID, address string, decimals uint8) bool {
+		return string(token.ChainID) == capability.chainID &&
+			token.DeploymentID == deploymentID &&
+			token.Address != nil &&
+			*token.Address == address &&
+			token.Decimals == decimals &&
+			token.Standard == TokenStandardERC20
+	}
+
+	return pool.ChainID == capability.chainID &&
+		pool.DexDeploymentID == capability.dexDeploymentID &&
+		pool.Address == capability.poolAddress &&
+		pool.Token0DeploymentID == capability.token0ID &&
+		pool.Token1DeploymentID == capability.token1ID &&
+		dex.ChainID == capability.chainID &&
+		dex.DexDeploymentID == capability.dexDeploymentID &&
+		dex.ProgramAddress == capability.factoryAddress &&
+		dex.AdapterKind == capability.adapterKind &&
+		pool.Adapter.Kind == capability.adapterKind &&
+		pool.Adapter.FeeNumerator != nil &&
+		*pool.Adapter.FeeNumerator == capability.feeNumerator &&
+		pool.Adapter.FeeDenominator != nil &&
+		*pool.Adapter.FeeDenominator == capability.feeDenominator &&
+		((matchesToken(input, capability.token0ID, capability.token0Address, capability.token0Decimals) ||
+			matchesToken(input, capability.token1ID, capability.token1Address, capability.token1Decimals)) &&
+			(matchesToken(output, capability.token0ID, capability.token0Address, capability.token0Decimals) ||
+				matchesToken(output, capability.token1ID, capability.token1Address, capability.token1Decimals)))
 }
 
 func normalizeSwapFreshness(value *SwapFreshness) (normalizedFreshness, error) {

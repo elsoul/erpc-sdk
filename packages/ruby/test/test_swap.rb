@@ -80,6 +80,42 @@ class SwapTest < Minitest::Test
     client&.close
   end
 
+  def test_rejects_a_token_outside_the_reviewed_quote_capability_before_rpc
+    called = 0
+    adapter = FakeHttpAdapter.new do
+      called += 1
+      raise "RPC should not be called"
+    end
+    client = ERPC::Client.new(
+      ERPC::ClientConfig.new(api_key: "capture-secret", endpoint: "https://example.test"),
+      http_adapter: adapter
+    )
+    original_input = ERPC::TokenCatalog.get_token_deployment("deployment-0002")
+    unsupported_input = original_input.merge(
+      address: "0x1111111111111111111111111111111111111111"
+    ).freeze
+    lookup = lambda do |deployment_id|
+      deployment_id == "deployment-0002" ? unsupported_input : ERPC::TokenCatalog::DEPLOYMENTS_BY_ID.fetch(deployment_id, nil)
+    end
+
+    ERPC::TokenCatalog.stub(:get_token_deployment, lookup) do
+      error = assert_raises(ERPC::SwapQuoteError) do
+        client.swap.quote_exact_input(
+          "chainId" => ETHEREUM_CHAIN_ID,
+          "poolDefinitionId" => "pool-0001",
+          "inputTokenDeploymentId" => "deployment-0002",
+          "outputTokenDeploymentId" => "deployment-0008",
+          "amountIn" => "1"
+        )
+      end
+      assert_equal "SWAP_UNSUPPORTED_TOKEN", error.code
+      assert_equal "Swap token is unsupported for the selected pool", error.message
+    end
+    assert_equal 0, called
+  ensure
+    client&.close
+  end
+
   def test_snapshots_request_scalars_before_the_first_rpc_call
     entry = FIXTURE.fetch("validCases").first
     request = entry.fetch("request").dup

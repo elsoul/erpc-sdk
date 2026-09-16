@@ -211,7 +211,11 @@ async def test_request_scalars_are_snapshotted_before_awaits() -> None:
     fixture = _load_fixture()
     if fixture is None:
         pytest.skip("shared quote fixtures are available only in the repository workspace")
-    entry = fixture["validCases"][0]
+    entry = next(
+        entry
+        for entry in fixture["validCases"]
+        if entry["caseId"] == "ethereum-weth-usdc-forward"
+    )
     trace: list[dict[str, Any]] = []
     response_index = 0
     request = dict(entry["request"])

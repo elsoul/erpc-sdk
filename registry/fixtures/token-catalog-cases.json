@@ -1,6 +1,14 @@
 {
   "schemaVersion": 1,
-  "description": "Deterministic in-memory cases for the canonical token catalog validator, renderer, and history guard.",
+  "description": "Deterministic in-memory cases for the growing token catalog validator, renderer, and history guard.",
+  "seedSentinels": {
+    "assetIds": ["asset-0001", "asset-0007"],
+    "deploymentIds": ["deployment-0001", "deployment-0008"],
+    "aliases": [
+      { "namespace": "ethereum", "name": "ETH", "deploymentId": "deployment-0001" },
+      { "namespace": "ethereum", "name": "USDC", "deploymentId": "deployment-0008" }
+    ]
+  },
   "codegen": [
     {
       "name": "literal-escaping",
@@ -45,6 +53,10 @@
     {
       "name": "offline-lookup",
       "expect": "lookup and filtering require no RPC, API key, client, or network"
+    },
+    {
+      "name": "unclassified-growth",
+      "expect": "newly discovered assets may remain unclassified only while stableCurrency and both relation IDs are null"
     }
   ],
   "history": {
@@ -145,6 +157,11 @@
       "name": "replacement-cross-chain",
       "operation": "setCrossChainReplacement",
       "expectError": "replacement"
+    },
+    {
+      "name": "unclassified-retains-no-classification",
+      "operation": "setUnclassifiedRelations",
+      "expectError": "unclassified asset .*requires null"
     }
   ]
 }

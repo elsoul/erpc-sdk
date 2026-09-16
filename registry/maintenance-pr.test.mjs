@@ -16,9 +16,13 @@ import {
 import {
   ALLOWED_BOT_BRANCHES,
   BOT_BRANCH,
+  DATA_CI_ARTIFACT_PREFIX,
+  DATA_CI_OBSERVATION_ENTRY,
+  DATA_CI_PROVENANCE_ENTRY,
   GITHUB_API_VERSION,
   MANAGED_BY,
   RELEASE_BRANCH,
+  WORKFLOW_PATH,
   buildMaintenancePayload,
   buildWorkflowDispatch,
   createGhAdapter,
@@ -431,5 +435,67 @@ test("real gh adapter binds workflow_run_id, head, ref, and requested base", asy
     await assert.rejects(() => adapter.verifyWorkflowRunHead(response, botHead, baseHead, BOT_BRANCH), { code: "WORKFLOW_HEAD_MISMATCH" });
   } finally {
     rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("real gh adapter fetches only the exact bounded CI observation artifact", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "erpc-maintenance-gh-artifact-"));
+  const badDirectory = mkdtempSync(join(tmpdir(), "erpc-maintenance-gh-artifact-bad-"));
+  try {
+    const runId = 901;
+    const runAttempt = 2;
+    const headSha = "a".repeat(40);
+    const baseSha = "b".repeat(40);
+    // Exercise the finite 16 MiB CI entry bound with a synthetic payload;
+    // default sizing is captured separately from a plain collector run.
+    const observation = { schemaVersion: 1, kind: "erpc-sdk-data-maintenance-observation", sourceSha: headSha, baseSha, padding: "x".repeat(12 * 1024 * 1024) };
+    const observationBytes = Buffer.from(JSON.stringify(observation), "utf8");
+    const provenance = {
+      schemaVersion: 1,
+      kind: "erpc-sdk-ci-provenance",
+      headSha,
+      testedHeadSha: headSha,
+      sourceSha: headSha,
+      baseSha,
+      workflowPath: WORKFLOW_PATH,
+      runId,
+      runAttempt,
+      event: "workflow_dispatch",
+      observationSha256: createHash("sha256").update(observationBytes).digest("hex"),
+      observationByteLength: observationBytes.byteLength,
+    };
+    writeFileSync(join(directory, DATA_CI_OBSERVATION_ENTRY), observationBytes);
+    writeFileSync(join(directory, DATA_CI_PROVENANCE_ENTRY), `${JSON.stringify(provenance)}\n`);
+    const zipPath = join(directory, "artifact.zip");
+    execFileSync("zip", ["-q", zipPath, DATA_CI_OBSERVATION_ENTRY, DATA_CI_PROVENANCE_ENTRY], { cwd: directory });
+    writeFileSync(join(badDirectory, DATA_CI_OBSERVATION_ENTRY), observationBytes);
+    writeFileSync(join(badDirectory, DATA_CI_PROVENANCE_ENTRY), `${JSON.stringify({ ...provenance, observationSha256: "c".repeat(64) })}\n`);
+    const badZipPath = join(badDirectory, "artifact.zip");
+    execFileSync("zip", ["-q", badZipPath, DATA_CI_OBSERVATION_ENTRY, DATA_CI_PROVENANCE_ENTRY], { cwd: badDirectory });
+    const scriptPath = join(directory, "gh");
+    writeFileSync(scriptPath, `#!/usr/bin/env node
+const { readFileSync } = require("node:fs");
+const path = process.argv[3] ?? "";
+const runId = ${runId};
+const runAttempt = ${runAttempt};
+const headSha = "${headSha}";
+const expectedName = "${DATA_CI_ARTIFACT_PREFIX}" + headSha + "-" + runId + "-" + runAttempt;
+if (path.endsWith("/actions/runs/" + runId)) process.stdout.write(JSON.stringify({ id: runId, run_attempt: runAttempt, head_sha: headSha, head_branch: "codex/registry-maintenance", ref: "refs/heads/codex/registry-maintenance", event: "workflow_dispatch", path: "${WORKFLOW_PATH}", repository: { full_name: "owner/repo" } }));
+else if (path.includes("/actions/runs/" + runId + "/jobs")) process.stdout.write(JSON.stringify({ jobs: [{ name: "required-ci", status: "completed", conclusion: "success" }] }));
+else if (path.includes("/actions/runs/" + runId + "/artifacts")) process.stdout.write(JSON.stringify({ artifacts: [{ id: 123, name: expectedName, expired: false, workflow_run: { id: runId } }] }));
+else if (path.includes("/actions/artifacts/123/zip")) process.stdout.write(readFileSync(process.env.FAKE_ZIP));
+else process.stdout.write(JSON.stringify({}));
+`);
+    chmodSync(scriptPath, 0o755);
+    const env = { ...process.env, PATH: `${directory}:${process.env.PATH}`, FAKE_ZIP: zipPath };
+    const adapter = createGhAdapter({ repo: "owner/repo", root: directory, env });
+    const result = await adapter.getMaintenanceObservation(runId, runAttempt, { expectedHead: headSha, expectedBase: baseSha });
+    assert.deepEqual(result.observation, observation);
+    assert.equal(result.provenance.observationByteLength, observationBytes.byteLength);
+    env.FAKE_ZIP = badZipPath;
+    await assert.rejects(() => adapter.getMaintenanceObservation(runId, runAttempt, { expectedHead: headSha, expectedBase: baseSha }), { code: "CI_PROVENANCE_INVALID" });
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+    rmSync(badDirectory, { recursive: true, force: true });
   }
 });

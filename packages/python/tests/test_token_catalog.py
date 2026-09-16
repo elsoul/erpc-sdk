@@ -30,7 +30,7 @@ CHAINS = (
 
 def test_generated_metadata_and_immutable_alias_groups() -> None:
     assert TOKEN_CATALOG_VERSION == "1.0.0"
-    assert TOKEN_CATALOG_AS_OF_DATE == "2026-09-15"
+    assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", TOKEN_CATALOG_AS_OF_DATE)
     assert re.fullmatch(r"[0-9a-f]{64}", TOKEN_CATALOG_CONTENT_DIGEST)
 
     assert isinstance(tokens.ethereum.USDC, str)
@@ -140,7 +140,7 @@ def test_stable_currency_filters_preserve_all_matching_statuses() -> None:
 
 
 def test_malformed_inputs_are_safe_and_ids_are_opaque() -> None:
-    first = TOKEN_DEPLOYMENTS[0]
+    first = next(iter(TOKEN_DEPLOYMENTS))
     assert get_token_asset(f"{first.asset_id}:extra") is None
     assert get_token_deployment(f"{first.deployment_id}:extra") is None
     assert get_token_asset(None) is None
@@ -195,17 +195,17 @@ def test_catalog_records_and_results_cannot_be_mutated() -> None:
     assert isinstance(TOKEN_ASSETS, tuple)
     assert isinstance(TOKEN_DEPLOYMENTS, tuple)
     assert isinstance(TOKEN_ALIASES, tuple)
-    with pytest.raises(TypeError):
-        TOKEN_DEPLOYMENTS[0] = TOKEN_DEPLOYMENTS[0]  # type: ignore[index]
+    with pytest.raises(AttributeError):
+        TOKEN_DEPLOYMENTS.append(None)  # type: ignore[attr-defined]
 
     listed = list_token_deployments()
     assert listed
-    assert listed[0] is TOKEN_DEPLOYMENTS[0]
-    with pytest.raises(TypeError):
-        listed[0] = listed[0]  # type: ignore[index]
+    listed_entry = next(iter(listed))
+    assert listed_entry is get_token_deployment(listed_entry.deployment_id)
     with pytest.raises(AttributeError):
-        listed[0].symbol = "MUTATED"  # type: ignore[misc]
-    assert get_token_deployment(listed[0].deployment_id) is listed[0]
+        listed_entry.symbol = "MUTATED"  # type: ignore[misc]
+    with pytest.raises(AttributeError):
+        listed.append(None)  # type: ignore[attr-defined]
 
 
 def test_catalog_lookups_are_offline() -> None:

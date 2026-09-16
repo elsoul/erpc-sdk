@@ -52,6 +52,64 @@ DEX_CHAIN_IDS = MappingProxyType({
     "solana": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
     "avalancheC": "eip155:43114",
 })
+class _EthereumDexes(NamedTuple):
+    UNISWAP_V2: str
+
+class _SolanaDexes(NamedTuple):
+    ORCA_WHIRLPOOLS: str
+    RAYDIUM_CLMM: str
+
+class _AvalancheCDexes(NamedTuple):
+    LFJ_LEGACY: str
+
+class _Dexes(NamedTuple):
+    ethereum: _EthereumDexes
+    solana: _SolanaDexes
+    avalanche_c: _AvalancheCDexes
+
+dexes = _Dexes(
+    ethereum=_EthereumDexes(
+        UNISWAP_V2="dex-deployment-0001",
+    ),
+    solana=_SolanaDexes(
+        ORCA_WHIRLPOOLS="dex-deployment-0003",
+        RAYDIUM_CLMM="dex-deployment-0004",
+    ),
+    avalanche_c=_AvalancheCDexes(
+        LFJ_LEGACY="dex-deployment-0002",
+    ),
+)
+DEXES = dexes
+
+class _EthereumPools(NamedTuple):
+    UNISWAP_V2_USDC_WETH: str
+
+class _SolanaPools(NamedTuple):
+    ORCA_WHIRLPOOLS_WSOL_EURC: str
+    RAYDIUM_CLMM_WSOL_EURC: str
+
+class _AvalancheCPools(NamedTuple):
+    LFJ_LEGACY_WAVAX_USDC: str
+
+class _Pools(NamedTuple):
+    ethereum: _EthereumPools
+    solana: _SolanaPools
+    avalanche_c: _AvalancheCPools
+
+pools = _Pools(
+    ethereum=_EthereumPools(
+        UNISWAP_V2_USDC_WETH="pool-0001",
+    ),
+    solana=_SolanaPools(
+        ORCA_WHIRLPOOLS_WSOL_EURC="pool-0003",
+        RAYDIUM_CLMM_WSOL_EURC="pool-0004",
+    ),
+    avalanche_c=_AvalancheCPools(
+        LFJ_LEGACY_WAVAX_USDC="pool-0002",
+    ),
+)
+POOLS = pools
+
 DEX_DEPLOYMENTS = (
     DexDeployment(
         dex_deployment_id="dex-deployment-0001",
@@ -183,107 +241,49 @@ DEX_ALIASES = (
     DexAlias(
         namespace="avalancheC",
         name="LFJ_LEGACY",
-        dex_deployment_id="dex-deployment-0002",
+        dex_deployment_id=dexes.avalanche_c.LFJ_LEGACY,
         pool_definition_id=None,
     ),
     DexAlias(
         namespace="avalancheC",
         name="LFJ_LEGACY_WAVAX_USDC",
         dex_deployment_id=None,
-        pool_definition_id="pool-0002",
+        pool_definition_id=pools.avalanche_c.LFJ_LEGACY_WAVAX_USDC,
     ),
     DexAlias(
         namespace="ethereum",
         name="UNISWAP_V2",
-        dex_deployment_id="dex-deployment-0001",
+        dex_deployment_id=dexes.ethereum.UNISWAP_V2,
         pool_definition_id=None,
     ),
     DexAlias(
         namespace="ethereum",
         name="UNISWAP_V2_USDC_WETH",
         dex_deployment_id=None,
-        pool_definition_id="pool-0001",
+        pool_definition_id=pools.ethereum.UNISWAP_V2_USDC_WETH,
     ),
     DexAlias(
         namespace="solana",
         name="ORCA_WHIRLPOOLS",
-        dex_deployment_id="dex-deployment-0003",
+        dex_deployment_id=dexes.solana.ORCA_WHIRLPOOLS,
         pool_definition_id=None,
     ),
     DexAlias(
         namespace="solana",
         name="ORCA_WHIRLPOOLS_WSOL_EURC",
         dex_deployment_id=None,
-        pool_definition_id="pool-0003",
+        pool_definition_id=pools.solana.ORCA_WHIRLPOOLS_WSOL_EURC,
     ),
     DexAlias(
         namespace="solana",
         name="RAYDIUM_CLMM",
-        dex_deployment_id="dex-deployment-0004",
+        dex_deployment_id=dexes.solana.RAYDIUM_CLMM,
         pool_definition_id=None,
     ),
     DexAlias(
         namespace="solana",
         name="RAYDIUM_CLMM_WSOL_EURC",
         dex_deployment_id=None,
-        pool_definition_id="pool-0004",
+        pool_definition_id=pools.solana.RAYDIUM_CLMM_WSOL_EURC,
     ),
 )
-class _EthereumDexes(NamedTuple):
-    UNISWAP_V2: str
-
-class _SolanaDexes(NamedTuple):
-    ORCA_WHIRLPOOLS: str
-    RAYDIUM_CLMM: str
-
-class _AvalancheCDexes(NamedTuple):
-    LFJ_LEGACY: str
-
-class _Dexes(NamedTuple):
-    ethereum: _EthereumDexes
-    solana: _SolanaDexes
-    avalanche_c: _AvalancheCDexes
-
-dexes = _Dexes(
-    ethereum=_EthereumDexes(
-        UNISWAP_V2="dex-deployment-0001",
-    ),
-    solana=_SolanaDexes(
-        ORCA_WHIRLPOOLS="dex-deployment-0003",
-        RAYDIUM_CLMM="dex-deployment-0004",
-    ),
-    avalanche_c=_AvalancheCDexes(
-        LFJ_LEGACY="dex-deployment-0002",
-    ),
-)
-DEXES = dexes
-
-class _EthereumPools(NamedTuple):
-    UNISWAP_V2_USDC_WETH: str
-
-class _SolanaPools(NamedTuple):
-    ORCA_WHIRLPOOLS_WSOL_EURC: str
-    RAYDIUM_CLMM_WSOL_EURC: str
-
-class _AvalancheCPools(NamedTuple):
-    LFJ_LEGACY_WAVAX_USDC: str
-
-class _Pools(NamedTuple):
-    ethereum: _EthereumPools
-    solana: _SolanaPools
-    avalanche_c: _AvalancheCPools
-
-pools = _Pools(
-    ethereum=_EthereumPools(
-        UNISWAP_V2_USDC_WETH="pool-0001",
-    ),
-    solana=_SolanaPools(
-        ORCA_WHIRLPOOLS_WSOL_EURC="pool-0003",
-        RAYDIUM_CLMM_WSOL_EURC="pool-0004",
-    ),
-    avalanche_c=_AvalancheCPools(
-        LFJ_LEGACY_WAVAX_USDC="pool-0002",
-    ),
-)
-POOLS = pools
-

@@ -54,6 +54,31 @@ pub const DEX_CHAIN_IDS: &[(&str, &str)] = &[
     ("solana", "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"),
     ("avalancheC", "eip155:43114"),
 ];
+pub mod dexes {
+    pub mod ethereum {
+        pub const UNISWAP_V2: &str = "dex-deployment-0001";
+    }
+    pub mod solana {
+        pub const ORCA_WHIRLPOOLS: &str = "dex-deployment-0003";
+        pub const RAYDIUM_CLMM: &str = "dex-deployment-0004";
+    }
+    pub mod avalanche_c {
+        pub const LFJ_LEGACY: &str = "dex-deployment-0002";
+    }
+}
+
+pub mod pools {
+    pub mod ethereum {
+        pub const UNISWAP_V2_USDC_WETH: &str = "pool-0001";
+    }
+    pub mod solana {
+        pub const ORCA_WHIRLPOOLS_WSOL_EURC: &str = "pool-0003";
+        pub const RAYDIUM_CLMM_WSOL_EURC: &str = "pool-0004";
+    }
+    pub mod avalanche_c {
+        pub const LFJ_LEGACY_WAVAX_USDC: &str = "pool-0002";
+    }
+}
 pub const DEX_DEPLOYMENTS: &[DexDeployment] = &[
     DexDeployment {
         dex_deployment_id: "dex-deployment-0001",
@@ -185,75 +210,49 @@ pub const DEX_ALIASES: &[DexAlias] = &[
     DexAlias {
         namespace: "avalancheC",
         name: "LFJ_LEGACY",
-        dex_deployment_id: Some("dex-deployment-0002"),
+        dex_deployment_id: Some(dexes::avalanche_c::LFJ_LEGACY),
         pool_definition_id: None,
     },
     DexAlias {
         namespace: "avalancheC",
         name: "LFJ_LEGACY_WAVAX_USDC",
         dex_deployment_id: None,
-        pool_definition_id: Some("pool-0002"),
+        pool_definition_id: Some(pools::avalanche_c::LFJ_LEGACY_WAVAX_USDC),
     },
     DexAlias {
         namespace: "ethereum",
         name: "UNISWAP_V2",
-        dex_deployment_id: Some("dex-deployment-0001"),
+        dex_deployment_id: Some(dexes::ethereum::UNISWAP_V2),
         pool_definition_id: None,
     },
     DexAlias {
         namespace: "ethereum",
         name: "UNISWAP_V2_USDC_WETH",
         dex_deployment_id: None,
-        pool_definition_id: Some("pool-0001"),
+        pool_definition_id: Some(pools::ethereum::UNISWAP_V2_USDC_WETH),
     },
     DexAlias {
         namespace: "solana",
         name: "ORCA_WHIRLPOOLS",
-        dex_deployment_id: Some("dex-deployment-0003"),
+        dex_deployment_id: Some(dexes::solana::ORCA_WHIRLPOOLS),
         pool_definition_id: None,
     },
     DexAlias {
         namespace: "solana",
         name: "ORCA_WHIRLPOOLS_WSOL_EURC",
         dex_deployment_id: None,
-        pool_definition_id: Some("pool-0003"),
+        pool_definition_id: Some(pools::solana::ORCA_WHIRLPOOLS_WSOL_EURC),
     },
     DexAlias {
         namespace: "solana",
         name: "RAYDIUM_CLMM",
-        dex_deployment_id: Some("dex-deployment-0004"),
+        dex_deployment_id: Some(dexes::solana::RAYDIUM_CLMM),
         pool_definition_id: None,
     },
     DexAlias {
         namespace: "solana",
         name: "RAYDIUM_CLMM_WSOL_EURC",
         dex_deployment_id: None,
-        pool_definition_id: Some("pool-0004"),
+        pool_definition_id: Some(pools::solana::RAYDIUM_CLMM_WSOL_EURC),
     },
 ];
-
-pub mod dexes {
-    pub mod ethereum {
-        pub const UNISWAP_V2: &str = "dex-deployment-0001";
-    }
-    pub mod solana {
-        pub const ORCA_WHIRLPOOLS: &str = "dex-deployment-0003";
-        pub const RAYDIUM_CLMM: &str = "dex-deployment-0004";
-    }
-    pub mod avalanche_c {
-        pub const LFJ_LEGACY: &str = "dex-deployment-0002";
-    }
-}
-
-pub mod pools {
-    pub mod ethereum {
-        pub const UNISWAP_V2_USDC_WETH: &str = "pool-0001";
-    }
-    pub mod solana {
-        pub const ORCA_WHIRLPOOLS_WSOL_EURC: &str = "pool-0003";
-        pub const RAYDIUM_CLMM_WSOL_EURC: &str = "pool-0004";
-    }
-    pub mod avalanche_c {
-        pub const LFJ_LEGACY_WAVAX_USDC: &str = "pool-0002";
-    }
-}

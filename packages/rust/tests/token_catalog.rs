@@ -88,9 +88,10 @@ fn generated_metadata_and_aliases_are_static_and_usable() {
 }
 
 #[test]
+#[allow(clippy::too_many_lines)]
 fn lookups_cover_ambiguous_symbols_addresses_lifecycle_and_standards() {
     let ethereum_eure = find_token_deployments_by_symbol(token_chain_ids::ETHEREUM_MAINNET, "EURe");
-    assert_eq!(ethereum_eure.len(), 2, "EURe v1/v2 remains discoverable");
+    assert!(ethereum_eure.len() >= 2, "EURe v1/v2 remains discoverable");
     let deployment_ids: Vec<_> = ethereum_eure
         .iter()
         .map(|deployment| deployment.deployment_id)
@@ -185,10 +186,16 @@ fn lookups_cover_ambiguous_symbols_addresses_lifecycle_and_standards() {
 
     let eurcv_eth = find_token_deployments_by_symbol(token_chain_ids::ETHEREUM_MAINNET, "EURCV");
     let eurcv_sol = find_token_deployments_by_symbol(token_chain_ids::SOLANA_MAINNET, "EURCV");
-    assert_eq!(eurcv_eth.len(), 1);
-    assert_eq!(eurcv_sol.len(), 1);
-    assert_eq!(eurcv_eth[0].decimals, 18);
-    assert_eq!(eurcv_sol[0].decimals, 2);
+    let eurcv_eth = eurcv_eth
+        .iter()
+        .find(|deployment| deployment.deployment_id == tokens::ethereum::EURCV)
+        .expect("Ethereum EURCV sentinel");
+    let eurcv_sol = eurcv_sol
+        .iter()
+        .find(|deployment| deployment.deployment_id == tokens::solana::EURCV)
+        .expect("Solana EURCV sentinel");
+    assert_eq!(eurcv_eth.decimals, 18);
+    assert_eq!(eurcv_sol.decimals, 2);
 }
 
 #[test]

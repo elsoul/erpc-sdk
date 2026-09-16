@@ -16,6 +16,30 @@ export const DEX_CHAIN_IDS = deepFreeze({
   "solana": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
   "avalancheC": "eip155:43114"
 } as const);
+export const dexes = deepFreeze({
+  "ethereum": {
+    "UNISWAP_V2": "dex-deployment-0001"
+  },
+  "solana": {
+    "ORCA_WHIRLPOOLS": "dex-deployment-0003",
+    "RAYDIUM_CLMM": "dex-deployment-0004"
+  },
+  "avalancheC": {
+    "LFJ_LEGACY": "dex-deployment-0002"
+  }
+} as const);
+export const pools = deepFreeze({
+  "ethereum": {
+    "UNISWAP_V2_USDC_WETH": "pool-0001"
+  },
+  "solana": {
+    "ORCA_WHIRLPOOLS_WSOL_EURC": "pool-0003",
+    "RAYDIUM_CLMM_WSOL_EURC": "pool-0004"
+  },
+  "avalancheC": {
+    "LFJ_LEGACY_WAVAX_USDC": "pool-0002"
+  }
+} as const);
 export const DEX_DEPLOYMENTS: ReadonlyArray<Readonly<DexDeployment>> = deepFreeze([
   {
     "dexDeploymentId": "dex-deployment-0001",
@@ -144,76 +168,12 @@ export const NATIVE_WRAP_DEFINITIONS: ReadonlyArray<Readonly<NativeWrapDefinitio
   }
 ]);
 export const DEX_ALIASES: ReadonlyArray<Readonly<DexAlias>> = deepFreeze([
-  {
-    "namespace": "avalancheC",
-    "name": "LFJ_LEGACY",
-    "dexDeploymentId": "dex-deployment-0002",
-    "poolDefinitionId": null
-  },
-  {
-    "namespace": "avalancheC",
-    "name": "LFJ_LEGACY_WAVAX_USDC",
-    "dexDeploymentId": null,
-    "poolDefinitionId": "pool-0002"
-  },
-  {
-    "namespace": "ethereum",
-    "name": "UNISWAP_V2",
-    "dexDeploymentId": "dex-deployment-0001",
-    "poolDefinitionId": null
-  },
-  {
-    "namespace": "ethereum",
-    "name": "UNISWAP_V2_USDC_WETH",
-    "dexDeploymentId": null,
-    "poolDefinitionId": "pool-0001"
-  },
-  {
-    "namespace": "solana",
-    "name": "ORCA_WHIRLPOOLS",
-    "dexDeploymentId": "dex-deployment-0003",
-    "poolDefinitionId": null
-  },
-  {
-    "namespace": "solana",
-    "name": "ORCA_WHIRLPOOLS_WSOL_EURC",
-    "dexDeploymentId": null,
-    "poolDefinitionId": "pool-0003"
-  },
-  {
-    "namespace": "solana",
-    "name": "RAYDIUM_CLMM",
-    "dexDeploymentId": "dex-deployment-0004",
-    "poolDefinitionId": null
-  },
-  {
-    "namespace": "solana",
-    "name": "RAYDIUM_CLMM_WSOL_EURC",
-    "dexDeploymentId": null,
-    "poolDefinitionId": "pool-0004"
-  }
-]);
-export const dexes = deepFreeze({
-  "ethereum": {
-    "UNISWAP_V2": "dex-deployment-0001"
-  },
-  "solana": {
-    "ORCA_WHIRLPOOLS": "dex-deployment-0003",
-    "RAYDIUM_CLMM": "dex-deployment-0004"
-  },
-  "avalancheC": {
-    "LFJ_LEGACY": "dex-deployment-0002"
-  }
-} as const);
-export const pools = deepFreeze({
-  "ethereum": {
-    "UNISWAP_V2_USDC_WETH": "pool-0001"
-  },
-  "solana": {
-    "ORCA_WHIRLPOOLS_WSOL_EURC": "pool-0003",
-    "RAYDIUM_CLMM_WSOL_EURC": "pool-0004"
-  },
-  "avalancheC": {
-    "LFJ_LEGACY_WAVAX_USDC": "pool-0002"
-  }
-} as const);
+  { namespace: "avalancheC", name: "LFJ_LEGACY", dexDeploymentId: dexes.avalancheC.LFJ_LEGACY, poolDefinitionId: null },
+  { namespace: "avalancheC", name: "LFJ_LEGACY_WAVAX_USDC", dexDeploymentId: null, poolDefinitionId: pools.avalancheC.LFJ_LEGACY_WAVAX_USDC },
+  { namespace: "ethereum", name: "UNISWAP_V2", dexDeploymentId: dexes.ethereum.UNISWAP_V2, poolDefinitionId: null },
+  { namespace: "ethereum", name: "UNISWAP_V2_USDC_WETH", dexDeploymentId: null, poolDefinitionId: pools.ethereum.UNISWAP_V2_USDC_WETH },
+  { namespace: "solana", name: "ORCA_WHIRLPOOLS", dexDeploymentId: dexes.solana.ORCA_WHIRLPOOLS, poolDefinitionId: null },
+  { namespace: "solana", name: "ORCA_WHIRLPOOLS_WSOL_EURC", dexDeploymentId: null, poolDefinitionId: pools.solana.ORCA_WHIRLPOOLS_WSOL_EURC },
+  { namespace: "solana", name: "RAYDIUM_CLMM", dexDeploymentId: dexes.solana.RAYDIUM_CLMM, poolDefinitionId: null },
+  { namespace: "solana", name: "RAYDIUM_CLMM_WSOL_EURC", dexDeploymentId: null, poolDefinitionId: pools.solana.RAYDIUM_CLMM_WSOL_EURC },
+]) as ReadonlyArray<Readonly<DexAlias>>;

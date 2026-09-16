@@ -80,14 +80,14 @@ func NativeWrapDefinitions() []NativeWrapDefinition {
 }
 func DexAliases() []DexAlias {
 	return []DexAlias{
-		{Namespace: "avalancheC", Name: "LFJ_LEGACY", DexDeploymentID: dexString("dex-deployment-0002"), PoolDefinitionID: nil},
-		{Namespace: "avalancheC", Name: "LFJ_LEGACY_WAVAX_USDC", DexDeploymentID: nil, PoolDefinitionID: dexString("pool-0002")},
-		{Namespace: "ethereum", Name: "UNISWAP_V2", DexDeploymentID: dexString("dex-deployment-0001"), PoolDefinitionID: nil},
-		{Namespace: "ethereum", Name: "UNISWAP_V2_USDC_WETH", DexDeploymentID: nil, PoolDefinitionID: dexString("pool-0001")},
-		{Namespace: "solana", Name: "ORCA_WHIRLPOOLS", DexDeploymentID: dexString("dex-deployment-0003"), PoolDefinitionID: nil},
-		{Namespace: "solana", Name: "ORCA_WHIRLPOOLS_WSOL_EURC", DexDeploymentID: nil, PoolDefinitionID: dexString("pool-0003")},
-		{Namespace: "solana", Name: "RAYDIUM_CLMM", DexDeploymentID: dexString("dex-deployment-0004"), PoolDefinitionID: nil},
-		{Namespace: "solana", Name: "RAYDIUM_CLMM_WSOL_EURC", DexDeploymentID: nil, PoolDefinitionID: dexString("pool-0004")},
+		{Namespace: "avalancheC", Name: "LFJ_LEGACY", DexDeploymentID: dexString(DexAvalancheCLFJ_LEGACY), PoolDefinitionID: nil},
+		{Namespace: "avalancheC", Name: "LFJ_LEGACY_WAVAX_USDC", DexDeploymentID: nil, PoolDefinitionID: dexString(PoolAvalancheCLFJ_LEGACY_WAVAX_USDC)},
+		{Namespace: "ethereum", Name: "UNISWAP_V2", DexDeploymentID: dexString(DexEthereumUNISWAP_V2), PoolDefinitionID: nil},
+		{Namespace: "ethereum", Name: "UNISWAP_V2_USDC_WETH", DexDeploymentID: nil, PoolDefinitionID: dexString(PoolEthereumUNISWAP_V2_USDC_WETH)},
+		{Namespace: "solana", Name: "ORCA_WHIRLPOOLS", DexDeploymentID: dexString(DexSolanaORCA_WHIRLPOOLS), PoolDefinitionID: nil},
+		{Namespace: "solana", Name: "ORCA_WHIRLPOOLS_WSOL_EURC", DexDeploymentID: nil, PoolDefinitionID: dexString(PoolSolanaORCA_WHIRLPOOLS_WSOL_EURC)},
+		{Namespace: "solana", Name: "RAYDIUM_CLMM", DexDeploymentID: dexString(DexSolanaRAYDIUM_CLMM), PoolDefinitionID: nil},
+		{Namespace: "solana", Name: "RAYDIUM_CLMM_WSOL_EURC", DexDeploymentID: nil, PoolDefinitionID: dexString(PoolSolanaRAYDIUM_CLMM_WSOL_EURC)},
 	}
 }
 

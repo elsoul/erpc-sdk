@@ -995,7 +995,7 @@ function deploymentSort(left, right) {
   return left.deploymentId < right.deploymentId ? -1 : left.deploymentId > right.deploymentId ? 1 : 0;
 }
 
-async function observeEvmNetwork(network, deployments, endpoint, options, deadline, sequence) {
+async function observeEvmNetwork(network, deployments, endpoint, options, deadline, sequence, catalog = CATALOG) {
   let identity;
   try {
     const result = await requestJsonRpc(endpoint, rpcPayload(sequence(), "eth_chainId", []), options, deadline);
@@ -1022,6 +1022,7 @@ async function observeEvmNetwork(network, deployments, endpoint, options, deadli
   }
 
   const nonNative = deployments.filter((deployment) => deployment.standard !== "native");
+  const unclassified = new Set(catalog.assets.filter((asset) => asset.representationKind === "unclassified").map((asset) => asset.assetId));
   const observed = await mapLimitOrdered(nonNative, OBSERVER_LIMITS.concurrency, async (deployment) => {
     try {
       const codeResult = await requestJsonRpc(endpoint, rpcPayload(sequence(), "eth_getCode", [deployment.address, blockNumber]), options, deadline);
@@ -1034,9 +1035,17 @@ async function observeEvmNetwork(network, deployments, endpoint, options, deadli
       if (codeHex === "0x") return failedDeployment(deployment, "EVM_EMPTY_CODE", "rpc", { codeNonEmpty: false });
       if (codeHex.length < 4) return failedDeployment(deployment, "EVM_CODE_INVALID", "rpc", { codeNonEmpty: false });
       const decimalsResult = await requestJsonRpc(endpoint, rpcPayload(sequence(), "eth_call", [{ to: deployment.address, data: "0x313ce567" }, blockNumber]), options, deadline);
-      const symbolResult = await requestJsonRpc(endpoint, rpcPayload(sequence(), "eth_call", [{ to: deployment.address, data: "0x95d89b41" }, blockNumber]), options, deadline);
       const decimals = decodeUint256(decimalsResult, "EVM_DECIMALS");
       if (!Number.isInteger(decimals) || decimals < 0 || decimals > 255) return failedDeployment(deployment, "EVM_DECIMALS_OUT_OF_RANGE", "rpc", { codeNonEmpty: true, observedDecimals: Number.isSafeInteger(decimals) ? decimals : null });
+      if (unclassified.has(deployment.assetId)) {
+        // Discovery admits address-only records as unclassified.  RPC code and
+        // decimals are sufficient to keep those records operational; asking
+        // for a symbol would turn an optional issuer signal into a false
+        // failure and could echo untrusted response text.
+        if (decimals !== deployment.decimals) return failedDeployment(deployment, "EVM_DECIMALS_MISMATCH", "rpc", { codeNonEmpty: true, observedDecimals: decimals });
+        return successfulDeployment(deployment, "rpc", { blockNumber, codeNonEmpty: true, decimals, symbol: deployment.symbol, symbolSource: "address-only" });
+      }
+      const symbolResult = await requestJsonRpc(endpoint, rpcPayload(sequence(), "eth_call", [{ to: deployment.address, data: "0x95d89b41" }, blockNumber]), options, deadline);
       const symbol = decodeSymbol(symbolResult);
       if (responseEchoesCredential(symbol, options, endpoint)) throw new ObserverRunError("EVM_SYMBOL_INVALID");
       if (decimals !== deployment.decimals) return failedDeployment(deployment, "EVM_DECIMALS_MISMATCH", "rpc", { codeNonEmpty: true, observedDecimals: decimals, observedSymbol: symbol });
@@ -1549,7 +1558,7 @@ function validSlot(value, label) {
   if (!Number.isSafeInteger(value) || value < 0) fail(`${label} is not a valid slot`, "ARTIFACT_INVALID");
 }
 
-function validateFailedDeploymentPredicate(receipt, deployment) {
+function validateFailedDeploymentPredicate(receipt, deployment, unclassified = false) {
   if (receipt.status !== "failed") return;
   const code = receipt.errorCode;
   if (code === "EVM_EMPTY_CODE" || code === "EVM_CODE_INVALID") {
@@ -1559,6 +1568,7 @@ function validateFailedDeploymentPredicate(receipt, deployment) {
   } else if (code === "EVM_DECIMALS_MISMATCH") {
     if (!Number.isInteger(receipt.observedDecimals) || receipt.observedDecimals === deployment.decimals) fail(`failed EVM receipt ${receipt.deploymentId} does not prove a decimals mismatch`, "ARTIFACT_INVALID");
   } else if (code === "EVM_SYMBOL_MISMATCH") {
+    if (unclassified) fail(`unclassified EVM receipt ${receipt.deploymentId} may not require a symbol mismatch`, "ARTIFACT_INVALID");
     if (!validSymbol(receipt.observedSymbol) || receipt.observedSymbol === deployment.symbol) fail(`failed EVM receipt ${receipt.deploymentId} does not prove a symbol mismatch`, "ARTIFACT_INVALID");
   } else if (code === "SOLANA_STANDARD_MISMATCH") {
     const expectedOwner = deployment.standard === "spl-token" ? TOKEN_PROGRAM_IDS.splToken : TOKEN_PROGRAM_IDS.splToken2022;
@@ -1633,7 +1643,9 @@ function validateDeploymentReceipts(receipts, catalog, networkByName) {
     if (Object.hasOwn(receipt, "contextSlot")) validSlot(receipt.contextSlot, `receipt ${receipt.deploymentId}.contextSlot`);
     if (Object.hasOwn(receipt, "owner") && boundedSolanaOwner(receipt.owner) === null) fail(`receipt ${receipt.deploymentId}.owner is malformed`, "ARTIFACT_INVALID");
     if (Object.hasOwn(receipt, "parsedType") && receipt.parsedType !== null && boundedParsedType(receipt.parsedType) === null) fail(`receipt ${receipt.deploymentId}.parsedType is malformed`, "ARTIFACT_INVALID");
-    validateFailedDeploymentPredicate(receipt, deployment);
+    const asset = catalog.assets.find((entry) => entry.assetId === deployment.assetId);
+    const unclassified = asset?.representationKind === "unclassified";
+    validateFailedDeploymentPredicate(receipt, deployment, unclassified);
     if (deployment.standard === "native") {
       if (receipt.status === "success" && receipt.verification !== "protocol-declared") fail(`native receipt ${receipt.deploymentId} must be protocol declared`, "ARTIFACT_INVALID");
       if (Object.hasOwn(receipt, "observedDecimals") || Object.hasOwn(receipt, "observedSymbol") || Object.hasOwn(receipt, "decimals") || Object.hasOwn(receipt, "symbol") || Object.hasOwn(receipt, "blockNumber") || Object.hasOwn(receipt, "anchorSlot") || Object.hasOwn(receipt, "contextSlot")) fail(`native receipt ${receipt.deploymentId} contains RPC token metadata`, "ARTIFACT_INVALID");
@@ -1655,7 +1667,7 @@ function validateDeploymentReceipts(receipts, catalog, networkByName) {
       const prior = evmBlocks.get(deployment.chainId);
       if (prior !== undefined && prior !== receipt.blockNumber) fail(`EVM receipt ${receipt.deploymentId} changed its network block`, "ARTIFACT_INVALID");
       evmBlocks.set(deployment.chainId, receipt.blockNumber);
-      if (receipt.codeNonEmpty !== true || receipt.decimals !== deployment.decimals || receipt.symbol !== deployment.symbol || (Object.hasOwn(receipt, "observedDecimals") && receipt.observedDecimals !== receipt.decimals) || (Object.hasOwn(receipt, "observedSymbol") && receipt.observedSymbol !== receipt.symbol)) fail(`successful EVM receipt ${receipt.deploymentId} metadata is inconsistent`, "ARTIFACT_INVALID");
+      if (receipt.codeNonEmpty !== true || receipt.decimals !== deployment.decimals || (unclassified ? receipt.symbol !== deployment.symbol || receipt.symbolSource !== "address-only" : receipt.symbol !== deployment.symbol) || (Object.hasOwn(receipt, "observedDecimals") && receipt.observedDecimals !== receipt.decimals) || (!unclassified && Object.hasOwn(receipt, "observedSymbol") && receipt.observedSymbol !== receipt.symbol) || (unclassified && Object.hasOwn(receipt, "observedSymbol"))) fail(`successful EVM receipt ${receipt.deploymentId} metadata is inconsistent`, "ARTIFACT_INVALID");
     } else if (deployment.chainId === SOLANA_CHAIN) {
       if (receipt.verification !== "rpc-account-info") fail(`Solana receipt ${receipt.deploymentId} must use account-info verification`, "ARTIFACT_INVALID");
       if (receipt.anchorSlot !== undefined) validSlot(receipt.anchorSlot, `receipt ${receipt.deploymentId}.anchorSlot`);
@@ -1900,7 +1912,7 @@ export async function observeTokenCatalog(options = {}) {
     const endpoint = config.rpc[network];
     const result = network === "solana"
       ? await observeSolanaNetwork(deploymentsByNetwork[network], endpoint, options, deadline, sequence)
-      : await observeEvmNetwork(network, deploymentsByNetwork[network], endpoint, options, deadline, sequence);
+      : await observeEvmNetwork(network, deploymentsByNetwork[network], endpoint, options, deadline, sequence, catalog);
     networkResults.push(result);
   }
   const sourceRecords = await observeSources(config, options, deadline, baseline);

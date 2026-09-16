@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "fixtureKind": "public-compatibility-cases",
+  "cases": [
+    {
+      "caseId": "catalog-only-generated-refresh",
+      "expect": "data-merge-eligible",
+      "rules": ["exact-regeneration", "old-public-projections-preserved", "no-version-files"]
+    },
+    {
+      "caseId": "feature-code-with-catalog",
+      "expect": "manual-release-required",
+      "rules": ["non-generated-shipping-change-blocks-data-release", "feature-ci-may-pass"]
+    },
+    {
+      "caseId": "release-tags-not-paired",
+      "expect": "manual-release-required",
+      "rules": ["verified-root-and-go-pair-required", "no-bootstrap-bypass"]
+    },
+    {
+      "caseId": "narrow-seven-file-patch",
+      "expect": "auto-patch-release-eligible-when-published-baseline-is-verified",
+      "rules": ["all-package-versions-agree", "cargo-lock-only-sdk-version", "changelog-section"]
+    },
+    {
+      "caseId": "data-merge-then-release-only-preparation",
+      "expect": "auto-patch-release-eligible-when-published-baseline-is-verified",
+      "rules": ["published-to-head-history", "release-only-immediate-diff", "data-merge-independent"]
+    },
+    {
+      "caseId": "published-ranking-value-refresh",
+      "expect": "auto-patch-release-eligible-when-published-baseline-is-verified",
+      "rules": ["deployment-membership-preserved", "values-and-order-refreshable", "coverage-preserved"]
+    },
+    {
+      "caseId": "default-baseline-retag",
+      "expect": "reject",
+      "rules": ["pinned-peel-required", "paired-tags-insufficient"]
+    },
+    {
+      "caseId": "destructive-or-shipping-history-after-publication",
+      "expect": "manual-release-required",
+      "rules": ["old-projections-preserved", "shipping-source-unchanged", "no-history-bypass"]
+    },
+    {
+      "caseId": "forged-generated-output",
+      "expect": "reject",
+      "rules": ["renderer-bytes-must-match"]
+    }
+  ],
+  "publishedBaseline": {
+    "rootTag": "v0.6.0",
+    "goTag": "packages/go/v0.6.0",
+    "peelCommit": "d77169fbf9e927d51113af7a2ee51a5c9b10f3fc"
+  },
+  "releaseFiles": [
+    "packages/typescript/package.json",
+    "packages/rust/Cargo.toml",
+    "packages/python/pyproject.toml",
+    "packages/python/src/erpc_sdk/__init__.py",
+    "packages/ruby/lib/erpc_sdk/version.rb",
+    "Cargo.lock",
+    "CHANGELOG.md"
+  ]
+}

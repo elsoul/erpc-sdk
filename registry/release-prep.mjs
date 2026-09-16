@@ -17,7 +17,10 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { computeDigest as computeDexDigest, validateCatalog as validateDexCatalog } from "./dex-catalog.mjs";
 import { OUTPUTS as DEX_GENERATED_OUTPUTS } from "./generate-dex-catalog.mjs";
+import { OUTPUTS as RANKING_GENERATED_OUTPUTS } from "./generate-token-rankings.mjs";
 import { computeDigest, validateCatalog } from "./token-catalog.mjs";
+import { computeDigest as computeRankingDigest, validateRankingArtifact } from "./token-rankings.mjs";
+import { verifyPublicCompatibility } from "./verify-public-compatibility.mjs";
 
 const MODULE_DIRECTORY = dirname(fileURLToPath(import.meta.url));
 export const REPOSITORY_ROOT = resolve(MODULE_DIRECTORY, "..");
@@ -61,7 +64,10 @@ export const DEX_CATALOG_RUNTIME_PATHS = Object.freeze([
   DEX_CATALOG_SOURCE_PATH,
   ...DEX_CATALOG_GENERATED_PATHS,
 ]);
-const ALL_CATALOG_RUNTIME_PATHS = new Set([...CATALOG_RUNTIME_PATHS, ...DEX_CATALOG_RUNTIME_PATHS]);
+export const RANKING_CATALOG_SOURCE_PATH = "registry/token-rankings.json";
+export const RANKING_CATALOG_GENERATED_PATHS = Object.freeze(Object.values(RANKING_GENERATED_OUTPUTS));
+export const RANKING_CATALOG_RUNTIME_PATHS = Object.freeze([RANKING_CATALOG_SOURCE_PATH, ...RANKING_CATALOG_GENERATED_PATHS]);
+const ALL_CATALOG_RUNTIME_PATHS = new Set([...CATALOG_RUNTIME_PATHS, ...DEX_CATALOG_RUNTIME_PATHS, ...RANKING_CATALOG_RUNTIME_PATHS]);
 
 export const PREPARATION_OUTPUT_PATHS = Object.freeze([
   ...PACKAGE_VERSION_PATHS,
@@ -83,6 +89,11 @@ export const STATUS = Object.freeze({
   INVALID_INPUT: "INVALID_INPUT",
 });
 export const STATUS_CODES = STATUS;
+
+// Public data compatibility is a separate gate from version preparation.  It
+// is re-exported here for release tooling that already depends on this module;
+// preparation itself remains a read-only version/changelog operation.
+export { verifyPublicCompatibility };
 
 const TAG_PREFIXES = Object.freeze({ root: "v", go: "packages/go/v" });
 const STABLE_VERSION_RE = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u;
@@ -238,6 +249,7 @@ function planForRoot(root) {
   }
   if (JSON.stringify(plan.catalogRuntimePaths) !== JSON.stringify(CATALOG_RUNTIME_PATHS)) fail("release-plan.json token catalog runtime paths do not match the approved paths", STATUS.INVALID_PLAN);
   if (JSON.stringify(plan.dexCatalogRuntimePaths) !== JSON.stringify(DEX_CATALOG_RUNTIME_PATHS)) fail("release-plan.json DEX catalog runtime paths do not match the approved paths", STATUS.INVALID_PLAN);
+  if (JSON.stringify(plan.rankingCatalogRuntimePaths) !== JSON.stringify(RANKING_CATALOG_RUNTIME_PATHS)) fail("release-plan.json ranking catalog runtime paths do not match the approved paths", STATUS.INVALID_PLAN);
   return plan;
 }
 
@@ -272,7 +284,7 @@ function listChangedBetween(root, from, to, runner) {
 
 function isShippingPackageCode(relativePath) {
   if (!relativePath.startsWith("packages/")) return false;
-  if (CATALOG_RUNTIME_PATHS.includes(relativePath)) return false;
+  if (ALL_CATALOG_RUNTIME_PATHS.has(relativePath)) return false;
   if (relativePath.endsWith("/README.md") || relativePath.includes("/docs/")) return false;
   if (relativePath.includes("/test/") || relativePath.includes("/tests/")) return false;
   return true;
@@ -619,6 +631,67 @@ function boundedDexCatalogDigest(root) {
   };
 }
 
+function boundedRankingCatalogDigest(root) {
+  const target = repositoryPath(root, RANKING_CATALOG_SOURCE_PATH, "canonical ranking catalog", { allowMissing: true });
+  if (!existsSync(target)) return { present: false, digest: null, status: null, metric: null, recordCount: 0, unrankedCount: 0, sourceCount: 0 };
+  let artifact;
+  try {
+    artifact = JSON.parse(readFileSync(target, "utf8"));
+    const tokenTarget = repositoryPath(root, "registry/token-catalog.json", "canonical token catalog", { allowMissing: false });
+    const referencedTokenCatalog = parseTokenCatalogSource(readFileSync(tokenTarget, "utf8"), "canonical token catalog");
+    validateRankingArtifact(artifact, { tokenCatalog: referencedTokenCatalog });
+  } catch (error) {
+    fail(`canonical ranking artifact failed validation: ${error.message}`, STATUS.INVALID_INPUT);
+  }
+  return {
+    present: true,
+    digest: computeRankingDigest(artifact),
+    status: artifact.metadata.status,
+    metric: artifact.metadata.metric,
+    recordCount: artifact.records.length,
+    unrankedCount: artifact.unranked.length,
+    sourceCount: artifact.metadata.sourceIds.length,
+  };
+}
+
+function rankingCatalogDigestAtCommit(root, commitSha, runner) {
+  const historical = gitHistoricalFile(root, commitSha, RANKING_CATALOG_SOURCE_PATH, runner);
+  if (!historical.present) return null;
+  try {
+    const artifact = JSON.parse(historical.source);
+    const tokenCatalog = tokenCatalogAtCommit(root, commitSha, runner);
+    validateRankingArtifact(artifact, { tokenCatalog });
+    return computeRankingDigest(artifact);
+  } catch (error) {
+    fail(`ranking artifact at released commit ${commitSha} failed validation: ${error.message}`, STATUS.INVALID_INPUT);
+  }
+}
+
+function rankingRuntimeEffects(root, baselineSha, expectedHead, actualHead, currentRanking, changedPaths, runner) {
+  const baselineDigest = rankingCatalogDigestAtCommit(root, baselineSha, runner);
+  const changed = currentRanking.present !== false && (baselineDigest === null || baselineDigest !== currentRanking.digest);
+  const changedGeneratedPaths = [];
+  for (const relativePath of RANKING_CATALOG_GENERATED_PATHS) {
+    if (!changedPaths.includes(relativePath)) continue;
+    const before = gitFile(root, baselineSha, relativePath, runner);
+    const after = expectedHead === actualHead
+      ? (() => {
+        try { return readFileSync(repositoryPath(root, relativePath, "ranking runtime output", { allowMissing: false }), "utf8"); } catch { return null; }
+      })()
+      : gitFile(root, expectedHead, relativePath, runner);
+    if (before !== after) changedGeneratedPaths.push(relativePath);
+  }
+  return {
+    baselineCatalogDigest: baselineDigest,
+    catalogDigestChanged: changed,
+    changedGeneratedPaths,
+    changedRuntimePaths: [
+      ...(changed ? [RANKING_CATALOG_SOURCE_PATH] : []),
+      ...changedGeneratedPaths,
+    ],
+  };
+}
+
 function statusReport(root, expectedHead, options, runner) {
   validSha(expectedHead, "--expected-head");
   const requestedVersion = options.version ?? undefined;
@@ -645,6 +718,7 @@ function statusReport(root, expectedHead, options, runner) {
     : [];
   const catalog = boundedCatalogDigest(root);
   const dexCatalog = boundedDexCatalogDigest(root);
+  const rankingCatalog = boundedRankingCatalogDigest(root);
   const releaseViewPaths = workingChangedPaths.length > 0
     ? [...new Set([...releasedBaselinePaths, ...workingChangedPaths])].sort()
     : releasedBaselinePaths;
@@ -654,15 +728,19 @@ function statusReport(root, expectedHead, options, runner) {
   const dexRuntime = tags.latestPaired
     ? dexRuntimeEffects(root, tags.latestPaired.peelCommit, expectedHead, actualHead, dexCatalog, releaseViewPaths, runner)
     : { baselineCatalogDigest: null, baselineCatalogPresent: false, catalogDigestChanged: true, changedGeneratedPaths: [], changedRuntimePaths: [] };
+  const rankingRuntime = tags.latestPaired
+    ? rankingRuntimeEffects(root, tags.latestPaired.peelCommit, expectedHead, actualHead, rankingCatalog, releaseViewPaths, runner)
+    : { baselineCatalogDigest: null, catalogDigestChanged: true, changedGeneratedPaths: [], changedRuntimePaths: [] };
   const releaseSemanticPaths = [
     ...releaseViewPaths.filter((file) => !ALL_CATALOG_RUNTIME_PATHS.has(file)),
     ...runtime.changedRuntimePaths,
     ...dexRuntime.changedRuntimePaths,
+    ...rankingRuntime.changedRuntimePaths,
   ];
   const relevantChangedPaths = releaseSemanticPaths.filter(isReleaseRelevantPath);
   const runtimeOnly = relevantChangedPaths.length > 0 && relevantChangedPaths.every((file) => ALL_CATALOG_RUNTIME_PATHS.has(file));
-  const releaseRuntimeOnly = (runtime.changedRuntimePaths.length + dexRuntime.changedRuntimePaths.length) > 0
-    && releaseSemanticPaths.filter(isReleaseRelevantPath).every((file) => ALL_CATALOG_RUNTIME_PATHS.has(file));
+  const releaseRuntimeOnly = (runtime.changedRuntimePaths.length + dexRuntime.changedRuntimePaths.length + rankingRuntime.changedRuntimePaths.length) > 0
+      && releaseSemanticPaths.filter(isReleaseRelevantPath).every((file) => ALL_CATALOG_RUNTIME_PATHS.has(file));
   const historyShippingChanges = planState.unexpectedPaths ?? [];
   const currentUnexpectedPackageChanges = classifyShippingPaths(root, workingChangedPaths, expectedHead, expectedHead, runner, { targetIsWorkingTree: true });
   const releasedShippingChanges = tags.latestPaired
@@ -752,6 +830,7 @@ function statusReport(root, expectedHead, options, runner) {
     releasedBaselinePaths,
     runtime,
     dexRuntime,
+    rankingRuntime,
     releaseSemanticPaths,
     runtimeOnly,
     releaseRuntimeOnly,
@@ -759,12 +838,15 @@ function statusReport(root, expectedHead, options, runner) {
     shippingChanges,
     catalog,
     dexCatalog,
+    rankingCatalog,
+    ranking: rankingCatalog,
     plan: {
       id: plan.planId ?? "erpc-sdk-0.7.0-weekly-maintenance",
       sourceSha: plan.sourceSha,
       approvedSourceSha: plan.approvedSourceSha,
       catalogRuntimePaths: [...plan.catalogRuntimePaths],
       dexCatalogRuntimePaths: [...plan.dexCatalogRuntimePaths],
+      rankingCatalogRuntimePaths: [...plan.rankingCatalogRuntimePaths],
       applies: planCanSupplyVersion,
       changedSinceSource: planState.changedPaths,
       unexpectedPackageChanges: [...new Set([...(planState.unexpectedPaths ?? []), ...currentUnexpectedPackageChanges])].sort(),
@@ -788,6 +870,8 @@ function statusReport(root, expectedHead, options, runner) {
       runtime: { catalogDigestChanged: runtime.catalogDigestChanged, changedGeneratedPaths: runtime.changedGeneratedPaths },
       dexCatalogDigest: dexCatalog.digest,
       dexRuntime: { catalogDigestChanged: dexRuntime.catalogDigestChanged, changedGeneratedPaths: dexRuntime.changedGeneratedPaths },
+      rankingCatalogDigest: rankingCatalog.digest,
+      rankingRuntime: { catalogDigestChanged: rankingRuntime.catalogDigestChanged, changedGeneratedPaths: rankingRuntime.changedGeneratedPaths },
       changelog: { hasVersion: changelog.hasVersion, hasNotes: changelog.substantive },
     }),
   };
@@ -960,6 +1044,9 @@ export function prepareRelease(options = {}) {
   }
   if (before.dexRuntime.changedRuntimePaths.length > 0) {
     runtimeNotes.push(`Refresh the offline DEX and pool catalog runtime data for catalog ${before.dexCatalog.catalogVersion} (${before.dexCatalog.digest}), covering ${before.dexCatalog.dexDeploymentCount} DEX deployments, ${before.dexCatalog.poolDefinitionCount} pools, and ${before.dexCatalog.nativeWrapDefinitionCount} native-wrap definitions across the five SDKs.`);
+  }
+  if (before.rankingRuntime.changedRuntimePaths.length > 0) {
+    runtimeNotes.push(`Refresh the token ranking runtime data (${before.rankingCatalog.digest}), covering ${before.rankingCatalog.recordCount} ranked and ${before.rankingCatalog.unrankedCount} unranked deployment rows.`);
   }
   const notesForCandidate = approvedPlanCandidate ? (plan.approvedNotes ?? APPROVED_NOTES) : runtimePatchCandidate ? runtimeNotes : APPROVED_NOTES;
   const writes = prepareWrites(root, version, releaseDate, changelogPath, { ...plan, approvedNotes: notesForCandidate, appendNotes: runtimePatchCandidate });

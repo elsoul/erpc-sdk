@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import canonicalCatalog from "./dex-catalog.json" with { type: "json" };
 import tokenCatalog from "./token-catalog.json" with { type: "json" };
 import { validateCatalog as validateTokenCatalog } from "./token-catalog.mjs";
+import { isQuoteCapability } from "./quote-capabilities.mjs";
 
 export const DEX_CHAIN_IDS = Object.freeze({
   ethereum: "eip155:1",
@@ -109,6 +110,7 @@ export const SWAP_ERROR_CODES = Object.freeze([
   "SWAP_TOKEN_NOT_ACTIVE",
   "SWAP_UNSUPPORTED_TOKEN_STANDARD",
   "SWAP_UNSUPPORTED_ADAPTER",
+  "SWAP_UNSUPPORTED_TOKEN",
   "SWAP_CHAIN_MISMATCH",
   "SWAP_POOL_TOKEN_MISMATCH",
   "SWAP_PROGRAM_MISMATCH",
@@ -126,6 +128,7 @@ export const SWAP_ERROR_MESSAGES = Object.freeze({
   SWAP_TOKEN_NOT_ACTIVE: "Swap token is not active",
   SWAP_UNSUPPORTED_TOKEN_STANDARD: "Swap token standard is unsupported",
   SWAP_UNSUPPORTED_ADAPTER: "Swap adapter is unsupported",
+  SWAP_UNSUPPORTED_TOKEN: "Swap token is unsupported for the selected pool",
   SWAP_CHAIN_MISMATCH: "Swap chain does not match the selected records",
   SWAP_POOL_TOKEN_MISMATCH: "Swap pool tokens do not match the request",
   SWAP_PROGRAM_MISMATCH: "Swap program does not match the selected records",
@@ -539,9 +542,9 @@ export function validateCatalog(catalog, { tokenCatalog: referencedTokenCatalog 
   return true;
 }
 
-export function compareHistory(current, previous) {
-  validateCatalog(previous);
-  validateCatalog(current);
+export function compareHistory(current, previous, { tokenCatalog: referencedTokenCatalog = tokenCatalog } = {}) {
+  validateCatalog(previous, { tokenCatalog: referencedTokenCatalog });
+  validateCatalog(current, { tokenCatalog: referencedTokenCatalog });
   const currentDexes = new Map(current.dexDeployments.map((entry) => [entry.dexDeploymentId, entry]));
   const currentPools = new Map(current.poolDefinitions.map((entry) => [entry.poolDefinitionId, entry]));
   const currentWraps = new Map(current.nativeWrapDefinitions.map((entry) => [entry.nativeWrapDefinitionId, entry]));
@@ -633,8 +636,9 @@ function runtimeAlias(alias) {
   };
 }
 
-export function dataModel(catalog = CATALOG) {
-  validateCatalog(catalog);
+export function dataModel(catalog = CATALOG, options = {}) {
+  const referencedTokenCatalog = options?.tokenCatalog ?? (options?.assets && options?.deployments ? options : tokenCatalog);
+  validateCatalog(catalog, { tokenCatalog: referencedTokenCatalog });
   return {
     version: catalog.catalogVersion,
     asOfDate: catalog.manualAsOf,
@@ -668,11 +672,11 @@ export function findPoolDefinitionByAddress(chainId, address) {
   return pool ? frozenRuntime(runtimePool(pool)) : null;
 }
 
-export function findPoolDefinitionsByPair(chainId, tokenA, tokenB) {
+export function findPoolDefinitionsByPair(chainId, tokenA, tokenB, { catalog: lookupCatalog = CATALOG } = {}) {
   if (typeof chainId !== "string" || typeof tokenA !== "string" || typeof tokenB !== "string" || !ALLOWED_CHAIN_IDS.has(chainId)) return Object.freeze([]);
   if (typeof tokenA !== "string" || typeof tokenB !== "string" || tokenA === tokenB) return Object.freeze([]);
   const wanted = [tokenA, tokenB].sort(compareText).join("\u0000");
-  const found = CATALOG.poolDefinitions
+  const found = lookupCatalog.poolDefinitions
     .filter((pool) => (chainId === undefined || pool.chainId === chainId)
       && [pool.token0DeploymentId, pool.token1DeploymentId].sort(compareText).join("\u0000") === wanted)
     .sort((left, right) => compareText(left.poolDefinitionId, right.poolDefinitionId))
@@ -681,8 +685,8 @@ export function findPoolDefinitionsByPair(chainId, tokenA, tokenB) {
   return Object.freeze(found);
 }
 
-export function listPoolDefinitions({ chainId, tokenDeploymentId, adapterKind } = {}) {
-  const found = CATALOG.poolDefinitions
+export function listPoolDefinitions({ chainId, tokenDeploymentId, adapterKind, catalog: lookupCatalog = CATALOG } = {}) {
+  const found = lookupCatalog.poolDefinitions
     .filter((pool) => (chainId === undefined || pool.chainId === chainId)
       && (tokenDeploymentId === undefined || pool.token0DeploymentId === tokenDeploymentId || pool.token1DeploymentId === tokenDeploymentId)
       && (adapterKind === undefined || pool.adapter.kind === adapterKind))
@@ -769,6 +773,7 @@ function normalizeQuoteRequest(request) {
   const actual = [pool.token0DeploymentId, pool.token1DeploymentId].sort(compareText).join("\u0000");
   if (wanted !== actual) swapFail("SWAP_POOL_TOKEN_MISMATCH");
   if (pool.adapter.kind !== SUPPORTED_QUOTE_ADAPTER || dex.adapterKind !== SUPPORTED_QUOTE_ADAPTER) swapFail("SWAP_UNSUPPORTED_ADAPTER");
+  if (!isQuoteCapability(pool, input, output, { dexCatalog: CATALOG, tokenCatalog })) swapFail("SWAP_UNSUPPORTED_TOKEN");
   if (input.standard !== "erc20" || output.standard !== "erc20") swapFail("SWAP_UNSUPPORTED_TOKEN_STANDARD");
   const requestSnapshot = Object.freeze({
     chainId: request.chainId,

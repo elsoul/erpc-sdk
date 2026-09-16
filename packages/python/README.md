@@ -57,6 +57,25 @@ Results include every matching deployment and its status, decimals, standard,
 address, and flattened asset metadata. See the [canonical token registry](https://github.com/elsoul/erpc-sdk/blob/main/registry/README.md)
 for source records, evidence, and the generation workflow.
 
+## Offline token rankings
+
+Rankings use the same immutable, offline snapshot model:
+
+```python
+from erpc_sdk import TokenChainIds, list_token_rankings
+
+ethereum_rankings = list_token_rankings(TokenChainIds.ETHEREUM_MAINNET)
+```
+
+The current snapshot is `unconfigured`, so it contains no ranking rows yet.
+The schema supports on-chain total-supply value quoted in atomic native units
+as a rational value, and licensed global circulating market cap quoted in USD.
+The native quote deployment is the chain's native deployment (`deployment-0001`
+on Ethereum, `deployment-0003` on Avalanche C, and `deployment-0005` on
+Solana); these values are not circulating market caps. Unknown or empty chain
+IDs return an immutable empty tuple. Ranking collection automation is not
+active yet.
+
 ## Offline DEX catalog and RPC quotes
 
 DEX deployments, pools, native-to-wrapped relationships, and chain-qualified
@@ -100,6 +119,8 @@ print(quote["amountOut"])
 The first catalog release supports quotes for the Ethereum Uniswap V2 and
 Avalanche LFJ legacy constant-product pools. Solana Orca and Raydium records
 are available for lookup while their CLMM quote adapters are being added.
+Newly discovered pools remain available for lookup, monitoring, and rankings
+until a reviewed quote capability is admitted.
 The DEX catalog is in the source tree for the upcoming 0.7.0 release; the
 published package remains 0.6.0 until that release is approved.
 

@@ -3,13 +3,28 @@
 require_relative "test_helper"
 
 class DexCatalogTest < Minitest::Test
-  def test_catalog_contains_the_four_deployments_and_four_pools
-    assert_equal 4, ERPC::DexCatalog::DEX_DEPLOYMENTS.length
-    assert_equal 4, ERPC::DexCatalog::POOL_DEFINITIONS.length
-    assert_equal 3, ERPC::DexCatalog::NATIVE_WRAP_DEFINITIONS.length
-    assert_equal 8, ERPC::DexCatalog::DEX_ALIASES.length
+  def test_catalog_contains_seed_deployments_and_pools
+    refute_empty ERPC::DexCatalog::DEX_DEPLOYMENTS
+    refute_empty ERPC::DexCatalog::POOL_DEFINITIONS
+    refute_empty ERPC::DexCatalog::NATIVE_WRAP_DEFINITIONS
+    refute_empty ERPC::DexCatalog::DEX_ALIASES
     assert_equal "dex-deployment-0001", ERPC::Dexes::Ethereum.fetch(:UNISWAP_V2)
     assert_equal "pool-0003", ERPC::Pools::Solana.fetch(:ORCA_WHIRLPOOLS_WSOL_EURC)
+  end
+
+  def test_every_catalog_alias_points_to_its_compiled_constant
+    ERPC::DexCatalog::DEX_ALIASES.each do |alias_record|
+      namespace = alias_record.fetch(:namespace)
+      group = alias_record.fetch(:dex_deployment_id).nil? ? ERPC::Pools : ERPC::Dexes
+      group_name = namespace == "avalancheC" ? :AvalancheC : namespace.to_sym.capitalize
+      compiled = group.const_get(group_name)
+      alias_name = alias_record.fetch(:name).to_sym
+
+      assert compiled.frozen?
+      assert compiled.key?(alias_name)
+      expected = alias_record.fetch(:dex_deployment_id) || alias_record.fetch(:pool_definition_id)
+      assert_equal expected, compiled.fetch(alias_name)
+    end
   end
 
   def test_lookups_are_offline_and_pair_order_is_unordered

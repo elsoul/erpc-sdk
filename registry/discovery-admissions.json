@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "artifactKind": "discovery-admissions",
+  "sourceSha": "0000000000000000000000000000000000000000",
+  "configDigest": "7512dc53476195c20434208897ba96ce30b820ee6d9d31129454723ee6249b1f",
+  "tokenCatalogDigest": "62879dfe8bb49a154d2a1bff356321e5dbe78d8cef0cd3409ef2b22cfd3445a4",
+  "dexCatalogDigest": "002c05c3c2d5d3917f73a5c2e7b55af9ceb9a682fb49ae28d2421046ee2faa50",
+  "appendOnly": true,
+  "tokenPolicy": "qualified-pool-dependencies",
+  "selectionPolicy": "chain-round-robin-liquidity-desc",
+  "poolQualification": {
+    "kind": "direct-reviewed-native-v1",
+    "sources": {
+      "eip155:1": { "nativeWrapDeploymentId": "deployment-0002", "minNativeLiquidity": "10000000000000000000" },
+      "eip155:43114": { "nativeWrapDeploymentId": "deployment-0004", "minNativeLiquidity": "100000000000000000000" },
+      "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": { "nativeWrapDeploymentId": "deployment-0006", "minNativeLiquidity": "100000000000" }
+    }
+  },
+  "workspace": { "clean": true, "pinned": true, "promotable": true },
+  "proposals": [],
+  "tokenAppend": [],
+  "poolAppend": [],
+  "deferred": []
+}

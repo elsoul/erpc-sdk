@@ -7,7 +7,7 @@ import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Final, Literal, NoReturn, NotRequired, TypedDict, cast
+from typing import Final, Literal, NamedTuple, NoReturn, NotRequired, TypedDict, cast
 
 from ._token_catalog_data import TokenDeployment
 from .dex_catalog import (
@@ -33,6 +33,7 @@ class SwapQuoteErrorCode(StrEnum):
     UNKNOWN_TOKEN = "SWAP_UNKNOWN_TOKEN"
     TOKEN_NOT_ACTIVE = "SWAP_TOKEN_NOT_ACTIVE"
     UNSUPPORTED_TOKEN_STANDARD = "SWAP_UNSUPPORTED_TOKEN_STANDARD"
+    UNSUPPORTED_TOKEN = "SWAP_UNSUPPORTED_TOKEN"
     UNSUPPORTED_ADAPTER = "SWAP_UNSUPPORTED_ADAPTER"
     CHAIN_MISMATCH = "SWAP_CHAIN_MISMATCH"
     POOL_TOKEN_MISMATCH = "SWAP_POOL_TOKEN_MISMATCH"
@@ -50,6 +51,7 @@ class SwapQuoteErrorCode(StrEnum):
     SWAP_UNKNOWN_TOKEN = UNKNOWN_TOKEN
     SWAP_TOKEN_NOT_ACTIVE = TOKEN_NOT_ACTIVE
     SWAP_UNSUPPORTED_TOKEN_STANDARD = UNSUPPORTED_TOKEN_STANDARD
+    SWAP_UNSUPPORTED_TOKEN = UNSUPPORTED_TOKEN
     SWAP_UNSUPPORTED_ADAPTER = UNSUPPORTED_ADAPTER
     SWAP_CHAIN_MISMATCH = CHAIN_MISMATCH
     SWAP_POOL_TOKEN_MISMATCH = POOL_TOKEN_MISMATCH
@@ -67,6 +69,7 @@ SWAP_QUOTE_ERROR_MESSAGES: Final[dict[SwapQuoteErrorCode, str]] = {
     SwapQuoteErrorCode.UNKNOWN_TOKEN: "Swap token is unknown",
     SwapQuoteErrorCode.TOKEN_NOT_ACTIVE: "Swap token is not active",
     SwapQuoteErrorCode.UNSUPPORTED_TOKEN_STANDARD: "Swap token standard is unsupported",
+    SwapQuoteErrorCode.UNSUPPORTED_TOKEN: "Swap token is unsupported for the selected pool",
     SwapQuoteErrorCode.UNSUPPORTED_ADAPTER: "Swap adapter is unsupported",
     SwapQuoteErrorCode.CHAIN_MISMATCH: "Swap chain does not match the selected records",
     SwapQuoteErrorCode.POOL_TOKEN_MISMATCH: "Swap pool tokens do not match the request",
@@ -184,6 +187,27 @@ class _EvmState:
     reserves: _Reserves
 
 
+class _SupportedQuoteCapability(NamedTuple):
+    """One reviewed pool/token tuple allowed to reach the quote RPC path."""
+
+    chain_id: str
+    dex_deployment_id: str
+    factory_address: str
+    pool_definition_id: str
+    pool_address: str
+    token0_deployment_id: str
+    token0_address: str
+    token0_decimals: int
+    token0_standard: Literal["erc20"]
+    token1_deployment_id: str
+    token1_address: str
+    token1_decimals: int
+    token1_standard: Literal["erc20"]
+    adapter_kind: Literal["evm-constant-product-v2"]
+    fee_numerator: str
+    fee_denominator: str
+
+
 SUPPORTED_QUOTE_ADAPTER: Final = "evm-constant-product-v2"
 _DEFAULT_FRESHNESS = _Freshness(120, 3, 5)
 _UINT256_MAX: Final = (1 << 256) - 1
@@ -202,6 +226,48 @@ _EVM_NETWORK_IDS: Final[dict[str, int]] = {
     DEX_CHAIN_IDS["ethereum"]: 1,
     DEX_CHAIN_IDS["avalancheC"]: 43114,
 }
+
+# Quote eligibility is a handwritten review boundary. Catalog growth may add
+# lookup, monitoring, or ranking records without granting them RPC quote
+# access.
+_SUPPORTED_QUOTE_CAPABILITIES: Final[tuple[_SupportedQuoteCapability, ...]] = (
+    _SupportedQuoteCapability(
+        chain_id="eip155:1",
+        dex_deployment_id="dex-deployment-0001",
+        factory_address="0x5c69bee701ef814a2b6a3edd4b1652cb9cc5aa6f",
+        pool_definition_id="pool-0001",
+        pool_address="0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+        token0_deployment_id="deployment-0008",
+        token0_address="0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+        token0_decimals=6,
+        token0_standard="erc20",
+        token1_deployment_id="deployment-0002",
+        token1_address="0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+        token1_decimals=18,
+        token1_standard="erc20",
+        adapter_kind="evm-constant-product-v2",
+        fee_numerator="3",
+        fee_denominator="1000",
+    ),
+    _SupportedQuoteCapability(
+        chain_id="eip155:43114",
+        dex_deployment_id="dex-deployment-0002",
+        factory_address="0x9ad6c38be94206ca50bb0d90783181662f0cfa10",
+        pool_definition_id="pool-0002",
+        pool_address="0xf4003f4efbe8691b60249e6afbd307abe7758adb",
+        token0_deployment_id="deployment-0004",
+        token0_address="0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+        token0_decimals=18,
+        token0_standard="erc20",
+        token1_deployment_id="deployment-0009",
+        token1_address="0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+        token1_decimals=6,
+        token1_standard="erc20",
+        adapter_kind="evm-constant-product-v2",
+        fee_numerator="3",
+        fee_denominator="1000",
+    ),
+)
 
 _FACTORY_GET_PAIR_SELECTOR = "0xe6a43905"
 _PAIR_FACTORY_SELECTOR = "0xc45a0155"
@@ -348,6 +414,8 @@ def _normalize_request(request: object) -> _NormalizedRequest:
         _fail(SwapQuoteErrorCode.UNSUPPORTED_ADAPTER)
     if input_token.standard != "erc20" or output_token.standard != "erc20":
         _fail(SwapQuoteErrorCode.UNSUPPORTED_TOKEN_STANDARD)
+    if not _matches_supported_quote_capability(pool, dex, input_token, output_token):
+        _fail(SwapQuoteErrorCode.UNSUPPORTED_TOKEN)
 
     # Only immutable scalar copies are retained after validation. This keeps a
     # caller mutating the request mapping while awaits are in progress from
@@ -364,6 +432,90 @@ def _normalize_request(request: object) -> _NormalizedRequest:
         dex=dex,
         input_token=input_token,
         output_token=output_token,
+    )
+
+
+def _matches_supported_quote_capability(
+    pool: PoolDefinition,
+    dex: DexDeployment,
+    input_token: TokenDeployment,
+    output_token: TokenDeployment,
+) -> bool:
+    """Return whether the selected records equal a reviewed quote tuple."""
+
+    capability = next(
+        (
+            entry
+            for entry in _SUPPORTED_QUOTE_CAPABILITIES
+            if entry.pool_definition_id == pool.pool_definition_id
+        ),
+        None,
+    )
+    if capability is None:
+        return False
+    if (
+        input_token.representation_kind == "unclassified"
+        or output_token.representation_kind == "unclassified"
+    ):
+        return False
+
+    def matches_token(
+        token: TokenDeployment,
+        deployment_id: str,
+        address: str,
+        decimals: int,
+        standard: Literal["erc20"],
+    ) -> bool:
+        return (
+            token.chain_id == capability.chain_id
+            and token.deployment_id == deployment_id
+            and token.address == address
+            and token.decimals == decimals
+            and token.standard == standard
+        )
+
+    matches_input = matches_token(
+        input_token,
+        capability.token0_deployment_id,
+        capability.token0_address,
+        capability.token0_decimals,
+        capability.token0_standard,
+    ) or matches_token(
+        input_token,
+        capability.token1_deployment_id,
+        capability.token1_address,
+        capability.token1_decimals,
+        capability.token1_standard,
+    )
+    matches_output = matches_token(
+        output_token,
+        capability.token0_deployment_id,
+        capability.token0_address,
+        capability.token0_decimals,
+        capability.token0_standard,
+    ) or matches_token(
+        output_token,
+        capability.token1_deployment_id,
+        capability.token1_address,
+        capability.token1_decimals,
+        capability.token1_standard,
+    )
+
+    return (
+        pool.chain_id == capability.chain_id
+        and pool.dex_deployment_id == capability.dex_deployment_id
+        and pool.address == capability.pool_address
+        and pool.token0_deployment_id == capability.token0_deployment_id
+        and pool.token1_deployment_id == capability.token1_deployment_id
+        and pool.adapter.kind == capability.adapter_kind
+        and pool.adapter.fee_numerator == capability.fee_numerator
+        and pool.adapter.fee_denominator == capability.fee_denominator
+        and dex.dex_deployment_id == capability.dex_deployment_id
+        and dex.chain_id == capability.chain_id
+        and dex.program_address == capability.factory_address
+        and dex.adapter_kind == capability.adapter_kind
+        and matches_input
+        and matches_output
     )
 
 

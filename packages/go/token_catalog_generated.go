@@ -9,18 +9,19 @@ type TokenChainID = string
 type TokenChainId = TokenChainID
 
 const (
-	TokenRepresentationNative  TokenRepresentationKind = "native"
-	TokenRepresentationIssued  TokenRepresentationKind = "issued"
-	TokenRepresentationWrapped TokenRepresentationKind = "wrapped"
-	TokenRepresentationBridged TokenRepresentationKind = "bridged"
-	TokenStandardNative        TokenStandard           = "native"
-	TokenStandardERC20         TokenStandard           = "erc20"
-	TokenStandardSPLToken      TokenStandard           = "spl-token"
-	TokenStandardSPLToken2022  TokenStandard           = "spl-token-2022"
-	TokenStatusActive          TokenStatus             = "active"
-	TokenStatusLegacy          TokenStatus             = "legacy"
-	TokenStatusWindingDown     TokenStatus             = "winding-down"
-	TokenStatusRetired         TokenStatus             = "retired"
+	TokenRepresentationNative       TokenRepresentationKind = "native"
+	TokenRepresentationIssued       TokenRepresentationKind = "issued"
+	TokenRepresentationWrapped      TokenRepresentationKind = "wrapped"
+	TokenRepresentationBridged      TokenRepresentationKind = "bridged"
+	TokenRepresentationUnclassified TokenRepresentationKind = "unclassified"
+	TokenStandardNative             TokenStandard           = "native"
+	TokenStandardERC20              TokenStandard           = "erc20"
+	TokenStandardSPLToken           TokenStandard           = "spl-token"
+	TokenStandardSPLToken2022       TokenStandard           = "spl-token-2022"
+	TokenStatusActive               TokenStatus             = "active"
+	TokenStatusLegacy               TokenStatus             = "legacy"
+	TokenStatusWindingDown          TokenStatus             = "winding-down"
+	TokenStatusRetired              TokenStatus             = "retired"
 )
 
 type TokenAsset struct {
@@ -600,66 +601,66 @@ func TokenDeployments() []TokenDeployment {
 
 func TokenAliases() []TokenAlias {
 	return []TokenAlias{
-		{Namespace: "avalancheC", Name: "AUSD", DeploymentID: "deployment-0035"},
-		{Namespace: "avalancheC", Name: "AVAX", DeploymentID: "deployment-0003"},
-		{Namespace: "avalancheC", Name: "EURC", DeploymentID: "deployment-0012"},
-		{Namespace: "avalancheC", Name: "EUROP", DeploymentID: "deployment-0045"},
-		{Namespace: "avalancheC", Name: "GHO", DeploymentID: "deployment-0030"},
-		{Namespace: "avalancheC", Name: "JOE", DeploymentID: "deployment-0059"},
-		{Namespace: "avalancheC", Name: "JPYC", DeploymentID: "deployment-0039"},
-		{Namespace: "avalancheC", Name: "LINK", DeploymentID: "deployment-0058"},
-		{Namespace: "avalancheC", Name: "USDC", DeploymentID: "deployment-0009"},
-		{Namespace: "avalancheC", Name: "USDC_E", DeploymentID: "deployment-0018"},
-		{Namespace: "avalancheC", Name: "USDT", DeploymentID: "deployment-0015"},
-		{Namespace: "avalancheC", Name: "WAVAX", DeploymentID: "deployment-0004"},
-		{Namespace: "ethereum", Name: "AAVE", DeploymentID: "deployment-0056"},
-		{Namespace: "ethereum", Name: "AUSD", DeploymentID: "deployment-0034"},
-		{Namespace: "ethereum", Name: "DAI", DeploymentID: "deployment-0019"},
-		{Namespace: "ethereum", Name: "ETH", DeploymentID: "deployment-0001"},
-		{Namespace: "ethereum", Name: "EURA", DeploymentID: "deployment-0051"},
-		{Namespace: "ethereum", Name: "EURAU", DeploymentID: "deployment-0042"},
-		{Namespace: "ethereum", Name: "EURC", DeploymentID: "deployment-0011"},
-		{Namespace: "ethereum", Name: "EURCV", DeploymentID: "deployment-0040"},
-		{Namespace: "ethereum", Name: "EURE", DeploymentID: "deployment-0054"},
-		{Namespace: "ethereum", Name: "EURE_V1", DeploymentID: "deployment-0053"},
-		{Namespace: "ethereum", Name: "EUROP", DeploymentID: "deployment-0044"},
-		{Namespace: "ethereum", Name: "EURS", DeploymentID: "deployment-0052"},
-		{Namespace: "ethereum", Name: "EURT", DeploymentID: "deployment-0017"},
-		{Namespace: "ethereum", Name: "FDUSD", DeploymentID: "deployment-0031"},
-		{Namespace: "ethereum", Name: "GHO", DeploymentID: "deployment-0029"},
-		{Namespace: "ethereum", Name: "GYEN", DeploymentID: "deployment-0047"},
-		{Namespace: "ethereum", Name: "JPYC", DeploymentID: "deployment-0038"},
-		{Namespace: "ethereum", Name: "LINK", DeploymentID: "deployment-0057"},
-		{Namespace: "ethereum", Name: "PYUSD", DeploymentID: "deployment-0022"},
-		{Namespace: "ethereum", Name: "RLUSD", DeploymentID: "deployment-0033"},
-		{Namespace: "ethereum", Name: "UNI", DeploymentID: "deployment-0055"},
-		{Namespace: "ethereum", Name: "USDC", DeploymentID: "deployment-0008"},
-		{Namespace: "ethereum", Name: "USDE", DeploymentID: "deployment-0028"},
-		{Namespace: "ethereum", Name: "USDG", DeploymentID: "deployment-0024"},
-		{Namespace: "ethereum", Name: "USDP", DeploymentID: "deployment-0026"},
-		{Namespace: "ethereum", Name: "USDS", DeploymentID: "deployment-0020"},
-		{Namespace: "ethereum", Name: "USDT", DeploymentID: "deployment-0014"},
-		{Namespace: "ethereum", Name: "WETH", DeploymentID: "deployment-0002"},
-		{Namespace: "ethereum", Name: "ZUSD", DeploymentID: "deployment-0049"},
-		{Namespace: "solana", Name: "AUSD", DeploymentID: "deployment-0036"},
-		{Namespace: "solana", Name: "EURAU", DeploymentID: "deployment-0043"},
-		{Namespace: "solana", Name: "EURC", DeploymentID: "deployment-0013"},
-		{Namespace: "solana", Name: "EURCV", DeploymentID: "deployment-0041"},
-		{Namespace: "solana", Name: "EUROP", DeploymentID: "deployment-0046"},
-		{Namespace: "solana", Name: "FDUSD", DeploymentID: "deployment-0032"},
-		{Namespace: "solana", Name: "GYEN", DeploymentID: "deployment-0048"},
-		{Namespace: "solana", Name: "JUP", DeploymentID: "deployment-0060"},
-		{Namespace: "solana", Name: "JUPUSD", DeploymentID: "deployment-0037"},
-		{Namespace: "solana", Name: "PYUSD", DeploymentID: "deployment-0023"},
-		{Namespace: "solana", Name: "SOL", DeploymentID: "deployment-0005"},
-		{Namespace: "solana", Name: "USDC", DeploymentID: "deployment-0010"},
-		{Namespace: "solana", Name: "USDG", DeploymentID: "deployment-0025"},
-		{Namespace: "solana", Name: "USDP", DeploymentID: "deployment-0027"},
-		{Namespace: "solana", Name: "USDS", DeploymentID: "deployment-0021"},
-		{Namespace: "solana", Name: "USDT", DeploymentID: "deployment-0016"},
-		{Namespace: "solana", Name: "WSOL", DeploymentID: "deployment-0006"},
-		{Namespace: "solana", Name: "WSOL_TOKEN_2022", DeploymentID: "deployment-0007"},
-		{Namespace: "solana", Name: "ZUSD", DeploymentID: "deployment-0050"},
+		{Namespace: "avalancheC", Name: "AUSD", DeploymentID: TokenAvalancheCAUSD},
+		{Namespace: "avalancheC", Name: "AVAX", DeploymentID: TokenAvalancheCAVAX},
+		{Namespace: "avalancheC", Name: "EURC", DeploymentID: TokenAvalancheCEURC},
+		{Namespace: "avalancheC", Name: "EUROP", DeploymentID: TokenAvalancheCEUROP},
+		{Namespace: "avalancheC", Name: "GHO", DeploymentID: TokenAvalancheCGHO},
+		{Namespace: "avalancheC", Name: "JOE", DeploymentID: TokenAvalancheCJOE},
+		{Namespace: "avalancheC", Name: "JPYC", DeploymentID: TokenAvalancheCJPYC},
+		{Namespace: "avalancheC", Name: "LINK", DeploymentID: TokenAvalancheCLINK},
+		{Namespace: "avalancheC", Name: "USDC", DeploymentID: TokenAvalancheCUSDC},
+		{Namespace: "avalancheC", Name: "USDC_E", DeploymentID: TokenAvalancheCUSDC_E},
+		{Namespace: "avalancheC", Name: "USDT", DeploymentID: TokenAvalancheCUSDT},
+		{Namespace: "avalancheC", Name: "WAVAX", DeploymentID: TokenAvalancheCWAVAX},
+		{Namespace: "ethereum", Name: "AAVE", DeploymentID: TokenEthereumAAVE},
+		{Namespace: "ethereum", Name: "AUSD", DeploymentID: TokenEthereumAUSD},
+		{Namespace: "ethereum", Name: "DAI", DeploymentID: TokenEthereumDAI},
+		{Namespace: "ethereum", Name: "ETH", DeploymentID: TokenEthereumETH},
+		{Namespace: "ethereum", Name: "EURA", DeploymentID: TokenEthereumEURA},
+		{Namespace: "ethereum", Name: "EURAU", DeploymentID: TokenEthereumEURAU},
+		{Namespace: "ethereum", Name: "EURC", DeploymentID: TokenEthereumEURC},
+		{Namespace: "ethereum", Name: "EURCV", DeploymentID: TokenEthereumEURCV},
+		{Namespace: "ethereum", Name: "EURE", DeploymentID: TokenEthereumEURE},
+		{Namespace: "ethereum", Name: "EURE_V1", DeploymentID: TokenEthereumEURE_V1},
+		{Namespace: "ethereum", Name: "EUROP", DeploymentID: TokenEthereumEUROP},
+		{Namespace: "ethereum", Name: "EURS", DeploymentID: TokenEthereumEURS},
+		{Namespace: "ethereum", Name: "EURT", DeploymentID: TokenEthereumEURT},
+		{Namespace: "ethereum", Name: "FDUSD", DeploymentID: TokenEthereumFDUSD},
+		{Namespace: "ethereum", Name: "GHO", DeploymentID: TokenEthereumGHO},
+		{Namespace: "ethereum", Name: "GYEN", DeploymentID: TokenEthereumGYEN},
+		{Namespace: "ethereum", Name: "JPYC", DeploymentID: TokenEthereumJPYC},
+		{Namespace: "ethereum", Name: "LINK", DeploymentID: TokenEthereumLINK},
+		{Namespace: "ethereum", Name: "PYUSD", DeploymentID: TokenEthereumPYUSD},
+		{Namespace: "ethereum", Name: "RLUSD", DeploymentID: TokenEthereumRLUSD},
+		{Namespace: "ethereum", Name: "UNI", DeploymentID: TokenEthereumUNI},
+		{Namespace: "ethereum", Name: "USDC", DeploymentID: TokenEthereumUSDC},
+		{Namespace: "ethereum", Name: "USDE", DeploymentID: TokenEthereumUSDE},
+		{Namespace: "ethereum", Name: "USDG", DeploymentID: TokenEthereumUSDG},
+		{Namespace: "ethereum", Name: "USDP", DeploymentID: TokenEthereumUSDP},
+		{Namespace: "ethereum", Name: "USDS", DeploymentID: TokenEthereumUSDS},
+		{Namespace: "ethereum", Name: "USDT", DeploymentID: TokenEthereumUSDT},
+		{Namespace: "ethereum", Name: "WETH", DeploymentID: TokenEthereumWETH},
+		{Namespace: "ethereum", Name: "ZUSD", DeploymentID: TokenEthereumZUSD},
+		{Namespace: "solana", Name: "AUSD", DeploymentID: TokenSolanaAUSD},
+		{Namespace: "solana", Name: "EURAU", DeploymentID: TokenSolanaEURAU},
+		{Namespace: "solana", Name: "EURC", DeploymentID: TokenSolanaEURC},
+		{Namespace: "solana", Name: "EURCV", DeploymentID: TokenSolanaEURCV},
+		{Namespace: "solana", Name: "EUROP", DeploymentID: TokenSolanaEUROP},
+		{Namespace: "solana", Name: "FDUSD", DeploymentID: TokenSolanaFDUSD},
+		{Namespace: "solana", Name: "GYEN", DeploymentID: TokenSolanaGYEN},
+		{Namespace: "solana", Name: "JUP", DeploymentID: TokenSolanaJUP},
+		{Namespace: "solana", Name: "JUPUSD", DeploymentID: TokenSolanaJUPUSD},
+		{Namespace: "solana", Name: "PYUSD", DeploymentID: TokenSolanaPYUSD},
+		{Namespace: "solana", Name: "SOL", DeploymentID: TokenSolanaSOL},
+		{Namespace: "solana", Name: "USDC", DeploymentID: TokenSolanaUSDC},
+		{Namespace: "solana", Name: "USDG", DeploymentID: TokenSolanaUSDG},
+		{Namespace: "solana", Name: "USDP", DeploymentID: TokenSolanaUSDP},
+		{Namespace: "solana", Name: "USDS", DeploymentID: TokenSolanaUSDS},
+		{Namespace: "solana", Name: "USDT", DeploymentID: TokenSolanaUSDT},
+		{Namespace: "solana", Name: "WSOL", DeploymentID: TokenSolanaWSOL},
+		{Namespace: "solana", Name: "WSOL_TOKEN_2022", DeploymentID: TokenSolanaWSOL_TOKEN_2022},
+		{Namespace: "solana", Name: "ZUSD", DeploymentID: TokenSolanaZUSD},
 	}
 }
 

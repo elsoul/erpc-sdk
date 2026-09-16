@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "artifactKind": "discovery-state",
+  "configDigest": "7512dc53476195c20434208897ba96ce30b820ee6d9d31129454723ee6249b1f",
+  "tokenCatalogDigest": "62879dfe8bb49a154d2a1bff356321e5dbe78d8cef0cd3409ef2b22cfd3445a4",
+  "dexCatalogDigest": "002c05c3c2d5d3917f73a5c2e7b55af9ceb9a682fb49ae28d2421046ee2faa50",
+  "factories": {},
+  "programs": {},
+  "mints": {}
+}

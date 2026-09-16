@@ -64,9 +64,31 @@
     "packages/go/dex_catalog_generated.go",
     "packages/ruby/lib/erpc_sdk/generated/dex_catalog.rb"
   ],
+  "rankingCatalogRuntimePaths": [
+    "registry/token-rankings.json",
+    "packages/typescript/src/generated/token_rankings.ts",
+    "packages/rust/src/generated/token_rankings.rs",
+    "packages/python/src/erpc_sdk/_token_rankings_data.py",
+    "packages/go/token_rankings_generated.go",
+    "packages/ruby/lib/erpc_sdk/generated/token_rankings.rb"
+  ],
   "authority": {
     "review": "L1-approved preparation plan; create a reviewable PR without automatic approval, merge, tag, or release",
     "publication": "human-approved future operation",
     "asOfDate": "2026-09-15"
+  },
+  "dataPromotion": {
+    "enabled": true,
+    "requiresExactSourceAndBase": true,
+    "requiresIndependentReplay": true,
+    "requiresGeneratedParity": true,
+    "oldPlanDoesNotAuthorizeNewCode": true,
+    "manualReleaseRequiredForFeatureChanges": true,
+    "automaticMergeAndPublication": false,
+    "fixedRawArtifacts": [
+      "discovery-receipts.json",
+      "pool-receipts.json",
+      "ranking-receipts.json"
+    ]
   }
 }

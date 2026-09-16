@@ -19,8 +19,8 @@ class TokenCatalogTest < Minitest::Test
   ].freeze
 
   def test_exports_generated_metadata_chain_constants_and_alias_ids
-    assert_equal "1.0.0", ERPC::TokenCatalog::TOKEN_CATALOG_VERSION
-    assert_equal "2026-09-15", ERPC::TokenCatalog::AS_OF_DATE
+    assert_match(/\A\d+\.\d+\.\d+\z/, ERPC::TokenCatalog::TOKEN_CATALOG_VERSION)
+    assert_match(/\A\d{4}-\d{2}-\d{2}\z/, ERPC::TokenCatalog::AS_OF_DATE)
     assert_match(/\A[0-9a-f]{64}\z/, ERPC::TokenCatalog::CONTENT_DIGEST)
     assert_equal ETHEREUM, ERPC::TokenCatalog::TOKEN_CHAIN_IDS.fetch(:ethereum)
     assert_equal SOLANA, ERPC::TokenCatalog::TOKEN_CHAIN_IDS.fetch(:solana)
@@ -43,12 +43,19 @@ class TokenCatalogTest < Minitest::Test
         assert ERPC::TokenCatalog.get_token_deployment(deployment_id)
       end
     end
+
+    ERPC::TokenCatalog::TOKEN_ALIASES.each do |alias_record|
+      group_name = alias_record.fetch(:namespace) == "avalancheC" ? :AvalancheC : alias_record.fetch(:namespace).to_sym.capitalize
+      compiled = ERPC::Tokens.const_get(group_name)
+      assert_equal alias_record.fetch(:deployment_id), compiled.fetch(alias_record.fetch(:name).to_sym)
+    end
   end
 
   def test_cross_links_complete_flattened_asset_and_deployment_records
-    assert_equal 39, ERPC::TokenCatalog::TOKEN_ASSETS.length
-    assert_equal 60, ERPC::TokenCatalog::TOKEN_DEPLOYMENTS.length
-    assert_equal 60, ERPC::TokenCatalog::TOKEN_ALIASES.length
+    refute_empty ERPC::TokenCatalog::TOKEN_ASSETS
+    refute_empty ERPC::TokenCatalog::TOKEN_DEPLOYMENTS
+    assert_equal ERPC::TokenCatalog::TOKEN_DEPLOYMENTS.length,
+                 ERPC::TokenCatalog::TOKEN_ALIASES.length
 
     ERPC::TokenCatalog::TOKEN_ASSETS.each do |asset|
       assert_equal ASSET_KEYS.sort, asset.keys.sort

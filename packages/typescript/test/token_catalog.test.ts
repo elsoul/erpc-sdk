@@ -26,11 +26,9 @@ const chains = [
 
 describe('offline token catalog', () => {
   it('exports the generated chain IDs and immutable grouped aliases', () => {
-    expect(TOKEN_CATALOG_VERSION).toBe('1.0.0')
-    expect(TOKEN_CATALOG_AS_OF_DATE).toBe('2026-09-15')
-    expect(TOKEN_CATALOG_CONTENT_DIGEST).toBe(
-      '62879dfe8bb49a154d2a1bff356321e5dbe78d8cef0cd3409ef2b22cfd3445a4',
-    )
+    expect(TOKEN_CATALOG_VERSION).toMatch(/^\d+\.\d+\.\d+(?:[-+].*)?$/u)
+    expect(TOKEN_CATALOG_AS_OF_DATE).toMatch(/^\d{4}-\d{2}-\d{2}$/u)
+    expect(TOKEN_CATALOG_CONTENT_DIGEST).toMatch(/^[0-9a-f]{64}$/u)
     expect(TOKEN_CHAIN_IDS).toEqual({
       ethereumMainnet: 'eip155:1',
       solanaMainnet: 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp',
@@ -43,11 +41,27 @@ describe('offline token catalog', () => {
     expect(Object.isFrozen(tokens.solana)).toBe(true)
     expect(Object.isFrozen(tokens.avalancheC)).toBe(true)
 
-    for (const [name, deploymentId] of Object.entries(tokens.ethereum)) {
-      expect(name.length).toBeGreaterThan(0)
-      expect(typeof deploymentId).toBe('string')
-      expect(getTokenDeployment(deploymentId)).toBeDefined()
+    const tokenGroups = tokens as unknown as Record<
+      string,
+      Readonly<Record<string, string>>
+    >
+    for (const alias of TOKEN_ALIASES) {
+      const deploymentId = tokenGroups[alias.namespace]?.[alias.name]
+      expect(alias.name.length).toBeGreaterThan(0)
+      expect(deploymentId).toBe(alias.deploymentId)
+      expect(getTokenDeployment(alias.deploymentId)).toBeDefined()
     }
+
+    // Seed IDs are compatibility sentinels; future catalog rows may precede
+    // them in the generated arrays without changing these public constants.
+    expect(tokens.ethereum.ETH).toBe('deployment-0001')
+    expect(tokens.ethereum.WETH).toBe('deployment-0002')
+    expect(tokens.avalancheC.AVAX).toBe('deployment-0003')
+    expect(tokens.avalancheC.WAVAX).toBe('deployment-0004')
+    expect(tokens.solana.SOL).toBe('deployment-0005')
+    expect(tokens.solana.WSOL).toBe('deployment-0006')
+    expect(tokens.ethereum.USDC).toBe('deployment-0008')
+    expect(tokens.avalancheC.USDC).toBe('deployment-0009')
   })
 
   it('cross-links every deployment to a complete flattened asset record', () => {
@@ -195,7 +209,9 @@ describe('offline token catalog', () => {
   })
 
   it('uses exact opaque IDs, exact symbol case, and strict address rules', () => {
-    const first = TOKEN_DEPLOYMENTS[0]
+    const first = TOKEN_DEPLOYMENTS.find(
+      ({ deploymentId }) => deploymentId === tokens.ethereum.ETH,
+    )
     expect(first).toBeDefined()
     if (!first) return
 
@@ -259,7 +275,9 @@ describe('offline token catalog', () => {
     expect(Object.isFrozen(TOKEN_DEPLOYMENTS)).toBe(true)
     expect(Object.isFrozen(listed)).toBe(true)
 
-    const first = listed[0]
+    const first = listed.find(
+      ({ deploymentId }) => deploymentId === tokens.ethereum.ETH,
+    )
     expect(first).toBeDefined()
     if (!first) return
 
@@ -279,7 +297,9 @@ describe('offline token catalog', () => {
     }) as typeof fetch
 
     try {
-      const first = TOKEN_DEPLOYMENTS[0]
+      const first = TOKEN_DEPLOYMENTS.find(
+        ({ deploymentId }) => deploymentId === tokens.ethereum.ETH,
+      )
       expect(first).toBeDefined()
       if (first) {
         expect(getTokenAsset(first.assetId)).toBeDefined()
