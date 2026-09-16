@@ -141,8 +141,9 @@ jobs:
             const commit = JSON.parse(readFileSync(commitFile, 'utf8'))
             if (String(run.id) !== runId || Number(run.run_attempt) !== Number(runAttempt) || run.status !== 'completed' || run.conclusion !== 'success' || run.event !== 'workflow_dispatch' || run.path !== '.github/workflows/ci.yml' || run.head_sha !== ciHead || run.head_branch !== 'codex/release-preparation' || (run.repository?.full_name ?? run.repository?.fullName) !== repository) throw new Error('merge-proof CI run is not the exact successful managed run')
             if (!jobs.some((job) => job.name === 'required-ci' && job.status === 'completed' && job.conclusion === 'success')) throw new Error('merge-proof CI run lacks a successful required-ci job')
-            if (commit.sha !== mergeSha || !Array.isArray(commit.parents) || commit.parents.length !== 2 || commit.parents[0]?.sha !== ciBase || commit.parents[1]?.sha !== ciHead || !commit.tree?.sha) throw new Error('release commit parents are not the exact main base and managed CI head')
-            NODE
+            const commitTree = commit.commit?.tree?.sha
+            if (commit.sha !== mergeSha || !Array.isArray(commit.parents) || commit.parents.length !== 2 || commit.parents[0]?.sha !== ciBase || commit.parents[1]?.sha !== ciHead || !/^[0-9a-f]{40}$/u.test(commitTree ?? '')) throw new Error('release commit parents are not the exact main base and managed CI head')
+          NODE
           else
             checks_file="$RUNNER_TEMP/release-check-runs.json"
             proof_status=1
@@ -158,7 +159,7 @@ jobs:
               if (required.some((run) => run.status === 'completed' && run.conclusion === 'success')) process.exit(0)
               if (required.some((run) => run.status !== 'completed' || ['queued', 'in_progress', 'requested', 'pending'].includes(run.conclusion))) process.exit(42)
               process.exit(1)
-              NODE
+          NODE
               proof_status=$?
               set -e
               if [ "$proof_status" -eq 0 ]; then break; fi
