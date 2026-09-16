@@ -17,9 +17,11 @@
   Built for Developers. Ready for AI Agents.</strong>
 </p>
 
-One client and one API key provide access to Solana, Ethereum, Avalanche
-C-Chain, X-Chain, P-Chain, price data, indexed data, leader and validator data,
-analytics, subscriptions, and account balance information.
+With an eRPC API key, one client provides eRPC-backed access to Solana,
+Ethereum, Avalanche C/P/X-chain, price data, indexed data, leader and validator
+data, analytics, subscriptions, and account balance information. Selected direct
+RPC overrides in `main` and offline token, DEX/pool, and ranking catalog reads
+do not require an eRPC API key.
 
 ## Packages
 
@@ -34,9 +36,9 @@ analytics, subscriptions, and account balance information.
 The current published package baseline and package manifests are `0.7.0` across
 all five SDKs. The [GitHub `v0.7.0` release](https://github.com/elsoul/erpc-sdk/releases/tag/v0.7.0)
 is the current release record.
-The bounded token, DEX, pool, ranking, and RPC-only quote implementation is
-included in `0.7.0`. Direct RPC endpoint configuration is unreleased and is
-not included in the published `0.7.0` packages.
+The bounded token, DEX, pool, ranking, and reviewed EVM RPC-only quote
+implementation is included in `0.7.0`. Direct RPC endpoint configuration is
+present in `main` but is not included in the published `0.7.0` packages.
 
 ## Install
 
@@ -81,11 +83,30 @@ See the package guides for [TypeScript](packages/typescript/README.md),
 [Go](packages/go/README.md), and [Ruby](packages/ruby/README.md). Minimum
 versions are Rust 1.85, Python 3.11, Go 1.22, and Ruby 3.1.
 
+## Availability
+
+| Capability | Published `0.7.0` | `main` source checkout |
+| --- | --- | --- |
+| Offline token, DEX, and pool catalogs | Included | Included |
+| Offline token rankings | Included | Included; see canonical metadata |
+| Read-only reviewed EVM exact-input quotes (Ethereum Uniswap V2 and Avalanche LFJ legacy) | Included | Included |
+| Direct RPC overrides (`solanaRpc`, `ethereumRpc`, `avalancheCRpc`) | Not included | Main only, unreleased |
+| Solana CLMM quotes; high-level swap route/build/sign/send and bridge workflows | Future work | Future work |
+
 ## Direct RPC endpoints
 
-The unreleased direct RPC configuration in the source checkout lets a caller
-route selected chain JSON-RPC traffic to a dedicated node without an eRPC API
-key. It is not included in the published `0.7.0` packages.
+The direct RPC configuration in `main` lets a caller route selected chain
+JSON-RPC traffic to a dedicated node without an eRPC API key. It is not included
+in the published `0.7.0` packages.
+
+| Config field | Direct namespace(s) |
+| --- | --- |
+| `solanaRpc` | `erpc.solana.rpc`, `erpc.solana.das`, `erpc.solana.history`, `erpc.solana.leaders`, `erpc.solana.analytics`, and `erpc.solana.subscriptions` |
+| `ethereumRpc` | `erpc.ethereum.rpc`, `erpc.ethereum.subscriptions`, and Ethereum EVM quote reads |
+| `avalancheCRpc` | `erpc.avalanche.rpc`, `erpc.avalanche.subscriptions`, and C-Chain EVM quote reads |
+
+Extended Solana methods depend on the methods and limits supported by the
+chosen dedicated RPC provider.
 
 ```ts
 import { createErpcClient } from '@elsoul/erpc-sdk'
@@ -94,39 +115,45 @@ const erpc = createErpcClient({
   solanaRpc: {
     httpUrl: 'https://solana.example/customer/path?region=eu',
   },
+  ethereumRpc: {
+    httpUrl: 'https://ethereum.example/rpc',
+  },
+  avalancheCRpc: {
+    httpUrl: 'https://avalanche.example/rpc',
+  },
 })
 
 const slot = await erpc.solana.rpc.getSlot().send()
+const chainId = await erpc.ethereum.rpc.eth_chainId().send()
+const avalancheChainId = await erpc.avalanche.rpc.eth_chainId().send()
+console.log({ slot, chainId, avalancheChainId })
 erpc.close()
 ```
 
-`solanaRpc`, `ethereumRpc`, and `avalancheCRpc` select direct Solana,
-Ethereum, and Avalanche C-Chain JSON-RPC transports. The supplied `httpUrl` is
-the complete final HTTP request target: its path and query are preserved
-exactly, no eRPC route or `api-key` is appended, and direct HTTP requests do
-not follow redirects.
+Each supplied `httpUrl` is the complete final HTTP request target: its path and
+query are preserved exactly, no eRPC route or `api-key` is appended, and direct
+HTTP requests do not follow redirects.
 
 An optional independent `webSocketUrl` enables subscriptions; it is never
 derived from `httpUrl`, and a missing URL does not fall back to eRPC. Scoped
-`headers` apply only to the direct HTTP JSON-RPC requests:
+`headers` apply only to direct HTTP JSON-RPC requests and are not sent over WSS:
 
 ```ts
-import { createErpcClient, type RpcEndpointConfig } from '@elsoul/erpc-sdk'
-
-const ethereumRpc: RpcEndpointConfig = {
-  httpUrl: 'https://ethereum.example/rpc',
-  webSocketUrl: 'wss://ethereum.example/socket',
-  headers: { authorization: 'Bearer node-token' },
-}
-const erpc = createErpcClient({ ethereumRpc })
+const subscribed = createErpcClient({
+  ethereumRpc: {
+    httpUrl: 'https://ethereum.example/rpc',
+    webSocketUrl: 'wss://ethereum.example/socket',
+    headers: { authorization: 'Bearer node-token' },
+  },
+})
 ```
 
-In keyless mode, non-overridden chains, eRPC REST, native, and index services,
-and direct subscriptions without `webSocketUrl` fail locally with
-`ERPC_NOT_CONFIGURED` before network I/O. Supply an eRPC API key when those
-non-overridden eRPC services are needed. `avalancheCRpc` covers C-Chain RPC,
-C-Chain subscriptions, and existing Avalanche swap quotes; native AVAX,
-P/X/proposer VM/Info, and index services remain eRPC-backed.
+In keyless mode, non-overridden chains and eRPC REST, native, and index services
+fail locally with `ERPC_NOT_CONFIGURED` before network I/O. A direct
+subscription without `webSocketUrl` also fails locally, even when an eRPC key
+is supplied. Add an eRPC API key when those non-overridden eRPC services are
+needed. Native AVAX, P/X, proposer VM, Info, and index services remain
+eRPC-backed when `avalancheCRpc` is used.
 
 See the language-specific direct RPC guides for [TypeScript](packages/typescript/README.md),
 [Rust](packages/rust/README.md), [Python](packages/python/README.md),
@@ -134,9 +161,9 @@ See the language-specific direct RPC guides for [TypeScript](packages/typescript
 
 ## Offline token catalog
 
-The source checkout contains a bounded, source-backed token catalog across
-Ethereum, Solana, and Avalanche C-Chain. Catalog reads are local: they do not
-create a client, need an API key, or access a network.
+The published `0.7.0` packages include a bounded, source-backed token catalog
+across Ethereum, Solana, and Avalanche C-Chain. Catalog reads are local: they
+do not create a client, need an API key, or access a network.
 
 The public TypeScript names use the chain-qualified constants below. Alias
 values are opaque deployment IDs; returned deployments keep their lifecycle
@@ -185,8 +212,8 @@ These catalog and quote exports are included in the published `0.7.0` package.
 
 ## DEX catalog and RPC-only quotes
 
-The source tree contains generated DEX, pool, native/wrapped, and alias
-records across the five SDKs. The reviewed seed quote tuples are Ethereum
+The published `0.7.0` packages include generated DEX, pool, native/wrapped, and
+alias records across the five SDKs. The reviewed seed quote tuples are Ethereum
 Uniswap V2 (WETH/USDC) and Avalanche LFJ legacy (WAVAX/USDC). Solana Orca
 Whirlpools and Raydium CLMM records use classic WSOL/EURC for lookup and pair
 discovery; they are not quote-enabled.
@@ -221,9 +248,10 @@ erpc.close()
 does not have a `.send()` step. Low-level JSON-RPC methods remain pending
 requests and still use `.send()`. The quote reads the configured EVM RPC and
 calculates locally from one block snapshot. Native-to-wrapped definitions are
-metadata only; no automatic wrapping is performed. Route selection,
-transaction building, signing, simulation, sending, bridging, and Solana CLMM
-quotes remain future work.
+metadata only; no automatic wrapping is performed. High-level swap route
+selection, transaction building, signing, simulation, and sending, plus
+bridging and Solana CLMM quotes, remain future work. Low-level JSON-RPC methods
+remain available through the chain clients.
 
 Only the reviewed seed pool/token tuples receive quote capability. Discovery
 can record new pool and token facts for review, but it does not enable new swap
@@ -231,22 +259,19 @@ execution or bridge support.
 
 ## Offline token rankings
 
-The source checkout exposes an offline ranking snapshot and its metadata. The
-ranking metric is total supply multiplied by the direct native pool price, in
-exact rational native atomic units. It is not circulating market
+The published `0.7.0` packages expose an offline ranking snapshot and its
+metadata. The ranking metric is total supply multiplied by the direct native
+pool price, in exact rational native atomic units. It is not circulating market
 capitalization. Coverage is explicit; partial coverage and unranked reasons
 remain visible in the snapshot. The optional global USD market-cap metric is
 rights-gated and disabled by default.
 
 Ranking lookups use exact chain IDs and read no network, vendor API, current
 time, or client configuration. Generated records and metadata are immutable in
-each SDK. The initial reviewed 2026-09-16 source snapshot is partial, with 11 ranking records and
-54 explicit unranked rows; its metadata is the source of truth for metric,
-observation time, status, coverage, and digest. The initial reviewed snapshot
-digest is
-`f8ae479007fa782995aaaf6aa1c414ba1b6a10a92b7abe481b055293a91ac01c`.
-See [`registry/token-rankings.json`](registry/token-rankings.json),
-[`registry/token-rankings.mjs`](registry/token-rankings.mjs), and the package
+each SDK. The canonical [ranking artifact](registry/token-rankings.json) and
+[ranking configuration](registry/ranking-config.json) carry the current metric,
+observation time, status, coverage, digest, and unranked reasons. See the
+[ranking implementation](registry/token-rankings.mjs) and the package
 entry-point documentation for the language-specific `list` API.
 
 ## Source-checkout maintenance
@@ -260,10 +285,10 @@ observed tokens use unclassified address-only names and symbols, with
 `stableCurrency`, `underlyingAssetId`, and `economicReferenceAssetId` set to
 `null` until reviewed.
 
-Admission is capped at 8 tokens and 8 pools per run. The initial reviewed
-2026-09-16 local source snapshot contains 44 assets, 65 token deployments, and
-12 pools; that local review admitted 5 tokens and 8 pools with partial
-three-chain coverage.
+Admission is capped at 8 tokens and 8 pools per run. Current catalog records,
+source evidence, and metadata are maintained in the canonical
+[token catalog](registry/token-catalog.json), [DEX and pool catalog](registry/dex-catalog.json),
+and [ranking artifact](registry/token-rankings.json).
 Direct reviewed native pools use WETH, WAVAX, or classic WSOL and native liquidity floors of 10 ETH,
 100 AVAX, or 100 SOL in chain-native atomic units. Discovery state is bounded
 and resumable; cap- or dependency-deferred candidates are revalidated from
@@ -626,8 +651,11 @@ const erpc = createErpcClient({
 })
 ```
 
-Only `apiKey` is required. Default endpoints and timeout values are exported
-for applications that need to inspect them.
+`apiKey` is required for default eRPC connections. The source-only direct-node
+settings above (`solanaRpc`, `ethereumRpc`, or `avalancheCRpc`) allow keyless
+selected RPC access; legacy `endpoint` and `avalancheEndpoint` remain eRPC base
+URLs, not full dedicated-node overrides. Default endpoints and timeout values
+are exported for applications that need to inspect them.
 
 ## Development
 
