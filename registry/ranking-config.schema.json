@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/elsoul/erpc-sdk/blob/main/registry/ranking-config.schema.json",
+  "title": "ERPC bounded token ranking configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "metric", "freshness", "sources", "globalCirculatingMarketCap"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "metric": { "enum": ["onchain-total-supply-value-native", "global-circulating-market-cap-usd"] },
+    "freshness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maxBlockAgeSeconds", "maxBlockLag", "maxClockSkewSeconds"],
+      "properties": {
+        "maxBlockAgeSeconds": { "type": "integer", "minimum": 0, "maximum": 86400 },
+        "maxBlockLag": { "type": "integer", "minimum": 0, "maximum": 1024 },
+        "maxClockSkewSeconds": { "type": "integer", "minimum": 0, "maximum": 300 }
+      }
+    },
+    "sources": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["eip155:1", "eip155:43114", "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"],
+      "properties": {
+        "eip155:1": { "$ref": "#/$defs/source" },
+        "eip155:43114": { "$ref": "#/$defs/source" },
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": { "$ref": "#/$defs/source" }
+      }
+    },
+    "globalCirculatingMarketCap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "sourceId", "rights", "mappings"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "sourceId": { "type": ["string", "null"] },
+        "rights": { "enum": ["licensed", "unconfigured"] },
+        "mappings": { "type": "array", "items": { "$ref": "#/$defs/mapping" } }
+      }
+    }
+  },
+  "$defs": {
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceId", "nativeTokenDeploymentId", "quoteDeploymentId", "nativeWrapDeploymentId", "minNativeLiquidity", "finalizedMaxBlockAgeSeconds", "maxSlotSpread"],
+      "properties": {
+        "sourceId": { "type": "string", "minLength": 1 },
+        "nativeTokenDeploymentId": { "type": "string", "minLength": 1 },
+        "quoteDeploymentId": { "type": "string", "minLength": 1 },
+        "nativeWrapDeploymentId": { "type": "string", "minLength": 1 },
+        "minNativeLiquidity": { "type": "string", "pattern": "^[1-9][0-9]*$" },
+        "finalizedMaxBlockAgeSeconds": { "type": "integer", "minimum": 0, "maximum": 86400 },
+        "maxSlotSpread": { "type": "integer", "minimum": 0, "maximum": 100000 }
+      }
+    },
+    "mapping": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["assetId", "deployments"],
+      "properties": {
+        "assetId": { "type": "string", "minLength": 1 },
+        "chainId": { "type": "string", "minLength": 1 },
+        "deployments": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["deploymentId", "address"],
+            "properties": {
+              "deploymentId": { "type": "string", "minLength": 1 },
+              "address": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    }
+  }
+}

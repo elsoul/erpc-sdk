@@ -197,6 +197,29 @@ Use `GetDexDeployment`, `GetPoolDefinition`, `FindPoolDefinitionByAddress`,
 records are available for deterministic lookup and pair discovery; their CLMM
 adapters do not produce quotes in this release.
 
+## Offline token rankings
+
+The package includes a generated ranking snapshot with metadata for the metric,
+observation date, digest, source IDs, and per-chain coverage. Ranking reads are
+offline and return a copy of the rows for an exact chain ID; empty and unknown
+chain IDs return an empty result. A snapshot using
+`onchain-total-supply-value-native` ranks total token supply multiplied by a
+direct native pool price. It is distinct from circulating market cap, and a
+`partial` snapshot reports its unranked deployments in coverage. The bundled
+snapshot may be `unconfigured` until reviewed ranking observations are
+promoted.
+
+```go
+rows := erpc.ListTokenRankings(erpc.TokenChainEthereumMainnet)
+metadata := erpc.TokenRankingMetadata()
+fmt.Println(len(rows), metadata.Status, metadata.ContentDigest)
+```
+
+Catalog growth does not grant quote capability. The quote boundary is a
+handwritten reviewed allowlist covering the exact Ethereum Uniswap V2
+USDC/WETH pool and Avalanche LFJ legacy WAVAX/USDC pool, including their
+factory, token addresses and decimals, ERC-20 standards, adapter, and fee.
+
 ## RPC-only swap quotes
 
 `Client.Swap.QuoteExactInput` reads a consistent snapshot from the configured
@@ -219,9 +242,9 @@ if err != nil {
 fmt.Println(quote.AmountOut, quote.Snapshot.BlockNumber)
 ```
 
-The quote path validates the catalog binding, factory and pool identities,
-ordered token addresses, EIP-1898 block selectors, ABI widths, freshness, and
-uint256 arithmetic before returning. It reads `eth_chainId`, two latest block
+The quote path validates the reviewed catalog binding, factory and pool
+identities, ordered token addresses, EIP-1898 block selectors, ABI widths,
+freshness, and uint256 arithmetic before returning. It reads `eth_chainId`, two latest block
 headers, two code values, five `eth_call` values, and one snapshot-block
 reread. It only returns a quote; transaction building, signing, broadcasting,
 native wrapping, routing, and bridging are separate capabilities.

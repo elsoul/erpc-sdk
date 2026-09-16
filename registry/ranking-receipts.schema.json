@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/elsoul/erpc-sdk/blob/main/registry/ranking-receipts.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "artifactKind", "sourceSha", "configDigest", "tokenCatalogDigest", "dexCatalogDigest", "observedAt", "metric", "status", "receipts"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "artifactKind": { "const": "ranking-receipts" },
+    "sourceSha": { "type": ["string", "null"], "pattern": "^[0-9a-f]{40}$" },
+    "configDigest": { "type": ["string", "null"], "pattern": "^[0-9a-f]{64}$" },
+    "tokenCatalogDigest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "dexCatalogDigest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "observedAt": { "type": "string", "format": "date-time" },
+    "metric": { "enum": ["onchain-total-supply-value-native", "global-circulating-market-cap-usd"] },
+    "status": { "enum": ["unconfigured", "complete", "partial"] },
+    "receipts": { "type": "array" }
+  }
+}

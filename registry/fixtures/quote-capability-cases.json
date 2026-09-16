@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "capabilityPoolIds": ["pool-0001", "pool-0002"],
+  "knownPairs": [
+    ["eip155:1", "deployment-0008", "deployment-0002"],
+    ["eip155:43114", "deployment-0004", "deployment-0009"]
+  ],
+  "syntheticCases": [
+    { "caseId": "new-pool-known-pair", "poolDefinitionId": "pool-9991", "expect": "unsupported" },
+    { "caseId": "unclassified-token", "poolDefinitionId": "pool-0001", "expect": "unsupported" },
+    { "caseId": "rebound-pool", "poolDefinitionId": "pool-0001", "expect": "unsupported" }
+  ]
+}

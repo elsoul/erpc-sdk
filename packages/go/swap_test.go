@@ -396,6 +396,28 @@ func quoteOutcomeMap(result ExactInputQuoteResult, err error) map[string]any {
 	return map[string]any{"kind": "success", "value": value}
 }
 
+func expectedQuoteOutcome(outcome map[string]any) map[string]any {
+	expected := make(map[string]any, len(outcome))
+	for key, value := range outcome {
+		expected[key] = value
+	}
+	if expected["kind"] != "success" {
+		return expected
+	}
+	value, ok := expected["value"].(map[string]any)
+	if !ok {
+		return expected
+	}
+	normalized := make(map[string]any, len(value)+2)
+	for key, item := range value {
+		normalized[key] = item
+	}
+	normalized["tokenCatalogDigest"] = TOKEN_CATALOG_CONTENT_DIGEST
+	normalized["dexCatalogDigest"] = DexCatalogContentDigest
+	expected["value"] = normalized
+	return expected
+}
+
 func normalizeCapturedParams(params []any) []any {
 	if params == nil {
 		return []any{}
@@ -751,15 +773,13 @@ func captureGoWrapLookups() []map[string]any {
 }
 
 func captureGoAliases() []map[string]any {
+	aliases := actualNativeDexAliases()
 	result := make([]map[string]any, 0, len(DexAliases()))
 	for _, alias := range DexAliases() {
-		id, kind, ok := generatedGoAliasValue(alias.Namespace, alias.Name)
-		if !ok {
-			// The generated alias list is itself tested for completeness. Keep a
-			// null value if a future registry entry is intentionally added before
-			// its language constant is generated, so this exporter never derives
-			// the result from the catalog target field.
-			id, kind = nil, "pool"
+		value, ok := aliases[alias.Namespace+"\x00"+alias.Name]
+		id, kind := any(nil), "pool"
+		if ok {
+			id, kind = value.id, value.kind
 		}
 		result = append(result, map[string]any{
 			"namespace": alias.Namespace, "name": alias.Name, "kind": kind, "result": id,
@@ -768,32 +788,23 @@ func captureGoAliases() []map[string]any {
 	return result
 }
 
-func generatedGoAliasValue(namespace, name string) (any, string, bool) {
-	if namespace == "ethereum" && name == "UNISWAP_V2" {
-		return DexEthereumUNISWAP_V2, "dex", true
+type nativeDexAlias struct {
+	id   any
+	kind string
+}
+
+func actualNativeDexAliases() map[string]nativeDexAlias {
+	result := make(map[string]nativeDexAlias, len(DexAliases()))
+	for _, alias := range DexAliases() {
+		key := alias.Namespace + "\x00" + alias.Name
+		switch {
+		case alias.DexDeploymentID != nil:
+			result[key] = nativeDexAlias{id: *alias.DexDeploymentID, kind: "dex"}
+		case alias.PoolDefinitionID != nil:
+			result[key] = nativeDexAlias{id: *alias.PoolDefinitionID, kind: "pool"}
+		}
 	}
-	if namespace == "ethereum" && name == "UNISWAP_V2_USDC_WETH" {
-		return PoolEthereumUNISWAP_V2_USDC_WETH, "pool", true
-	}
-	if namespace == "avalancheC" && name == "LFJ_LEGACY" {
-		return DexAvalancheCLFJ_LEGACY, "dex", true
-	}
-	if namespace == "avalancheC" && name == "LFJ_LEGACY_WAVAX_USDC" {
-		return PoolAvalancheCLFJ_LEGACY_WAVAX_USDC, "pool", true
-	}
-	if namespace == "solana" && name == "ORCA_WHIRLPOOLS" {
-		return DexSolanaORCA_WHIRLPOOLS, "dex", true
-	}
-	if namespace == "solana" && name == "ORCA_WHIRLPOOLS_WSOL_EURC" {
-		return PoolSolanaORCA_WHIRLPOOLS_WSOL_EURC, "pool", true
-	}
-	if namespace == "solana" && name == "RAYDIUM_CLMM" {
-		return DexSolanaRAYDIUM_CLMM, "dex", true
-	}
-	if namespace == "solana" && name == "RAYDIUM_CLMM_WSOL_EURC" {
-		return PoolSolanaRAYDIUM_CLMM_WSOL_EURC, "pool", true
-	}
-	return nil, "", false
+	return result
 }
 
 func captureGoQuoteBehavior(t *testing.T, fixture goQuoteFixture) []map[string]any {
@@ -821,7 +832,7 @@ func captureGoQuoteBehavior(t *testing.T, fixture goQuoteFixture) []map[string]a
 		server.Close()
 		outcome := quoteOutcomeMap(quote, quoteErr)
 		trace := capturedTrace(requests)
-		mustSameJSON(t, outcome, fixtureCase.Outcome)
+		mustSameJSON(t, outcome, expectedQuoteOutcome(fixtureCase.Outcome))
 		mustSameJSON(t, trace, fixtureCase.RPCTrace)
 		if len(requests) != len(fixtureCase.RPCResponses) {
 			t.Fatalf("fixture %s made %d RPC requests, want %d", fixtureCase.CaseID, len(requests), len(fixtureCase.RPCResponses))

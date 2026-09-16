@@ -36,6 +36,7 @@
       "SWAP_UNSUPPORTED_TOKEN_STANDARD",
       "SWAP_POOL_TOKEN_MISMATCH",
       "SWAP_UNSUPPORTED_ADAPTER",
+      "SWAP_UNSUPPORTED_TOKEN",
       "SWAP_UNSUPPORTED_TOKEN_STANDARD",
       "RPC_OR_STATE_VALIDATION"
     ],
@@ -1088,6 +1089,24 @@
       "outcome": {
         "kind": "sdk-error",
         "code": "SWAP_UNSUPPORTED_ADAPTER"
+      },
+      "rpcTrace": [],
+      "applicability": "shared"
+    },
+    {
+      "caseId": "discovered-pool-unsupported-before-rpc",
+      "request": {
+        "chainId": "eip155:1",
+        "poolDefinitionId": "discovered-pool-a7f9e600a86951f40472ff779fae467db8a6bbbc6076356058f427e97d4ae429",
+        "inputTokenDeploymentId": "deployment-0019",
+        "outputTokenDeploymentId": "deployment-0002",
+        "amountIn": "1000000000000000000"
+      },
+      "nowSeconds": 1789498700,
+      "rpcResponses": [],
+      "outcome": {
+        "kind": "sdk-error",
+        "code": "SWAP_UNSUPPORTED_TOKEN"
       },
       "rpcTrace": [],
       "applicability": "shared"

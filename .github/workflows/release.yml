@@ -4,30 +4,168 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      root_tag:
+        description: Immutable root release tag to verify
+        required: true
+        type: string
+      go_tag:
+        description: Immutable Go module tag paired with the root tag
+        required: true
+        type: string
+      expected_commit:
+        description: Commit both immutable tags must peel to
+        required: true
+        type: string
+      publish:
+        description: Explicitly authorize publication after all checks pass
+        required: true
+        default: false
+        type: boolean
+      ci_run_id:
+        description: Exact successful PR CI run used as merge proof for an automatic dispatch
+        required: false
+        type: number
+      ci_run_attempt:
+        description: Exact attempt for the merge-proof CI run
+        required: false
+        type: number
+      ci_head_sha:
+        description: PR head SHA tested by the merge-proof CI run
+        required: false
+        type: string
+      ci_base_sha:
+        description: Main base SHA used by the merge-proof CI run
+        required: false
+        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: sdk-release-${{ github.ref }}
+  group: sdk-release-${{ github.event_name == 'workflow_dispatch' && inputs.root_tag || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
   verify:
     name: Verify tagged source
+    if: github.event_name != 'push' || (github.actor != 'github-actions[bot]' && github.event.pusher.name != 'github-actions[bot]')
+    outputs:
+      publication_allowed: ${{ steps.policy.outputs.publication_allowed }}
+    permissions:
+      contents: read
+      checks: read
+      actions: read
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.expected_commit || github.sha }}
+          clean: true
           persist-credentials: false
-      - name: Verify release commit is on main
-        run: git merge-base --is-ancestor HEAD origin/main
-      - name: Verify the Go module tag points to the release commit
+      - name: Verify immutable paired root and Go tags
+        id: tags
         env:
-          GO_TAG: packages/go/${{ github.ref_name }}
-        run: test "$(git rev-list -n 1 "$GO_TAG")" = "$GITHUB_SHA"
+          ROOT_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.root_tag || github.ref_name }}
+          GO_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.go_tag || format('packages/go/{0}', github.ref_name) }}
+          EXPECTED_COMMIT: ${{ github.event_name == 'workflow_dispatch' && inputs.expected_commit || github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = workflow_dispatch ]; then test "$EVENT_REF" = "refs/tags/$ROOT_TAG"; fi
+          printf '%s\n' "$ROOT_TAG" | grep -Eq '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
+          test "$GO_TAG" = "packages/go/$ROOT_TAG"
+          printf '%s\n' "$EXPECTED_COMMIT" | grep -Eq '^[0-9a-f]{40}$'
+          test "$(git rev-parse HEAD)" = "$EXPECTED_COMMIT"
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor "$EXPECTED_COMMIT" origin/main
+          git ls-remote --exit-code --tags origin "refs/tags/$ROOT_TAG" "refs/tags/$ROOT_TAG^{}" > "$RUNNER_TEMP/root-tag-refs"
+          git ls-remote --exit-code --tags origin "refs/tags/$GO_TAG" "refs/tags/$GO_TAG^{}" > "$RUNNER_TEMP/go-tag-refs"
+          node --input-type=module - "$RUNNER_TEMP/root-tag-refs" "$RUNNER_TEMP/go-tag-refs" "$ROOT_TAG" "$GO_TAG" "$EXPECTED_COMMIT" <<'NODE'
+          import { readFileSync } from 'node:fs'
+
+          const [rootFile, goFile, rootTag, goTag, expectedCommit] = process.argv.slice(2)
+          const peel = (file, tag) => {
+            const rows = readFileSync(file, 'utf8').trim().split(/\r?\n/u).filter(Boolean)
+            const peeled = rows.find((row) => row.endsWith(`refs/tags/${tag}^{}`))
+            const direct = rows.find((row) => row.endsWith(`refs/tags/${tag}`))
+            const sha = (peeled ?? direct)?.split(/\s+/u)[0]
+            if (!/^[0-9a-f]{40}$/u.test(sha ?? '')) throw new Error(`tag ${tag} did not resolve to a commit SHA`)
+            return sha
+          }
+          const rootPeel = peel(rootFile, rootTag)
+          const goPeel = peel(goFile, goTag)
+          if (rootPeel !== expectedCommit || goPeel !== expectedCommit || rootPeel !== goPeel) throw new Error('root and Go tags are not an exact immutable pair')
+          console.log(`root_tag=${rootTag}`)
+          console.log(`go_tag=${goTag}`)
+          console.log(`peel_commit=${expectedCommit}`)
+          NODE
+      - name: Verify release commit is on main
+        env:
+          EXPECTED_COMMIT: ${{ github.event_name == 'workflow_dispatch' && inputs.expected_commit || github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_COMMIT"
+          git merge-base --is-ancestor "$EXPECTED_COMMIT" origin/main
+      - name: Verify bounded CI proof for this immutable release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+          EXPECTED_COMMIT: ${{ github.event_name == 'workflow_dispatch' && inputs.expected_commit || github.sha }}
+          CI_RUN_ID: ${{ inputs.ci_run_id }}
+          CI_RUN_ATTEMPT: ${{ inputs.ci_run_attempt }}
+          CI_HEAD_SHA: ${{ inputs.ci_head_sha }}
+          CI_BASE_SHA: ${{ inputs.ci_base_sha }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = workflow_dispatch ] && [ -n "$CI_RUN_ID" ]; then
+            printf '%s\n' "$CI_RUN_ID" | grep -Eq '^[1-9][0-9]*$'
+            printf '%s\n' "$CI_RUN_ATTEMPT" | grep -Eq '^[1-9][0-9]*$'
+            printf '%s\n' "$CI_HEAD_SHA" | grep -Eq '^[0-9a-f]{40}$'
+            printf '%s\n' "$CI_BASE_SHA" | grep -Eq '^[0-9a-f]{40}$'
+            test "$CI_BASE_SHA" != "$CI_HEAD_SHA"
+            gh api "/repos/$REPOSITORY/actions/runs/$CI_RUN_ID" --header 'X-GitHub-Api-Version: 2026-03-10' > "$RUNNER_TEMP/release-ci-run.json"
+            gh api "/repos/$REPOSITORY/actions/runs/$CI_RUN_ID/jobs?per_page=100" --header 'X-GitHub-Api-Version: 2026-03-10' > "$RUNNER_TEMP/release-ci-jobs.json"
+            gh api "/repos/$REPOSITORY/commits/$EXPECTED_COMMIT" --header 'X-GitHub-Api-Version: 2026-03-10' > "$RUNNER_TEMP/release-merge-commit.json"
+            node --input-type=module - "$RUNNER_TEMP/release-ci-run.json" "$RUNNER_TEMP/release-ci-jobs.json" "$RUNNER_TEMP/release-merge-commit.json" "$REPOSITORY" "$CI_RUN_ID" "$CI_RUN_ATTEMPT" "$EXPECTED_COMMIT" "$CI_HEAD_SHA" "$CI_BASE_SHA" <<'NODE'
+            import { readFileSync } from 'node:fs'
+
+            const [runFile, jobsFile, commitFile, repository, runId, runAttempt, mergeSha, ciHead, ciBase] = process.argv.slice(2)
+            const run = JSON.parse(readFileSync(runFile, 'utf8'))
+            const jobs = JSON.parse(readFileSync(jobsFile, 'utf8'))?.jobs ?? []
+            const commit = JSON.parse(readFileSync(commitFile, 'utf8'))
+            if (String(run.id) !== runId || Number(run.run_attempt) !== Number(runAttempt) || run.status !== 'completed' || run.conclusion !== 'success' || run.event !== 'workflow_dispatch' || run.path !== '.github/workflows/ci.yml' || run.head_sha !== ciHead || run.head_branch !== 'codex/release-preparation' || (run.repository?.full_name ?? run.repository?.fullName) !== repository) throw new Error('merge-proof CI run is not the exact successful managed run')
+            if (!jobs.some((job) => job.name === 'required-ci' && job.status === 'completed' && job.conclusion === 'success')) throw new Error('merge-proof CI run lacks a successful required-ci job')
+            if (commit.sha !== mergeSha || !Array.isArray(commit.parents) || commit.parents.length !== 2 || commit.parents[0]?.sha !== ciBase || commit.parents[1]?.sha !== ciHead || !commit.tree?.sha) throw new Error('release commit parents are not the exact main base and managed CI head')
+            NODE
+          else
+            checks_file="$RUNNER_TEMP/release-check-runs.json"
+            proof_status=1
+            for attempt in $(seq 1 12); do
+              gh api "/repos/$REPOSITORY/commits/$EXPECTED_COMMIT/check-runs?per_page=100" --header 'X-GitHub-Api-Version: 2026-03-10' > "$checks_file"
+              set +e
+              node --input-type=module - "$checks_file" "$EXPECTED_COMMIT" <<'NODE'
+              import { readFileSync } from 'node:fs'
+
+              const [file, expectedCommit] = process.argv.slice(2)
+              const runs = JSON.parse(readFileSync(file, 'utf8'))?.check_runs ?? []
+              const required = runs.filter((run) => run.name === 'required-ci' && run.head_sha === expectedCommit)
+              if (required.some((run) => run.status === 'completed' && run.conclusion === 'success')) process.exit(0)
+              if (required.some((run) => run.status !== 'completed' || ['queued', 'in_progress', 'requested', 'pending'].includes(run.conclusion))) process.exit(42)
+              process.exit(1)
+              NODE
+              proof_status=$?
+              set -e
+              if [ "$proof_status" -eq 0 ]; then break; fi
+              if [ "$proof_status" -ne 42 ] || [ "$attempt" -eq 12 ]; then echo 'required-ci has not passed for the exact immutable release commit' >&2; exit 1; fi
+              sleep 5
+            done
+          fi
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: 24
@@ -62,13 +200,31 @@ jobs:
         working-directory: packages/go
         run: go mod download
       - name: Verify tag and package identities
-        run: node scripts/verify-release.mjs "${{ github.ref_name }}"
+        env:
+          ROOT_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.root_tag || github.ref_name }}
+        run: node scripts/verify-release.mjs "$ROOT_TAG"
       - name: Run complete release validation
         run: corepack pnpm release:check
+      - name: Apply explicit publication policy
+        id: policy
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PUBLISH_INPUT: ${{ inputs.publish }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = push ] || { [ "$EVENT_NAME" = workflow_dispatch ] && [ "$PUBLISH_INPUT" = true ]; }; then
+            echo 'publication_allowed=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'publication_allowed=false' >> "$GITHUB_OUTPUT"
+          fi
 
   npm:
     name: Publish @elsoul/erpc-sdk
     needs: verify
+    if: ((github.event_name == 'push' && github.actor != 'github-actions[bot]' && github.event.pusher.name != 'github-actions[bot]') || (github.event_name == 'workflow_dispatch' && inputs.publish == true)) && needs.verify.outputs.publication_allowed == 'true'
+    concurrency:
+      group: sdk-publisher-npm-${{ github.event_name == 'workflow_dispatch' && inputs.root_tag || github.ref_name }}
+      cancel-in-progress: false
     environment: npm
     permissions:
       contents: read
@@ -108,6 +264,10 @@ jobs:
   crates:
     name: Publish erpc-sdk crate
     needs: verify
+    if: ((github.event_name == 'push' && github.actor != 'github-actions[bot]' && github.event.pusher.name != 'github-actions[bot]') || (github.event_name == 'workflow_dispatch' && inputs.publish == true)) && needs.verify.outputs.publication_allowed == 'true'
+    concurrency:
+      group: sdk-publisher-crates-${{ github.event_name == 'workflow_dispatch' && inputs.root_tag || github.ref_name }}
+      cancel-in-progress: false
     environment: crates-io
     permissions:
       contents: read
@@ -141,12 +301,17 @@ jobs:
   python-distribution:
     name: Build and inspect Python distribution
     needs: verify
+    if: ((github.event_name == 'push' && github.actor != 'github-actions[bot]' && github.event.pusher.name != 'github-actions[bot]') || (github.event_name == 'workflow_dispatch' && inputs.publish == true)) && needs.verify.outputs.publication_allowed == 'true'
+    concurrency:
+      group: sdk-publisher-python-${{ github.event_name == 'workflow_dispatch' && inputs.root_tag || github.ref_name }}
+      cancel-in-progress: false
     permissions:
       contents: read
     runs-on: ubuntu-latest
     timeout-minutes: 15
     outputs:
       published: ${{ steps.registry.outputs.published }}
+      publication_allowed: ${{ needs.verify.outputs.publication_allowed }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -181,7 +346,13 @@ jobs:
 
   pypi:
     name: Publish erpc-sdk Python distribution
-    needs: python-distribution
+    needs:
+      - python-distribution
+      - verify
+    if: ((github.event_name == 'push' && github.actor != 'github-actions[bot]' && github.event.pusher.name != 'github-actions[bot]') || (github.event_name == 'workflow_dispatch' && inputs.publish == true)) && needs.verify.outputs.publication_allowed == 'true'
+    concurrency:
+      group: sdk-publisher-pypi-${{ github.event_name == 'workflow_dispatch' && inputs.root_tag || github.ref_name }}
+      cancel-in-progress: false
     environment:
       name: pypi
       url: https://pypi.org/project/erpc-sdk/
@@ -205,6 +376,10 @@ jobs:
   rubygems:
     name: Publish erpc-sdk Ruby gem
     needs: verify
+    if: ((github.event_name == 'push' && github.actor != 'github-actions[bot]' && github.event.pusher.name != 'github-actions[bot]') || (github.event_name == 'workflow_dispatch' && inputs.publish == true)) && needs.verify.outputs.publication_allowed == 'true'
+    concurrency:
+      group: sdk-publisher-rubygems-${{ github.event_name == 'workflow_dispatch' && inputs.root_tag || github.ref_name }}
+      cancel-in-progress: false
     environment: rubygems
     permissions:
       contents: read
@@ -246,10 +421,15 @@ jobs:
   github-release:
     name: Create GitHub Release
     needs:
+      - verify
       - npm
       - crates
       - pypi
       - rubygems
+    if: ((github.event_name == 'push' && github.actor != 'github-actions[bot]' && github.event.pusher.name != 'github-actions[bot]') || (github.event_name == 'workflow_dispatch' && inputs.publish == true)) && needs.verify.outputs.publication_allowed == 'true'
+    concurrency:
+      group: sdk-publisher-github-release-${{ github.event_name == 'workflow_dispatch' && inputs.root_tag || github.ref_name }}
+      cancel-in-progress: false
     permissions:
       contents: write
     runs-on: ubuntu-latest
@@ -264,3 +444,79 @@ jobs:
           gh release view "$TAG" >/dev/null 2>&1 ||
           gh release create "$TAG" --verify-tag --generate-notes
           --title "ERPC SDK $TAG"
+
+  publication-evidence:
+    name: Verify and record published package evidence
+    needs:
+      - npm
+      - crates
+      - pypi
+      - rubygems
+    if: ((github.event_name == 'push' && github.actor != 'github-actions[bot]' && github.event.pusher.name != 'github-actions[bot]') || (github.event_name == 'workflow_dispatch' && inputs.publish == true)) && needs.npm.result == 'success' && needs.crates.result == 'success' && needs.pypi.result == 'success' && needs.rubygems.result == 'success'
+    concurrency:
+      group: sdk-publisher-evidence-${{ github.event_name == 'workflow_dispatch' && inputs.root_tag || github.ref_name }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.expected_commit || github.sha }}
+          clean: true
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+      - name: Verify every published registry and write immutable evidence
+        env:
+          ROOT_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.root_tag || github.ref_name }}
+          GO_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.go_tag || format('packages/go/{0}', github.ref_name) }}
+          EXPECTED_COMMIT: ${{ github.event_name == 'workflow_dispatch' && inputs.expected_commit || github.sha }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          OUTPUT_DIR: ${{ runner.temp }}/release-publication-evidence
+        run: |
+          set -euo pipefail
+          mkdir -p "$OUTPUT_DIR"
+          node --input-type=module - "$ROOT_TAG" "$GO_TAG" "$EXPECTED_COMMIT" "$RUN_ID" "$RUN_ATTEMPT" "$OUTPUT_DIR/release-evidence.json" <<'NODE'
+          import { createHash } from 'node:crypto'
+          import { readFileSync, writeFileSync } from 'node:fs'
+          import { spawnSync } from 'node:child_process'
+
+          const [rootTag, goTag, expectedCommit, runIdText, runAttemptText, outputFile] = process.argv.slice(2)
+          const run = (args) => {
+            const result = spawnSync('git', args, { encoding: 'utf8', stdio: 'pipe' })
+            if (result.error || result.status !== 0) throw new Error(`git ${args.join(' ')} failed: ${result.stderr?.trim() || result.error?.message || result.status}`)
+            return result.stdout.trim()
+          }
+          if (run(['rev-parse', `${rootTag}^{commit}`]) !== expectedCommit || run(['rev-parse', `${goTag}^{commit}`]) !== expectedCommit) throw new Error('published evidence tags do not peel to the expected immutable commit')
+          const packageJson = JSON.parse(readFileSync('packages/typescript/package.json', 'utf8'))
+          const version = packageJson.version
+          if (rootTag !== `v${version}` || goTag !== `packages/go/${rootTag}`) throw new Error('published evidence tag/version binding is invalid')
+          const check = async (url, predicate) => {
+            const response = await fetch(url, { headers: { accept: 'application/json', 'user-agent': 'erpc-sdk-release-evidence' }, signal: AbortSignal.timeout(15_000) })
+            if (!response.ok) throw new Error(`registry evidence request failed: ${url} HTTP ${response.status}`)
+            const metadata = await response.json()
+            if (!predicate(metadata, version)) throw new Error(`registry does not contain published erpc-sdk ${version}: ${url}`)
+            return { verified: true, version }
+          }
+          const registries = {
+            npm: await check('https://registry.npmjs.org/%40elsoul%2Ferpc-sdk', (metadata, candidate) => Object.hasOwn(metadata.versions ?? {}, candidate)),
+            crates: await check('https://crates.io/api/v1/crates/erpc-sdk/versions', (metadata, candidate) => (metadata.versions ?? []).some((entry) => entry.num === candidate)),
+            pypi: await check('https://pypi.org/pypi/erpc-sdk/json', (metadata, candidate) => Object.hasOwn(metadata.releases ?? {}, candidate)),
+            rubygems: await check('https://rubygems.org/api/v1/versions/erpc-sdk.json', (metadata, candidate) => metadata.some((entry) => entry.number === candidate)),
+          }
+          const peelCommit = run(['rev-parse', `${rootTag}^{commit}`])
+          const evidence = { schemaVersion: 1, kind: 'erpc-sdk-release-publication-evidence', verified: true, rootTag, goTag, peelCommit, publisher: `github-actions:${runIdText}/${runAttemptText}`, workflowPath: '.github/workflows/release.yml', runId: Number(runIdText), runAttempt: Number(runAttemptText), packageVersion: version, registries }
+          writeFileSync(outputFile, `${JSON.stringify(evidence, null, 2)}\n`, { flag: 'w' })
+          NODE
+      - name: Upload exact immutable publication evidence
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: release-publication-evidence-${{ github.event_name == 'workflow_dispatch' && inputs.root_tag || github.ref_name }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/release-publication-evidence/release-evidence.json
+          if-no-files-found: error
+          retention-days: 365

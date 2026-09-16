@@ -275,7 +275,7 @@ function sortRecords(records, keyFunction) {
   return [...records].sort((left, right) => compareStrings(keyFunction(left), keyFunction(right)));
 }
 
-function normalizedSnapshot(snapshot, language) {
+function normalizedSnapshot(snapshot, language, catalog = CATALOG) {
   if (!isRecord(snapshot)) fail(`${language} snapshot must be an object`);
   const expectedKeys = [
     "snapshotVersion",
@@ -298,9 +298,9 @@ function normalizedSnapshot(snapshot, language) {
 
   exactKeys(snapshot.metadata, METADATA_KEYS, `${language}.metadata`);
   exactKeys(snapshot.metadata.chainIds, Object.keys(CHAIN_IDS), `${language}.metadata.chainIds`);
-  if (snapshot.metadata.version !== CATALOG.catalogVersion) fail(`${language} metadata version differs from canonical catalog`);
-  if (snapshot.metadata.asOfDate !== CATALOG.manualAsOf) fail(`${language} metadata asOfDate differs from canonical catalog`);
-  if (snapshot.metadata.contentDigest !== CATALOG.contentDigest) fail(`${language} metadata contentDigest differs from canonical catalog`);
+  if (snapshot.metadata.version !== catalog.catalogVersion) fail(`${language} metadata version differs from canonical catalog`);
+  if (snapshot.metadata.asOfDate !== catalog.manualAsOf) fail(`${language} metadata asOfDate differs from canonical catalog`);
+  if (snapshot.metadata.contentDigest !== catalog.contentDigest) fail(`${language} metadata contentDigest differs from canonical catalog`);
   if (stableJson(snapshot.metadata.chainIds) !== stableJson(CHAIN_IDS)) fail(`${language} metadata chain IDs differ from canonical catalog`);
 
   if (!Array.isArray(snapshot.assets) || !Array.isArray(snapshot.deployments) || !Array.isArray(snapshot.aliases)) {
@@ -333,13 +333,13 @@ function comparableSnapshot(snapshot) {
   return copy;
 }
 
-function parseSnapshotEnvelope(value, sourceLabel) {
+function parseSnapshotEnvelope(value, sourceLabel, catalog = CATALOG) {
   if (!isRecord(value)) fail(`${sourceLabel} must contain a JSON object`);
   if (Object.hasOwn(value, "languages")) {
     exactKeys(value, ["snapshotVersion", "snapshotKind", "catalogDigest", "languages"], sourceLabel);
     if (value.snapshotVersion !== SNAPSHOT_VERSION) fail(`${sourceLabel}.snapshotVersion must be ${SNAPSHOT_VERSION}`);
     if (value.snapshotKind !== "native-runtime-parity") fail(`${sourceLabel}.snapshotKind must be native-runtime-parity`);
-    if (value.catalogDigest !== CATALOG.contentDigest) fail(`${sourceLabel}.catalogDigest differs from canonical catalog`);
+    if (value.catalogDigest !== catalog.contentDigest) fail(`${sourceLabel}.catalogDigest differs from canonical catalog`);
     if (!isRecord(value.languages)) fail(`${sourceLabel}.languages must be an object keyed by language`);
     return value.languages;
   }
@@ -359,7 +359,7 @@ export function verifySnapshots(snapshots, catalog = CATALOG) {
 
   const results = [];
   for (const language of PARITY_LANGUAGES) {
-    const normalized = normalizedSnapshot(snapshots[language], language);
+    const normalized = normalizedSnapshot(snapshots[language], language, catalog);
     const expectedForLanguage = { ...expected, language, runtime: normalized.runtime };
     if (stableJson(comparableSnapshot(normalized)) !== stableJson(comparableSnapshot(expectedForLanguage))) {
       const fields = ["metadata", "assets", "deployments", "aliases", "behavior"];
@@ -430,7 +430,7 @@ function parseArguments(argumentsList) {
   return options;
 }
 
-async function readSnapshots(files) {
+async function readSnapshots(files, catalog = CATALOG) {
   const languageSnapshots = {};
   for (const file of files) {
     const absolutePath = path.resolve(process.cwd(), file);
@@ -446,7 +446,7 @@ async function readSnapshots(files) {
     } catch (error) {
       fail(`cannot parse snapshot ${file} as JSON: ${error.message}`);
     }
-    const entries = parseSnapshotEnvelope(value, file);
+    const entries = parseSnapshotEnvelope(value, file, catalog);
     for (const [language, snapshot] of Object.entries(entries)) {
       if (languageSnapshots[language] !== undefined) fail(`duplicate native snapshot for ${language}`);
       languageSnapshots[language] = snapshot;

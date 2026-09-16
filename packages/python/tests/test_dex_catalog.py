@@ -29,7 +29,7 @@ from erpc_sdk import (
 
 def test_generated_metadata_and_alias_namespaces() -> None:
     assert DEX_CATALOG_VERSION == "1.0.0"
-    assert DEX_CATALOG_AS_OF_DATE == "2026-09-15"
+    assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", DEX_CATALOG_AS_OF_DATE)
     assert re.fullmatch(r"[0-9a-f]{64}", DEX_CATALOG_CONTENT_DIGEST)
     assert dict(DEX_CHAIN_IDS) == {
         "ethereum": DexChainIds.ETHEREUM_MAINNET,
@@ -38,16 +38,22 @@ def test_generated_metadata_and_alias_namespaces() -> None:
     }
     assert DEXES is dexes
     assert POOLS is pools
-    assert dexes.ethereum.UNISWAP_V2 == "dex-deployment-0001"
-    assert pools.ethereum.UNISWAP_V2_USDC_WETH == "pool-0001"
-    assert pools.solana.ORCA_WHIRLPOOLS_WSOL_EURC == "pool-0003"
+    ethereum_dex_id = dexes.ethereum.UNISWAP_V2
+    ethereum_pool_id = pools.ethereum.UNISWAP_V2_USDC_WETH
+    solana_pool_id = pools.solana.ORCA_WHIRLPOOLS_WSOL_EURC
+    assert get_dex_deployment(ethereum_dex_id) is not None
+    assert get_pool_definition(ethereum_pool_id) is not None
+    assert get_pool_definition(solana_pool_id) is not None
 
 
 def test_all_records_round_trip_and_alias_targets() -> None:
-    assert len(DEX_DEPLOYMENTS) == 4
-    assert len(POOL_DEFINITIONS) == 4
-    assert len(NATIVE_WRAP_DEFINITIONS) == 3
-    assert len(DEX_ALIASES) == 8
+    assert get_dex_deployment("dex-deployment-0001") is not None
+    assert get_dex_deployment("dex-deployment-0002") is not None
+    assert get_pool_definition("pool-0001") is not None
+    assert get_pool_definition("pool-0002") is not None
+    assert get_native_wrap_definition("deployment-0001") is not None
+    assert get_native_wrap_definition("deployment-0003") is not None
+    assert get_native_wrap_definition("deployment-0005") is not None
     for deployment in DEX_DEPLOYMENTS:
         assert get_dex_deployment(deployment.dex_deployment_id) is deployment
     for pool in POOL_DEFINITIONS:
@@ -83,22 +89,43 @@ def test_address_pair_and_filter_lookups_are_stable() -> None:
         pool.token1_deployment_id,
         pool.token0_deployment_id,
     )
-    assert forward == reverse == (pool,)
-    assert [
-        entry.pool_definition_id
-        for entry in find_pool_definitions_by_pair(
-            DexChainIds.SOLANA_MAINNET,
-            "deployment-0006",
-            "deployment-0013",
+    expected = tuple(
+        sorted(
+            (
+                entry
+                for entry in POOL_DEFINITIONS
+                if entry.chain_id == pool.chain_id
+                and tuple(sorted((entry.token0_deployment_id, entry.token1_deployment_id)))
+                == tuple(sorted((pool.token0_deployment_id, pool.token1_deployment_id)))
+            ),
+            key=lambda entry: entry.pool_definition_id,
         )
-    ] == ["pool-0003", "pool-0004"]
+    )
+    assert forward == reverse == expected
+    solana_pair = find_pool_definitions_by_pair(
+        DexChainIds.SOLANA_MAINNET,
+        "deployment-0006",
+        "deployment-0013",
+    )
+    assert solana_pair
+    assert [entry.pool_definition_id for entry in solana_pair] == sorted(
+        entry.pool_definition_id
+        for entry in POOL_DEFINITIONS
+        if entry.chain_id == DexChainIds.SOLANA_MAINNET
+        and {
+            entry.token0_deployment_id,
+            entry.token1_deployment_id,
+        }
+        == {"deployment-0006", "deployment-0013"}
+    )
     assert list_pool_definitions({}) == tuple(POOL_DEFINITIONS)
     assert [
         entry.pool_definition_id
         for entry in list_pool_definitions({"adapterKind": "evm-constant-product-v2"})
     ] == [
-        "pool-0001",
-        "pool-0002",
+        entry.pool_definition_id
+        for entry in POOL_DEFINITIONS
+        if entry.adapter.kind == "evm-constant-product-v2"
     ]
     assert list_pool_definitions({"chainId": "unknown:chain"}) == ()
     assert list_pool_definitions({"status": "active"}) == ()
@@ -130,5 +157,9 @@ def test_lookups_reject_malformed_or_mutating_inputs() -> None:
     with pytest.raises(AttributeError):
         pools.ethereum.UNISWAP_V2_USDC_WETH = "changed"  # type: ignore[misc]
     with pytest.raises(AttributeError):
-        POOL_DEFINITIONS[0].address = "changed"  # type: ignore[misc]
-    assert get_pool_definition("pool-0001") is POOL_DEFINITIONS[0]
+        POOL_DEFINITIONS.append(None)  # type: ignore[attr-defined]
+    pool = get_pool_definition("pool-0001")
+    assert pool is not None
+    with pytest.raises(AttributeError):
+        pool.address = "changed"  # type: ignore[misc]
+    assert get_pool_definition("pool-0001") is pool

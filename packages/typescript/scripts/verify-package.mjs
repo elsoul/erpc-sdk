@@ -51,9 +51,13 @@ if (
   !esm.tokens ||
   typeof esm.TOKEN_CATALOG_VERSION !== 'string' ||
   typeof esm.TOKEN_CATALOG_AS_OF_DATE !== 'string' ||
-  typeof esm.TOKEN_CATALOG_CONTENT_DIGEST !== 'string'
+  typeof esm.TOKEN_CATALOG_CONTENT_DIGEST !== 'string' ||
+  typeof esm.listTokenRankings !== 'function' ||
+  !Array.isArray(esm.TOKEN_RANKINGS) ||
+  !esm.TOKEN_RANKINGS_METADATA ||
+  typeof esm.TOKEN_RANKINGS_CONTENT_DIGEST !== 'string'
 ) {
-  throw new Error('ESM token catalog export check failed')
+  throw new Error('ESM token catalog or ranking export check failed')
 }
 if (
   typeof cjs.createErpcClient !== 'function' ||
@@ -80,12 +84,16 @@ if (
   !cjs.tokens ||
   typeof cjs.TOKEN_CATALOG_VERSION !== 'string' ||
   typeof cjs.TOKEN_CATALOG_AS_OF_DATE !== 'string' ||
-  typeof cjs.TOKEN_CATALOG_CONTENT_DIGEST !== 'string'
+  typeof cjs.TOKEN_CATALOG_CONTENT_DIGEST !== 'string' ||
+  typeof cjs.listTokenRankings !== 'function' ||
+  !Array.isArray(cjs.TOKEN_RANKINGS) ||
+  !cjs.TOKEN_RANKINGS_METADATA ||
+  typeof cjs.TOKEN_RANKINGS_CONTENT_DIGEST !== 'string'
 ) {
-  throw new Error('CommonJS token catalog export check failed')
+  throw new Error('CommonJS token catalog or ranking export check failed')
 }
 
-const firstDeployment = esm.TOKEN_DEPLOYMENTS[0]
+const firstDeployment = esm.getTokenDeployment(esm.tokens.ethereum.ETH)
 if (!firstDeployment || typeof firstDeployment.deploymentId !== 'string') {
   throw new Error('Token catalog data check failed')
 }
@@ -103,6 +111,17 @@ if (esm.listTokenDeployments().length !== esm.TOKEN_DEPLOYMENTS.length) {
 }
 if (esm.getTokenAsset('__missing__') !== undefined) {
   throw new Error('Token catalog unknown lookup check failed')
+}
+const emptyRankings = esm.listTokenRankings('')
+const unknownRankings = esm.listTokenRankings('unknown:chain')
+if (emptyRankings.length !== 0 || unknownRankings.length !== 0) {
+  throw new Error('Token ranking unknown lookup check failed')
+}
+if (!Object.isFrozen(emptyRankings) || !Object.isFrozen(unknownRankings) || !Object.isFrozen(esm.TOKEN_RANKINGS_METADATA)) {
+  throw new Error('Token ranking immutability check failed')
+}
+if (cjs.listTokenRankings('')?.length !== 0) {
+  throw new Error('CommonJS token ranking lookup check failed')
 }
 
 const client = esm.createErpcClient({

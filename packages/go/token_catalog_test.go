@@ -1,36 +1,152 @@
 package erpc
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 )
 
+type goTokenCatalogSource struct {
+	CatalogVersion string                    `json:"catalogVersion"`
+	ManualAsOf     string                    `json:"manualAsOf"`
+	ContentDigest  string                    `json:"contentDigest"`
+	Assets         []goTokenAssetSource      `json:"assets"`
+	Deployments    []goTokenDeploymentSource `json:"deployments"`
+	Aliases        []goTokenAliasSource      `json:"aliases"`
+}
+
+type goTokenAssetSource struct {
+	AssetID                  string  `json:"assetId"`
+	Name                     string  `json:"name"`
+	RepresentationKind       string  `json:"representationKind"`
+	StableCurrency           *string `json:"stableCurrency"`
+	UnderlyingAssetID        *string `json:"underlyingAssetId"`
+	EconomicReferenceAssetID *string `json:"economicReferenceAssetId"`
+}
+
+type goTokenDeploymentSource struct {
+	DeploymentID           string  `json:"deploymentId"`
+	AssetID                string  `json:"assetId"`
+	ChainID                string  `json:"chainId"`
+	Symbol                 string  `json:"symbol"`
+	Decimals               uint8   `json:"decimals"`
+	Standard               string  `json:"standard"`
+	Address                *string `json:"address"`
+	Status                 string  `json:"status"`
+	ReplacedByDeploymentID *string `json:"replacedByDeploymentId"`
+}
+
+type goTokenAliasSource struct {
+	Namespace    string `json:"namespace"`
+	Name         string `json:"name"`
+	DeploymentID string `json:"deploymentId"`
+}
+
+func loadGoRegistryJSON(t *testing.T, name string, target any) {
+	t.Helper()
+	_, source, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("runtime.Caller failed while locating registry fixture")
+	}
+	path := filepath.Join(filepath.Dir(source), "..", "..", "registry", name)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read registry fixture %s: %v", name, err)
+	}
+	if err := json.Unmarshal(data, target); err != nil {
+		t.Fatalf("decode registry fixture %s: %v", name, err)
+	}
+}
+
 func TestTokenCatalogContainsCompleteGeneratedRecords(t *testing.T) {
+	var source goTokenCatalogSource
+	loadGoRegistryJSON(t, "token-catalog.json", &source)
+
 	assets := TokenAssets()
 	deployments := TokenDeployments()
 	aliases := TokenAliases()
 
-	if len(assets) != 39 {
-		t.Fatalf("asset count = %d, want 39", len(assets))
+	if len(assets) != len(source.Assets) || len(assets) == 0 {
+		t.Fatalf("asset count = %d, want non-empty source count %d", len(assets), len(source.Assets))
 	}
-	if len(deployments) != 60 {
-		t.Fatalf("deployment count = %d, want 60", len(deployments))
+	if len(deployments) != len(source.Deployments) || len(deployments) == 0 {
+		t.Fatalf("deployment count = %d, want non-empty source count %d", len(deployments), len(source.Deployments))
 	}
-	if len(aliases) != 60 {
-		t.Fatalf("alias count = %d, want 60", len(aliases))
+	if len(aliases) != len(source.Aliases) || len(aliases) == 0 {
+		t.Fatalf("alias count = %d, want non-empty source count %d", len(aliases), len(source.Aliases))
+	}
+	if TOKEN_CATALOG_VERSION != source.CatalogVersion || TOKEN_CATALOG_AS_OF_DATE != source.ManualAsOf || TOKEN_CATALOG_CONTENT_DIGEST != source.ContentDigest {
+		t.Fatalf("catalog metadata = (%s, %s, %s), want source (%s, %s, %s)", TOKEN_CATALOG_VERSION, TOKEN_CATALOG_AS_OF_DATE, TOKEN_CATALOG_CONTENT_DIGEST, source.CatalogVersion, source.ManualAsOf, source.ContentDigest)
 	}
 	if TOKEN_CATALOG_VERSION == "" || TOKEN_CATALOG_AS_OF_DATE == "" || TOKEN_CATALOG_CONTENT_DIGEST == "" {
 		t.Fatal("catalog metadata must be generated")
 	}
+	for _, assetID := range []string{"asset-0001", "asset-0007"} {
+		if _, ok := TokenAssetByID(assetID); !ok {
+			t.Fatalf("seed asset %q is missing", assetID)
+		}
+	}
+	for _, deploymentID := range []string{"deployment-0001", "deployment-0008"} {
+		if _, ok := TokenDeploymentByID(deploymentID); !ok {
+			t.Fatalf("seed deployment %q is missing", deploymentID)
+		}
+	}
+
+	assetsByID := make(map[string]goTokenAssetSource, len(source.Assets))
+	for _, asset := range source.Assets {
+		assetsByID[asset.AssetID] = asset
+	}
+	deploymentsByID := make(map[string]goTokenDeploymentSource, len(source.Deployments))
+	for _, deployment := range source.Deployments {
+		deploymentsByID[deployment.DeploymentID] = deployment
+	}
+
+	for _, sourceAsset := range source.Assets {
+		asset, ok := TokenAssetByID(sourceAsset.AssetID)
+		if !ok {
+			t.Fatalf("source asset %q is missing from generated records", sourceAsset.AssetID)
+		}
+		if asset.Name != sourceAsset.Name || string(asset.RepresentationKind) != sourceAsset.RepresentationKind ||
+			tokenStringValue(asset.StableCurrency) != tokenStringValue(sourceAsset.StableCurrency) ||
+			tokenStringValue(asset.UnderlyingAssetID) != tokenStringValue(sourceAsset.UnderlyingAssetID) ||
+			tokenStringValue(asset.EconomicReferenceAssetID) != tokenStringValue(sourceAsset.EconomicReferenceAssetID) {
+			t.Fatalf("generated asset %q differs from source: %#v vs %#v", sourceAsset.AssetID, asset, sourceAsset)
+		}
+	}
 
 	for _, asset := range assets {
+		if _, ok := assetsByID[asset.AssetID]; !ok {
+			t.Fatalf("generated asset %q is absent from source", asset.AssetID)
+		}
 		got, ok := TokenAssetByID(asset.AssetID)
 		if !ok || got.AssetID != asset.AssetID {
 			t.Fatalf("asset %q is not addressable by ID", asset.AssetID)
 		}
 	}
 
+	for _, sourceDeployment := range source.Deployments {
+		deployment, ok := TokenDeploymentByID(sourceDeployment.DeploymentID)
+		if !ok {
+			t.Fatalf("source deployment %q is missing from generated records", sourceDeployment.DeploymentID)
+		}
+		if deployment.AssetID != sourceDeployment.AssetID || string(deployment.ChainID) != sourceDeployment.ChainID ||
+			deployment.Symbol != sourceDeployment.Symbol || deployment.Decimals != sourceDeployment.Decimals ||
+			string(deployment.Standard) != sourceDeployment.Standard ||
+			tokenStringValue(deployment.Address) != tokenStringValue(sourceDeployment.Address) ||
+			string(deployment.Status) != sourceDeployment.Status ||
+			tokenStringValue(deployment.ReplacedByDeploymentID) != tokenStringValue(sourceDeployment.ReplacedByDeploymentID) {
+			t.Fatalf("generated deployment %q differs from source: %#v vs %#v", sourceDeployment.DeploymentID, deployment, sourceDeployment)
+		}
+	}
+
 	for _, deployment := range deployments {
+		if _, ok := deploymentsByID[deployment.DeploymentID]; !ok {
+			t.Fatalf("generated deployment %q is absent from source", deployment.DeploymentID)
+		}
 		got, ok := TokenDeploymentByID(deployment.DeploymentID)
 		if !ok || got.DeploymentID != deployment.DeploymentID {
 			t.Fatalf("deployment %q is not addressable by ID", deployment.DeploymentID)
@@ -69,6 +185,31 @@ func TestTokenCatalogContainsCompleteGeneratedRecords(t *testing.T) {
 		}
 	}
 
+	aliasGroups := reflect.ValueOf(TokenAliasIDs())
+	groupFields := map[string]string{"ethereum": "Ethereum", "solana": "Solana", "avalancheC": "AvalancheC"}
+	for _, sourceAlias := range source.Aliases {
+		var alias TokenAlias
+		found := false
+		for _, candidate := range aliases {
+			if candidate.Namespace == sourceAlias.Namespace && candidate.Name == sourceAlias.Name {
+				alias = candidate
+				found = true
+				break
+			}
+		}
+		if !found || alias.DeploymentID != sourceAlias.DeploymentID {
+			t.Fatalf("source alias %s.%s is missing or retargeted: %#v", sourceAlias.Namespace, sourceAlias.Name, alias)
+		}
+		group := aliasGroups.FieldByName(groupFields[sourceAlias.Namespace])
+		if !group.IsValid() {
+			t.Fatalf("generated alias group %s is missing", sourceAlias.Namespace)
+		}
+		constant := group.FieldByName(sourceAlias.Name)
+		if !constant.IsValid() || constant.Kind() != reflect.String || constant.String() != sourceAlias.DeploymentID {
+			t.Fatalf("generated alias constant %s.%s does not match source deployment %q", sourceAlias.Namespace, sourceAlias.Name, sourceAlias.DeploymentID)
+		}
+	}
+
 	for _, alias := range aliases {
 		deployment, ok := TokenDeploymentByID(alias.DeploymentID)
 		if !ok || deployment.DeploymentID != alias.DeploymentID {
@@ -79,6 +220,9 @@ func TestTokenCatalogContainsCompleteGeneratedRecords(t *testing.T) {
 	if TokenEthereumUSDC == "" || TokenSolanaUSDC == "" || TokenAvalancheCUSDC == "" {
 		t.Fatal("named generated USDC IDs must be available")
 	}
+	if TokenEthereumETH != "deployment-0001" || TokenEthereumWETH != "deployment-0002" || TokenAvalancheCAVAX != "deployment-0003" || TokenAvalancheCWAVAX != "deployment-0004" || TokenSolanaSOL != "deployment-0005" || TokenSolanaWSOL != "deployment-0006" {
+		t.Fatal("seed generated token aliases do not match the canonical IDs")
+	}
 	if TokenEthereumUSDC != "deployment-0008" || TokenSolanaUSDC != "deployment-0010" || TokenAvalancheCUSDC != "deployment-0009" {
 		t.Fatal("named generated USDC IDs do not match the canonical aliases")
 	}
@@ -86,22 +230,27 @@ func TestTokenCatalogContainsCompleteGeneratedRecords(t *testing.T) {
 
 func TestTokenCatalogFindsAmbiguousSymbolsAndPreservesIdentity(t *testing.T) {
 	eure := FindTokenDeploymentsBySymbol(TokenChainEthereumMainnet, "EURe")
-	if len(eure) != 2 {
-		t.Fatalf("EURe deployments = %d, want 2", len(eure))
+	if len(eure) < 2 {
+		t.Fatalf("EURe deployments = %d, want at least 2", len(eure))
 	}
 	if eure[0].DeploymentID > eure[1].DeploymentID {
 		t.Fatalf("EURe deployments are not lexically sorted: %q, %q", eure[0].DeploymentID, eure[1].DeploymentID)
 	}
-	if eure[0].AssetID != eure[1].AssetID {
-		t.Fatal("EURe v1 and current deployment should share one asset identity")
+	hasLegacy, hasActive := false, false
+	for _, deployment := range eure {
+		if deployment.AssetID != eure[0].AssetID {
+			continue
+		}
+		hasLegacy = hasLegacy || deployment.Status == TokenStatusLegacy
+		hasActive = hasActive || deployment.Status == TokenStatusActive
 	}
-	if eure[0].Status != TokenStatusLegacy || eure[1].Status != TokenStatusActive {
-		t.Fatalf("EURe lifecycle statuses = %s, %s", eure[0].Status, eure[1].Status)
+	if !hasLegacy || !hasActive {
+		t.Fatalf("EURe lifecycle statuses do not retain legacy and active records: %#v", eure)
 	}
 
 	wsol := FindTokenDeploymentsBySymbol(TokenChainSolanaMainnet, "WSOL")
-	if len(wsol) != 2 {
-		t.Fatalf("WSOL deployments = %d, want 2", len(wsol))
+	if len(wsol) < 2 {
+		t.Fatalf("WSOL deployments = %d, want at least 2", len(wsol))
 	}
 	standards := map[TokenStandard]bool{}
 	for _, deployment := range wsol {
@@ -120,7 +269,7 @@ func TestTokenCatalogFindsAmbiguousSymbolsAndPreservesIdentity(t *testing.T) {
 		t.Fatalf("EURCV deployments = Ethereum:%d Solana:%d, want one each", len(eurcvEthereum), len(eurcvSolana))
 	}
 	if eurcvEthereum[0].Decimals != 18 || eurcvSolana[0].Decimals != 2 {
-		t.Fatalf("EURCV decimals = Ethereum:%d Solana:%d, want 18 and 2", eurcvEthereum[0].Decimals, eurcvSolana[0].Decimals)
+		t.Fatalf("EURCV seed decimals = Ethereum:%d Solana:%d, want 18 and 2", eurcvEthereum[0].Decimals, eurcvSolana[0].Decimals)
 	}
 	if eurcvEthereum[0].AssetID != eurcvSolana[0].AssetID {
 		t.Fatal("EURCV deployments on Ethereum and Solana should share one asset identity")

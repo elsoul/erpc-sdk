@@ -21,6 +21,7 @@ import {
 
 const REGISTRY_DIRECTORY = path.dirname(new URL(import.meta.url).pathname);
 const FIXTURE_PATH = path.join(REGISTRY_DIRECTORY, "fixtures", "token-catalog-cases.json");
+const GROWTH_FIXTURE_PATH = path.join(REGISTRY_DIRECTORY, "fixtures", "catalog-growth-cases.json");
 const SCHEMA_PATH = path.join(REGISTRY_DIRECTORY, "token-catalog.schema.json");
 const CLI_PATH = path.join(REGISTRY_DIRECTORY, "generate-token-catalog.mjs");
 
@@ -31,6 +32,12 @@ function clone(value) {
 function withDigest(value) {
   value.contentDigest = computeDigest(value);
   return value;
+}
+
+function seedEthereumEthAlias(catalog) {
+  const alias = catalog.aliases.find((entry) => entry.namespace === "ethereum" && entry.name === "ETH");
+  if (!alias) throw new Error("seed Ethereum ETH alias is missing");
+  return alias;
 }
 
 function isEvm(chainId) {
@@ -76,15 +83,15 @@ function mutate(catalog, operation) {
     return withDigest(next);
   }
   if (operation === "setInvalidAliasName") {
-    next.aliases[0].name = "not-portable";
+    seedEthereumEthAlias(next).name = "not-portable";
     return withDigest(next);
   }
   if (operation === "setUnknownAliasNamespace") {
-    next.aliases[0].namespace = "polygon";
+    seedEthereumEthAlias(next).namespace = "polygon";
     return withDigest(next);
   }
   if (operation === "setWrongAliasChain") {
-    next.aliases[0].deploymentId = next.deployments.find((entry) => entry.chainId === "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp").deploymentId;
+    seedEthereumEthAlias(next).deploymentId = next.deployments.find((entry) => entry.chainId === "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp").deploymentId;
     return withDigest(next);
   }
   if (operation === "setUnknownAssetReference") {
@@ -95,6 +102,12 @@ function mutate(catalog, operation) {
   if (operation === "setCrossChainReplacement") {
     const deployment = next.deployments.find((entry) => entry.replacedByDeploymentId !== null);
     deployment.replacedByDeploymentId = next.deployments.find((entry) => entry.chainId !== deployment.chainId).deploymentId;
+    return withDigest(next);
+  }
+  if (operation === "setUnclassifiedRelations") {
+    const asset = next.assets.find((entry) => entry.representationKind === "issued");
+    asset.representationKind = "unclassified";
+    asset.stableCurrency = "USD";
     return withDigest(next);
   }
   if (operation === "removeDeployment") {
@@ -136,12 +149,16 @@ function nativeSnapshots() {
   }]));
 }
 
-test("canonical catalog validates with the expected 39/60/60 source counts", () => {
+test("canonical catalog validates and preserves immutable seed sentinels", async () => {
+  const fixture = JSON.parse(await readFile(FIXTURE_PATH, "utf8"));
   assert.equal(validateCatalog(CATALOG), true);
-  assert.equal(CATALOG.assets.length, 39);
-  assert.equal(CATALOG.deployments.length, 60);
-  assert.equal(CATALOG.aliases.length, 60);
   assert.equal(computeDigest(CATALOG), CATALOG.contentDigest);
+  assert.ok(CATALOG.assets.length > 0);
+  assert.ok(CATALOG.deployments.length > 0);
+  assert.ok(CATALOG.aliases.length > 0);
+  for (const assetId of fixture.seedSentinels.assetIds) assert.ok(CATALOG.assets.some((asset) => asset.assetId === assetId), `missing seed asset ${assetId}`);
+  for (const deploymentId of fixture.seedSentinels.deploymentIds) assert.ok(CATALOG.deployments.some((deployment) => deployment.deploymentId === deploymentId), `missing seed deployment ${deploymentId}`);
+  for (const sentinel of fixture.seedSentinels.aliases) assert.ok(CATALOG.aliases.some((alias) => JSON.stringify(alias) === JSON.stringify(sentinel)), `missing seed alias ${sentinel.namespace}:${sentinel.name}`);
 });
 
 test("canonical schema is strict and documents every source field", async () => {
@@ -153,6 +170,11 @@ test("canonical schema is strict and documents every source field", async () => 
   assert.equal(schema.$defs.deployment.additionalProperties, false);
   assert.equal(schema.$defs.alias.additionalProperties, false);
   assert.deepEqual(schema.$defs.alias.properties.namespace.enum, ["ethereum", "solana", "avalancheC"]);
+  assert.ok(schema.$defs.asset.properties.representationKind.enum.includes("unclassified"));
+  assert.equal(schema.$defs.asset.allOf[0].if.properties.representationKind.const, "unclassified");
+  assert.equal(schema.$defs.asset.allOf[0].then.properties.stableCurrency.const, null);
+  assert.equal(schema.$defs.asset.allOf[0].then.properties.underlyingAssetId.const, null);
+  assert.equal(schema.$defs.asset.allOf[0].then.properties.economicReferenceAssetId.const, null);
   assert.deepEqual(schema.$defs.deployment.properties.status.enum, ["active", "legacy", "winding-down", "retired"]);
 });
 
@@ -192,6 +214,34 @@ test("Go renderer emits gofmt-idempotent source", (t) => {
     return;
   }
   assert.equal(diff, "");
+});
+
+test("Rust and Python renderers wrap long alias declarations without changing alias values", () => {
+  const grown = clone(CATALOG);
+  const alias = grown.aliases.find((entry) => entry.name.startsWith("DISCOVERED_"));
+  assert.ok(alias);
+  alias.name = `DISCOVERED_${"A".repeat(64)}`;
+  grown.contentDigest = computeDigest(grown);
+  assert.equal(validateCatalog(grown), true);
+
+  const rustSource = renderLanguage("rust", grown);
+  assert.match(rustSource, new RegExp(`pub const ${alias.name}:\\n\\s+&str =\\n`));
+  assert.match(rustSource, new RegExp(alias.deploymentId));
+  const rustfmt = process.env.RUSTFMT ?? "rustfmt";
+  try {
+    const formatted = execFileSync(rustfmt, ["--emit", "stdout", "--edition", "2024"], { input: rustSource, encoding: "utf8" });
+    assert.equal(formatted, rustSource);
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+  }
+
+  const pythonSource = renderLanguage("python", grown);
+  const aliasStart = pythonSource.indexOf(`    TokenAlias(\n        ${JSON.stringify(alias.namespace)},`);
+  assert.notEqual(aliasStart, -1);
+  const aliasEnd = pythonSource.indexOf("    ),", aliasStart) + "    ),".length;
+  for (const line of pythonSource.slice(aliasStart, aliasEnd).split("\n")) assert.ok(line.length <= 100, `Python alias line exceeds 100 columns: ${line}`);
+  assert.match(pythonSource, new RegExp(alias.name));
+  assert.match(pythonSource, new RegExp(alias.deploymentId));
 });
 
 test("deployment identity is the asset, chain, standard, and normalized address tuple", () => {
@@ -248,7 +298,9 @@ test("runtime fact or global manual as-of changes update digest and emitted byte
   assert.notEqual(renderLanguage("typescript", factChange), renderLanguage("typescript", CATALOG));
 
   const asOfChange = clone(CATALOG);
-  asOfChange.manualAsOf = "2026-09-16";
+  const nextAsOf = new Date(`${CATALOG.manualAsOf}T00:00:00Z`);
+  nextAsOf.setUTCDate(nextAsOf.getUTCDate() + 1);
+  asOfChange.manualAsOf = nextAsOf.toISOString().slice(0, 10);
   asOfChange.contentDigest = computeDigest(asOfChange);
   assert.notEqual(asOfChange.contentDigest, CATALOG.contentDigest);
   assert.notEqual(renderLanguage("ruby", asOfChange), renderLanguage("ruby", CATALOG));
@@ -272,6 +324,54 @@ test("validator rejects every fixture invalid case through in-memory mutations",
   const fixture = JSON.parse(await readFile(FIXTURE_PATH, "utf8"));
   for (const entry of fixture.invalidCases) {
     assert.throws(() => validateCatalog(mutate(CATALOG, entry.operation)), new RegExp(entry.expectError), entry.name);
+  }
+});
+
+test("unclassified assets keep classification and relation fields explicitly null", () => {
+  assert.throws(() => validateCatalog(mutate(CATALOG, "setUnclassifiedRelations")), /unclassified asset .*requires null/u);
+});
+
+test("append-only growth accepts an unclassified token and renders deterministically across source order", async () => {
+  const fixture = JSON.parse(await readFile(GROWTH_FIXTURE_PATH, "utf8"));
+  const next = withDigest({
+    ...clone(CATALOG),
+    assets: [...CATALOG.assets, fixture.token.asset],
+    deployments: [...CATALOG.deployments, fixture.token.deployment],
+    aliases: [...CATALOG.aliases, fixture.token.alias],
+  });
+  assert.equal(validateCatalog(next), true);
+  assert.equal(compareHistory(next, CATALOG), true);
+  assert.equal(next.assets.length - CATALOG.assets.length, fixture.expected.assetDelta);
+  assert.equal(next.deployments.length - CATALOG.deployments.length, fixture.expected.deploymentDelta);
+  assert.equal(next.aliases.length - CATALOG.aliases.length, fixture.expected.tokenAliasDelta);
+  const nextExpected = buildExpectedSnapshot(next);
+  const nextSnapshots = Object.fromEntries(PARITY_LANGUAGES.map((language) => [language, {
+    ...clone(nextExpected),
+    language,
+    runtime: `native-growth-${language}`,
+  }]));
+  const parity = verifySnapshots(nextSnapshots, next);
+  assert.equal(parity.catalogDigest, next.contentDigest);
+  const reversed = withDigest({
+    ...next,
+    assets: [...next.assets].reverse(),
+    deployments: [...next.deployments].reverse(),
+    aliases: [...next.aliases].reverse(),
+  });
+  assert.equal(reversed.contentDigest, next.contentDigest);
+  for (const language of Object.keys(OUTPUTS)) {
+    const source = renderLanguage(language, next);
+    assert.equal(source, renderLanguage(language, reversed), `${language} changed with appended source order`);
+    assert.match(source, /unclassified|Unclassified/u, `${language} omitted unclassified representation`);
+    assert.match(source, /GROW/u, `${language} omitted appended alias`);
+    const aliasReference = {
+      typescript: "deploymentId: tokens.ethereum.GROW",
+      rust: "deployment_id: tokens::ethereum::GROW",
+      python: "TokenAlias(\"ethereum\", \"GROW\", tokens.ethereum.GROW)",
+      go: "DeploymentID: TokenEthereumGROW",
+      ruby: "deployment_id: ERPC::Tokens::Ethereum[:GROW]",
+    }[language];
+    assert.ok(source.includes(aliasReference), `${language} alias row did not reference its generated public constant`);
   }
 });
 

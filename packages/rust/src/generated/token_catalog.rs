@@ -6,6 +6,7 @@ pub enum TokenRepresentationKind {
     Issued,
     Wrapped,
     Bridged,
+    Unclassified,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -64,12 +65,91 @@ pub struct TokenAlias {
 pub const TOKEN_CATALOG_VERSION: &str = "1.0.0";
 pub const TOKEN_CATALOG_AS_OF_DATE: &str = "2026-09-15";
 pub const TOKEN_CATALOG_CONTENT_DIGEST: &str =
-    "62879dfe8bb49a154d2a1bff356321e5dbe78d8cef0cd3409ef2b22cfd3445a4";
+    "5a7ed7f57a8cfaed87c46512586da8123e94fae80f1ce18ebb3861ccb95a9f70";
 
 pub mod token_chain_ids {
     pub const ETHEREUM_MAINNET: super::TokenChainId = "eip155:1";
     pub const SOLANA_MAINNET: super::TokenChainId = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp";
     pub const AVALANCHE_C_MAINNET: super::TokenChainId = "eip155:43114";
+}
+
+pub mod tokens {
+    pub mod avalanche_c {
+        pub const AUSD: &str = "deployment-0035";
+        pub const AVAX: &str = "deployment-0003";
+        pub const DISCOVERED_0A7F98C8752F15EE: &str =
+            "discovered-token-0a7f98c8752f15ee02ce0d801f25df8ff78864a1d70aff7e204f7bdb3f8a0692";
+        pub const DISCOVERED_288036A90EE0FA72: &str =
+            "discovered-token-288036a90ee0fa72a2751a78a6934cc6ced9e16de91c97ae8e109e2ee6189bc5";
+        pub const DISCOVERED_9F9965CC065C9BEC: &str =
+            "discovered-token-9f9965cc065c9becf8d2cb58071524baafea37d27fda9bf683a93ea85f2e653d";
+        pub const EURC: &str = "deployment-0012";
+        pub const EUROP: &str = "deployment-0045";
+        pub const GHO: &str = "deployment-0030";
+        pub const JOE: &str = "deployment-0059";
+        pub const JPYC: &str = "deployment-0039";
+        pub const LINK: &str = "deployment-0058";
+        pub const USDC: &str = "deployment-0009";
+        pub const USDC_E: &str = "deployment-0018";
+        pub const USDT: &str = "deployment-0015";
+        pub const WAVAX: &str = "deployment-0004";
+    }
+    pub mod ethereum {
+        pub const AAVE: &str = "deployment-0056";
+        pub const AUSD: &str = "deployment-0034";
+        pub const DAI: &str = "deployment-0019";
+        pub const DISCOVERED_B475569F6A15E97A: &str =
+            "discovered-token-b475569f6a15e97ac04e531dd813e9dcc902521c098d60d6ae4d21d53baf1395";
+        pub const DISCOVERED_E375086901067FE3: &str =
+            "discovered-token-e375086901067fe3de023bcdc70f1bafca798e1719ed7e676a98f57de3350a07";
+        pub const ETH: &str = "deployment-0001";
+        pub const EURA: &str = "deployment-0051";
+        pub const EURAU: &str = "deployment-0042";
+        pub const EURC: &str = "deployment-0011";
+        pub const EURCV: &str = "deployment-0040";
+        pub const EURE: &str = "deployment-0054";
+        pub const EURE_V1: &str = "deployment-0053";
+        pub const EUROP: &str = "deployment-0044";
+        pub const EURS: &str = "deployment-0052";
+        pub const EURT: &str = "deployment-0017";
+        pub const FDUSD: &str = "deployment-0031";
+        pub const GHO: &str = "deployment-0029";
+        pub const GYEN: &str = "deployment-0047";
+        pub const JPYC: &str = "deployment-0038";
+        pub const LINK: &str = "deployment-0057";
+        pub const PYUSD: &str = "deployment-0022";
+        pub const RLUSD: &str = "deployment-0033";
+        pub const UNI: &str = "deployment-0055";
+        pub const USDC: &str = "deployment-0008";
+        pub const USDE: &str = "deployment-0028";
+        pub const USDG: &str = "deployment-0024";
+        pub const USDP: &str = "deployment-0026";
+        pub const USDS: &str = "deployment-0020";
+        pub const USDT: &str = "deployment-0014";
+        pub const WETH: &str = "deployment-0002";
+        pub const ZUSD: &str = "deployment-0049";
+    }
+    pub mod solana {
+        pub const AUSD: &str = "deployment-0036";
+        pub const EURAU: &str = "deployment-0043";
+        pub const EURC: &str = "deployment-0013";
+        pub const EURCV: &str = "deployment-0041";
+        pub const EUROP: &str = "deployment-0046";
+        pub const FDUSD: &str = "deployment-0032";
+        pub const GYEN: &str = "deployment-0048";
+        pub const JUP: &str = "deployment-0060";
+        pub const JUPUSD: &str = "deployment-0037";
+        pub const PYUSD: &str = "deployment-0023";
+        pub const SOL: &str = "deployment-0005";
+        pub const USDC: &str = "deployment-0010";
+        pub const USDG: &str = "deployment-0025";
+        pub const USDP: &str = "deployment-0027";
+        pub const USDS: &str = "deployment-0021";
+        pub const USDT: &str = "deployment-0016";
+        pub const WSOL: &str = "deployment-0006";
+        pub const WSOL_TOKEN_2022: &str = "deployment-0007";
+        pub const ZUSD: &str = "deployment-0050";
+    }
 }
 
 pub const TOKEN_CHAIN_IDS: &[(&str, TokenChainId)] = &[
@@ -387,6 +467,46 @@ pub static TOKEN_ASSETS: &[TokenAsset] = &[
         asset_id: "asset-0039",
         name: "Jupiter",
         representation_kind: TokenRepresentationKind::Issued,
+        stable_currency: None,
+        underlying_asset_id: None,
+        economic_reference_asset_id: None,
+    },
+    TokenAsset {
+        asset_id: "discovered-token-0a7f98c8752f15ee02ce0d801f25df8ff78864a1d70aff7e204f7bdb3f8a0692",
+        name: "Unclassified token at 0x49d5c2bdffac6ce2bfdb6640f4f80f226bc10bab",
+        representation_kind: TokenRepresentationKind::Unclassified,
+        stable_currency: None,
+        underlying_asset_id: None,
+        economic_reference_asset_id: None,
+    },
+    TokenAsset {
+        asset_id: "discovered-token-288036a90ee0fa72a2751a78a6934cc6ced9e16de91c97ae8e109e2ee6189bc5",
+        name: "Unclassified token at 0xc7198437980c041c805a1edcba50c1ce5db95118",
+        representation_kind: TokenRepresentationKind::Unclassified,
+        stable_currency: None,
+        underlying_asset_id: None,
+        economic_reference_asset_id: None,
+    },
+    TokenAsset {
+        asset_id: "discovered-token-9f9965cc065c9becf8d2cb58071524baafea37d27fda9bf683a93ea85f2e653d",
+        name: "Unclassified token at 0x50b7545627a5162f82a992c33b87adc75187b218",
+        representation_kind: TokenRepresentationKind::Unclassified,
+        stable_currency: None,
+        underlying_asset_id: None,
+        economic_reference_asset_id: None,
+    },
+    TokenAsset {
+        asset_id: "discovered-token-b475569f6a15e97ac04e531dd813e9dcc902521c098d60d6ae4d21d53baf1395",
+        name: "Unclassified token at 0x9f8f72aa9304c8b593d555f12ef6589cc3a579a2",
+        representation_kind: TokenRepresentationKind::Unclassified,
+        stable_currency: None,
+        underlying_asset_id: None,
+        economic_reference_asset_id: None,
+    },
+    TokenAsset {
+        asset_id: "discovered-token-e375086901067fe3de023bcdc70f1bafca798e1719ed7e676a98f57de3350a07",
+        name: "Unclassified token at 0x2260fac5e5542a773aa44fbcfedf7c193bc2c599",
+        representation_kind: TokenRepresentationKind::Unclassified,
         stable_currency: None,
         underlying_asset_id: None,
         economic_reference_asset_id: None,
@@ -1354,376 +1474,412 @@ pub static TOKEN_DEPLOYMENTS: &[TokenDeployment] = &[
         status: TokenStatus::Active,
         replaced_by_deployment_id: None,
     },
+    TokenDeployment {
+        deployment_id: "discovered-token-0a7f98c8752f15ee02ce0d801f25df8ff78864a1d70aff7e204f7bdb3f8a0692",
+        asset_id: "discovered-token-0a7f98c8752f15ee02ce0d801f25df8ff78864a1d70aff7e204f7bdb3f8a0692",
+        name: "Unclassified token at 0x49d5c2bdffac6ce2bfdb6640f4f80f226bc10bab",
+        representation_kind: TokenRepresentationKind::Unclassified,
+        stable_currency: None,
+        underlying_asset_id: None,
+        economic_reference_asset_id: None,
+        chain_id: "eip155:43114",
+        symbol: "0x49d5c2bdffac6ce2bfdb6640f4f80f226bc10bab",
+        decimals: 18,
+        standard: TokenStandard::Erc20,
+        address: Some("0x49d5c2bdffac6ce2bfdb6640f4f80f226bc10bab"),
+        status: TokenStatus::Active,
+        replaced_by_deployment_id: None,
+    },
+    TokenDeployment {
+        deployment_id: "discovered-token-288036a90ee0fa72a2751a78a6934cc6ced9e16de91c97ae8e109e2ee6189bc5",
+        asset_id: "discovered-token-288036a90ee0fa72a2751a78a6934cc6ced9e16de91c97ae8e109e2ee6189bc5",
+        name: "Unclassified token at 0xc7198437980c041c805a1edcba50c1ce5db95118",
+        representation_kind: TokenRepresentationKind::Unclassified,
+        stable_currency: None,
+        underlying_asset_id: None,
+        economic_reference_asset_id: None,
+        chain_id: "eip155:43114",
+        symbol: "0xc7198437980c041c805a1edcba50c1ce5db95118",
+        decimals: 6,
+        standard: TokenStandard::Erc20,
+        address: Some("0xc7198437980c041c805a1edcba50c1ce5db95118"),
+        status: TokenStatus::Active,
+        replaced_by_deployment_id: None,
+    },
+    TokenDeployment {
+        deployment_id: "discovered-token-9f9965cc065c9becf8d2cb58071524baafea37d27fda9bf683a93ea85f2e653d",
+        asset_id: "discovered-token-9f9965cc065c9becf8d2cb58071524baafea37d27fda9bf683a93ea85f2e653d",
+        name: "Unclassified token at 0x50b7545627a5162f82a992c33b87adc75187b218",
+        representation_kind: TokenRepresentationKind::Unclassified,
+        stable_currency: None,
+        underlying_asset_id: None,
+        economic_reference_asset_id: None,
+        chain_id: "eip155:43114",
+        symbol: "0x50b7545627a5162f82a992c33b87adc75187b218",
+        decimals: 8,
+        standard: TokenStandard::Erc20,
+        address: Some("0x50b7545627a5162f82a992c33b87adc75187b218"),
+        status: TokenStatus::Active,
+        replaced_by_deployment_id: None,
+    },
+    TokenDeployment {
+        deployment_id: "discovered-token-b475569f6a15e97ac04e531dd813e9dcc902521c098d60d6ae4d21d53baf1395",
+        asset_id: "discovered-token-b475569f6a15e97ac04e531dd813e9dcc902521c098d60d6ae4d21d53baf1395",
+        name: "Unclassified token at 0x9f8f72aa9304c8b593d555f12ef6589cc3a579a2",
+        representation_kind: TokenRepresentationKind::Unclassified,
+        stable_currency: None,
+        underlying_asset_id: None,
+        economic_reference_asset_id: None,
+        chain_id: "eip155:1",
+        symbol: "0x9f8f72aa9304c8b593d555f12ef6589cc3a579a2",
+        decimals: 18,
+        standard: TokenStandard::Erc20,
+        address: Some("0x9f8f72aa9304c8b593d555f12ef6589cc3a579a2"),
+        status: TokenStatus::Active,
+        replaced_by_deployment_id: None,
+    },
+    TokenDeployment {
+        deployment_id: "discovered-token-e375086901067fe3de023bcdc70f1bafca798e1719ed7e676a98f57de3350a07",
+        asset_id: "discovered-token-e375086901067fe3de023bcdc70f1bafca798e1719ed7e676a98f57de3350a07",
+        name: "Unclassified token at 0x2260fac5e5542a773aa44fbcfedf7c193bc2c599",
+        representation_kind: TokenRepresentationKind::Unclassified,
+        stable_currency: None,
+        underlying_asset_id: None,
+        economic_reference_asset_id: None,
+        chain_id: "eip155:1",
+        symbol: "0x2260fac5e5542a773aa44fbcfedf7c193bc2c599",
+        decimals: 8,
+        standard: TokenStandard::Erc20,
+        address: Some("0x2260fac5e5542a773aa44fbcfedf7c193bc2c599"),
+        status: TokenStatus::Active,
+        replaced_by_deployment_id: None,
+    },
 ];
 
 pub static TOKEN_ALIASES: &[TokenAlias] = &[
     TokenAlias {
         namespace: "avalancheC",
         name: "AUSD",
-        deployment_id: "deployment-0035",
+        deployment_id: tokens::avalanche_c::AUSD,
     },
     TokenAlias {
         namespace: "avalancheC",
         name: "AVAX",
-        deployment_id: "deployment-0003",
+        deployment_id: tokens::avalanche_c::AVAX,
+    },
+    TokenAlias {
+        namespace: "avalancheC",
+        name: "DISCOVERED_0A7F98C8752F15EE",
+        deployment_id: tokens::avalanche_c::DISCOVERED_0A7F98C8752F15EE,
+    },
+    TokenAlias {
+        namespace: "avalancheC",
+        name: "DISCOVERED_288036A90EE0FA72",
+        deployment_id: tokens::avalanche_c::DISCOVERED_288036A90EE0FA72,
+    },
+    TokenAlias {
+        namespace: "avalancheC",
+        name: "DISCOVERED_9F9965CC065C9BEC",
+        deployment_id: tokens::avalanche_c::DISCOVERED_9F9965CC065C9BEC,
     },
     TokenAlias {
         namespace: "avalancheC",
         name: "EURC",
-        deployment_id: "deployment-0012",
+        deployment_id: tokens::avalanche_c::EURC,
     },
     TokenAlias {
         namespace: "avalancheC",
         name: "EUROP",
-        deployment_id: "deployment-0045",
+        deployment_id: tokens::avalanche_c::EUROP,
     },
     TokenAlias {
         namespace: "avalancheC",
         name: "GHO",
-        deployment_id: "deployment-0030",
+        deployment_id: tokens::avalanche_c::GHO,
     },
     TokenAlias {
         namespace: "avalancheC",
         name: "JOE",
-        deployment_id: "deployment-0059",
+        deployment_id: tokens::avalanche_c::JOE,
     },
     TokenAlias {
         namespace: "avalancheC",
         name: "JPYC",
-        deployment_id: "deployment-0039",
+        deployment_id: tokens::avalanche_c::JPYC,
     },
     TokenAlias {
         namespace: "avalancheC",
         name: "LINK",
-        deployment_id: "deployment-0058",
+        deployment_id: tokens::avalanche_c::LINK,
     },
     TokenAlias {
         namespace: "avalancheC",
         name: "USDC",
-        deployment_id: "deployment-0009",
+        deployment_id: tokens::avalanche_c::USDC,
     },
     TokenAlias {
         namespace: "avalancheC",
         name: "USDC_E",
-        deployment_id: "deployment-0018",
+        deployment_id: tokens::avalanche_c::USDC_E,
     },
     TokenAlias {
         namespace: "avalancheC",
         name: "USDT",
-        deployment_id: "deployment-0015",
+        deployment_id: tokens::avalanche_c::USDT,
     },
     TokenAlias {
         namespace: "avalancheC",
         name: "WAVAX",
-        deployment_id: "deployment-0004",
+        deployment_id: tokens::avalanche_c::WAVAX,
     },
     TokenAlias {
         namespace: "ethereum",
         name: "AAVE",
-        deployment_id: "deployment-0056",
+        deployment_id: tokens::ethereum::AAVE,
     },
     TokenAlias {
         namespace: "ethereum",
         name: "AUSD",
-        deployment_id: "deployment-0034",
+        deployment_id: tokens::ethereum::AUSD,
     },
     TokenAlias {
         namespace: "ethereum",
         name: "DAI",
-        deployment_id: "deployment-0019",
+        deployment_id: tokens::ethereum::DAI,
+    },
+    TokenAlias {
+        namespace: "ethereum",
+        name: "DISCOVERED_B475569F6A15E97A",
+        deployment_id: tokens::ethereum::DISCOVERED_B475569F6A15E97A,
+    },
+    TokenAlias {
+        namespace: "ethereum",
+        name: "DISCOVERED_E375086901067FE3",
+        deployment_id: tokens::ethereum::DISCOVERED_E375086901067FE3,
     },
     TokenAlias {
         namespace: "ethereum",
         name: "ETH",
-        deployment_id: "deployment-0001",
+        deployment_id: tokens::ethereum::ETH,
     },
     TokenAlias {
         namespace: "ethereum",
         name: "EURA",
-        deployment_id: "deployment-0051",
+        deployment_id: tokens::ethereum::EURA,
     },
     TokenAlias {
         namespace: "ethereum",
         name: "EURAU",
-        deployment_id: "deployment-0042",
+        deployment_id: tokens::ethereum::EURAU,
     },
     TokenAlias {
         namespace: "ethereum",
         name: "EURC",
-        deployment_id: "deployment-0011",
+        deployment_id: tokens::ethereum::EURC,
     },
     TokenAlias {
         namespace: "ethereum",
         name: "EURCV",
-        deployment_id: "deployment-0040",
+        deployment_id: tokens::ethereum::EURCV,
     },
     TokenAlias {
         namespace: "ethereum",
         name: "EURE",
-        deployment_id: "deployment-0054",
+        deployment_id: tokens::ethereum::EURE,
     },
     TokenAlias {
         namespace: "ethereum",
         name: "EURE_V1",
-        deployment_id: "deployment-0053",
+        deployment_id: tokens::ethereum::EURE_V1,
     },
     TokenAlias {
         namespace: "ethereum",
         name: "EUROP",
-        deployment_id: "deployment-0044",
+        deployment_id: tokens::ethereum::EUROP,
     },
     TokenAlias {
         namespace: "ethereum",
         name: "EURS",
-        deployment_id: "deployment-0052",
+        deployment_id: tokens::ethereum::EURS,
     },
     TokenAlias {
         namespace: "ethereum",
         name: "EURT",
-        deployment_id: "deployment-0017",
+        deployment_id: tokens::ethereum::EURT,
     },
     TokenAlias {
         namespace: "ethereum",
         name: "FDUSD",
-        deployment_id: "deployment-0031",
+        deployment_id: tokens::ethereum::FDUSD,
     },
     TokenAlias {
         namespace: "ethereum",
         name: "GHO",
-        deployment_id: "deployment-0029",
+        deployment_id: tokens::ethereum::GHO,
     },
     TokenAlias {
         namespace: "ethereum",
         name: "GYEN",
-        deployment_id: "deployment-0047",
+        deployment_id: tokens::ethereum::GYEN,
     },
     TokenAlias {
         namespace: "ethereum",
         name: "JPYC",
-        deployment_id: "deployment-0038",
+        deployment_id: tokens::ethereum::JPYC,
     },
     TokenAlias {
         namespace: "ethereum",
         name: "LINK",
-        deployment_id: "deployment-0057",
+        deployment_id: tokens::ethereum::LINK,
     },
     TokenAlias {
         namespace: "ethereum",
         name: "PYUSD",
-        deployment_id: "deployment-0022",
+        deployment_id: tokens::ethereum::PYUSD,
     },
     TokenAlias {
         namespace: "ethereum",
         name: "RLUSD",
-        deployment_id: "deployment-0033",
+        deployment_id: tokens::ethereum::RLUSD,
     },
     TokenAlias {
         namespace: "ethereum",
         name: "UNI",
-        deployment_id: "deployment-0055",
+        deployment_id: tokens::ethereum::UNI,
     },
     TokenAlias {
         namespace: "ethereum",
         name: "USDC",
-        deployment_id: "deployment-0008",
+        deployment_id: tokens::ethereum::USDC,
     },
     TokenAlias {
         namespace: "ethereum",
         name: "USDE",
-        deployment_id: "deployment-0028",
+        deployment_id: tokens::ethereum::USDE,
     },
     TokenAlias {
         namespace: "ethereum",
         name: "USDG",
-        deployment_id: "deployment-0024",
+        deployment_id: tokens::ethereum::USDG,
     },
     TokenAlias {
         namespace: "ethereum",
         name: "USDP",
-        deployment_id: "deployment-0026",
+        deployment_id: tokens::ethereum::USDP,
     },
     TokenAlias {
         namespace: "ethereum",
         name: "USDS",
-        deployment_id: "deployment-0020",
+        deployment_id: tokens::ethereum::USDS,
     },
     TokenAlias {
         namespace: "ethereum",
         name: "USDT",
-        deployment_id: "deployment-0014",
+        deployment_id: tokens::ethereum::USDT,
     },
     TokenAlias {
         namespace: "ethereum",
         name: "WETH",
-        deployment_id: "deployment-0002",
+        deployment_id: tokens::ethereum::WETH,
     },
     TokenAlias {
         namespace: "ethereum",
         name: "ZUSD",
-        deployment_id: "deployment-0049",
+        deployment_id: tokens::ethereum::ZUSD,
     },
     TokenAlias {
         namespace: "solana",
         name: "AUSD",
-        deployment_id: "deployment-0036",
+        deployment_id: tokens::solana::AUSD,
     },
     TokenAlias {
         namespace: "solana",
         name: "EURAU",
-        deployment_id: "deployment-0043",
+        deployment_id: tokens::solana::EURAU,
     },
     TokenAlias {
         namespace: "solana",
         name: "EURC",
-        deployment_id: "deployment-0013",
+        deployment_id: tokens::solana::EURC,
     },
     TokenAlias {
         namespace: "solana",
         name: "EURCV",
-        deployment_id: "deployment-0041",
+        deployment_id: tokens::solana::EURCV,
     },
     TokenAlias {
         namespace: "solana",
         name: "EUROP",
-        deployment_id: "deployment-0046",
+        deployment_id: tokens::solana::EUROP,
     },
     TokenAlias {
         namespace: "solana",
         name: "FDUSD",
-        deployment_id: "deployment-0032",
+        deployment_id: tokens::solana::FDUSD,
     },
     TokenAlias {
         namespace: "solana",
         name: "GYEN",
-        deployment_id: "deployment-0048",
+        deployment_id: tokens::solana::GYEN,
     },
     TokenAlias {
         namespace: "solana",
         name: "JUP",
-        deployment_id: "deployment-0060",
+        deployment_id: tokens::solana::JUP,
     },
     TokenAlias {
         namespace: "solana",
         name: "JUPUSD",
-        deployment_id: "deployment-0037",
+        deployment_id: tokens::solana::JUPUSD,
     },
     TokenAlias {
         namespace: "solana",
         name: "PYUSD",
-        deployment_id: "deployment-0023",
+        deployment_id: tokens::solana::PYUSD,
     },
     TokenAlias {
         namespace: "solana",
         name: "SOL",
-        deployment_id: "deployment-0005",
+        deployment_id: tokens::solana::SOL,
     },
     TokenAlias {
         namespace: "solana",
         name: "USDC",
-        deployment_id: "deployment-0010",
+        deployment_id: tokens::solana::USDC,
     },
     TokenAlias {
         namespace: "solana",
         name: "USDG",
-        deployment_id: "deployment-0025",
+        deployment_id: tokens::solana::USDG,
     },
     TokenAlias {
         namespace: "solana",
         name: "USDP",
-        deployment_id: "deployment-0027",
+        deployment_id: tokens::solana::USDP,
     },
     TokenAlias {
         namespace: "solana",
         name: "USDS",
-        deployment_id: "deployment-0021",
+        deployment_id: tokens::solana::USDS,
     },
     TokenAlias {
         namespace: "solana",
         name: "USDT",
-        deployment_id: "deployment-0016",
+        deployment_id: tokens::solana::USDT,
     },
     TokenAlias {
         namespace: "solana",
         name: "WSOL",
-        deployment_id: "deployment-0006",
+        deployment_id: tokens::solana::WSOL,
     },
     TokenAlias {
         namespace: "solana",
         name: "WSOL_TOKEN_2022",
-        deployment_id: "deployment-0007",
+        deployment_id: tokens::solana::WSOL_TOKEN_2022,
     },
     TokenAlias {
         namespace: "solana",
         name: "ZUSD",
-        deployment_id: "deployment-0050",
+        deployment_id: tokens::solana::ZUSD,
     },
 ];
-
-pub mod tokens {
-    pub mod avalanche_c {
-        pub const AUSD: &str = "deployment-0035";
-        pub const AVAX: &str = "deployment-0003";
-        pub const EURC: &str = "deployment-0012";
-        pub const EUROP: &str = "deployment-0045";
-        pub const GHO: &str = "deployment-0030";
-        pub const JOE: &str = "deployment-0059";
-        pub const JPYC: &str = "deployment-0039";
-        pub const LINK: &str = "deployment-0058";
-        pub const USDC: &str = "deployment-0009";
-        pub const USDC_E: &str = "deployment-0018";
-        pub const USDT: &str = "deployment-0015";
-        pub const WAVAX: &str = "deployment-0004";
-    }
-    pub mod ethereum {
-        pub const AAVE: &str = "deployment-0056";
-        pub const AUSD: &str = "deployment-0034";
-        pub const DAI: &str = "deployment-0019";
-        pub const ETH: &str = "deployment-0001";
-        pub const EURA: &str = "deployment-0051";
-        pub const EURAU: &str = "deployment-0042";
-        pub const EURC: &str = "deployment-0011";
-        pub const EURCV: &str = "deployment-0040";
-        pub const EURE: &str = "deployment-0054";
-        pub const EURE_V1: &str = "deployment-0053";
-        pub const EUROP: &str = "deployment-0044";
-        pub const EURS: &str = "deployment-0052";
-        pub const EURT: &str = "deployment-0017";
-        pub const FDUSD: &str = "deployment-0031";
-        pub const GHO: &str = "deployment-0029";
-        pub const GYEN: &str = "deployment-0047";
-        pub const JPYC: &str = "deployment-0038";
-        pub const LINK: &str = "deployment-0057";
-        pub const PYUSD: &str = "deployment-0022";
-        pub const RLUSD: &str = "deployment-0033";
-        pub const UNI: &str = "deployment-0055";
-        pub const USDC: &str = "deployment-0008";
-        pub const USDE: &str = "deployment-0028";
-        pub const USDG: &str = "deployment-0024";
-        pub const USDP: &str = "deployment-0026";
-        pub const USDS: &str = "deployment-0020";
-        pub const USDT: &str = "deployment-0014";
-        pub const WETH: &str = "deployment-0002";
-        pub const ZUSD: &str = "deployment-0049";
-    }
-    pub mod solana {
-        pub const AUSD: &str = "deployment-0036";
-        pub const EURAU: &str = "deployment-0043";
-        pub const EURC: &str = "deployment-0013";
-        pub const EURCV: &str = "deployment-0041";
-        pub const EUROP: &str = "deployment-0046";
-        pub const FDUSD: &str = "deployment-0032";
-        pub const GYEN: &str = "deployment-0048";
-        pub const JUP: &str = "deployment-0060";
-        pub const JUPUSD: &str = "deployment-0037";
-        pub const PYUSD: &str = "deployment-0023";
-        pub const SOL: &str = "deployment-0005";
-        pub const USDC: &str = "deployment-0010";
-        pub const USDG: &str = "deployment-0025";
-        pub const USDP: &str = "deployment-0027";
-        pub const USDS: &str = "deployment-0021";
-        pub const USDT: &str = "deployment-0016";
-        pub const WSOL: &str = "deployment-0006";
-        pub const WSOL_TOKEN_2022: &str = "deployment-0007";
-        pub const ZUSD: &str = "deployment-0050";
-    }
-}

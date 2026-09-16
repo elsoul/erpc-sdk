@@ -6,8 +6,14 @@ native/wrapped relationships, and aliases used by the five SDKs. The source is
 provenance and are removed from generated package data. Runtime records retain
 the catalog version, global as-of date, and SHA-256 content digest.
 
-The initial catalog contains four immutable DEX deployment IDs and four
-immutable pool IDs:
+The 2026-09-16 local integration contains 12 pool definitions and 16 DEX
+aliases. The candidate DEX digest is
+`a0268a45d2b037ab8ea35aad1c45366d2582cbc9b10681ded590b56e07b011c8`; raw
+pool observations and the local review are linked from
+[`evidence/pool-observations-2026-09-16.json`](./evidence/pool-observations-2026-09-16.json)
+and [`evidence/discovery-ranking-review-2026-09-16.json`](./evidence/discovery-ranking-review-2026-09-16.json).
+
+The catalog begins with immutable DEX deployment and pool IDs:
 
 | ID | Chain | Protocol | Pool or program | Runtime capability |
 | --- | --- | --- | --- | --- |
@@ -24,6 +30,15 @@ Ethereum uses token deployments `deployment-0008` (USDC) and `deployment-0002`
 `deployment-0013`. Solana fee fields are `null`; the observed Orca adaptive fee
 is not a fixed runtime quote fee.
 
+The handwritten source-controlled quote capabilities are in
+[`quote-capabilities.mjs`](./quote-capabilities.mjs). They bind each supported
+EVM pool to its chain, DEX factory/program address, ordered token IDs and
+addresses, decimals, adapter kind, and fee. A catalog pool or token tuple that
+falls outside those capabilities is rejected before any RPC request with
+`SWAP_UNSUPPORTED_TOKEN` and the message `Swap token is unsupported for the
+selected pool`. This gate preserves validation precedence and golden quote
+vectors while allowing the canonical catalog to grow safely.
+
 Native wrapping is explicit and chain-bound:
 
 | Definition | Native deployment | Wrapped deployment |
@@ -31,6 +46,14 @@ Native wrapping is explicit and chain-bound:
 | `native-wrap-0001` | `deployment-0001` (ETH) | `deployment-0002` (WETH) |
 | `native-wrap-0002` | `deployment-0003` (AVAX) | `deployment-0004` (WAVAX) |
 | `native-wrap-0003` | `deployment-0005` (SOL) | `deployment-0006` (classic WSOL) |
+
+Discovery admission is limited to direct reviewed native pairs using WETH,
+WAVAX, or classic WSOL. The native liquidity floors are 10 ETH, 100 AVAX,
+and 100 SOL in chain-native atomic units. A newly observed pool can be added
+for lookup only after fresh receipt replay and review; discovery does not
+grant it swap execution or bridge support. Deferred candidates use the
+persisted bounded cursor and are revalidated from fresh RPC facts before a
+later admission attempt.
 
 ## Registry API
 
@@ -124,6 +147,9 @@ amountOut = floor(adjusted * reserveOut /
 The accepted inputs for the EVM adapter are active ERC-20 deployments. Native
 and Token-2022 inputs fail before RPC. Classic SPL inputs reach the Solana
 adapter gate and fail before RPC because the CLMM adapters are lookup-only.
+The handwritten capability gate binds every supported tuple to its chain, pool,
+factory, token IDs and addresses, decimals, ERC-20 standards, adapter, and
+fee before RPC. Catalog growth never enables a new quote tuple or bridge path.
 
 Fixed SDK error codes are:
 
@@ -131,6 +157,7 @@ Fixed SDK error codes are:
 `SWAP_CHAIN_MISMATCH`, `SWAP_INVALID_POOL_STATE`, `SWAP_UNKNOWN_TOKEN`,
 `SWAP_TOKEN_NOT_ACTIVE`, `SWAP_UNSUPPORTED_TOKEN_STANDARD`,
 `SWAP_POOL_TOKEN_MISMATCH`, `SWAP_UNSUPPORTED_ADAPTER`,
+`SWAP_UNSUPPORTED_TOKEN`,
 `SWAP_PROGRAM_MISMATCH`, `SWAP_STATE_STALE`,
 `SWAP_INSUFFICIENT_LIQUIDITY`, and `SWAP_ARITHMETIC`. Pre-RPC request and
 catalog validation follows the order listed in the shared quote fixture. During

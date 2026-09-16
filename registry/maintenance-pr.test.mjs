@@ -16,9 +16,13 @@ import {
 import {
   ALLOWED_BOT_BRANCHES,
   BOT_BRANCH,
+  DATA_CI_ARTIFACT_PREFIX,
+  DATA_CI_OBSERVATION_ENTRY,
+  DATA_CI_PROVENANCE_ENTRY,
   GITHUB_API_VERSION,
   MANAGED_BY,
   RELEASE_BRANCH,
+  WORKFLOW_PATH,
   buildMaintenancePayload,
   buildWorkflowDispatch,
   createGhAdapter,
@@ -145,9 +149,13 @@ test("fresh manual 0.7.1 preparation is canonicalized and rejects an extra packa
     cpSync("registry/release-prep.mjs", join(previewRoot, "registry/release-prep.mjs"));
     cpSync("registry/release-plan.json", join(previewRoot, "registry/release-plan.json"));
     cpSync("registry/observer-config.json", join(previewRoot, "registry/observer-config.json"));
+    // The observer capture below uses the populated checkout's catalog. Keep
+    // the frozen release fixture bound to the same catalog before preparing
+    // its manual release, even when the source catalog is still uncommitted.
+    cpSync("registry/token-catalog.json", join(previewRoot, "registry/token-catalog.json"));
     const changelogPath = join(previewRoot, "CHANGELOG.md");
     writeFileSync(changelogPath, readFileSync(changelogPath, "utf8").replace("## Unreleased\n", "## Unreleased\n\n- Exercise a manual patch candidate.\n"));
-    execFileSync("git", ["add", "registry/release-prep.mjs", "registry/release-plan.json", "registry/observer-config.json", "CHANGELOG.md"], { cwd: previewRoot, stdio: "pipe" });
+    execFileSync("git", ["add", "registry/release-prep.mjs", "registry/release-plan.json", "registry/observer-config.json", "registry/token-catalog.json", "CHANGELOG.md"], { cwd: previewRoot, stdio: "pipe" });
     execFileSync("git", ["-c", "user.name=Maintenance Test", "-c", "user.email=maintenance@example.invalid", "commit", "--quiet", "-m", "Add release preparation helpers"], { cwd: previewRoot, stdio: "pipe" });
     const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: previewRoot, encoding: "utf8" }).trim();
     const report = prepareRelease({ root: previewRoot, expectedHead: head, version: "0.7.1", releaseDate: "2026-09-15" });
@@ -431,5 +439,97 @@ test("real gh adapter binds workflow_run_id, head, ref, and requested base", asy
     await assert.rejects(() => adapter.verifyWorkflowRunHead(response, botHead, baseHead, BOT_BRANCH), { code: "WORKFLOW_HEAD_MISMATCH" });
   } finally {
     rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("real gh adapter fetches only the exact bounded CI observation artifact with portable unzip dates", { concurrency: false }, async () => {
+  const directory = mkdtempSync(join(tmpdir(), "erpc-maintenance-gh-artifact-"));
+  const badDirectory = mkdtempSync(join(tmpdir(), "erpc-maintenance-gh-artifact-bad-"));
+  try {
+    const runId = 901;
+    const runAttempt = 2;
+    const headSha = "a".repeat(40);
+    const baseSha = "b".repeat(40);
+    // Exercise the finite 16 MiB CI entry bound with a synthetic payload;
+    // default sizing is captured separately from a plain collector run.
+    const observation = { schemaVersion: 1, kind: "erpc-sdk-data-maintenance-observation", sourceSha: headSha, baseSha, padding: "x".repeat(12 * 1024 * 1024) };
+    const observationBytes = Buffer.from(JSON.stringify(observation), "utf8");
+    const provenance = {
+      schemaVersion: 1,
+      kind: "erpc-sdk-ci-provenance",
+      headSha,
+      testedHeadSha: headSha,
+      sourceSha: headSha,
+      baseSha,
+      workflowPath: WORKFLOW_PATH,
+      runId,
+      runAttempt,
+      event: "workflow_dispatch",
+      observationSha256: createHash("sha256").update(observationBytes).digest("hex"),
+      observationByteLength: observationBytes.byteLength,
+    };
+    writeFileSync(join(directory, DATA_CI_OBSERVATION_ENTRY), observationBytes);
+    writeFileSync(join(directory, DATA_CI_PROVENANCE_ENTRY), `${JSON.stringify(provenance)}\n`);
+    const zipPath = join(directory, "artifact.zip");
+    execFileSync("zip", ["-q", zipPath, DATA_CI_OBSERVATION_ENTRY, DATA_CI_PROVENANCE_ENTRY], { cwd: directory });
+    writeFileSync(join(badDirectory, DATA_CI_OBSERVATION_ENTRY), observationBytes);
+    writeFileSync(join(badDirectory, DATA_CI_PROVENANCE_ENTRY), `${JSON.stringify({ ...provenance, observationSha256: "c".repeat(64) })}\n`);
+    const badZipPath = join(badDirectory, "artifact.zip");
+    execFileSync("zip", ["-q", badZipPath, DATA_CI_OBSERVATION_ENTRY, DATA_CI_PROVENANCE_ENTRY], { cwd: badDirectory });
+    const scriptPath = join(directory, "gh");
+    writeFileSync(scriptPath, `#!/usr/bin/env node
+const { readFileSync } = require("node:fs");
+const path = process.argv[3] ?? "";
+const runId = ${runId};
+const runAttempt = ${runAttempt};
+const headSha = "${headSha}";
+const expectedName = "${DATA_CI_ARTIFACT_PREFIX}" + headSha + "-" + runId + "-" + runAttempt;
+if (path.endsWith("/actions/runs/" + runId)) process.stdout.write(JSON.stringify({ id: runId, run_attempt: runAttempt, head_sha: headSha, head_branch: "codex/registry-maintenance", ref: "refs/heads/codex/registry-maintenance", event: "workflow_dispatch", path: "${WORKFLOW_PATH}", repository: { full_name: "owner/repo" } }));
+else if (path.includes("/actions/runs/" + runId + "/jobs")) process.stdout.write(JSON.stringify({ jobs: [{ name: "required-ci", status: "completed", conclusion: "success" }] }));
+else if (path.includes("/actions/runs/" + runId + "/artifacts")) process.stdout.write(JSON.stringify({ artifacts: [{ id: 123, name: expectedName, expired: false, workflow_run: { id: runId } }] }));
+else if (path.includes("/actions/artifacts/123/zip")) process.stdout.write(readFileSync(process.env.FAKE_ZIP));
+else process.stdout.write(JSON.stringify({}));
+    `);
+    chmodSync(scriptPath, 0o755);
+    const realUnzip = execFileSync("which", ["unzip"], { encoding: "utf8" }).trim();
+    const unzipPath = join(directory, "unzip");
+    const unzipMarker = join(directory, "unzip-invocations");
+    writeFileSync(unzipMarker, "");
+    writeFileSync(unzipPath, `#!/usr/bin/env node
+const { appendFileSync, writeSync } = require("node:fs");
+const { spawnSync } = require("node:child_process");
+const real = ${JSON.stringify(realUnzip)};
+const marker = ${JSON.stringify(unzipMarker)};
+const args = process.argv.slice(2);
+appendFileSync(marker, args[0] + "\\n");
+const result = spawnSync(real, args, { encoding: null, maxBuffer: 16 * 1024 * 1024 + 1 });
+if (result.status === 0 && args[0] === "-l") {
+  const listing = Buffer.from(result.stdout ?? "").toString("utf8").replace(/\\b\\d{2}-\\d{2}-\\d{4}\\b/gu, "2026-09-16");
+  writeSync(1, listing);
+} else {
+  if (result.stdout?.length) writeSync(1, result.stdout);
+}
+if (result.stderr?.length) writeSync(2, result.stderr);
+process.exit(result.status ?? 1);
+`);
+    chmodSync(unzipPath, 0o755);
+    const env = { ...process.env, PATH: `${directory}:${process.env.PATH}`, FAKE_ZIP: zipPath };
+    const adapter = createGhAdapter({ repo: "owner/repo", root: directory, env });
+    const previousPath = process.env.PATH;
+    process.env.PATH = `${directory}:${previousPath ?? ""}`;
+    try {
+      const result = await adapter.getMaintenanceObservation(runId, runAttempt, { expectedHead: headSha, expectedBase: baseSha });
+      assert.deepEqual(result.observation, observation);
+      assert.equal(result.provenance.observationByteLength, observationBytes.byteLength);
+      assert.match(readFileSync(unzipMarker, "utf8"), /-l\n/u, "portable date wrapper was not invoked for the detailed listing");
+      env.FAKE_ZIP = badZipPath;
+      await assert.rejects(() => adapter.getMaintenanceObservation(runId, runAttempt, { expectedHead: headSha, expectedBase: baseSha }), { code: "CI_PROVENANCE_INVALID" });
+    } finally {
+      if (previousPath === undefined) delete process.env.PATH;
+      else process.env.PATH = previousPath;
+    }
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+    rmSync(badDirectory, { recursive: true, force: true });
   }
 });

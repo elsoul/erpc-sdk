@@ -57,6 +57,33 @@ keeping legacy, winding-down, and retired records visible. The canonical
 registry and its evidence are documented in the [token catalog registry
 README](https://github.com/elsoul/erpc-sdk/blob/main/registry/README.md).
 
+## Offline token rankings
+
+The gem also bundles the generated token-ranking snapshot. Ranking metadata
+uses the exact `schema_version`, `metric`, `as_of`, `content_digest`,
+`status`, `coverage`, and `source_ids` fields from the registry, and all
+nested values are frozen. The current snapshot is intentionally
+`unconfigured`, so its metric and `as_of` are `nil` and each chain lookup is
+empty until a reviewed snapshot is published.
+
+```ruby
+rankings = ERPC::TokenRankings.list_token_rankings(
+  ERPC::TokenChainIDs::ETHEREUM_MAINNET
+)
+puts ERPC::TokenRankings::TOKEN_RANKINGS_METADATA.fetch(:status)
+puts rankings.length
+```
+
+`list_token_rankings` matches the complete chain ID exactly. Empty, unknown,
+and special strings return the same frozen empty array. It never performs
+network I/O, reads the current clock, or filters by observation time.
+
+When a reviewed snapshot is populated, the approved native metric represents
+total supply multiplied by the direct native-pool price. It does not represent
+circulating market capitalization. Coverage remains explicit in metadata and
+may be `partial`; unavailable observations stay out of ranked rows rather than
+being treated as zero.
+
 ## Offline DEX and pool catalog
 
 The source tree bundles the generated DEX deployment, pool, and native/wrapped
@@ -108,6 +135,12 @@ puts quote.fetch("amountOut")
 `SWAP_STATE_STALE` and `SWAP_UNSUPPORTED_ADAPTER`. Existing transport,
 timeout, and JSON-RPC errors retain their native class. Solana pool records
 are available for lookup; their CLMM adapters are not yet quote-enabled.
+Quote eligibility is a reviewed handwritten boundary for the exact WETH/USDC
+Uniswap V2 tuple on Ethereum and WAVAX/USDC LFJ legacy tuple on Avalanche,
+including chain, pool, factory, token addresses, decimals, ERC-20 standards,
+adapter, and fee fields. New catalog records do not automatically become
+quote-enabled; an otherwise valid request outside those tuples returns
+`SWAP_UNSUPPORTED_TOKEN` before RPC.
 Transaction building, signing, sending, route search, native wrapping, and
 cross-chain bridging are outside this quote API.
 

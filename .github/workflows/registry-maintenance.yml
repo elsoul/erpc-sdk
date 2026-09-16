@@ -1,124 +1,119 @@
-name: Weekly registry maintenance
+name: Daily registry data maintenance
 
 on:
   schedule:
-    - cron: '17 3 * * 2'
+    - cron: '17 3 * * *'
   workflow_dispatch:
 
 permissions:
   contents: read
 
+# Maintenance, release preparation, and the explicit promotion controller all
+# share one lease. A writer must never race another writer against main.
 concurrency:
-  group: weekly-registry-maintenance-${{ github.ref }}
+  group: erpc-catalog-mutation
   cancel-in-progress: false
 
 jobs:
-  observer:
-    name: Observe the token catalog
+  collector:
+    name: Collect bounded maintenance receipts
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     permissions:
       contents: read
-    outputs:
-      observer_exit_code: ${{ steps.classify.outputs.exit_code }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
           ref: ${{ github.sha }}
+          clean: true
           persist-credentials: false
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: 24
-      - name: Create bounded observation directory
-        env:
-          OUTPUT_DIR: ${{ runner.temp }}/registry-observation
+      - name: Install the pinned Rust and Go toolchains for maintenance replay
         run: |
-          set -euo pipefail
-          mkdir -p "$OUTPUT_DIR"
-          printf '%s\n' 70 > "$OUTPUT_DIR/exit-code"
-          : > "$OUTPUT_DIR/observer.stdout"
-          : > "$OUTPUT_DIR/observer.stderr"
-      - name: Observe configured sources and deployments
-        id: observe
-        continue-on-error: true
-        env:
-          ERPC_OBSERVER_SOURCE_SHA: ${{ github.sha }}
-          OUTPUT_DIR: ${{ runner.temp }}/registry-observation
-        run: |
-          set +e
-          node registry/observe-token-catalog.mjs --output-dir "$OUTPUT_DIR" \
-            > "$OUTPUT_DIR/observer.stdout" \
-            2> "$OUTPUT_DIR/observer.stderr"
-          observer_status=$?
-          printf '%s\n' "$observer_status" > "$OUTPUT_DIR/exit-code"
-          exit "$observer_status"
-      - name: Bound observation output and assemble the same-run envelope
-        if: always()
-        continue-on-error: true
+          rustup toolchain install 1.85.0 --profile minimal --component clippy,rustfmt
+          rustup default 1.85.0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: '1.22.x'
+          cache: false
+      - name: Freeze a clean immutable main checkout
         env:
           EXPECTED_SOURCE_SHA: ${{ github.sha }}
-          OUTPUT_DIR: ${{ runner.temp }}/registry-observation
-        run: |
-          set +e
-          for output_file in "$OUTPUT_DIR/observer.stdout" "$OUTPUT_DIR/observer.stderr"; do
-            if [ "$(wc -c < "$output_file")" -gt 65536 ]; then
-              head -c 65536 "$output_file" > "$output_file.truncated"
-              mv "$output_file.truncated" "$output_file"
-            fi
-          done
-          node --input-type=module - "$OUTPUT_DIR" "$EXPECTED_SOURCE_SHA" <<'NODE'
-          import { readFileSync, writeFileSync } from 'node:fs'
-          import { join } from 'node:path'
-
-          const [outputDir, expectedSourceSha] = process.argv.slice(2)
-          const readJson = name => JSON.parse(readFileSync(join(outputDir, name), 'utf8'))
-          const receipts = readJson('receipts.json')
-          const findings = readJson('findings.json')
-          const reviewCandidate = readJson('review-candidate.json')
-          const sha = /^[0-9a-f]{40}$/u
-          const digest = /^[0-9a-f]{64}$/u
-          if (!sha.test(expectedSourceSha) || receipts.sourceSha !== expectedSourceSha) throw new Error('observation source SHA is not bound to the event SHA')
-          if (!digest.test(receipts.catalogDigest) || !digest.test(receipts.configDigest)) throw new Error('observation digests are invalid')
-          if (findings.catalogDigest !== receipts.catalogDigest || findings.configDigest !== receipts.configDigest) throw new Error('findings are not bound to receipts')
-          if (reviewCandidate.sourceSha !== expectedSourceSha || reviewCandidate.catalogDigest !== receipts.catalogDigest || reviewCandidate.configDigest !== receipts.configDigest) throw new Error('review candidate is not bound to receipts')
-          const envelope = {
-            receipts,
-            findings,
-            reviewCandidate,
-          }
-          writeFileSync(join(outputDir, 'observation-envelope.json'), `${JSON.stringify(envelope, null, 2)}\n`)
-          NODE
-          exit 0
-      - name: Upload bounded observation diagnostics
-        if: always()
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
-        with:
-          name: weekly-registry-observation
-          path: ${{ runner.temp }}/registry-observation
-          if-no-files-found: error
-          retention-days: 14
-      - name: Classify observer result
-        id: classify
-        if: always()
-        env:
-          OUTPUT_DIR: ${{ runner.temp }}/registry-observation
         run: |
           set -euo pipefail
-          observer_status="$(tr -d '\r\n' < "$OUTPUT_DIR/exit-code")"
-          echo "exit_code=$observer_status" >> "$GITHUB_OUTPUT"
-          case "$observer_status" in
-            0|2|3) exit 0 ;;
-            *) exit "$observer_status" ;;
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+          test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD^{tree})" = "$(git rev-parse "$EXPECTED_SOURCE_SHA^{tree}")"
+      - name: Collect discovery, pool, and ranking receipts as data
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          SOURCE_SHA: ${{ github.sha }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          OUTPUT_DIR: ${{ runner.temp }}/erpc-data-maintenance
+        run: |
+          set -euo pipefail
+          rm -rf "$OUTPUT_DIR"
+          mkdir -p "$OUTPUT_DIR"
+          case "$EVENT_NAME" in
+            schedule) ORIGIN=scheduled ;;
+            workflow_dispatch) ORIGIN=workflow_dispatch ;;
+            *) echo "unsupported maintenance event: $EVENT_NAME" >&2; exit 64 ;;
           esac
+          node --input-type=module - "$OUTPUT_DIR" "$SOURCE_SHA" "$ORIGIN" "$RUN_ID" "$RUN_ATTEMPT" <<'NODE'
+          import { collectMaintenanceObservation } from './registry/data-promotion.mjs'
+
+          const [outputDir, sourceSha, origin, runId, runAttempt] = process.argv.slice(2)
+          const numericRunId = Number(runId)
+          const numericRunAttempt = Number(runAttempt)
+          if (!Number.isSafeInteger(numericRunId) || numericRunId < 1 || !Number.isSafeInteger(numericRunAttempt) || numericRunAttempt < 1) throw new Error('maintenance GitHub run binding is invalid')
+          const envelope = await collectMaintenanceObservation({
+            sourceSha,
+            baseSha: sourceSha,
+            outputDir,
+            execution: { origin, githubRunId: numericRunId, githubRunAttempt: numericRunAttempt },
+          })
+          if (envelope.sourceSha !== sourceSha || envelope.baseSha !== sourceSha || envelope.execution?.origin !== origin || envelope.execution?.githubRunId !== numericRunId || envelope.execution?.githubRunAttempt !== numericRunAttempt) throw new Error('maintenance observation is not bound to the frozen run')
+          NODE
+      - name: Validate exact collector artifact contents
+        env:
+          OUTPUT_DIR: ${{ runner.temp }}/erpc-data-maintenance
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          node --input-type=module - "$OUTPUT_DIR" "$SOURCE_SHA" <<'NODE'
+          import { readFileSync, readdirSync, statSync } from 'node:fs'
+
+          const [directory, sourceSha] = process.argv.slice(2)
+          const allowed = new Set(['maintenance-observation.json', 'discovery-receipts.json', 'pool-receipts.json', 'ranking-receipts.json'])
+          const entries = readdirSync(directory)
+          if (entries.some((entry) => !allowed.has(entry))) throw new Error('collector emitted an unapproved artifact')
+          for (const filename of allowed) {
+            const path = `${directory}/${filename}`
+            if (!entries.includes(filename) || !statSync(path).isFile()) throw new Error(`collector artifact is missing ${filename}`)
+          }
+          const observation = JSON.parse(readFileSync(`${directory}/maintenance-observation.json`, 'utf8'))
+          if (observation.schemaVersion !== 1 || observation.kind !== 'erpc-sdk-data-maintenance-observation' || observation.sourceSha !== sourceSha || observation.baseSha !== sourceSha) throw new Error('maintenance observation binding is invalid')
+          if (observation.rawArtifacts === undefined || Object.keys(observation.rawArtifacts).sort().join('\0') !== ['discovery-receipts.json', 'pool-receipts.json', 'ranking-receipts.json'].join('\0')) throw new Error('maintenance observation raw artifact set is not exact')
+          NODE
+      - name: Upload the authenticated raw maintenance artifact
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: data-maintenance-collector-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/erpc-data-maintenance
+          if-no-files-found: error
+          retention-days: 14
 
   writer:
-    name: Write the reviewable maintenance PR
-    needs: observer
-    if: needs.observer.result == 'success' && (needs.observer.outputs.observer_exit_code == '0' || needs.observer.outputs.observer_exit_code == '2' || needs.observer.outputs.observer_exit_code == '3')
+    name: Replay receipts and write the reviewable data PR
+    needs: collector
+    if: needs.collector.result == 'success'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     permissions:
       contents: write
       pull-requests: write
@@ -128,54 +123,120 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ github.sha }}
+          clean: true
           persist-credentials: false
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: 24
-      - name: Download same-run observation
+      - name: Install the pinned Rust and Go toolchains for maintenance replay
+        run: |
+          rustup toolchain install 1.85.0 --profile minimal --component clippy,rustfmt
+          rustup default 1.85.0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: '1.22.x'
+          cache: false
+      - name: Download the exact same-run collector artifact
         uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
         with:
-          name: weekly-registry-observation
-          path: ${{ runner.temp }}/registry-observation
-      - name: Verify writer checkout binding and extract validated data
-        id: binding
+          name: data-maintenance-collector-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/erpc-data-maintenance
+      - name: Verify the frozen main lease before any write
         env:
-          EXPECTED_SOURCE_SHA: ${{ github.sha }}
-          OBSERVATION_FILE: ${{ runner.temp }}/registry-observation/observation-envelope.json
+          FROZEN_MAIN_SHA: ${{ github.sha }}
+          OBSERVATION_FILE: ${{ runner.temp }}/erpc-data-maintenance/maintenance-observation.json
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
-          node --input-type=module - "$OBSERVATION_FILE" "$EXPECTED_SOURCE_SHA" <<'NODE' >> "$GITHUB_OUTPUT"
+          test "$(git rev-parse HEAD)" = "$FROZEN_MAIN_SHA"
+          test -z "$(git status --porcelain)"
+          REMOTE_MAIN_SHA="$(git ls-remote origin refs/heads/main | awk 'NR == 1 {print $1}')"
+          test "$REMOTE_MAIN_SHA" = "$FROZEN_MAIN_SHA"
+          node --input-type=module - "$OBSERVATION_FILE" "$FROZEN_MAIN_SHA" "${{ github.run_id }}" "${{ github.run_attempt }}" <<'NODE'
           import { readFileSync } from 'node:fs'
-          const [file, expectedSourceSha] = process.argv.slice(2)
-          const envelope = JSON.parse(readFileSync(file, 'utf8'))
-          const receipts = envelope.receipts
-          if (!receipts || receipts.sourceSha !== expectedSourceSha) throw new Error('observation source binding is invalid')
-          if (!/^[0-9a-f]{64}$/u.test(receipts.catalogDigest)) throw new Error('catalog digest is invalid')
-          if (!/^[0-9a-f]{64}$/u.test(receipts.configDigest)) throw new Error('config digest is invalid')
-          console.log(`source_sha=${receipts.sourceSha}`)
-          console.log(`catalog_digest=${receipts.catalogDigest}`)
-          console.log(`config_digest=${receipts.configDigest}`)
+
+          const [file, frozenSha, runId, runAttempt] = process.argv.slice(2)
+          const observation = JSON.parse(readFileSync(file, 'utf8'))
+          if (observation.sourceSha !== frozenSha || observation.baseSha !== frozenSha || observation.execution?.githubRunId !== Number(runId) || observation.execution?.githubRunAttempt !== Number(runAttempt)) throw new Error('same-run maintenance observation is stale or foreign')
+          if (observation.execution?.origin !== 'scheduled' && observation.execution?.origin !== 'workflow_dispatch') throw new Error('maintenance observation origin is invalid')
           NODE
-      - name: Validate artifacts and create or reuse the PR
+      - name: Replay raw receipts and regenerate the exact candidate allowlist
+        env:
+          OBSERVATION_FILE: ${{ runner.temp }}/erpc-data-maintenance/maintenance-observation.json
+          FROZEN_MAIN_SHA: ${{ github.sha }}
+          OUTPUT_DIR: ${{ runner.temp }}/erpc-data-candidate
+        run: |
+          set -euo pipefail
+          rm -rf "$OUTPUT_DIR"
+          mkdir -p "$OUTPUT_DIR"
+          # This imports only the trusted main checkout. The downloaded files
+          # are parsed as JSON data by the trusted replay boundary and can never
+          # become executable code.
+          node registry/data-promotion.mjs replay \
+            --observation "$OBSERVATION_FILE" \
+            --source-sha "$FROZEN_MAIN_SHA" \
+            --base-sha "$FROZEN_MAIN_SHA" \
+            --output-dir "$OUTPUT_DIR"
+          test -f "$OUTPUT_DIR/data-candidate.json"
+          node --input-type=module - "$OUTPUT_DIR/data-candidate.json" "$FROZEN_MAIN_SHA" <<'NODE'
+          import { readFileSync } from 'node:fs'
+          import { CANDIDATE_OUTPUT_PATHS } from './registry/data-promotion.mjs'
+
+          const [file, frozenSha] = process.argv.slice(2)
+          const candidate = JSON.parse(readFileSync(file, 'utf8'))
+          if (candidate.sourceSha !== frozenSha || candidate.baseSha !== frozenSha || candidate.outputPaths.join('\0') !== CANDIDATE_OUTPUT_PATHS.join('\0')) throw new Error('candidate is not bound to the frozen source or exact output allowlist')
+          NODE
+      - name: Write or update the managed PR and explicitly dispatch CI
         env:
           GH_TOKEN: ${{ github.token }}
           GITHUB_TOKEN: ${{ github.token }}
-          OBSERVATION_FILE: ${{ runner.temp }}/registry-observation/observation-envelope.json
-          SOURCE_SHA: ${{ steps.binding.outputs.source_sha }}
-          CATALOG_DIGEST: ${{ steps.binding.outputs.catalog_digest }}
-          CONFIG_DIGEST: ${{ steps.binding.outputs.config_digest }}
+          OBSERVATION_FILE: ${{ runner.temp }}/erpc-data-maintenance/maintenance-observation.json
+          FROZEN_MAIN_SHA: ${{ github.sha }}
+          REPOSITORY: ${{ github.repository }}
+          ORIGIN_RUN_ID: ${{ github.run_id }}
+          ORIGIN_RUN_ATTEMPT: ${{ github.run_attempt }}
+          ORIGIN_ARTIFACT_NAME: data-maintenance-collector-${{ github.run_id }}-${{ github.run_attempt }}
+          REPORT_FILE: ${{ runner.temp }}/erpc-data-maintenance/data-maintenance-write-report.json
         run: |
           set -euo pipefail
-          writer_args=(
-            --observation "$OBSERVATION_FILE"
-            --base-sha "$SOURCE_SHA"
-            --source-sha "$SOURCE_SHA"
-            --catalog-digest "$CATALOG_DIGEST"
-            --write
-            --format=json
-          )
-          if [ -n "$CONFIG_DIGEST" ]; then
-            writer_args+=(--config-digest "$CONFIG_DIGEST")
-          fi
-          node registry/maintenance-pr.mjs "${writer_args[@]}"
+          node --input-type=module - "$OBSERVATION_FILE" "$FROZEN_MAIN_SHA" "$REPOSITORY" "$ORIGIN_RUN_ID" "$ORIGIN_RUN_ATTEMPT" "$ORIGIN_ARTIFACT_NAME" "$REPORT_FILE" <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs'
+          import { createGhAdapter } from './registry/maintenance-pr.mjs'
+          import { writeDataMaintenancePr } from './registry/data-promotion.mjs'
+
+          const [observationFile, sourceSha, repository, originRunId, originRunAttempt, originArtifactName, reportFile] = process.argv.slice(2)
+          const observation = JSON.parse(readFileSync(observationFile, 'utf8'))
+          const origin = {
+            kind: 'erpc-sdk-data-maintenance-collector',
+            workflowPath: '.github/workflows/registry-maintenance.yml',
+            runId: Number(originRunId),
+            runAttempt: Number(originRunAttempt),
+            artifactName: originArtifactName,
+            sourceSha,
+            baseSha: sourceSha,
+          }
+          if (!Number.isSafeInteger(origin.runId) || !Number.isSafeInteger(origin.runAttempt)) throw new Error('origin run binding is invalid')
+          const adapter = createGhAdapter({ repo: repository })
+          const augmentBody = (body) => {
+            const payload = JSON.parse(body)
+            payload.origin = origin
+            return JSON.stringify(payload)
+          }
+          const createPullRequest = adapter.createPullRequest.bind(adapter)
+          const updatePullRequest = adapter.updatePullRequest.bind(adapter)
+          adapter.createPullRequest = (request) => createPullRequest({ ...request, body: augmentBody(request.body) })
+          adapter.updatePullRequest = (number, request) => updatePullRequest(number, { ...request, body: augmentBody(request.body) })
+          const result = await writeDataMaintenancePr({ observation, adapter, repo: repository, apply: true })
+          const dispatchedRunId = result.workflow?.runId ?? result.workflow?.response?.id ?? result.workflow?.response?.runId
+          const dispatchedRunAttempt = result.workflow?.runAttempt ?? result.workflow?.run?.run_attempt ?? result.workflow?.run?.runAttempt
+          if (result.status !== 'NO_ACTION' && (!Number.isSafeInteger(Number(dispatchedRunId)) || Number(dispatchedRunId) < 1)) throw new Error('CI dispatch did not return a retained run ID')
+          writeFileSync(reportFile, `${JSON.stringify({ origin, result, ciRunId: dispatchedRunId ? Number(dispatchedRunId) : null, ciRunAttempt: dispatchedRunAttempt ? Number(dispatchedRunAttempt) : null }, null, 2)}\n`, { flag: 'w' })
+          process.stdout.write(`${JSON.stringify({ status: result.status, ciRunId: dispatchedRunId ?? null, ciRunAttempt: dispatchedRunAttempt ?? null })}\n`)
+          NODE
+      - name: Upload bounded writer report
+        if: always()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: data-maintenance-writer-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/erpc-data-maintenance/data-maintenance-write-report.json
+          if-no-files-found: warn
+          retention-days: 14

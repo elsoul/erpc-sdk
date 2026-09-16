@@ -22,6 +22,7 @@ export type SwapQuoteErrorCode =
   | 'SWAP_TOKEN_NOT_ACTIVE'
   | 'SWAP_UNSUPPORTED_TOKEN_STANDARD'
   | 'SWAP_UNSUPPORTED_ADAPTER'
+  | 'SWAP_UNSUPPORTED_TOKEN'
   | 'SWAP_CHAIN_MISMATCH'
   | 'SWAP_POOL_TOKEN_MISMATCH'
   | 'SWAP_PROGRAM_MISMATCH'
@@ -40,6 +41,7 @@ export const SWAP_QUOTE_ERROR_MESSAGES: Readonly<
   SWAP_TOKEN_NOT_ACTIVE: 'Swap token is not active',
   SWAP_UNSUPPORTED_TOKEN_STANDARD: 'Swap token standard is unsupported',
   SWAP_UNSUPPORTED_ADAPTER: 'Swap adapter is unsupported',
+  SWAP_UNSUPPORTED_TOKEN: 'Swap token is unsupported for the selected pool',
   SWAP_CHAIN_MISMATCH: 'Swap chain does not match the selected records',
   SWAP_POOL_TOKEN_MISMATCH: 'Swap pool tokens do not match the request',
   SWAP_PROGRAM_MISMATCH: 'Swap program does not match the selected records',
@@ -153,6 +155,141 @@ interface EvmState {
 }
 
 const SUPPORTED_QUOTE_ADAPTER = 'evm-constant-product-v2'
+
+interface SupportedQuoteCapability {
+  readonly chainId: string
+  readonly dexDeploymentId: string
+  readonly factoryAddress: string
+  readonly poolDefinitionId: string
+  readonly poolAddress: string
+  readonly token0DeploymentId: string
+  readonly token0Address: string
+  readonly token0Decimals: number
+  readonly token0Standard: 'erc20'
+  readonly token1DeploymentId: string
+  readonly token1Address: string
+  readonly token1Decimals: number
+  readonly token1Standard: 'erc20'
+  readonly adapterKind: typeof SUPPORTED_QUOTE_ADAPTER
+  readonly feeNumerator: string
+  readonly feeDenominator: string
+}
+
+// Swap eligibility is deliberately a handwritten, reviewed boundary. Catalog
+// growth can add lookup and ranking records without granting RPC quote access.
+const SUPPORTED_QUOTE_CAPABILITIES: readonly SupportedQuoteCapability[] =
+  Object.freeze([
+    Object.freeze({
+      chainId: 'eip155:1',
+      dexDeploymentId: 'dex-deployment-0001',
+      factoryAddress: '0x5c69bee701ef814a2b6a3edd4b1652cb9cc5aa6f',
+      poolDefinitionId: 'pool-0001',
+      poolAddress: '0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc',
+      token0DeploymentId: 'deployment-0008',
+      token0Address: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',
+      token0Decimals: 6,
+      token0Standard: 'erc20',
+      token1DeploymentId: 'deployment-0002',
+      token1Address: '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2',
+      token1Decimals: 18,
+      token1Standard: 'erc20',
+      adapterKind: SUPPORTED_QUOTE_ADAPTER,
+      feeNumerator: '3',
+      feeDenominator: '1000',
+    }),
+    Object.freeze({
+      chainId: 'eip155:43114',
+      dexDeploymentId: 'dex-deployment-0002',
+      factoryAddress: '0x9ad6c38be94206ca50bb0d90783181662f0cfa10',
+      poolDefinitionId: 'pool-0002',
+      poolAddress: '0xf4003f4efbe8691b60249e6afbd307abe7758adb',
+      token0DeploymentId: 'deployment-0004',
+      token0Address: '0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7',
+      token0Decimals: 18,
+      token0Standard: 'erc20',
+      token1DeploymentId: 'deployment-0009',
+      token1Address: '0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e',
+      token1Decimals: 6,
+      token1Standard: 'erc20',
+      adapterKind: SUPPORTED_QUOTE_ADAPTER,
+      feeNumerator: '3',
+      feeDenominator: '1000',
+    }),
+  ])
+
+const matchesSupportedQuoteCapability = (
+  pool: PoolDefinition,
+  dex: DexDeployment,
+  input: TokenDeployment,
+  output: TokenDeployment,
+): boolean => {
+  const capability = SUPPORTED_QUOTE_CAPABILITIES.find(
+    (entry) => entry.poolDefinitionId === pool.poolDefinitionId,
+  )
+  if (!capability) return false
+  if (
+    input.representationKind === 'unclassified' ||
+    output.representationKind === 'unclassified'
+  ) {
+    return false
+  }
+
+  const matchesToken = (
+    token: TokenDeployment,
+    deploymentId: string,
+    address: string,
+    decimals: number,
+    standard: 'erc20',
+  ): boolean =>
+    token.chainId === capability.chainId &&
+    token.deploymentId === deploymentId &&
+    token.address === address &&
+    token.decimals === decimals &&
+    token.standard === standard
+
+  return (
+    pool.chainId === capability.chainId &&
+    pool.dexDeploymentId === capability.dexDeploymentId &&
+    pool.address === capability.poolAddress &&
+    pool.token0DeploymentId === capability.token0DeploymentId &&
+    pool.token1DeploymentId === capability.token1DeploymentId &&
+    dex.chainId === capability.chainId &&
+    dex.dexDeploymentId === capability.dexDeploymentId &&
+    dex.programAddress === capability.factoryAddress &&
+    dex.adapterKind === capability.adapterKind &&
+    pool.adapter.kind === capability.adapterKind &&
+    pool.adapter.feeNumerator === capability.feeNumerator &&
+    pool.adapter.feeDenominator === capability.feeDenominator &&
+    (matchesToken(
+      input,
+      capability.token0DeploymentId,
+      capability.token0Address,
+      capability.token0Decimals,
+      capability.token0Standard,
+    ) ||
+      matchesToken(
+        input,
+        capability.token1DeploymentId,
+        capability.token1Address,
+        capability.token1Decimals,
+        capability.token1Standard,
+      )) &&
+    (matchesToken(
+      output,
+      capability.token0DeploymentId,
+      capability.token0Address,
+      capability.token0Decimals,
+      capability.token0Standard,
+    ) ||
+      matchesToken(
+        output,
+        capability.token1DeploymentId,
+        capability.token1Address,
+        capability.token1Decimals,
+        capability.token1Standard,
+      ))
+  )
+}
 const DEFAULT_FRESHNESS: NormalizedFreshness = Object.freeze({
   maxBlockAgeSeconds: 120,
   maxBlockLag: 3,
@@ -334,6 +471,9 @@ const normalizeQuoteRequest = (request: unknown): NormalizedRequest => {
   }
   if (input.standard !== 'erc20' || output.standard !== 'erc20') {
     swapFail('SWAP_UNSUPPORTED_TOKEN_STANDARD')
+  }
+  if (!matchesSupportedQuoteCapability(pool, dex, input, output)) {
+    swapFail('SWAP_UNSUPPORTED_TOKEN')
   }
 
   const snapshot = Object.freeze({

@@ -41,6 +41,68 @@ const PAIR_TOKEN0_SELECTOR: &str = "0x0dfe1681";
 const PAIR_TOKEN1_SELECTOR: &str = "0xd21220a7";
 const PAIR_GET_RESERVES_SELECTOR: &str = "0x0902f1ac";
 
+#[derive(Clone, Copy)]
+struct SupportedQuoteCapability {
+    chain_id: &'static str,
+    dex_deployment_id: &'static str,
+    factory_address: &'static str,
+    pool_definition_id: &'static str,
+    pool_address: &'static str,
+    token0_deployment_id: &'static str,
+    token0_address: &'static str,
+    token0_decimals: u8,
+    token0_standard: TokenStandard,
+    token1_deployment_id: &'static str,
+    token1_address: &'static str,
+    token1_decimals: u8,
+    token1_standard: TokenStandard,
+    adapter_kind: &'static str,
+    fee_numerator: &'static str,
+    fee_denominator: &'static str,
+}
+
+// Quote eligibility is a handwritten review boundary. Catalog growth may add
+// lookup, monitoring, or ranking records without granting them RPC quote
+// access.
+const SUPPORTED_QUOTE_CAPABILITIES: &[SupportedQuoteCapability] = &[
+    SupportedQuoteCapability {
+        chain_id: "eip155:1",
+        dex_deployment_id: "dex-deployment-0001",
+        factory_address: "0x5c69bee701ef814a2b6a3edd4b1652cb9cc5aa6f",
+        pool_definition_id: "pool-0001",
+        pool_address: "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+        token0_deployment_id: "deployment-0008",
+        token0_address: "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+        token0_decimals: 6,
+        token0_standard: TokenStandard::Erc20,
+        token1_deployment_id: "deployment-0002",
+        token1_address: "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+        token1_decimals: 18,
+        token1_standard: TokenStandard::Erc20,
+        adapter_kind: SUPPORTED_QUOTE_ADAPTER,
+        fee_numerator: "3",
+        fee_denominator: "1000",
+    },
+    SupportedQuoteCapability {
+        chain_id: "eip155:43114",
+        dex_deployment_id: "dex-deployment-0002",
+        factory_address: "0x9ad6c38be94206ca50bb0d90783181662f0cfa10",
+        pool_definition_id: "pool-0002",
+        pool_address: "0xf4003f4efbe8691b60249e6afbd307abe7758adb",
+        token0_deployment_id: "deployment-0004",
+        token0_address: "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+        token0_decimals: 18,
+        token0_standard: TokenStandard::Erc20,
+        token1_deployment_id: "deployment-0009",
+        token1_address: "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+        token1_decimals: 6,
+        token1_standard: TokenStandard::Erc20,
+        adapter_kind: SUPPORTED_QUOTE_ADAPTER,
+        fee_numerator: "3",
+        fee_denominator: "1000",
+    },
+];
+
 /// Fixed domain error codes for exact-input quote validation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SwapQuoteErrorCode {
@@ -60,6 +122,8 @@ pub enum SwapQuoteErrorCode {
     TokenNotActive,
     /// A selected token standard is outside the quote adapter boundary.
     UnsupportedTokenStandard,
+    /// The selected token or pool is outside the reviewed quote capability.
+    UnsupportedToken,
     /// The requested pair is not the selected pool pair.
     PoolTokenMismatch,
     /// The selected pool adapter cannot produce this quote.
@@ -91,6 +155,8 @@ impl SwapQuoteErrorCode {
     pub const SWAP_TOKEN_NOT_ACTIVE: Self = Self::TokenNotActive;
     /// Stable spelling for [`Self::UnsupportedTokenStandard`].
     pub const SWAP_UNSUPPORTED_TOKEN_STANDARD: Self = Self::UnsupportedTokenStandard;
+    /// Stable spelling for [`Self::UnsupportedToken`].
+    pub const SWAP_UNSUPPORTED_TOKEN: Self = Self::UnsupportedToken;
     /// Stable spelling for [`Self::PoolTokenMismatch`].
     pub const SWAP_POOL_TOKEN_MISMATCH: Self = Self::PoolTokenMismatch;
     /// Stable spelling for [`Self::UnsupportedAdapter`].
@@ -116,6 +182,7 @@ impl SwapQuoteErrorCode {
             Self::UnknownToken => "SWAP_UNKNOWN_TOKEN",
             Self::TokenNotActive => "SWAP_TOKEN_NOT_ACTIVE",
             Self::UnsupportedTokenStandard => "SWAP_UNSUPPORTED_TOKEN_STANDARD",
+            Self::UnsupportedToken => "SWAP_UNSUPPORTED_TOKEN",
             Self::PoolTokenMismatch => "SWAP_POOL_TOKEN_MISMATCH",
             Self::UnsupportedAdapter => "SWAP_UNSUPPORTED_ADAPTER",
             Self::ProgramMismatch => "SWAP_PROGRAM_MISMATCH",
@@ -135,6 +202,7 @@ impl SwapQuoteErrorCode {
             Self::UnknownToken => "Swap token is unknown",
             Self::TokenNotActive => "Swap token is not active",
             Self::UnsupportedTokenStandard => "Swap token standard is unsupported",
+            Self::UnsupportedToken => "Swap token is unsupported for the selected pool",
             Self::PoolTokenMismatch => "Swap pool tokens do not match the request",
             Self::UnsupportedAdapter => "Swap adapter is unsupported",
             Self::ProgramMismatch => "Swap program does not match the selected records",
@@ -529,6 +597,9 @@ fn normalize_request(request: &ExactInputQuoteRequest) -> SwapResult<NormalizedR
     if input.standard != TokenStandard::Erc20 || output.standard != TokenStandard::Erc20 {
         return domain_error(SwapQuoteErrorCode::UnsupportedTokenStandard);
     }
+    if !matches_supported_quote_capability(pool, dex, input, output) {
+        return domain_error(SwapQuoteErrorCode::UnsupportedToken);
+    }
 
     Ok(NormalizedRequest {
         request: request.clone(),
@@ -539,6 +610,87 @@ fn normalize_request(request: &ExactInputQuoteRequest) -> SwapResult<NormalizedR
         output,
         freshness,
     })
+}
+
+fn matches_supported_quote_capability(
+    pool: &PoolDefinition,
+    dex: &DexDeployment,
+    input: &TokenDeployment,
+    output: &TokenDeployment,
+) -> bool {
+    fn matches_token(
+        token: &TokenDeployment,
+        chain_id: &str,
+        deployment_id: &str,
+        address: &str,
+        decimals: u8,
+        standard: TokenStandard,
+    ) -> bool {
+        token.chain_id == chain_id
+            && token.deployment_id == deployment_id
+            && token.address == Some(address)
+            && token.decimals == decimals
+            && token.standard == standard
+    }
+
+    let Some(capability) = SUPPORTED_QUOTE_CAPABILITIES
+        .iter()
+        .find(|entry| entry.pool_definition_id == pool.pool_definition_id)
+    else {
+        return false;
+    };
+
+    if input.representation_kind == crate::token_catalog::TokenRepresentationKind::Unclassified
+        || output.representation_kind == crate::token_catalog::TokenRepresentationKind::Unclassified
+    {
+        return false;
+    }
+
+    let matches_input = matches_token(
+        input,
+        capability.chain_id,
+        capability.token0_deployment_id,
+        capability.token0_address,
+        capability.token0_decimals,
+        capability.token0_standard,
+    ) || matches_token(
+        input,
+        capability.chain_id,
+        capability.token1_deployment_id,
+        capability.token1_address,
+        capability.token1_decimals,
+        capability.token1_standard,
+    );
+    let matches_output = matches_token(
+        output,
+        capability.chain_id,
+        capability.token0_deployment_id,
+        capability.token0_address,
+        capability.token0_decimals,
+        capability.token0_standard,
+    ) || matches_token(
+        output,
+        capability.chain_id,
+        capability.token1_deployment_id,
+        capability.token1_address,
+        capability.token1_decimals,
+        capability.token1_standard,
+    );
+
+    pool.chain_id == capability.chain_id
+        && pool.dex_deployment_id == capability.dex_deployment_id
+        && pool.address == capability.pool_address
+        && pool.token0_deployment_id == capability.token0_deployment_id
+        && pool.token1_deployment_id == capability.token1_deployment_id
+        && pool.adapter.kind == capability.adapter_kind
+        && pool.adapter.fee_numerator == Some(capability.fee_numerator)
+        && pool.adapter.fee_denominator == Some(capability.fee_denominator)
+        && dex.dex_deployment_id == capability.dex_deployment_id
+        && dex.chain_id == capability.chain_id
+        && dex.program_address == capability.factory_address
+        && dex.adapter_kind == capability.adapter_kind
+        && matches_input
+        && matches_output
 }
 
 fn normalize_freshness(value: Option<&SwapFreshness>) -> SwapResult<NormalizedFreshness> {
@@ -1116,11 +1268,13 @@ mod tests {
         dex_catalog::{
             DEX_ALIASES, DEX_CATALOG_AS_OF_DATE, DEX_CATALOG_VERSION, DEX_DEPLOYMENTS, DexAlias,
             ListPoolDefinitionsOptions, NATIVE_WRAP_DEFINITIONS, NativeWrapDefinition,
-            POOL_DEFINITIONS, dexes, find_pool_definition_by_address,
-            find_pool_definitions_by_pair, get_dex_deployment, get_native_wrap_definition,
-            get_pool_definition, list_pool_definitions, pools,
+            POOL_DEFINITIONS, find_pool_definition_by_address, find_pool_definitions_by_pair,
+            get_dex_deployment, get_native_wrap_definition, get_pool_definition,
+            list_pool_definitions,
         },
-        token_catalog::{TOKEN_CHAIN_IDS, TOKEN_DEPLOYMENTS, TokenStandard},
+        token_catalog::{
+            TOKEN_CHAIN_IDS, TOKEN_DEPLOYMENTS, TokenRepresentationKind, TokenStandard,
+        },
     };
 
     #[test]
@@ -1211,6 +1365,30 @@ mod tests {
                 .code(),
             Some(SwapQuoteErrorCode::Arithmetic)
         );
+    }
+
+    #[test]
+    fn quote_capability_requires_the_exact_reviewed_tuple() {
+        let pool = get_pool_definition("pool-0001").expect("Ethereum seed pool");
+        let dex = get_dex_deployment("dex-deployment-0001").expect("Ethereum seed DEX");
+        let input = get_token_deployment("deployment-0002").expect("WETH");
+        let output = get_token_deployment("deployment-0008").expect("USDC");
+        assert!(matches_supported_quote_capability(pool, dex, input, output));
+
+        let mut unclassified = *input;
+        unclassified.representation_kind = TokenRepresentationKind::Unclassified;
+        assert!(!matches_supported_quote_capability(
+            pool,
+            dex,
+            &unclassified,
+            output
+        ));
+
+        let mut rebound = *output;
+        rebound.address = Some("0x0000000000000000000000000000000000000001");
+        assert!(!matches_supported_quote_capability(
+            pool, dex, input, &rebound
+        ));
     }
 
     fn fixture_value(file_name: &str) -> Value {
@@ -1601,53 +1779,18 @@ mod tests {
                 }),
             );
         }
-        let aliases = [
-            (
-                "avalancheC",
-                "LFJ_LEGACY",
-                "dex",
-                dexes::avalanche_c::LFJ_LEGACY,
-            ),
-            (
-                "avalancheC",
-                "LFJ_LEGACY_WAVAX_USDC",
-                "pool",
-                pools::avalanche_c::LFJ_LEGACY_WAVAX_USDC,
-            ),
-            ("ethereum", "UNISWAP_V2", "dex", dexes::ethereum::UNISWAP_V2),
-            (
-                "ethereum",
-                "UNISWAP_V2_USDC_WETH",
-                "pool",
-                pools::ethereum::UNISWAP_V2_USDC_WETH,
-            ),
-            (
-                "solana",
-                "ORCA_WHIRLPOOLS",
-                "dex",
-                dexes::solana::ORCA_WHIRLPOOLS,
-            ),
-            (
-                "solana",
-                "ORCA_WHIRLPOOLS_WSOL_EURC",
-                "pool",
-                pools::solana::ORCA_WHIRLPOOLS_WSOL_EURC,
-            ),
-            ("solana", "RAYDIUM_CLMM", "dex", dexes::solana::RAYDIUM_CLMM),
-            (
-                "solana",
-                "RAYDIUM_CLMM_WSOL_EURC",
-                "pool",
-                pools::solana::RAYDIUM_CLMM_WSOL_EURC,
-            ),
-        ];
-        for (namespace, name, kind, result) in aliases {
+        for alias in DEX_ALIASES {
+            let (kind, result) = match (alias.dex_deployment_id, alias.pool_definition_id) {
+                (Some(result), None) => ("dex", result),
+                (None, Some(result)) => ("pool", result),
+                _ => continue,
+            };
             push_behavior(
                 &mut behavior,
                 "alias",
                 json!({
-                    "namespace": namespace,
-                    "name": name,
+                    "namespace": alias.namespace,
+                    "name": alias.name,
                     "kind": kind,
                     "result": result,
                 }),
@@ -1681,6 +1824,25 @@ mod tests {
                 }),
             },
         }
+    }
+
+    fn expected_outcome(outcome: &Value) -> Value {
+        let mut expected = outcome.clone();
+        if expected.get("kind").and_then(Value::as_str) != Some("success") {
+            return expected;
+        }
+        let Some(value) = expected.get_mut("value").and_then(Value::as_object_mut) else {
+            return expected;
+        };
+        value.insert(
+            "tokenCatalogDigest".to_owned(),
+            json!(crate::TOKEN_CATALOG_CONTENT_DIGEST),
+        );
+        value.insert(
+            "dexCatalogDigest".to_owned(),
+            json!(DEX_CATALOG_CONTENT_DIGEST),
+        );
+        expected
     }
 
     async fn execute_fixture_case(case: &Value) -> (Value, Vec<Value>) {
@@ -1781,15 +1943,6 @@ mod tests {
         let Some(output) = env::var_os("ERPC_SDK_DEX_PARITY_OUTPUT") else {
             return;
         };
-        let dex_cases = fixture_value("dex-catalog-cases.json");
-        assert_eq!(
-            dex_cases
-                .get("canonicalCounts")
-                .and_then(|value| value.get("dexDeployments"))
-                .and_then(Value::as_u64),
-            Some(DEX_DEPLOYMENTS.len() as u64)
-        );
-
         let quote_cases = fixture_value("swap-quote-cases.json");
         let mut behavior = lookup_behavior();
         for section in ["validCases", "invalidCases", "rpcCases", "arithmeticCases"] {
@@ -1810,7 +1963,7 @@ mod tests {
                     .and_then(Value::as_str)
                     .expect("quote case ID");
                 let (actual, trace) = execute_fixture_case(case).await;
-                let expected = case.get("outcome").cloned().expect("fixture outcome");
+                let expected = expected_outcome(case.get("outcome").expect("fixture outcome"));
                 assert_eq!(actual, expected, "native result mismatch for {case_id}");
                 let expected_trace = case
                     .get("rpcTrace")

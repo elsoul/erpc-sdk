@@ -1,0 +1,103 @@
+{
+  "schemaVersion": 1,
+  "description": "A deterministic append-only example for one newly discovered unclassified token and the first pool that references it.",
+  "token": {
+    "asset": {
+      "assetId": "asset-growth-unclassified-0001",
+      "name": "Growth Fixture Token",
+      "representationKind": "unclassified",
+      "stableCurrency": null,
+      "underlyingAssetId": null,
+      "economicReferenceAssetId": null,
+      "evidence": ["https://example.invalid/registry-growth-fixture"],
+      "asOfDate": "2026-09-16"
+    },
+    "deployment": {
+      "deploymentId": "deployment-growth-unclassified-0001",
+      "assetId": "asset-growth-unclassified-0001",
+      "chainId": "eip155:1",
+      "symbol": "GROW",
+      "decimals": 18,
+      "standard": "erc20",
+      "address": "0x00000000000000000000000000000000000000aa",
+      "status": "active",
+      "replacedByDeploymentId": null,
+      "evidence": ["https://example.invalid/registry-growth-fixture"],
+      "asOfDate": "2026-09-16"
+    },
+    "alias": {
+      "namespace": "ethereum",
+      "name": "GROW",
+      "deploymentId": "deployment-growth-unclassified-0001"
+    }
+  },
+  "dex": {
+    "pool": {
+      "poolDefinitionId": "pool-growth-unclassified-0001",
+      "dexDeploymentId": "dex-deployment-0001",
+      "chainId": "eip155:1",
+      "address": "0x00000000000000000000000000000000000000bb",
+      "token0DeploymentId": "deployment-growth-unclassified-0001",
+      "token1DeploymentId": "deployment-0002",
+      "adapter": {
+        "kind": "evm-constant-product-v2",
+        "feeNumerator": "3",
+        "feeDenominator": "1000"
+      },
+      "status": "active",
+      "replacedByPoolDefinitionId": null,
+      "evidence": ["https://example.invalid/registry-growth-fixture"],
+      "asOfDate": "2026-09-16"
+    },
+    "alias": {
+      "namespace": "ethereum",
+      "name": "UNISWAP_V2_GROW_WETH",
+      "dexDeploymentId": null,
+      "poolDefinitionId": "pool-growth-unclassified-0001",
+      "evidence": ["https://example.invalid/registry-growth-fixture"],
+      "asOfDate": "2026-09-16"
+    }
+  },
+  "expected": {
+    "assetDelta": 1,
+    "deploymentDelta": 1,
+    "tokenAliasDelta": 1,
+    "poolDelta": 1,
+    "dexAliasDelta": 1,
+    "stableCurrency": null,
+    "underlyingAssetId": null,
+    "economicReferenceAssetId": null
+  },
+  "lookupGrowth": {
+    "matchingPools": [
+      {
+        "poolDefinitionId": "pool-growth-solana-matching-0001",
+        "dexDeploymentId": "dex-deployment-0003",
+        "chainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+        "address": "4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi",
+        "token0DeploymentId": "deployment-0006",
+        "token1DeploymentId": "deployment-0013",
+        "adapter": { "kind": "solana-orca-whirlpool", "feeNumerator": null, "feeDenominator": null },
+        "status": "active",
+        "replacedByPoolDefinitionId": null,
+        "evidence": ["https://example.invalid/registry-growth-solana-matching"],
+        "asOfDate": "2026-09-16"
+      }
+    ],
+    "nonMatchingPools": [
+      {
+        "poolDefinitionId": "pool-growth-solana-nonmatching-0001",
+        "dexDeploymentId": "dex-deployment-0003",
+        "chainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+        "address": "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
+        "token0DeploymentId": "deployment-0006",
+        "token1DeploymentId": "deployment-0010",
+        "adapter": { "kind": "solana-orca-whirlpool", "feeNumerator": null, "feeDenominator": null },
+        "status": "active",
+        "replacedByPoolDefinitionId": null,
+        "evidence": ["https://example.invalid/registry-growth-solana-nonmatching"],
+        "asOfDate": "2026-09-16"
+      }
+    ]
+  }
+}

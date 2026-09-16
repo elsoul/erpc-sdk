@@ -59,31 +59,60 @@
 - Keep native API batching disabled locally while preserving C-Chain EVM batch
   behavior.
 
-## 0.7 — Token, DEX, and pool catalogs (UNRELEASED)
+## 0.7 — Token, DEX, pool, and ranking catalogs (UNRELEASED)
 
-The bounded token catalog is on `main`; the DEX and pool catalogs and quote
-slice are in the source tree and planned for `0.7.0`. The current published
-package baseline, latest GitHub release, and package manifests remain `0.6.0`,
-so these new catalog and quote exports are not available from the currently
-published package.
+The source checkout contains the bounded token, DEX, pool, and ranking
+implementation planned for `0.7.0`. A 2026-09-16 local integration populated
+the source snapshot with partial three-chain coverage: 44 assets, 65 token
+deployments, 12 pools, and 11 ranking records. The current published package
+baseline, latest GitHub release, and package manifests remain `0.6.0`, so
+these new catalog and quote exports are not available from the currently
+published packages.
 
-- Bundle 39 assets, 60 deployments, and 60 aliases across Ethereum, Solana,
-  and Avalanche C-Chain in all five SDKs.
+- Keep token records source-backed and bounded across Ethereum, Solana, and
+  Avalanche C-Chain in all five SDKs.
 - Expose local asset and deployment lookup, chain and stable-currency filters,
   symbol and address lookup, native-token lookup, and lifecycle metadata.
 - Keep `USD`, `EUR`, and `JPY` as explicit stable-currency labels. The bounded
   catalog does not claim complete coverage, ranking, or market data.
-- Bundle four DEX deployments, four pool definitions, three native-to-wrapped
-  relationships, and eight chain-qualified aliases in all five SDKs.
+- Preserve append-only public IDs and aliases. New tokens discovered by the
+  bounded three-chain RPC scan remain unclassified with address-only names and
+  symbols, with null `stableCurrency`, `underlyingAssetId`, and
+  `economicReferenceAssetId` fields until review.
+- Maintain bounded resumable factory/program discovery with 8-token and
+  8-pool admission caps. Fresh verified receipts revalidate deferred work;
+  outages never retire existing records.
 - Provide RPC-only exact-input quotes for Ethereum Uniswap V2 WETH/USDC and
   Avalanche LFJ legacy WAVAX/USDC. Keep Solana Orca Whirlpools and Raydium CLMM
   WSOL/EURC records available for lookup while CLMM quote support is pending.
-- Run the installed Tuesday 03:17 UTC observation PR and Thursday 03:47 UTC
-  release-preparation PR workflows. They create or update reviewable PRs and
-  CI; package publication remains a human-invoked release action.
+- Expose offline ranking metadata and list APIs. The native metric is exact
+  total supply multiplied by direct native-pool price in native atomic units,
+  explicitly separate from circulating market cap. Partial coverage and
+  unranked reasons stay visible; global USD market cap is rights-gated and
+  disabled by default.
+- Keep the populated local snapshot reviewable: token digest
+  `5a7ed7f57a8cfaed87c46512586da8123e94fae80f1ce18ebb3861ccb95a9f70`, DEX
+  digest `a0268a45d2b037ab8ea35aad1c45366d2582cbc9b10681ded590b56e07b011c8`,
+  and ranking digest
+  `f8ae479007fa782995aaaf6aa1c414ba1b6a10a92b7abe481b055293a91ac01c`.
+- Run the installed daily 03:17 UTC discovery/ranking PR, hourly minute-13
+  read-only pool monitor with a persisted batch of 32, and Thursday 03:47 UTC
+  release-preparation PR workflow. They create or update reviewable work and
+  CI; live scheduled success is verified separately.
+- Keep `ERPC_ENABLE_AUTOMATIC_DATA_MERGE=OFF` and
+  `ERPC_ENABLE_AUTOMATIC_RELEASE=OFF` until the corresponding protections and
+  human approvals are in place. Eligible additive data can merge after exact
+  CI; a later data merge followed by a version-only PR can then produce paired
+  root and Go tags before an explicit publisher dispatch.
 - Keep release preparation tied to a reviewed source basis: SDK shipping-code
   changes require a source-basis refresh before automatic preparation can apply.
   See the [weekly maintenance runbook](registry/weekly-maintenance.md).
+
+Initial `0.7.0` feature release work and source, schema, adapter, or API
+changes require manual review. The ranking and discovery descriptions above
+document source-checkout behavior and the dated local integration; they do not
+assert Actions promotion, native runtime parity, or current live automation
+success.
 
 ## Next phase — routes and transaction execution
 

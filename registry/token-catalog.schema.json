@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/elsoul/erpc-sdk/blob/main/registry/token-catalog.schema.json",
   "title": "ERPC canonical token catalog",
-  "description": "Canonical source records for the offline five-language token catalog. Evidence and per-record as-of dates are source provenance and are removed from generated SDK runtime records.",
+  "description": "Canonical source records for the offline five-language token catalog. Evidence and per-record as-of dates are source provenance and are removed from generated SDK runtime records. Newly discovered assets may use unclassified while all classification and relation fields remain null.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -104,7 +104,8 @@
             "native",
             "issued",
             "wrapped",
-            "bridged"
+            "bridged",
+            "unclassified"
           ]
         },
         "stableCurrency": {
@@ -145,7 +146,31 @@
         "asOfDate": {
           "$ref": "#/$defs/date"
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "representationKind": {
+                "const": "unclassified"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "stableCurrency": {
+                "const": null
+              },
+              "underlyingAssetId": {
+                "const": null
+              },
+              "economicReferenceAssetId": {
+                "const": null
+              }
+            }
+          }
+        }
+      ]
     },
     "deployment": {
       "type": "object",

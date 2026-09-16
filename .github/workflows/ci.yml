@@ -161,16 +161,19 @@ jobs:
         run: |
           node --test scripts/agent-harness.test.mjs
           node scripts/agent-harness.mjs check
+      - name: Install the pinned Rust toolchain for catalog render checks
+        run: |
+          rustup toolchain install 1.85.0 --profile minimal --component clippy,rustfmt
+          rustup default 1.85.0
+      - name: Install the pinned Go toolchain for catalog render checks
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: '1.22.x'
+          cache: false
       - name: Run catalog and maintenance tests
-        run: >-
-          node --test
-          registry/token-catalog.test.mjs
-          registry/observer.test.mjs
-          registry/release-prep.test.mjs
-          registry/maintenance-pr.test.mjs
-          registry/ci-catalog-baseline.test.mjs
-          registry/release-command.test.mjs
-          registry/dex-catalog.test.mjs
+        run: node --test registry/*.test.mjs
+      - name: Verify generated token ranking outputs
+        run: node registry/generate-token-rankings.mjs --check --language all
       - name: Verify generated catalogs against the validated base
         env:
           VERIFIED_BASE: ${{ steps.baseline.outputs.verified_base }}
@@ -219,12 +222,16 @@ jobs:
       - name: Capture TypeScript DEX parity from the built public package
         env:
           ERPC_SDK_DEX_PARITY_OUTPUT: ${{ runner.temp }}/dex-parity/typescript.json
+          ERPC_SDK_RANKING_PARITY_OUTPUT: ${{ runner.temp }}/ranking-parity/typescript.json
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/dex-parity"
+          mkdir -p "$RUNNER_TEMP/ranking-parity"
           rm -f "$ERPC_SDK_DEX_PARITY_OUTPUT"
+          rm -f "$ERPC_SDK_RANKING_PARITY_OUTPUT"
           corepack pnpm --filter @elsoul/erpc-sdk test
           test -s "$ERPC_SDK_DEX_PARITY_OUTPUT"
+          test -s "$ERPC_SDK_RANKING_PARITY_OUTPUT"
       - name: Switch to the minimum supported Node.js version
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
@@ -236,6 +243,14 @@ jobs:
         with:
           name: dex-parity-typescript-${{ github.sha }}
           path: ${{ runner.temp }}/dex-parity/typescript.json
+          overwrite: true
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload TypeScript ranking parity
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: ranking-parity-typescript-${{ github.sha }}
+          path: ${{ runner.temp }}/ranking-parity/typescript.json
           overwrite: true
           if-no-files-found: error
           retention-days: 7
@@ -267,12 +282,16 @@ jobs:
       - name: Test
         env:
           ERPC_SDK_DEX_PARITY_OUTPUT: ${{ runner.temp }}/dex-parity/rust.json
+          ERPC_SDK_RANKING_PARITY_OUTPUT: ${{ runner.temp }}/ranking-parity/rust.json
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/dex-parity"
+          mkdir -p "$RUNNER_TEMP/ranking-parity"
           rm -f "$ERPC_SDK_DEX_PARITY_OUTPUT"
+          rm -f "$ERPC_SDK_RANKING_PARITY_OUTPUT"
           cargo test --workspace --locked
           test -s "$ERPC_SDK_DEX_PARITY_OUTPUT"
+          test -s "$ERPC_SDK_RANKING_PARITY_OUTPUT"
       - name: Build documentation
         env:
           RUSTDOCFLAGS: -D warnings
@@ -288,6 +307,14 @@ jobs:
         with:
           name: dex-parity-rust-${{ github.sha }}
           path: ${{ runner.temp }}/dex-parity/rust.json
+          overwrite: true
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload Rust ranking parity
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: ranking-parity-rust-${{ github.sha }}
+          path: ${{ runner.temp }}/ranking-parity/rust.json
           overwrite: true
           if-no-files-found: error
           retention-days: 7
@@ -329,10 +356,13 @@ jobs:
       - name: Capture Python DEX parity from the installed wheel
         env:
           ERPC_SDK_DEX_PARITY_OUTPUT: ${{ runner.temp }}/dex-parity/python.json
+          ERPC_SDK_RANKING_PARITY_OUTPUT: ${{ runner.temp }}/ranking-parity/python.json
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/dex-parity"
+          mkdir -p "$RUNNER_TEMP/ranking-parity"
           rm -f "$ERPC_SDK_DEX_PARITY_OUTPUT"
+          rm -f "$ERPC_SDK_RANKING_PARITY_OUTPUT"
           DEX_PYTHON_VENV="$RUNNER_TEMP/dex-python-venv"
           rm -rf "$DEX_PYTHON_VENV"
           python -m venv "$DEX_PYTHON_VENV"
@@ -354,11 +384,20 @@ jobs:
           PY
           "$DEX_PYTHON_VENV/bin/python" -I -m pytest --import-mode=importlib "$GITHUB_WORKSPACE/packages/python/tests"
           test -s "$ERPC_SDK_DEX_PARITY_OUTPUT"
+          test -s "$ERPC_SDK_RANKING_PARITY_OUTPUT"
       - name: Upload Python DEX parity
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
           name: dex-parity-python-${{ github.sha }}
           path: ${{ runner.temp }}/dex-parity/python.json
+          overwrite: true
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload Python ranking parity
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: ranking-parity-python-${{ github.sha }}
+          path: ${{ runner.temp }}/ranking-parity/python.json
           overwrite: true
           if-no-files-found: error
           retention-days: 7
@@ -397,12 +436,16 @@ jobs:
       - name: Test with the race detector
         env:
           ERPC_SDK_DEX_PARITY_OUTPUT: ${{ runner.temp }}/dex-parity/go.json
+          ERPC_SDK_RANKING_PARITY_OUTPUT: ${{ runner.temp }}/ranking-parity/go.json
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/dex-parity"
+          mkdir -p "$RUNNER_TEMP/ranking-parity"
           rm -f "$ERPC_SDK_DEX_PARITY_OUTPUT"
+          rm -f "$ERPC_SDK_RANKING_PARITY_OUTPUT"
           go test -race -count=1 ./...
           test -s "$ERPC_SDK_DEX_PARITY_OUTPUT"
+          test -s "$ERPC_SDK_RANKING_PARITY_OUTPUT"
       - name: Inspect module packages
         run: go list ./...
       - name: Upload Go DEX parity
@@ -410,6 +453,14 @@ jobs:
         with:
           name: dex-parity-go-${{ github.sha }}
           path: ${{ runner.temp }}/dex-parity/go.json
+          overwrite: true
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload Go ranking parity
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: ranking-parity-go-${{ github.sha }}
+          path: ${{ runner.temp }}/ranking-parity/go.json
           overwrite: true
           if-no-files-found: error
           retention-days: 7
@@ -452,10 +503,13 @@ jobs:
       - name: Capture Ruby DEX parity from the installed gem
         env:
           ERPC_SDK_DEX_PARITY_OUTPUT: ${{ runner.temp }}/dex-parity/ruby.json
+          ERPC_SDK_RANKING_PARITY_OUTPUT: ${{ runner.temp }}/ranking-parity/ruby.json
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/dex-parity"
+          mkdir -p "$RUNNER_TEMP/ranking-parity"
           rm -f "$ERPC_SDK_DEX_PARITY_OUTPUT"
+          rm -f "$ERPC_SDK_RANKING_PARITY_OUTPUT"
           DEX_GEM_HOME="$RUNNER_TEMP/dex-ruby-gems"
           rm -rf "$DEX_GEM_HOME"
           mkdir -p "$DEX_GEM_HOME"
@@ -482,11 +536,20 @@ jobs:
           ARGV.sort.each { |file| load File.expand_path(file) }
           RUBY
           test -s "$ERPC_SDK_DEX_PARITY_OUTPUT"
+          test -s "$ERPC_SDK_RANKING_PARITY_OUTPUT"
       - name: Upload Ruby DEX parity
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
           name: dex-parity-ruby-${{ github.sha }}
           path: ${{ runner.temp }}/dex-parity/ruby.json
+          overwrite: true
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload Ruby ranking parity
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: ranking-parity-ruby-${{ github.sha }}
+          path: ${{ runner.temp }}/ranking-parity/ruby.json
           overwrite: true
           if-no-files-found: error
           retention-days: 7
@@ -573,3 +636,324 @@ jobs:
             --snapshot "$RUNNER_TEMP/dex-parity/python.json" \
             --snapshot "$RUNNER_TEMP/dex-parity/go.json" \
             --snapshot "$RUNNER_TEMP/dex-parity/ruby.json"
+
+  ranking-parity:
+    name: Verify native token ranking runtime parity
+    needs:
+      - validate-source
+      - catalog
+      - typescript
+      - rust
+      - python
+      - go
+      - ruby
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Require every ranking parity producer to pass
+        env:
+          VALIDATE_SOURCE_RESULT: ${{ needs.validate-source.result }}
+          CATALOG_RESULT: ${{ needs.catalog.result }}
+          TYPESCRIPT_RESULT: ${{ needs.typescript.result }}
+          RUST_RESULT: ${{ needs.rust.result }}
+          PYTHON_RESULT: ${{ needs.python.result }}
+          GO_RESULT: ${{ needs.go.result }}
+          RUBY_RESULT: ${{ needs.ruby.result }}
+        run: |
+          set -euo pipefail
+          test "$VALIDATE_SOURCE_RESULT" = success
+          test "$CATALOG_RESULT" = success
+          test "$TYPESCRIPT_RESULT" = success
+          test "$RUST_RESULT" = success
+          test "$PYTHON_RESULT" = success
+          test "$GO_RESULT" = success
+          test "$RUBY_RESULT" = success
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 1
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Assert immutable ranking checkout
+        env:
+          EXPECTED_HEAD_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
+          test -z "$(git status --porcelain)"
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+      - name: Download TypeScript ranking parity from this run
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: ranking-parity-typescript-${{ github.sha }}
+          path: ${{ runner.temp }}/ranking-parity/typescript
+      - name: Download Rust ranking parity from this run
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: ranking-parity-rust-${{ github.sha }}
+          path: ${{ runner.temp }}/ranking-parity/rust
+      - name: Download Python ranking parity from this run
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: ranking-parity-python-${{ github.sha }}
+          path: ${{ runner.temp }}/ranking-parity/python
+      - name: Download Go ranking parity from this run
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: ranking-parity-go-${{ github.sha }}
+          path: ${{ runner.temp }}/ranking-parity/go
+      - name: Download Ruby ranking parity from this run
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: ranking-parity-ruby-${{ github.sha }}
+          path: ${{ runner.temp }}/ranking-parity/ruby
+      - name: Verify native token ranking runtime parity
+        run: |
+          set -euo pipefail
+          node registry/verify-ranking-parity.mjs \
+            --snapshot "$RUNNER_TEMP/ranking-parity/typescript/typescript.json" \
+            --snapshot "$RUNNER_TEMP/ranking-parity/rust/rust.json" \
+            --snapshot "$RUNNER_TEMP/ranking-parity/python/python.json" \
+            --snapshot "$RUNNER_TEMP/ranking-parity/go/go.json" \
+            --snapshot "$RUNNER_TEMP/ranking-parity/ruby/ruby.json"
+
+  required-ci:
+    name: required-ci
+    needs:
+      - validate-source
+      - catalog
+      - typescript
+      - rust
+      - python
+      - go
+      - ruby
+      - dex-parity
+      - ranking-parity
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Require every required CI job to pass
+        env:
+          VALIDATE_SOURCE_RESULT: ${{ needs.validate-source.result }}
+          CATALOG_RESULT: ${{ needs.catalog.result }}
+          TYPESCRIPT_RESULT: ${{ needs.typescript.result }}
+          RUST_RESULT: ${{ needs.rust.result }}
+          PYTHON_RESULT: ${{ needs.python.result }}
+          GO_RESULT: ${{ needs.go.result }}
+          RUBY_RESULT: ${{ needs.ruby.result }}
+          DEX_PARITY_RESULT: ${{ needs.dex-parity.result }}
+          RANKING_PARITY_RESULT: ${{ needs.ranking-parity.result }}
+        run: |
+          set -euo pipefail
+          test "$VALIDATE_SOURCE_RESULT" = success
+          test "$CATALOG_RESULT" = success
+          test "$TYPESCRIPT_RESULT" = success
+          test "$RUST_RESULT" = success
+          test "$PYTHON_RESULT" = success
+          test "$GO_RESULT" = success
+          test "$RUBY_RESULT" = success
+          test "$DEX_PARITY_RESULT" = success
+          test "$RANKING_PARITY_RESULT" = success
+
+  source-binding:
+    name: Emit immutable CI source binding
+    needs: required-ci
+    if: needs.required-ci.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 1
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Resolve and write exact source/base binding
+        id: binding
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_REF: ${{ github.ref }}
+          HEAD_SHA: ${{ github.sha }}
+          DISPATCH_BASE_SHA: ${{ inputs.base_sha }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          WORKFLOW_PATH: .github/workflows/ci.yml
+          OUTPUT_DIR: ${{ runner.temp }}/ci-binding
+        run: |
+          set -euo pipefail
+          mkdir -p "$OUTPUT_DIR"
+          case "$EVENT_NAME" in
+            pull_request) BASE_SHA="$PR_BASE_SHA" ;;
+            push) BASE_SHA="$PUSH_BEFORE_SHA" ;;
+            workflow_dispatch) BASE_SHA="$DISPATCH_BASE_SHA" ;;
+            *) echo "unsupported CI event: $EVENT_NAME" >&2; exit 64 ;;
+          esac
+          test -n "$BASE_SHA"
+          test "$(git rev-parse HEAD)" = "$HEAD_SHA"
+          test -z "$(git status --porcelain)"
+          node --input-type=module - "$OUTPUT_DIR" "$HEAD_SHA" "$BASE_SHA" "$WORKFLOW_PATH" "$RUN_ID" "$RUN_ATTEMPT" "$EVENT_NAME" "$EVENT_REF" <<'NODE'
+          import { writeFileSync } from 'node:fs'
+
+          const [outputDir, headSha, baseSha, workflowPath, runId, runAttempt, event, ref] = process.argv.slice(2)
+          const sha = /^[0-9a-f]{40}$/u
+          if (!sha.test(headSha) || !sha.test(baseSha) || headSha === baseSha) throw new Error('CI source/base binding is invalid')
+          if (!/^\d+$/u.test(runId) || !/^\d+$/u.test(runAttempt)) throw new Error('CI run binding is invalid')
+          const binding = {
+            schemaVersion: 1,
+            kind: 'erpc-sdk-ci-source-binding',
+            testedHeadSha: headSha,
+            headSha,
+            baseSha,
+            workflowPath,
+            runId: Number(runId),
+            runAttempt: Number(runAttempt),
+            event,
+            ref,
+          }
+          const provenance = {
+            schemaVersion: 1,
+            kind: 'erpc-sdk-ci-provenance',
+            headSha,
+            testedHeadSha: headSha,
+            sourceSha: headSha,
+            baseSha,
+            workflowPath,
+            runId: Number(runId),
+            runAttempt: Number(runAttempt),
+            event,
+            ref,
+          }
+          writeFileSync(`${outputDir}/source-binding.json`, `${JSON.stringify(binding, null, 2)}\n`, { flag: 'w' })
+          writeFileSync(`${outputDir}/ci-provenance.json`, `${JSON.stringify(provenance, null, 2)}\n`, { flag: 'w' })
+          console.log(`base_sha=${baseSha}`)
+          console.log(`head_sha=${headSha}`)
+          NODE
+      - name: Resolve the authenticated maintenance observation origin
+        id: origin
+        if: github.event_name == 'workflow_dispatch' && github.ref_name == 'codex/registry-maintenance'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.sha }}
+          BASE_SHA: ${{ inputs.base_sha }}
+          REPOSITORY: ${{ github.repository }}
+          WORKFLOW_PATH: .github/workflows/registry-maintenance.yml
+        run: |
+          set -euo pipefail
+          PR_JSON="$RUNNER_TEMP/managed-maintenance-prs.json"
+          gh pr list --repo "$REPOSITORY" --head "$GITHUB_REF_NAME" --base main --state open --limit 20 --json number,headRefOid,baseRefOid,headRepository,isCrossRepository,body > "$PR_JSON"
+          node --input-type=module - "$PR_JSON" "$HEAD_SHA" "$BASE_SHA" "$REPOSITORY" "$WORKFLOW_PATH" <<'NODE' >> "$GITHUB_OUTPUT"
+          import { readFileSync } from 'node:fs'
+
+          const [file, expectedHead, expectedBase, repository, workflowPath] = process.argv.slice(2)
+          const rows = JSON.parse(readFileSync(file, 'utf8'))
+          if (!Array.isArray(rows)) throw new Error('managed PR query did not return an array')
+          const matches = rows.filter((row) => row.headRefOid === expectedHead && row.baseRefOid === expectedBase)
+          if (matches.length !== 1) throw new Error('exactly one managed maintenance PR must bind this CI head/base')
+          const headRepository = matches[0].headRepository?.nameWithOwner ?? matches[0].headRepository?.fullName
+          if (headRepository !== repository || matches[0].isCrossRepository === true) throw new Error('managed maintenance PR must belong to this repository')
+          let body
+          try { body = JSON.parse(matches[0].body ?? '') } catch (error) { throw new Error(`managed PR body is not JSON: ${error.message}`) }
+          if (body.managedBy !== 'erpc-sdk-data-maintenance' || body.branch !== 'codex/registry-maintenance' || body.baseBranch !== 'main') throw new Error('managed PR marker is invalid')
+          const origin = body.origin
+          if (!origin || origin.kind !== 'erpc-sdk-data-maintenance-collector' || origin.workflowPath !== workflowPath || origin.sourceSha !== expectedBase || origin.baseSha !== expectedBase) throw new Error('managed PR origin binding is invalid')
+          if (!Number.isSafeInteger(origin.runId) || origin.runId < 1 || !Number.isSafeInteger(origin.runAttempt) || origin.runAttempt < 1) throw new Error('managed PR origin run binding is invalid')
+          if (typeof origin.artifactName !== 'string' || origin.artifactName !== `data-maintenance-collector-${origin.runId}-${origin.runAttempt}`) throw new Error('managed PR origin artifact name is invalid')
+          console.log(`pr_number=${matches[0].number}`)
+          console.log(`run_id=${origin.runId}`)
+          console.log(`run_attempt=${origin.runAttempt}`)
+          console.log(`artifact_name=${origin.artifactName}`)
+          NODE
+      - name: Verify the authenticated collector run identity
+        if: steps.origin.outputs.run_id != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          ORIGIN_RUN_ID: ${{ steps.origin.outputs.run_id }}
+          ORIGIN_RUN_ATTEMPT: ${{ steps.origin.outputs.run_attempt }}
+          ORIGIN_SOURCE_SHA: ${{ inputs.base_sha }}
+        run: |
+          set -euo pipefail
+          gh api "/repos/$REPOSITORY/actions/runs/$ORIGIN_RUN_ID" --header 'X-GitHub-Api-Version: 2026-03-10' > "$RUNNER_TEMP/collector-run.json"
+          node --input-type=module - "$RUNNER_TEMP/collector-run.json" "$ORIGIN_RUN_ID" "$ORIGIN_RUN_ATTEMPT" "$ORIGIN_SOURCE_SHA" <<'NODE'
+          import { readFileSync } from 'node:fs'
+
+          const [file, runId, runAttempt, sourceSha] = process.argv.slice(2)
+          const run = JSON.parse(readFileSync(file, 'utf8'))
+          if (String(run.id) !== String(runId) || Number(run.run_attempt) !== Number(runAttempt)) throw new Error('collector run ID or attempt is stale')
+          if (run.head_sha !== sourceSha || run.head_branch !== 'main' || run.path !== '.github/workflows/registry-maintenance.yml' || !['schedule', 'workflow_dispatch'].includes(run.event)) throw new Error('collector run is not the bound main maintenance run')
+          NODE
+      - name: Download the exact collector artifact for data maintenance CI
+        if: steps.origin.outputs.run_id != ''
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: ${{ steps.origin.outputs.artifact_name }}
+          run-id: ${{ steps.origin.outputs.run_id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/collector-observation
+      - name: Carry the original bound observation unchanged
+        if: steps.origin.outputs.run_id != ''
+        env:
+          OBSERVATION_DIR: ${{ runner.temp }}/collector-observation
+          BINDING_DIR: ${{ runner.temp }}/ci-binding
+          EXPECTED_SOURCE_SHA: ${{ inputs.base_sha }}
+          ORIGIN_RUN_ID: ${{ steps.origin.outputs.run_id }}
+          ORIGIN_RUN_ATTEMPT: ${{ steps.origin.outputs.run_attempt }}
+        run: |
+          set -euo pipefail
+          test -f "$OBSERVATION_DIR/maintenance-observation.json"
+          node --input-type=module - "$OBSERVATION_DIR" "$EXPECTED_SOURCE_SHA" "$ORIGIN_RUN_ID" "$ORIGIN_RUN_ATTEMPT" <<'NODE'
+          import { readFileSync, readdirSync } from 'node:fs'
+
+          const [directory, expectedSourceSha, runId, runAttempt] = process.argv.slice(2)
+          const allowed = new Set(['maintenance-observation.json', 'discovery-receipts.json', 'pool-receipts.json', 'ranking-receipts.json'])
+          const entries = readdirSync(directory)
+          if (entries.some((entry) => !allowed.has(entry))) throw new Error('collector artifact contains an unapproved file')
+          const observation = JSON.parse(readFileSync(`${directory}/maintenance-observation.json`, 'utf8'))
+          if (observation.sourceSha !== expectedSourceSha || observation.baseSha !== expectedSourceSha || observation.sourceTreeSha === undefined) throw new Error('collector observation source/base binding is invalid')
+          if (observation.execution?.githubRunId !== Number(runId) || observation.execution?.githubRunAttempt !== Number(runAttempt)) throw new Error('collector observation run binding is invalid')
+          for (const filename of allowed) if (!entries.includes(filename) && filename === 'maintenance-observation.json') throw new Error('collector observation is missing')
+          NODE
+          cp -- "$OBSERVATION_DIR/maintenance-observation.json" "$BINDING_DIR/maintenance-observation.json"
+          cmp -- "$OBSERVATION_DIR/maintenance-observation.json" "$BINDING_DIR/maintenance-observation.json"
+          node --input-type=module - "$BINDING_DIR/maintenance-observation.json" "$BINDING_DIR/ci-provenance.json" <<'NODE'
+          import { createHash } from 'node:crypto'
+          import { readFileSync, writeFileSync } from 'node:fs'
+
+          const [observationFile, provenanceFile] = process.argv.slice(2)
+          const bytes = readFileSync(observationFile)
+          const provenance = JSON.parse(readFileSync(provenanceFile, 'utf8'))
+          provenance.observationSha256 = createHash('sha256').update(bytes).digest('hex')
+          provenance.observationByteLength = bytes.byteLength
+          writeFileSync(provenanceFile, `${JSON.stringify(provenance, null, 2)}\n`, { flag: 'w' })
+          NODE
+      - name: Upload exact CI source binding artifact
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: ci-source-binding-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/ci-binding/source-binding.json
+            ${{ runner.temp }}/ci-binding/ci-provenance.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload exact data maintenance CI artifact
+        if: steps.origin.outputs.run_id != ''
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: ci-data-maintenance-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/ci-binding/maintenance-observation.json
+            ${{ runner.temp }}/ci-binding/ci-provenance.json
+          if-no-files-found: error
+          retention-days: 14

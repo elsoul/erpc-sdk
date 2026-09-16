@@ -1,0 +1,349 @@
+name: Verify and promote maintenance data
+
+on:
+  # A successful, explicitly dispatched CI run on the managed data branch
+  # wakes this trusted-main controller. The CI jobs themselves remain read
+  # only; this workflow owns the optional write permission.
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+  # The manual entry point is retained for a dry-run review. `apply` remains
+  # off by default and the standing policy variable is also required to merge.
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Managed data maintenance PR number
+        required: true
+        type: number
+      ci_run_id:
+        description: Exact successful CI workflow run ID
+        required: true
+        type: number
+      ci_run_attempt:
+        description: Exact attempt for the CI workflow run
+        required: true
+        type: number
+      expected_head_sha:
+        description: Exact managed PR head tested by CI
+        required: true
+        type: string
+      base_sha:
+        description: Frozen main commit used by the managed PR and CI
+        required: true
+        type: string
+      apply:
+        description: Request the exact-head merge after all protected-main checks
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+# This controller participates in the same mutation lease as the daily
+# maintenance writer and weekly release preparation. The merge job is opt-in
+# and also requires an explicit repository policy variable.
+concurrency:
+  group: erpc-catalog-mutation
+  cancel-in-progress: false
+
+env:
+  DATA_BRANCH: codex/registry-maintenance
+  CI_WORKFLOW_PATH: .github/workflows/ci.yml
+
+jobs:
+  resolve:
+    name: Resolve exact completed maintenance CI provenance
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.name == 'CI' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'workflow_dispatch' && github.event.workflow_run.head_branch == 'codex/registry-maintenance' && github.event.workflow_run.head_repository.full_name == github.repository && github.event.workflow_run.repository.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      pr_number: ${{ steps.resolve.outputs.pr_number }}
+      run_id: ${{ steps.resolve.outputs.run_id }}
+      run_attempt: ${{ steps.resolve.outputs.run_attempt }}
+      expected_head: ${{ steps.resolve.outputs.expected_head }}
+      base_sha: ${{ steps.resolve.outputs.base_sha }}
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 1
+          ref: refs/heads/main
+          clean: true
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+      - name: Verify trusted-main controller checkout
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse --abbrev-ref HEAD)" = HEAD
+          test -z "$(git status --porcelain)"
+      - name: Bind the exact CI run, artifact, managed PR, and frozen base
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
+          EVENT_WORKFLOW_PATH: ${{ github.event.workflow_run.path }}
+          EVENT_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          EVENT_RUN_ID: ${{ github.event.workflow_run.id }}
+          EVENT_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+          EVENT_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          EVENT_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          EVENT_HEAD_REPOSITORY: ${{ github.event.workflow_run.head_repository.full_name }}
+          EVENT_REPOSITORY: ${{ github.event.workflow_run.repository.full_name }}
+          INPUT_PR_NUMBER: ${{ inputs.pr_number }}
+          INPUT_RUN_ID: ${{ inputs.ci_run_id }}
+          INPUT_RUN_ATTEMPT: ${{ inputs.ci_run_attempt }}
+          INPUT_HEAD_SHA: ${{ inputs.expected_head_sha }}
+          INPUT_BASE_SHA: ${{ inputs.base_sha }}
+          DATA_BRANCH: ${{ env.DATA_BRANCH }}
+          CI_WORKFLOW_PATH: ${{ env.CI_WORKFLOW_PATH }}
+          OUTPUT_DIR: ${{ runner.temp }}/data-promotion-bindings
+          OUTPUT_FILE: ${{ runner.temp }}/data-promotion-bindings/bindings.json
+        run: |
+          set -euo pipefail
+          rm -rf "$OUTPUT_DIR"
+          mkdir -p "$OUTPUT_DIR"
+          if [ "$EVENT_NAME" = workflow_run ]; then
+            test "$EVENT_WORKFLOW_NAME" = CI
+            if [ -n "$EVENT_WORKFLOW_PATH" ]; then test "$EVENT_WORKFLOW_PATH" = "$CI_WORKFLOW_PATH"; fi
+            test "$EVENT_CONCLUSION" = success
+            test "$EVENT_HEAD_BRANCH" = "$DATA_BRANCH"
+            test "$EVENT_HEAD_REPOSITORY" = "$REPOSITORY"
+            test "$EVENT_REPOSITORY" = "$REPOSITORY"
+            RUN_ID="$EVENT_RUN_ID"
+            RUN_ATTEMPT="$EVENT_RUN_ATTEMPT"
+            EXPECTED_HEAD="$EVENT_HEAD_SHA"
+            PR_NUMBER=''
+            BASE_SHA=''
+          elif [ "$EVENT_NAME" = workflow_dispatch ]; then
+            RUN_ID="$INPUT_RUN_ID"
+            RUN_ATTEMPT="$INPUT_RUN_ATTEMPT"
+            EXPECTED_HEAD="$INPUT_HEAD_SHA"
+            PR_NUMBER="$INPUT_PR_NUMBER"
+            BASE_SHA="$INPUT_BASE_SHA"
+          else
+            echo "unsupported promotion event: $EVENT_NAME" >&2
+            exit 64
+          fi
+          printf '%s\n' "$RUN_ID" | grep -Eq '^[1-9][0-9]*$'
+          printf '%s\n' "$RUN_ATTEMPT" | grep -Eq '^[1-9][0-9]*$'
+          printf '%s\n' "$EXPECTED_HEAD" | grep -Eq '^[0-9a-f]{40}$'
+          if [ "$EVENT_NAME" = workflow_dispatch ]; then
+            printf '%s\n' "$BASE_SHA" | grep -Eq '^[0-9a-f]{40}$'
+            test "$BASE_SHA" != "$EXPECTED_HEAD"
+          fi
+          node --input-type=module - "$OUTPUT_FILE" "$REPOSITORY" "$EVENT_NAME" "$RUN_ID" "$RUN_ATTEMPT" "$EXPECTED_HEAD" "$PR_NUMBER" "$BASE_SHA" "$DATA_BRANCH" "$CI_WORKFLOW_PATH" <<'NODE'
+          import { appendFileSync, writeFileSync } from 'node:fs'
+          import { spawnSync } from 'node:child_process'
+          import { createGhAdapter } from './registry/maintenance-pr.mjs'
+
+          const [outputFile, repository, event, runIdText, attemptText, expectedHead, prNumberText, inputBase, branch, workflowPath] = process.argv.slice(2)
+          const runId = Number(runIdText)
+          const runAttempt = Number(attemptText)
+          const adapter = createGhAdapter({ repo: repository })
+          const fetched = await adapter.getMaintenanceObservation(runId, runAttempt, { expectedHead })
+          if (!fetched?.observation || !fetched?.provenance) throw new Error('exact CI maintenance artifact is missing or unverified')
+          const run = fetched.run
+          const provenance = fetched.provenance
+          const baseSha = provenance.baseSha
+          const sha = /^[0-9a-f]{40}$/u
+          if (!sha.test(baseSha) || provenance.headSha !== expectedHead || provenance.workflowPath !== workflowPath || provenance.event !== 'workflow_dispatch' || Number(provenance.runId) !== runId || Number(provenance.runAttempt) !== runAttempt) throw new Error('CI provenance does not bind the exact run/head/base')
+          if (run.status !== 'completed' || run.conclusion !== 'success' || run.event !== 'workflow_dispatch' || run.path !== workflowPath || run.head_sha !== expectedHead || run.head_branch !== branch || (run.repository?.full_name ?? run.repository?.fullName) !== repository) throw new Error('CI API run is not the exact successful same-repository managed run')
+          if (fetched.observation.sourceSha !== baseSha || fetched.observation.baseSha !== baseSha || fetched.observation.kind !== 'erpc-sdk-data-maintenance-observation') throw new Error('maintenance observation is not bound to the CI provenance base')
+          if (event === 'workflow_dispatch' && (Number(prNumberText) < 1 || inputBase !== baseSha)) throw new Error('manual promotion inputs do not match authenticated CI provenance')
+          let pr
+          if (event === 'workflow_dispatch') {
+            pr = await adapter.getPullRequest(Number(prNumberText))
+          } else {
+            const listed = spawnSync('gh', ['pr', 'list', '--repo', repository, '--head', branch, '--base', 'main', '--state', 'open', '--limit', '20', '--json', 'number,headRefOid,baseRefOid,headRepository,isCrossRepository,body,state,mergedAt'], { encoding: 'utf8', stdio: 'pipe' })
+            if (listed.error || listed.status !== 0) throw new Error(`managed PR lookup failed: ${listed.stderr?.trim() || listed.error?.message || listed.status}`)
+            const rows = JSON.parse(listed.stdout)
+            const matches = rows.filter((row) => row.headRefOid === expectedHead && row.headRepository?.nameWithOwner === repository && row.isCrossRepository !== true)
+            if (matches.length !== 1) throw new Error('exactly one open same-repository managed PR must bind the completed CI head')
+            pr = await adapter.getPullRequest(Number(matches[0].number))
+          }
+          const prHead = pr.head?.sha ?? pr.headSha ?? pr.head_sha
+          const prBase = pr.base?.sha ?? pr.baseSha ?? pr.base_sha
+          const prHeadRef = pr.head?.ref ?? pr.headRef ?? pr.head_ref
+          const prBaseRef = pr.base?.ref ?? pr.baseRef ?? pr.base_ref
+          const prHeadRepo = pr.head?.repo?.full_name ?? pr.head?.repo?.fullName ?? pr.headRepo
+          const prBaseRepo = pr.base?.repo?.full_name ?? pr.base?.repo?.fullName ?? pr.baseRepo
+          if (prHead !== expectedHead || prBase !== baseSha || prHeadRef !== branch || prBaseRef !== 'main' || prHeadRepo !== repository || prBaseRepo !== repository || String(pr.state).toLowerCase() !== 'open' || pr.merged === true) throw new Error('managed PR head/base/repository/state is not exact')
+          const bindings = {
+            schemaVersion: 1,
+            kind: 'erpc-sdk-data-promotion-bindings',
+            repository,
+            branch,
+            workflowPath,
+            prNumber: Number(pr.number),
+            runId,
+            runAttempt,
+            expectedHead,
+            baseSha,
+            ciRun: { ...run, baseSha, workflowPath },
+            provenance,
+          }
+          writeFileSync(outputFile, `${JSON.stringify(bindings, null, 2)}\n`, { flag: 'w' })
+          const outputPath = process.env.GITHUB_OUTPUT
+          if (!outputPath) throw new Error('GITHUB_OUTPUT path is unavailable')
+          appendFileSync(outputPath, `pr_number=${bindings.prNumber}\nrun_id=${runId}\nrun_attempt=${runAttempt}\nexpected_head=${expectedHead}\nbase_sha=${baseSha}\n`)
+          NODE
+      - name: Upload the exact resolved promotion binding
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: data-promotion-bindings-${{ steps.resolve.outputs.run_id }}-${{ steps.resolve.outputs.run_attempt }}
+          path: ${{ runner.temp }}/data-promotion-bindings/bindings.json
+          if-no-files-found: error
+          retention-days: 14
+
+  verify:
+    name: Re-derive and dry-run the exact data candidate
+    needs: resolve
+    if: needs.resolve.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.resolve.outputs.base_sha }}
+          clean: true
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+      - name: Install the pinned Rust and Go toolchains for promotion replay
+        run: |
+          rustup toolchain install 1.85.0 --profile minimal --component clippy,rustfmt
+          rustup default 1.85.0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: '1.22.x'
+          cache: false
+      - name: Download the exact resolved promotion binding
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: data-promotion-bindings-${{ needs.resolve.outputs.run_id }}-${{ needs.resolve.outputs.run_attempt }}
+          path: ${{ runner.temp }}/data-promotion-bindings
+      - name: Re-derive candidate and verify exact CI/PR provenance read-only
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          BINDINGS_FILE: ${{ runner.temp }}/data-promotion-bindings/bindings.json
+          REPORT_FILE: ${{ runner.temp }}/data-promotion-report.json
+        run: |
+          set -euo pipefail
+          test -f "$BINDINGS_FILE"
+          node --input-type=module - "$BINDINGS_FILE" "$REPORT_FILE" "$REPOSITORY" <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs'
+          import { createGhAdapter } from './registry/maintenance-pr.mjs'
+          import { buildDataCandidate, promoteDataCandidate } from './registry/data-promotion.mjs'
+
+          const [bindingsFile, reportFile, repository] = process.argv.slice(2)
+          const bindings = JSON.parse(readFileSync(bindingsFile, 'utf8'))
+          if (bindings.kind !== 'erpc-sdk-data-promotion-bindings' || bindings.repository !== repository || bindings.branch !== 'codex/registry-maintenance' || bindings.workflowPath !== '.github/workflows/ci.yml') throw new Error('promotion binding envelope is invalid')
+          const adapter = createGhAdapter({ repo: repository })
+          const fetched = await adapter.getMaintenanceObservation(bindings.runId, bindings.runAttempt, { expectedHead: bindings.expectedHead, expectedBase: bindings.baseSha })
+          if (!fetched?.observation || !fetched?.provenance) throw new Error('exact CI maintenance artifact is unavailable on the verification retry')
+          const pull = await adapter.getPullRequest(bindings.prNumber)
+          const run = { ...fetched.run, baseSha: bindings.baseSha, workflowPath: bindings.workflowPath }
+          const candidate = { ...buildDataCandidate(fetched.observation, { root: process.cwd(), sourceSha: bindings.baseSha, baseSha: bindings.baseSha }), headSha: bindings.expectedHead }
+          const result = await promoteDataCandidate({ candidate, observation: fetched.observation, root: process.cwd(), pr: pull, ci: run, run, provenance: fetched.provenance, adapter, repo: repository, apply: false, expectedHead: bindings.expectedHead, baseSha: bindings.baseSha, expectedRunId: bindings.runId, expectedAttempt: bindings.runAttempt, actor: process.env.GITHUB_ACTOR })
+          if (!result.ci?.eligible || result.ci.runId !== bindings.runId || result.ci.runAttempt !== bindings.runAttempt || result.pr?.head !== bindings.expectedHead || result.pr?.base !== bindings.baseSha) throw new Error('exact dry-run data promotion verification did not complete')
+          writeFileSync(reportFile, `${JSON.stringify(result, null, 2)}\n`, { flag: 'w' })
+          process.stdout.write(`${JSON.stringify({ status: result.status, eligible: result.eligible, policy: result.policy })}\n`)
+          NODE
+      - name: Upload the read-only promotion report
+        if: always()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: data-promotion-report-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/data-promotion-report.json
+          if-no-files-found: warn
+          retention-days: 14
+
+  merge:
+    name: Exact-head merge after protected-main authorization
+    needs:
+      - resolve
+      - verify
+    if: >-
+      needs.resolve.result == 'success' &&
+      needs.verify.result == 'success' &&
+      ((github.event_name == 'workflow_run' && vars.ERPC_ENABLE_AUTOMATIC_DATA_MERGE == 'true') ||
+      (github.event_name == 'workflow_dispatch' && inputs.apply == true && vars.ERPC_ENABLE_AUTOMATIC_DATA_MERGE == 'true'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      actions: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.resolve.outputs.base_sha }}
+          clean: true
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+      - name: Install the pinned Rust and Go toolchains for promotion replay
+        run: |
+          rustup toolchain install 1.85.0 --profile minimal --component clippy,rustfmt
+          rustup default 1.85.0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: '1.22.x'
+          cache: false
+      - name: Download the exact resolved promotion binding for the merge retry
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: data-promotion-bindings-${{ needs.resolve.outputs.run_id }}-${{ needs.resolve.outputs.run_attempt }}
+          path: ${{ runner.temp }}/data-promotion-bindings
+      - name: Recheck policy, exact CI/PR artifacts, merge head/tree, and main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          BINDINGS_FILE: ${{ runner.temp }}/data-promotion-bindings/bindings.json
+        run: |
+          set -euo pipefail
+          node --input-type=module - "$BINDINGS_FILE" "$REPOSITORY" <<'NODE'
+          import { readFileSync } from 'node:fs'
+          import { createGhAdapter } from './registry/maintenance-pr.mjs'
+          import { buildDataCandidate, promoteDataCandidate, verifyMergedCandidate } from './registry/data-promotion.mjs'
+
+          const [bindingsFile, repository] = process.argv.slice(2)
+          const bindings = JSON.parse(readFileSync(bindingsFile, 'utf8'))
+          if (bindings.kind !== 'erpc-sdk-data-promotion-bindings' || bindings.repository !== repository) throw new Error('promotion binding envelope is invalid before merge')
+          const adapter = createGhAdapter({ repo: repository })
+          const fetched = await adapter.getMaintenanceObservation(bindings.runId, bindings.runAttempt, { expectedHead: bindings.expectedHead, expectedBase: bindings.baseSha })
+          if (!fetched?.observation || !fetched?.provenance) throw new Error('exact CI maintenance artifact is unavailable on the merge retry')
+          const pull = await adapter.getPullRequest(bindings.prNumber)
+          const run = { ...fetched.run, baseSha: bindings.baseSha, workflowPath: bindings.workflowPath }
+          const policy = await adapter.getMergePolicy({ base: 'main', actor: process.env.GITHUB_ACTOR })
+          if (!(policy?.protected && policy?.strict && policy?.upToDate && policy?.actorAllowed && policy.requiredChecks?.includes('required-ci'))) throw new Error('protected main required-ci policy does not apply to the merge actor')
+          const candidate = { ...buildDataCandidate(fetched.observation, { root: process.cwd(), sourceSha: bindings.baseSha, baseSha: bindings.baseSha }), headSha: bindings.expectedHead }
+          const result = await promoteDataCandidate({ candidate, observation: fetched.observation, root: process.cwd(), pr: pull, ci: run, run, provenance: fetched.provenance, adapter, repo: repository, apply: true, expectedHead: bindings.expectedHead, baseSha: bindings.baseSha, expectedRunId: bindings.runId, expectedAttempt: bindings.runAttempt, actor: process.env.GITHUB_ACTOR })
+          if (result.status !== 'MERGED' || !result.verified?.verified) throw new Error('exact-head data merge was not verified')
+          const mainAfter = await adapter.getMainSha()
+          if (mainAfter !== result.mergeSha) throw new Error('main did not advance to the verified merge commit')
+          await verifyMergedCandidate({ mergeSha: result.mergeSha, expectedBase: bindings.baseSha, expectedHead: bindings.expectedHead, expectedTree: result.verified.treeSha, adapter, currentMainSha: mainAfter })
+          process.stdout.write(`${JSON.stringify({ status: result.status, mergeSha: result.mergeSha, parentsAndTreeVerified: true })}\n`)
+          NODE

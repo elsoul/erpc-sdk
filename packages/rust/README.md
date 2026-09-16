@@ -171,6 +171,27 @@ and `list_token_deployments(Some(chain_id), Some("EUR"))` for a chain and
 stable-currency filter. See the [canonical token registry](https://github.com/elsoul/erpc-sdk/blob/main/registry/README.md)
 for the source records, evidence, and generation workflow.
 
+## Offline token rankings
+
+The crate also exposes an immutable ranking snapshot through
+`list_token_rankings(chain_id)`. It is offline and returns an empty `Vec` for
+an empty or unknown chain ID. The bundled snapshot currently reports
+`status = "unconfigured"`; metadata exposes metric, as-of time, source IDs,
+and per-chain coverage so consumers can distinguish an empty configured
+snapshot from one that has not been populated.
+
+```rust
+use erpc_sdk::{list_token_rankings, token_chain_ids};
+
+let ethereum_rankings = list_token_rankings(token_chain_ids::ETHEREUM_MAINNET);
+```
+
+When observations are published, the native metric is
+`onchain-total-supply-value-native`: values are rational atomic native units
+and quote deployment IDs identify ETH, AVAX, or SOL. A circulating market-cap
+estimate is not implied by this metric, and automatic source operations and
+publication are not active yet.
+
 ## DEX catalog and exact-input quotes
 
 The source tree currently contains the unreleased 0.7.0 DEX and swap exports;
@@ -183,9 +204,12 @@ endpoint. Chain-qualified alias constants are available under `dexes` and
 `pools`.
 
 The configured client provides direct asynchronous exact-input quotes for the
-two catalogued EVM constant-product pools. The request uses decimal base-unit
-strings and optional block freshness limits; the result reports the block
-snapshot and decimal output.
+two currently reviewed EVM constant-product pools. The request uses decimal
+base-unit strings and optional block freshness limits; the result reports the
+block snapshot and decimal output. Quote eligibility is limited to the exact
+Ethereum Uniswap V2 USDC/WETH and Avalanche LFJ WAVAX/USDC capability tuples;
+newly discovered pools remain available for lookup, monitoring, and rankings
+until they receive a separate quote capability review.
 
 ```rust,no_run
 use erpc_sdk::{

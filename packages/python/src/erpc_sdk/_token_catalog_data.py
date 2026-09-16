@@ -4,7 +4,7 @@ from __future__ import annotations
 from types import MappingProxyType
 from typing import Literal, NamedTuple
 
-TokenRepresentationKind = Literal["native", "issued", "wrapped", "bridged"]
+TokenRepresentationKind = Literal["native", "issued", "wrapped", "bridged", "unclassified"]
 TokenStandard = Literal["native", "erc20", "spl-token", "spl-token-2022"]
 TokenStatus = Literal["active", "legacy", "winding-down", "retired"]
 TokenStableCurrency = Literal["USD", "EUR", "JPY"] | None
@@ -41,12 +41,163 @@ class TokenAlias(NamedTuple):
 
 TOKEN_CATALOG_VERSION = "1.0.0"
 TOKEN_CATALOG_AS_OF_DATE = "2026-09-15"
-TOKEN_CATALOG_CONTENT_DIGEST = "62879dfe8bb49a154d2a1bff356321e5dbe78d8cef0cd3409ef2b22cfd3445a4"
+TOKEN_CATALOG_CONTENT_DIGEST = "5a7ed7f57a8cfaed87c46512586da8123e94fae80f1ce18ebb3861ccb95a9f70"
 TOKEN_CHAIN_IDS = MappingProxyType({
     "ethereum": "eip155:1",
     "solana": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
     "avalancheC": "eip155:43114",
 })
+
+class _AvalancheCTokens(NamedTuple):
+    AUSD: str
+    AVAX: str
+    DISCOVERED_0A7F98C8752F15EE: str
+    DISCOVERED_288036A90EE0FA72: str
+    DISCOVERED_9F9965CC065C9BEC: str
+    EURC: str
+    EUROP: str
+    GHO: str
+    JOE: str
+    JPYC: str
+    LINK: str
+    USDC: str
+    USDC_E: str
+    USDT: str
+    WAVAX: str
+
+class _EthereumTokens(NamedTuple):
+    AAVE: str
+    AUSD: str
+    DAI: str
+    DISCOVERED_B475569F6A15E97A: str
+    DISCOVERED_E375086901067FE3: str
+    ETH: str
+    EURA: str
+    EURAU: str
+    EURC: str
+    EURCV: str
+    EURE: str
+    EURE_V1: str
+    EUROP: str
+    EURS: str
+    EURT: str
+    FDUSD: str
+    GHO: str
+    GYEN: str
+    JPYC: str
+    LINK: str
+    PYUSD: str
+    RLUSD: str
+    UNI: str
+    USDC: str
+    USDE: str
+    USDG: str
+    USDP: str
+    USDS: str
+    USDT: str
+    WETH: str
+    ZUSD: str
+
+class _SolanaTokens(NamedTuple):
+    AUSD: str
+    EURAU: str
+    EURC: str
+    EURCV: str
+    EUROP: str
+    FDUSD: str
+    GYEN: str
+    JUP: str
+    JUPUSD: str
+    PYUSD: str
+    SOL: str
+    USDC: str
+    USDG: str
+    USDP: str
+    USDS: str
+    USDT: str
+    WSOL: str
+    WSOL_TOKEN_2022: str
+    ZUSD: str
+
+class _Tokens(NamedTuple):
+    avalanche_c: _AvalancheCTokens
+    ethereum: _EthereumTokens
+    solana: _SolanaTokens
+
+tokens = _Tokens(
+    avalanche_c=_AvalancheCTokens(
+        AUSD="deployment-0035",
+        AVAX="deployment-0003",
+        DISCOVERED_0A7F98C8752F15EE="discovered-token-0a7f98c8752f15ee02ce0d801f25df8ff78864a1d70aff7e204f7bdb3f8a0692",
+        DISCOVERED_288036A90EE0FA72="discovered-token-288036a90ee0fa72a2751a78a6934cc6ced9e16de91c97ae8e109e2ee6189bc5",
+        DISCOVERED_9F9965CC065C9BEC="discovered-token-9f9965cc065c9becf8d2cb58071524baafea37d27fda9bf683a93ea85f2e653d",
+        EURC="deployment-0012",
+        EUROP="deployment-0045",
+        GHO="deployment-0030",
+        JOE="deployment-0059",
+        JPYC="deployment-0039",
+        LINK="deployment-0058",
+        USDC="deployment-0009",
+        USDC_E="deployment-0018",
+        USDT="deployment-0015",
+        WAVAX="deployment-0004",
+    ),
+    ethereum=_EthereumTokens(
+        AAVE="deployment-0056",
+        AUSD="deployment-0034",
+        DAI="deployment-0019",
+        DISCOVERED_B475569F6A15E97A="discovered-token-b475569f6a15e97ac04e531dd813e9dcc902521c098d60d6ae4d21d53baf1395",
+        DISCOVERED_E375086901067FE3="discovered-token-e375086901067fe3de023bcdc70f1bafca798e1719ed7e676a98f57de3350a07",
+        ETH="deployment-0001",
+        EURA="deployment-0051",
+        EURAU="deployment-0042",
+        EURC="deployment-0011",
+        EURCV="deployment-0040",
+        EURE="deployment-0054",
+        EURE_V1="deployment-0053",
+        EUROP="deployment-0044",
+        EURS="deployment-0052",
+        EURT="deployment-0017",
+        FDUSD="deployment-0031",
+        GHO="deployment-0029",
+        GYEN="deployment-0047",
+        JPYC="deployment-0038",
+        LINK="deployment-0057",
+        PYUSD="deployment-0022",
+        RLUSD="deployment-0033",
+        UNI="deployment-0055",
+        USDC="deployment-0008",
+        USDE="deployment-0028",
+        USDG="deployment-0024",
+        USDP="deployment-0026",
+        USDS="deployment-0020",
+        USDT="deployment-0014",
+        WETH="deployment-0002",
+        ZUSD="deployment-0049",
+    ),
+    solana=_SolanaTokens(
+        AUSD="deployment-0036",
+        EURAU="deployment-0043",
+        EURC="deployment-0013",
+        EURCV="deployment-0041",
+        EUROP="deployment-0046",
+        FDUSD="deployment-0032",
+        GYEN="deployment-0048",
+        JUP="deployment-0060",
+        JUPUSD="deployment-0037",
+        PYUSD="deployment-0023",
+        SOL="deployment-0005",
+        USDC="deployment-0010",
+        USDG="deployment-0025",
+        USDP="deployment-0027",
+        USDS="deployment-0021",
+        USDT="deployment-0016",
+        WSOL="deployment-0006",
+        WSOL_TOKEN_2022="deployment-0007",
+        ZUSD="deployment-0050",
+    ),
+)
+TOKENS = tokens
 
 TOKEN_ASSETS: tuple[TokenAsset, ...] = (
     TokenAsset(
@@ -357,6 +508,46 @@ TOKEN_ASSETS: tuple[TokenAsset, ...] = (
         asset_id="asset-0039",
         name="Jupiter",
         representation_kind="issued",
+        stable_currency=None,
+        underlying_asset_id=None,
+        economic_reference_asset_id=None,
+    ),
+    TokenAsset(
+        asset_id="discovered-token-0a7f98c8752f15ee02ce0d801f25df8ff78864a1d70aff7e204f7bdb3f8a0692",
+        name="Unclassified token at 0x49d5c2bdffac6ce2bfdb6640f4f80f226bc10bab",
+        representation_kind="unclassified",
+        stable_currency=None,
+        underlying_asset_id=None,
+        economic_reference_asset_id=None,
+    ),
+    TokenAsset(
+        asset_id="discovered-token-288036a90ee0fa72a2751a78a6934cc6ced9e16de91c97ae8e109e2ee6189bc5",
+        name="Unclassified token at 0xc7198437980c041c805a1edcba50c1ce5db95118",
+        representation_kind="unclassified",
+        stable_currency=None,
+        underlying_asset_id=None,
+        economic_reference_asset_id=None,
+    ),
+    TokenAsset(
+        asset_id="discovered-token-9f9965cc065c9becf8d2cb58071524baafea37d27fda9bf683a93ea85f2e653d",
+        name="Unclassified token at 0x50b7545627a5162f82a992c33b87adc75187b218",
+        representation_kind="unclassified",
+        stable_currency=None,
+        underlying_asset_id=None,
+        economic_reference_asset_id=None,
+    ),
+    TokenAsset(
+        asset_id="discovered-token-b475569f6a15e97ac04e531dd813e9dcc902521c098d60d6ae4d21d53baf1395",
+        name="Unclassified token at 0x9f8f72aa9304c8b593d555f12ef6589cc3a579a2",
+        representation_kind="unclassified",
+        stable_currency=None,
+        underlying_asset_id=None,
+        economic_reference_asset_id=None,
+    ),
+    TokenAsset(
+        asset_id="discovered-token-e375086901067fe3de023bcdc70f1bafca798e1719ed7e676a98f57de3350a07",
+        name="Unclassified token at 0x2260fac5e5542a773aa44fbcfedf7c193bc2c599",
+        representation_kind="unclassified",
         stable_currency=None,
         underlying_asset_id=None,
         economic_reference_asset_id=None,
@@ -1324,208 +1515,172 @@ TOKEN_DEPLOYMENTS: tuple[TokenDeployment, ...] = (
         status="active",
         replaced_by_deployment_id=None,
     ),
+    TokenDeployment(
+        deployment_id="discovered-token-0a7f98c8752f15ee02ce0d801f25df8ff78864a1d70aff7e204f7bdb3f8a0692",
+        asset_id="discovered-token-0a7f98c8752f15ee02ce0d801f25df8ff78864a1d70aff7e204f7bdb3f8a0692",
+        name="Unclassified token at 0x49d5c2bdffac6ce2bfdb6640f4f80f226bc10bab",
+        representation_kind="unclassified",
+        stable_currency=None,
+        underlying_asset_id=None,
+        economic_reference_asset_id=None,
+        chain_id="eip155:43114",
+        symbol="0x49d5c2bdffac6ce2bfdb6640f4f80f226bc10bab",
+        decimals=18,
+        standard="erc20",
+        address="0x49d5c2bdffac6ce2bfdb6640f4f80f226bc10bab",
+        status="active",
+        replaced_by_deployment_id=None,
+    ),
+    TokenDeployment(
+        deployment_id="discovered-token-288036a90ee0fa72a2751a78a6934cc6ced9e16de91c97ae8e109e2ee6189bc5",
+        asset_id="discovered-token-288036a90ee0fa72a2751a78a6934cc6ced9e16de91c97ae8e109e2ee6189bc5",
+        name="Unclassified token at 0xc7198437980c041c805a1edcba50c1ce5db95118",
+        representation_kind="unclassified",
+        stable_currency=None,
+        underlying_asset_id=None,
+        economic_reference_asset_id=None,
+        chain_id="eip155:43114",
+        symbol="0xc7198437980c041c805a1edcba50c1ce5db95118",
+        decimals=6,
+        standard="erc20",
+        address="0xc7198437980c041c805a1edcba50c1ce5db95118",
+        status="active",
+        replaced_by_deployment_id=None,
+    ),
+    TokenDeployment(
+        deployment_id="discovered-token-9f9965cc065c9becf8d2cb58071524baafea37d27fda9bf683a93ea85f2e653d",
+        asset_id="discovered-token-9f9965cc065c9becf8d2cb58071524baafea37d27fda9bf683a93ea85f2e653d",
+        name="Unclassified token at 0x50b7545627a5162f82a992c33b87adc75187b218",
+        representation_kind="unclassified",
+        stable_currency=None,
+        underlying_asset_id=None,
+        economic_reference_asset_id=None,
+        chain_id="eip155:43114",
+        symbol="0x50b7545627a5162f82a992c33b87adc75187b218",
+        decimals=8,
+        standard="erc20",
+        address="0x50b7545627a5162f82a992c33b87adc75187b218",
+        status="active",
+        replaced_by_deployment_id=None,
+    ),
+    TokenDeployment(
+        deployment_id="discovered-token-b475569f6a15e97ac04e531dd813e9dcc902521c098d60d6ae4d21d53baf1395",
+        asset_id="discovered-token-b475569f6a15e97ac04e531dd813e9dcc902521c098d60d6ae4d21d53baf1395",
+        name="Unclassified token at 0x9f8f72aa9304c8b593d555f12ef6589cc3a579a2",
+        representation_kind="unclassified",
+        stable_currency=None,
+        underlying_asset_id=None,
+        economic_reference_asset_id=None,
+        chain_id="eip155:1",
+        symbol="0x9f8f72aa9304c8b593d555f12ef6589cc3a579a2",
+        decimals=18,
+        standard="erc20",
+        address="0x9f8f72aa9304c8b593d555f12ef6589cc3a579a2",
+        status="active",
+        replaced_by_deployment_id=None,
+    ),
+    TokenDeployment(
+        deployment_id="discovered-token-e375086901067fe3de023bcdc70f1bafca798e1719ed7e676a98f57de3350a07",
+        asset_id="discovered-token-e375086901067fe3de023bcdc70f1bafca798e1719ed7e676a98f57de3350a07",
+        name="Unclassified token at 0x2260fac5e5542a773aa44fbcfedf7c193bc2c599",
+        representation_kind="unclassified",
+        stable_currency=None,
+        underlying_asset_id=None,
+        economic_reference_asset_id=None,
+        chain_id="eip155:1",
+        symbol="0x2260fac5e5542a773aa44fbcfedf7c193bc2c599",
+        decimals=8,
+        standard="erc20",
+        address="0x2260fac5e5542a773aa44fbcfedf7c193bc2c599",
+        status="active",
+        replaced_by_deployment_id=None,
+    ),
 )
 
 TOKEN_ALIASES: tuple[TokenAlias, ...] = (
-    TokenAlias("avalancheC", "AUSD", "deployment-0035"),
-    TokenAlias("avalancheC", "AVAX", "deployment-0003"),
-    TokenAlias("avalancheC", "EURC", "deployment-0012"),
-    TokenAlias("avalancheC", "EUROP", "deployment-0045"),
-    TokenAlias("avalancheC", "GHO", "deployment-0030"),
-    TokenAlias("avalancheC", "JOE", "deployment-0059"),
-    TokenAlias("avalancheC", "JPYC", "deployment-0039"),
-    TokenAlias("avalancheC", "LINK", "deployment-0058"),
-    TokenAlias("avalancheC", "USDC", "deployment-0009"),
-    TokenAlias("avalancheC", "USDC_E", "deployment-0018"),
-    TokenAlias("avalancheC", "USDT", "deployment-0015"),
-    TokenAlias("avalancheC", "WAVAX", "deployment-0004"),
-    TokenAlias("ethereum", "AAVE", "deployment-0056"),
-    TokenAlias("ethereum", "AUSD", "deployment-0034"),
-    TokenAlias("ethereum", "DAI", "deployment-0019"),
-    TokenAlias("ethereum", "ETH", "deployment-0001"),
-    TokenAlias("ethereum", "EURA", "deployment-0051"),
-    TokenAlias("ethereum", "EURAU", "deployment-0042"),
-    TokenAlias("ethereum", "EURC", "deployment-0011"),
-    TokenAlias("ethereum", "EURCV", "deployment-0040"),
-    TokenAlias("ethereum", "EURE", "deployment-0054"),
-    TokenAlias("ethereum", "EURE_V1", "deployment-0053"),
-    TokenAlias("ethereum", "EUROP", "deployment-0044"),
-    TokenAlias("ethereum", "EURS", "deployment-0052"),
-    TokenAlias("ethereum", "EURT", "deployment-0017"),
-    TokenAlias("ethereum", "FDUSD", "deployment-0031"),
-    TokenAlias("ethereum", "GHO", "deployment-0029"),
-    TokenAlias("ethereum", "GYEN", "deployment-0047"),
-    TokenAlias("ethereum", "JPYC", "deployment-0038"),
-    TokenAlias("ethereum", "LINK", "deployment-0057"),
-    TokenAlias("ethereum", "PYUSD", "deployment-0022"),
-    TokenAlias("ethereum", "RLUSD", "deployment-0033"),
-    TokenAlias("ethereum", "UNI", "deployment-0055"),
-    TokenAlias("ethereum", "USDC", "deployment-0008"),
-    TokenAlias("ethereum", "USDE", "deployment-0028"),
-    TokenAlias("ethereum", "USDG", "deployment-0024"),
-    TokenAlias("ethereum", "USDP", "deployment-0026"),
-    TokenAlias("ethereum", "USDS", "deployment-0020"),
-    TokenAlias("ethereum", "USDT", "deployment-0014"),
-    TokenAlias("ethereum", "WETH", "deployment-0002"),
-    TokenAlias("ethereum", "ZUSD", "deployment-0049"),
-    TokenAlias("solana", "AUSD", "deployment-0036"),
-    TokenAlias("solana", "EURAU", "deployment-0043"),
-    TokenAlias("solana", "EURC", "deployment-0013"),
-    TokenAlias("solana", "EURCV", "deployment-0041"),
-    TokenAlias("solana", "EUROP", "deployment-0046"),
-    TokenAlias("solana", "FDUSD", "deployment-0032"),
-    TokenAlias("solana", "GYEN", "deployment-0048"),
-    TokenAlias("solana", "JUP", "deployment-0060"),
-    TokenAlias("solana", "JUPUSD", "deployment-0037"),
-    TokenAlias("solana", "PYUSD", "deployment-0023"),
-    TokenAlias("solana", "SOL", "deployment-0005"),
-    TokenAlias("solana", "USDC", "deployment-0010"),
-    TokenAlias("solana", "USDG", "deployment-0025"),
-    TokenAlias("solana", "USDP", "deployment-0027"),
-    TokenAlias("solana", "USDS", "deployment-0021"),
-    TokenAlias("solana", "USDT", "deployment-0016"),
-    TokenAlias("solana", "WSOL", "deployment-0006"),
-    TokenAlias("solana", "WSOL_TOKEN_2022", "deployment-0007"),
-    TokenAlias("solana", "ZUSD", "deployment-0050"),
+    TokenAlias("avalancheC", "AUSD", tokens.avalanche_c.AUSD),
+    TokenAlias("avalancheC", "AVAX", tokens.avalanche_c.AVAX),
+    TokenAlias(
+        "avalancheC",
+        "DISCOVERED_0A7F98C8752F15EE",
+        tokens.avalanche_c.DISCOVERED_0A7F98C8752F15EE,
+    ),
+    TokenAlias(
+        "avalancheC",
+        "DISCOVERED_288036A90EE0FA72",
+        tokens.avalanche_c.DISCOVERED_288036A90EE0FA72,
+    ),
+    TokenAlias(
+        "avalancheC",
+        "DISCOVERED_9F9965CC065C9BEC",
+        tokens.avalanche_c.DISCOVERED_9F9965CC065C9BEC,
+    ),
+    TokenAlias("avalancheC", "EURC", tokens.avalanche_c.EURC),
+    TokenAlias("avalancheC", "EUROP", tokens.avalanche_c.EUROP),
+    TokenAlias("avalancheC", "GHO", tokens.avalanche_c.GHO),
+    TokenAlias("avalancheC", "JOE", tokens.avalanche_c.JOE),
+    TokenAlias("avalancheC", "JPYC", tokens.avalanche_c.JPYC),
+    TokenAlias("avalancheC", "LINK", tokens.avalanche_c.LINK),
+    TokenAlias("avalancheC", "USDC", tokens.avalanche_c.USDC),
+    TokenAlias("avalancheC", "USDC_E", tokens.avalanche_c.USDC_E),
+    TokenAlias("avalancheC", "USDT", tokens.avalanche_c.USDT),
+    TokenAlias("avalancheC", "WAVAX", tokens.avalanche_c.WAVAX),
+    TokenAlias("ethereum", "AAVE", tokens.ethereum.AAVE),
+    TokenAlias("ethereum", "AUSD", tokens.ethereum.AUSD),
+    TokenAlias("ethereum", "DAI", tokens.ethereum.DAI),
+    TokenAlias(
+        "ethereum",
+        "DISCOVERED_B475569F6A15E97A",
+        tokens.ethereum.DISCOVERED_B475569F6A15E97A,
+    ),
+    TokenAlias(
+        "ethereum",
+        "DISCOVERED_E375086901067FE3",
+        tokens.ethereum.DISCOVERED_E375086901067FE3,
+    ),
+    TokenAlias("ethereum", "ETH", tokens.ethereum.ETH),
+    TokenAlias("ethereum", "EURA", tokens.ethereum.EURA),
+    TokenAlias("ethereum", "EURAU", tokens.ethereum.EURAU),
+    TokenAlias("ethereum", "EURC", tokens.ethereum.EURC),
+    TokenAlias("ethereum", "EURCV", tokens.ethereum.EURCV),
+    TokenAlias("ethereum", "EURE", tokens.ethereum.EURE),
+    TokenAlias("ethereum", "EURE_V1", tokens.ethereum.EURE_V1),
+    TokenAlias("ethereum", "EUROP", tokens.ethereum.EUROP),
+    TokenAlias("ethereum", "EURS", tokens.ethereum.EURS),
+    TokenAlias("ethereum", "EURT", tokens.ethereum.EURT),
+    TokenAlias("ethereum", "FDUSD", tokens.ethereum.FDUSD),
+    TokenAlias("ethereum", "GHO", tokens.ethereum.GHO),
+    TokenAlias("ethereum", "GYEN", tokens.ethereum.GYEN),
+    TokenAlias("ethereum", "JPYC", tokens.ethereum.JPYC),
+    TokenAlias("ethereum", "LINK", tokens.ethereum.LINK),
+    TokenAlias("ethereum", "PYUSD", tokens.ethereum.PYUSD),
+    TokenAlias("ethereum", "RLUSD", tokens.ethereum.RLUSD),
+    TokenAlias("ethereum", "UNI", tokens.ethereum.UNI),
+    TokenAlias("ethereum", "USDC", tokens.ethereum.USDC),
+    TokenAlias("ethereum", "USDE", tokens.ethereum.USDE),
+    TokenAlias("ethereum", "USDG", tokens.ethereum.USDG),
+    TokenAlias("ethereum", "USDP", tokens.ethereum.USDP),
+    TokenAlias("ethereum", "USDS", tokens.ethereum.USDS),
+    TokenAlias("ethereum", "USDT", tokens.ethereum.USDT),
+    TokenAlias("ethereum", "WETH", tokens.ethereum.WETH),
+    TokenAlias("ethereum", "ZUSD", tokens.ethereum.ZUSD),
+    TokenAlias("solana", "AUSD", tokens.solana.AUSD),
+    TokenAlias("solana", "EURAU", tokens.solana.EURAU),
+    TokenAlias("solana", "EURC", tokens.solana.EURC),
+    TokenAlias("solana", "EURCV", tokens.solana.EURCV),
+    TokenAlias("solana", "EUROP", tokens.solana.EUROP),
+    TokenAlias("solana", "FDUSD", tokens.solana.FDUSD),
+    TokenAlias("solana", "GYEN", tokens.solana.GYEN),
+    TokenAlias("solana", "JUP", tokens.solana.JUP),
+    TokenAlias("solana", "JUPUSD", tokens.solana.JUPUSD),
+    TokenAlias("solana", "PYUSD", tokens.solana.PYUSD),
+    TokenAlias("solana", "SOL", tokens.solana.SOL),
+    TokenAlias("solana", "USDC", tokens.solana.USDC),
+    TokenAlias("solana", "USDG", tokens.solana.USDG),
+    TokenAlias("solana", "USDP", tokens.solana.USDP),
+    TokenAlias("solana", "USDS", tokens.solana.USDS),
+    TokenAlias("solana", "USDT", tokens.solana.USDT),
+    TokenAlias("solana", "WSOL", tokens.solana.WSOL),
+    TokenAlias("solana", "WSOL_TOKEN_2022", tokens.solana.WSOL_TOKEN_2022),
+    TokenAlias("solana", "ZUSD", tokens.solana.ZUSD),
 )
-
-class _AvalancheCTokens(NamedTuple):
-    AUSD: str
-    AVAX: str
-    EURC: str
-    EUROP: str
-    GHO: str
-    JOE: str
-    JPYC: str
-    LINK: str
-    USDC: str
-    USDC_E: str
-    USDT: str
-    WAVAX: str
-
-class _EthereumTokens(NamedTuple):
-    AAVE: str
-    AUSD: str
-    DAI: str
-    ETH: str
-    EURA: str
-    EURAU: str
-    EURC: str
-    EURCV: str
-    EURE: str
-    EURE_V1: str
-    EUROP: str
-    EURS: str
-    EURT: str
-    FDUSD: str
-    GHO: str
-    GYEN: str
-    JPYC: str
-    LINK: str
-    PYUSD: str
-    RLUSD: str
-    UNI: str
-    USDC: str
-    USDE: str
-    USDG: str
-    USDP: str
-    USDS: str
-    USDT: str
-    WETH: str
-    ZUSD: str
-
-class _SolanaTokens(NamedTuple):
-    AUSD: str
-    EURAU: str
-    EURC: str
-    EURCV: str
-    EUROP: str
-    FDUSD: str
-    GYEN: str
-    JUP: str
-    JUPUSD: str
-    PYUSD: str
-    SOL: str
-    USDC: str
-    USDG: str
-    USDP: str
-    USDS: str
-    USDT: str
-    WSOL: str
-    WSOL_TOKEN_2022: str
-    ZUSD: str
-
-class _Tokens(NamedTuple):
-    avalanche_c: _AvalancheCTokens
-    ethereum: _EthereumTokens
-    solana: _SolanaTokens
-
-tokens = _Tokens(
-    avalanche_c=_AvalancheCTokens(
-        AUSD="deployment-0035",
-        AVAX="deployment-0003",
-        EURC="deployment-0012",
-        EUROP="deployment-0045",
-        GHO="deployment-0030",
-        JOE="deployment-0059",
-        JPYC="deployment-0039",
-        LINK="deployment-0058",
-        USDC="deployment-0009",
-        USDC_E="deployment-0018",
-        USDT="deployment-0015",
-        WAVAX="deployment-0004",
-    ),
-    ethereum=_EthereumTokens(
-        AAVE="deployment-0056",
-        AUSD="deployment-0034",
-        DAI="deployment-0019",
-        ETH="deployment-0001",
-        EURA="deployment-0051",
-        EURAU="deployment-0042",
-        EURC="deployment-0011",
-        EURCV="deployment-0040",
-        EURE="deployment-0054",
-        EURE_V1="deployment-0053",
-        EUROP="deployment-0044",
-        EURS="deployment-0052",
-        EURT="deployment-0017",
-        FDUSD="deployment-0031",
-        GHO="deployment-0029",
-        GYEN="deployment-0047",
-        JPYC="deployment-0038",
-        LINK="deployment-0057",
-        PYUSD="deployment-0022",
-        RLUSD="deployment-0033",
-        UNI="deployment-0055",
-        USDC="deployment-0008",
-        USDE="deployment-0028",
-        USDG="deployment-0024",
-        USDP="deployment-0026",
-        USDS="deployment-0020",
-        USDT="deployment-0014",
-        WETH="deployment-0002",
-        ZUSD="deployment-0049",
-    ),
-    solana=_SolanaTokens(
-        AUSD="deployment-0036",
-        EURAU="deployment-0043",
-        EURC="deployment-0013",
-        EURCV="deployment-0041",
-        EUROP="deployment-0046",
-        FDUSD="deployment-0032",
-        GYEN="deployment-0048",
-        JUP="deployment-0060",
-        JUPUSD="deployment-0037",
-        PYUSD="deployment-0023",
-        SOL="deployment-0005",
-        USDC="deployment-0010",
-        USDG="deployment-0025",
-        USDP="deployment-0027",
-        USDS="deployment-0021",
-        USDT="deployment-0016",
-        WSOL="deployment-0006",
-        WSOL_TOKEN_2022="deployment-0007",
-        ZUSD="deployment-0050",
-    ),
-)
-TOKENS = tokens

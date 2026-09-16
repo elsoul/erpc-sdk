@@ -46,12 +46,86 @@ class DexAlias(NamedTuple):
 
 DEX_CATALOG_VERSION = "1.0.0"
 DEX_CATALOG_AS_OF_DATE = "2026-09-15"
-DEX_CATALOG_CONTENT_DIGEST = "002c05c3c2d5d3917f73a5c2e7b55af9ceb9a682fb49ae28d2421046ee2faa50"
+DEX_CATALOG_CONTENT_DIGEST = "a0268a45d2b037ab8ea35aad1c45366d2582cbc9b10681ded590b56e07b011c8"
 DEX_CHAIN_IDS = MappingProxyType({
     "ethereum": "eip155:1",
     "solana": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
     "avalancheC": "eip155:43114",
 })
+class _EthereumDexes(NamedTuple):
+    UNISWAP_V2: str
+
+class _SolanaDexes(NamedTuple):
+    ORCA_WHIRLPOOLS: str
+    RAYDIUM_CLMM: str
+
+class _AvalancheCDexes(NamedTuple):
+    LFJ_LEGACY: str
+
+class _Dexes(NamedTuple):
+    ethereum: _EthereumDexes
+    solana: _SolanaDexes
+    avalanche_c: _AvalancheCDexes
+
+dexes = _Dexes(
+    ethereum=_EthereumDexes(
+        UNISWAP_V2="dex-deployment-0001",
+    ),
+    solana=_SolanaDexes(
+        ORCA_WHIRLPOOLS="dex-deployment-0003",
+        RAYDIUM_CLMM="dex-deployment-0004",
+    ),
+    avalanche_c=_AvalancheCDexes(
+        LFJ_LEGACY="dex-deployment-0002",
+    ),
+)
+DEXES = dexes
+
+class _EthereumPools(NamedTuple):
+    DISCOVERED_POOL_1B98A5F24A364E05: str
+    DISCOVERED_POOL_6428A1E5DA293B2E: str
+    DISCOVERED_POOL_A7F9E600A86951F4: str
+    DISCOVERED_POOL_E702B0CB56528418: str
+    UNISWAP_V2_USDC_WETH: str
+
+class _SolanaPools(NamedTuple):
+    ORCA_WHIRLPOOLS_WSOL_EURC: str
+    RAYDIUM_CLMM_WSOL_EURC: str
+
+class _AvalancheCPools(NamedTuple):
+    DISCOVERED_POOL_1568E761C62F7DC5: str
+    DISCOVERED_POOL_3C1E38D02092D16E: str
+    DISCOVERED_POOL_3F840A40991E755E: str
+    DISCOVERED_POOL_ECE9088CF3894443: str
+    LFJ_LEGACY_WAVAX_USDC: str
+
+class _Pools(NamedTuple):
+    ethereum: _EthereumPools
+    solana: _SolanaPools
+    avalanche_c: _AvalancheCPools
+
+pools = _Pools(
+    ethereum=_EthereumPools(
+        DISCOVERED_POOL_1B98A5F24A364E05="discovered-pool-1b98a5f24a364e05b3d56a9702c3560fc3a71f84b2195c486cfc5f8a956cc0b7",
+        DISCOVERED_POOL_6428A1E5DA293B2E="discovered-pool-6428a1e5da293b2ef62027ec823ba27532219a40784def3930feee56a623b809",
+        DISCOVERED_POOL_A7F9E600A86951F4="discovered-pool-a7f9e600a86951f40472ff779fae467db8a6bbbc6076356058f427e97d4ae429",
+        DISCOVERED_POOL_E702B0CB56528418="discovered-pool-e702b0cb56528418b4ce089dfc001c6241c94e92aabde72f1a340c4601541780",
+        UNISWAP_V2_USDC_WETH="pool-0001",
+    ),
+    solana=_SolanaPools(
+        ORCA_WHIRLPOOLS_WSOL_EURC="pool-0003",
+        RAYDIUM_CLMM_WSOL_EURC="pool-0004",
+    ),
+    avalanche_c=_AvalancheCPools(
+        DISCOVERED_POOL_1568E761C62F7DC5="discovered-pool-1568e761c62f7dc58207a77f2dc32153805efe03a8d9cce9366ce68efdf276c4",
+        DISCOVERED_POOL_3C1E38D02092D16E="discovered-pool-3c1e38d02092d16e396d2f3a22b2bfae55246a1c566831d31f211670e45bd562",
+        DISCOVERED_POOL_3F840A40991E755E="discovered-pool-3f840a40991e755e42d242188bd8deb85cd5b9655308269b00c220f5237710cf",
+        DISCOVERED_POOL_ECE9088CF3894443="discovered-pool-ece9088cf38944438897ff9fb2a1abc6855a687b5a3f0d6ab98dfe06c1a6dfef",
+        LFJ_LEGACY_WAVAX_USDC="pool-0002",
+    ),
+)
+POOLS = pools
+
 DEX_DEPLOYMENTS = (
     DexDeployment(
         dex_deployment_id="dex-deployment-0001",
@@ -95,6 +169,126 @@ DEX_DEPLOYMENTS = (
     ),
 )
 POOL_DEFINITIONS = (
+    PoolDefinition(
+        pool_definition_id="discovered-pool-1568e761c62f7dc58207a77f2dc32153805efe03a8d9cce9366ce68efdf276c4",
+        dex_deployment_id="dex-deployment-0002",
+        chain_id="eip155:43114",
+        address="0xd5a37dc5c9a396a03dd1136fc76a1a02b1c88ffa",
+        token0_deployment_id="discovered-token-9f9965cc065c9becf8d2cb58071524baafea37d27fda9bf683a93ea85f2e653d",
+        token1_deployment_id="deployment-0004",
+        adapter=PoolAdapter(
+            kind="evm-constant-product-v2",
+            fee_numerator="3",
+            fee_denominator="1000",
+        ),
+        status="active",
+        replaced_by_pool_definition_id=None,
+    ),
+    PoolDefinition(
+        pool_definition_id="discovered-pool-1b98a5f24a364e05b3d56a9702c3560fc3a71f84b2195c486cfc5f8a956cc0b7",
+        dex_deployment_id="dex-deployment-0001",
+        chain_id="eip155:1",
+        address="0xc2adda861f89bbb333c90c492cb837741916a225",
+        token0_deployment_id="discovered-token-b475569f6a15e97ac04e531dd813e9dcc902521c098d60d6ae4d21d53baf1395",
+        token1_deployment_id="deployment-0002",
+        adapter=PoolAdapter(
+            kind="evm-constant-product-v2",
+            fee_numerator="3",
+            fee_denominator="1000",
+        ),
+        status="active",
+        replaced_by_pool_definition_id=None,
+    ),
+    PoolDefinition(
+        pool_definition_id="discovered-pool-3c1e38d02092d16e396d2f3a22b2bfae55246a1c566831d31f211670e45bd562",
+        dex_deployment_id="dex-deployment-0002",
+        chain_id="eip155:43114",
+        address="0xed8cbd9f0ce3c6986b22002f03c6475ceb7a6256",
+        token0_deployment_id="deployment-0004",
+        token1_deployment_id="discovered-token-288036a90ee0fa72a2751a78a6934cc6ced9e16de91c97ae8e109e2ee6189bc5",
+        adapter=PoolAdapter(
+            kind="evm-constant-product-v2",
+            fee_numerator="3",
+            fee_denominator="1000",
+        ),
+        status="active",
+        replaced_by_pool_definition_id=None,
+    ),
+    PoolDefinition(
+        pool_definition_id="discovered-pool-3f840a40991e755e42d242188bd8deb85cd5b9655308269b00c220f5237710cf",
+        dex_deployment_id="dex-deployment-0002",
+        chain_id="eip155:43114",
+        address="0xfe15c2695f1f920da45c30aae47d11de51007af9",
+        token0_deployment_id="discovered-token-0a7f98c8752f15ee02ce0d801f25df8ff78864a1d70aff7e204f7bdb3f8a0692",
+        token1_deployment_id="deployment-0004",
+        adapter=PoolAdapter(
+            kind="evm-constant-product-v2",
+            fee_numerator="3",
+            fee_denominator="1000",
+        ),
+        status="active",
+        replaced_by_pool_definition_id=None,
+    ),
+    PoolDefinition(
+        pool_definition_id="discovered-pool-6428a1e5da293b2ef62027ec823ba27532219a40784def3930feee56a623b809",
+        dex_deployment_id="dex-deployment-0001",
+        chain_id="eip155:1",
+        address="0xa2107fa5b38d9bbd2c461d6edf11b11a50f6b974",
+        token0_deployment_id="deployment-0057",
+        token1_deployment_id="deployment-0002",
+        adapter=PoolAdapter(
+            kind="evm-constant-product-v2",
+            fee_numerator="3",
+            fee_denominator="1000",
+        ),
+        status="active",
+        replaced_by_pool_definition_id=None,
+    ),
+    PoolDefinition(
+        pool_definition_id="discovered-pool-a7f9e600a86951f40472ff779fae467db8a6bbbc6076356058f427e97d4ae429",
+        dex_deployment_id="dex-deployment-0001",
+        chain_id="eip155:1",
+        address="0xa478c2975ab1ea89e8196811f51a7b7ade33eb11",
+        token0_deployment_id="deployment-0019",
+        token1_deployment_id="deployment-0002",
+        adapter=PoolAdapter(
+            kind="evm-constant-product-v2",
+            fee_numerator="3",
+            fee_denominator="1000",
+        ),
+        status="active",
+        replaced_by_pool_definition_id=None,
+    ),
+    PoolDefinition(
+        pool_definition_id="discovered-pool-e702b0cb56528418b4ce089dfc001c6241c94e92aabde72f1a340c4601541780",
+        dex_deployment_id="dex-deployment-0001",
+        chain_id="eip155:1",
+        address="0xbb2b8038a1640196fbe3e38816f3e67cba72d940",
+        token0_deployment_id="discovered-token-e375086901067fe3de023bcdc70f1bafca798e1719ed7e676a98f57de3350a07",
+        token1_deployment_id="deployment-0002",
+        adapter=PoolAdapter(
+            kind="evm-constant-product-v2",
+            fee_numerator="3",
+            fee_denominator="1000",
+        ),
+        status="active",
+        replaced_by_pool_definition_id=None,
+    ),
+    PoolDefinition(
+        pool_definition_id="discovered-pool-ece9088cf38944438897ff9fb2a1abc6855a687b5a3f0d6ab98dfe06c1a6dfef",
+        dex_deployment_id="dex-deployment-0002",
+        chain_id="eip155:43114",
+        address="0x454e67025631c065d3cfad6d71e6892f74487a15",
+        token0_deployment_id="deployment-0059",
+        token1_deployment_id="deployment-0004",
+        adapter=PoolAdapter(
+            kind="evm-constant-product-v2",
+            fee_numerator="3",
+            fee_denominator="1000",
+        ),
+        status="active",
+        replaced_by_pool_definition_id=None,
+    ),
     PoolDefinition(
         pool_definition_id="pool-0001",
         dex_deployment_id="dex-deployment-0001",
@@ -182,108 +376,98 @@ NATIVE_WRAP_DEFINITIONS = (
 DEX_ALIASES = (
     DexAlias(
         namespace="avalancheC",
+        name="DISCOVERED_POOL_1568E761C62F7DC5",
+        dex_deployment_id=None,
+        pool_definition_id=pools.avalanche_c.DISCOVERED_POOL_1568E761C62F7DC5,
+    ),
+    DexAlias(
+        namespace="avalancheC",
+        name="DISCOVERED_POOL_3C1E38D02092D16E",
+        dex_deployment_id=None,
+        pool_definition_id=pools.avalanche_c.DISCOVERED_POOL_3C1E38D02092D16E,
+    ),
+    DexAlias(
+        namespace="avalancheC",
+        name="DISCOVERED_POOL_3F840A40991E755E",
+        dex_deployment_id=None,
+        pool_definition_id=pools.avalanche_c.DISCOVERED_POOL_3F840A40991E755E,
+    ),
+    DexAlias(
+        namespace="avalancheC",
+        name="DISCOVERED_POOL_ECE9088CF3894443",
+        dex_deployment_id=None,
+        pool_definition_id=pools.avalanche_c.DISCOVERED_POOL_ECE9088CF3894443,
+    ),
+    DexAlias(
+        namespace="avalancheC",
         name="LFJ_LEGACY",
-        dex_deployment_id="dex-deployment-0002",
+        dex_deployment_id=dexes.avalanche_c.LFJ_LEGACY,
         pool_definition_id=None,
     ),
     DexAlias(
         namespace="avalancheC",
         name="LFJ_LEGACY_WAVAX_USDC",
         dex_deployment_id=None,
-        pool_definition_id="pool-0002",
+        pool_definition_id=pools.avalanche_c.LFJ_LEGACY_WAVAX_USDC,
+    ),
+    DexAlias(
+        namespace="ethereum",
+        name="DISCOVERED_POOL_1B98A5F24A364E05",
+        dex_deployment_id=None,
+        pool_definition_id=pools.ethereum.DISCOVERED_POOL_1B98A5F24A364E05,
+    ),
+    DexAlias(
+        namespace="ethereum",
+        name="DISCOVERED_POOL_6428A1E5DA293B2E",
+        dex_deployment_id=None,
+        pool_definition_id=pools.ethereum.DISCOVERED_POOL_6428A1E5DA293B2E,
+    ),
+    DexAlias(
+        namespace="ethereum",
+        name="DISCOVERED_POOL_A7F9E600A86951F4",
+        dex_deployment_id=None,
+        pool_definition_id=pools.ethereum.DISCOVERED_POOL_A7F9E600A86951F4,
+    ),
+    DexAlias(
+        namespace="ethereum",
+        name="DISCOVERED_POOL_E702B0CB56528418",
+        dex_deployment_id=None,
+        pool_definition_id=pools.ethereum.DISCOVERED_POOL_E702B0CB56528418,
     ),
     DexAlias(
         namespace="ethereum",
         name="UNISWAP_V2",
-        dex_deployment_id="dex-deployment-0001",
+        dex_deployment_id=dexes.ethereum.UNISWAP_V2,
         pool_definition_id=None,
     ),
     DexAlias(
         namespace="ethereum",
         name="UNISWAP_V2_USDC_WETH",
         dex_deployment_id=None,
-        pool_definition_id="pool-0001",
+        pool_definition_id=pools.ethereum.UNISWAP_V2_USDC_WETH,
     ),
     DexAlias(
         namespace="solana",
         name="ORCA_WHIRLPOOLS",
-        dex_deployment_id="dex-deployment-0003",
+        dex_deployment_id=dexes.solana.ORCA_WHIRLPOOLS,
         pool_definition_id=None,
     ),
     DexAlias(
         namespace="solana",
         name="ORCA_WHIRLPOOLS_WSOL_EURC",
         dex_deployment_id=None,
-        pool_definition_id="pool-0003",
+        pool_definition_id=pools.solana.ORCA_WHIRLPOOLS_WSOL_EURC,
     ),
     DexAlias(
         namespace="solana",
         name="RAYDIUM_CLMM",
-        dex_deployment_id="dex-deployment-0004",
+        dex_deployment_id=dexes.solana.RAYDIUM_CLMM,
         pool_definition_id=None,
     ),
     DexAlias(
         namespace="solana",
         name="RAYDIUM_CLMM_WSOL_EURC",
         dex_deployment_id=None,
-        pool_definition_id="pool-0004",
+        pool_definition_id=pools.solana.RAYDIUM_CLMM_WSOL_EURC,
     ),
 )
-class _EthereumDexes(NamedTuple):
-    UNISWAP_V2: str
-
-class _SolanaDexes(NamedTuple):
-    ORCA_WHIRLPOOLS: str
-    RAYDIUM_CLMM: str
-
-class _AvalancheCDexes(NamedTuple):
-    LFJ_LEGACY: str
-
-class _Dexes(NamedTuple):
-    ethereum: _EthereumDexes
-    solana: _SolanaDexes
-    avalanche_c: _AvalancheCDexes
-
-dexes = _Dexes(
-    ethereum=_EthereumDexes(
-        UNISWAP_V2="dex-deployment-0001",
-    ),
-    solana=_SolanaDexes(
-        ORCA_WHIRLPOOLS="dex-deployment-0003",
-        RAYDIUM_CLMM="dex-deployment-0004",
-    ),
-    avalanche_c=_AvalancheCDexes(
-        LFJ_LEGACY="dex-deployment-0002",
-    ),
-)
-DEXES = dexes
-
-class _EthereumPools(NamedTuple):
-    UNISWAP_V2_USDC_WETH: str
-
-class _SolanaPools(NamedTuple):
-    ORCA_WHIRLPOOLS_WSOL_EURC: str
-    RAYDIUM_CLMM_WSOL_EURC: str
-
-class _AvalancheCPools(NamedTuple):
-    LFJ_LEGACY_WAVAX_USDC: str
-
-class _Pools(NamedTuple):
-    ethereum: _EthereumPools
-    solana: _SolanaPools
-    avalanche_c: _AvalancheCPools
-
-pools = _Pools(
-    ethereum=_EthereumPools(
-        UNISWAP_V2_USDC_WETH="pool-0001",
-    ),
-    solana=_SolanaPools(
-        ORCA_WHIRLPOOLS_WSOL_EURC="pool-0003",
-        RAYDIUM_CLMM_WSOL_EURC="pool-0004",
-    ),
-    avalanche_c=_AvalancheCPools(
-        LFJ_LEGACY_WAVAX_USDC="pool-0002",
-    ),
-)
-POOLS = pools
-

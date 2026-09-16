@@ -10,6 +10,7 @@ import {
   BASELINE_VERSION,
   CATALOG_RUNTIME_PATHS,
   DEX_CATALOG_RUNTIME_PATHS,
+  RANKING_CATALOG_RUNTIME_PATHS,
   PACKAGE_VERSION_PATHS,
   REPOSITORY_ROOT,
   STATUS,
@@ -20,6 +21,8 @@ import {
 } from "./release-prep.mjs";
 import { computeDigest as computeDexDigest } from "./dex-catalog.mjs";
 import { CATALOG, computeDigest, validateCatalog } from "./token-catalog.mjs";
+import { renderLanguage as renderRankingLanguage } from "./generate-token-rankings.mjs";
+import { replayTokenRankings } from "./token-rankings.mjs";
 
 const BASELINE_TAG_COMMIT = "d77169fbf9e927d51113af7a2ee51a5c9b10f3fc";
 const WORKTREE_BASE = APPROVED_SOURCE_SHA;
@@ -36,6 +39,10 @@ function gitRunner(command, args, { cwd } = {}) {
     stderr: result.stderr ?? "",
     error: result.error,
   };
+}
+
+function historicalTokenCatalog(root) {
+  return JSON.parse(git(root, ["show", `${WORKTREE_BASE}:registry/token-catalog.json`]));
 }
 
 function newWorktree() {
@@ -248,7 +255,14 @@ test("combined token and DEX catalog changes validate against the candidate tree
     dex.contentDigest = computeDexDigest(dex);
     writeFileSync(path.join(root, "registry/dex-catalog.json"), `${JSON.stringify(dex, null, 2)}\n`);
 
-    const head = commitAll(root, "combined token and DEX catalog refresh");
+    const candidateRanking = replayTokenRankings({ candidates: [], unranked: [], provenance: [] }, { tokenCatalog: token });
+    writeFileSync(path.join(root, "registry/token-rankings.json"), `${JSON.stringify(candidateRanking, null, 2)}\n`);
+    for (const relativePath of RANKING_CATALOG_RUNTIME_PATHS.slice(1)) {
+      const language = relativePath.includes("typescript") ? "typescript" : relativePath.includes("rust") ? "rust" : relativePath.includes("python") ? "python" : relativePath.includes("ruby") ? "ruby" : "go";
+      writeFileSync(path.join(root, relativePath), renderRankingLanguage(language, candidateRanking, { tokenCatalog: token }));
+    }
+
+    const head = commitAll(root, "combined token DEX and ranking catalog refresh");
     const report = inspectRelease({ root, expectedHead: head });
     assert.equal(report.status, STATUS.PATCH_READY);
     assert.equal(report.prepareAllowed, true);
@@ -260,8 +274,10 @@ test("combined token and DEX catalog changes validate against the candidate tree
     assert.equal(report.dexCatalog.digest, computeDexDigest(dex));
     assert.equal(report.runtime.catalogDigestChanged, true);
     assert.equal(report.dexRuntime.catalogDigestChanged, true);
+    assert.equal(report.rankingRuntime.catalogDigestChanged, true);
     assert.ok(report.runtime.changedRuntimePaths.includes("registry/token-catalog.json"));
     assert.ok(report.dexRuntime.changedRuntimePaths.includes("registry/dex-catalog.json"));
+    assert.ok(report.rankingRuntime.changedRuntimePaths.includes("registry/token-rankings.json"));
     assert.ok(DEX_CATALOG_RUNTIME_PATHS.every((relativePath) => typeof relativePath === "string"));
     assert.ok(report.shippingChanges.length > 0, "approved feature history remains visible as shippingChanges");
     void expectedHead;
@@ -330,6 +346,25 @@ test("non-SDK Cargo.lock dependency changes remain manual-version shipping chang
   });
 });
 
+test("ranking-only runtime changes are classified as a catalog patch candidate", async () => {
+  await withWorktree(async (root) => {
+    const tokenCatalog = historicalTokenCatalog(root);
+    const rankingFixture = replayTokenRankings({ candidates: [], unranked: [], provenance: [] }, { tokenCatalog });
+    writeFileSync(path.join(root, "registry/token-rankings.json"), `${JSON.stringify(rankingFixture, null, 2)}\n`);
+    for (const relativePath of RANKING_CATALOG_RUNTIME_PATHS.slice(1)) {
+      const language = relativePath.includes("typescript") ? "typescript" : relativePath.includes("rust") ? "rust" : relativePath.includes("python") ? "python" : relativePath.includes("ruby") ? "ruby" : "go";
+      writeFileSync(path.join(root, relativePath), renderRankingLanguage(language, rankingFixture, { tokenCatalog }));
+    }
+    const expectedHead = commitAll(root, "fixture ranking runtime refresh");
+    const report = inspectRelease({ root, expectedHead, runner: gitRunner });
+    assert.ok(report.rankingCatalog);
+    assert.ok(report.rankingRuntime);
+    assert.equal(report.rankingRuntime.catalogDigestChanged, true);
+    assert.ok(report.rankingRuntime.changedRuntimePaths.includes("registry/token-rankings.json"));
+    assert.ok(report.status === STATUS.PATCH_READY || report.runtimeOnly === true, `ranking runtime should be patch-ready: ${report.status} (${report.reasons.join("; ")})`);
+  });
+});
+
 test("historical DEX catalog absence is distinct from malformed released data", async () => {
   await withWorktree(async (root, expectedHead) => {
     const report = inspectRelease({ root, expectedHead });
@@ -340,6 +375,7 @@ test("historical DEX catalog absence is distinct from malformed released data", 
   const root = newIsolatedRepo();
   try {
     const dexPath = path.join(root, "registry/dex-catalog.json");
+    writeFileSync(path.join(root, "registry/token-catalog.json"), readFileSync(path.join(REPOSITORY_ROOT, "registry/token-catalog.json"), "utf8"));
     writeFileSync(dexPath, "{ malformed historical DEX catalog\n");
     const malformedHead = commitAll(root, "malformed historical DEX catalog");
     execFileSync("git", ["-C", root, "tag", "v0.7.0", malformedHead], { encoding: "utf8", stdio: "ignore" });

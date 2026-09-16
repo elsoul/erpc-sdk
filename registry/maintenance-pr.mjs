@@ -11,7 +11,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { lstatSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
+import { closeSync, lstatSync, mkdtempSync, openSync, readFileSync, rmSync, statSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { tmpdir } from "node:os";
@@ -28,6 +28,19 @@ import {
   prepareRelease,
 } from "./release-prep.mjs";
 import { validateCatalog } from "./token-catalog.mjs";
+import {
+  buildDataCandidate,
+  CANDIDATE_OUTPUT_PATHS,
+  collectMaintenanceObservation,
+  computeOutputDigest as dataOutputDigest,
+  expectedCandidateChangedPaths,
+  normalizeChangedPaths,
+  promoteDataCandidate,
+  replayMaintenanceObservation,
+  verifyDataCi,
+  verifyMergedCandidate,
+  writeDataMaintenancePr,
+} from "./data-promotion.mjs";
 
 const MODULE_DIRECTORY = dirname(fileURLToPath(import.meta.url));
 export const REPOSITORY_ROOT = resolve(MODULE_DIRECTORY, "..");
@@ -41,6 +54,7 @@ export const OBSERVATION_PATHS = Object.freeze([
 export const OBSERVER_JSON_PATHS = Object.freeze(OBSERVATION_PATHS.filter((value) => value.endsWith(".json")));
 export const RELEASE_OUTPUT_PATHS = Object.freeze([...PACKAGE_VERSION_PATHS, CHANGELOG_RELATIVE_PATH]);
 export const OUTPUT_PATHS = Object.freeze([...OBSERVATION_PATHS, ...RELEASE_OUTPUT_PATHS]);
+export const DATA_OUTPUT_PATHS = CANDIDATE_OUTPUT_PATHS;
 export const TRUSTED_INPUT_PATHS = Object.freeze([
   "registry/token-catalog.json",
   "registry/observer-config.json",
@@ -59,14 +73,28 @@ export const WORKFLOW_DISPATCH_INPUTS = Object.freeze(["expected_head_sha", "bas
 export const OBSERVATION_SCHEMA_VERSION = 1;
 export const OBSERVATION_KIND = "erpc-sdk-weekly-maintenance-observation";
 export const MANAGED_BY = "erpc-sdk-weekly-maintenance";
+// The CI workflow uploads this exact artifact for a managed data PR.  The
+// run-bound suffix is derived from the authenticated API run below; callers
+// must never select an artifact by a regexp or a fuzzy name.
+export const DATA_CI_ARTIFACT_PREFIX = "ci-data-maintenance-";
+export const DATA_CI_OBSERVATION_ENTRY = "maintenance-observation.json";
+export const DATA_CI_PROVENANCE_ENTRY = "ci-provenance.json";
 
 const SHA_RE = /^[0-9a-f]{40}$/u;
 const DIGEST_RE = /^[0-9a-f]{64}$/u;
 const MAX_JSON_BYTES = 2 * 1024 * 1024;
 const MAX_RELEASE_BYTES = 512 * 1024;
+const MAX_CI_ARCHIVE_BYTES = 8 * 1024 * 1024;
+const MAX_CI_ARCHIVE_ENTRIES = 8;
+// Keep the compressed archive cap unchanged. The plain default collector's
+// pretty discovery receipt measured 10,202,301 bytes, so a finite 16 MiB
+// uncompressed bound covers the observation and its provenance envelope.
+const MAX_CI_ENTRY_BYTES = 16 * 1024 * 1024;
+const MAX_CI_TOTAL_BYTES = 16 * 1024 * 1024;
 const PREPARED_RELEASE_STATUSES = new Set(["PREPARED_UNPUBLISHED", "PREPARED"]);
 const RELEASE_VERSION_PATHS = new Set(RELEASE_OUTPUT_PATHS);
 const ALL_OUTPUT_SET = new Set(OUTPUT_PATHS);
+const DATA_OUTPUT_SET = new Set(CANDIDATE_OUTPUT_PATHS);
 const FAILED_DISPATCH_KEYS = new Set();
 const SENSITIVE_KEY_RE = /(?:secret|password|credential|authorization|api[_-]?key|pat|private[_-]?key|(?:access|auth|bearer)[_-]?token)/iu;
 const VOLATILE_KEY_RE = /^(?:source(?:Sha|SHA)|expectedSource(?:Sha|SHA)|observedAt|observationTime|timestamp|date|time|block|blockNumber|slot|anchorSlot|contextSlot|retry|retryCount|requestId|requestID|bodySha256|rawBody|rawHash|rawSha|rawBytes|mainSha|unrelatedSha)$/u;
@@ -744,6 +772,54 @@ function ghResult(args, { root = REPOSITORY_ROOT, allowFailure = false, env = pr
   return normalized;
 }
 
+function ghBinary(args, { root = REPOSITORY_ROOT, env = process.env, outputPath } = {}) {
+  if (typeof outputPath !== "string" || outputPath.length === 0) fail("GitHub binary output path is required", "PATH_INVALID");
+  let descriptor;
+  try { descriptor = openSync(outputPath, "wx", 0o600); } catch (error) { fail(`cannot create bounded GitHub binary output: ${error.message}`, "PATH_INVALID"); }
+  let result;
+  try {
+    // `gh api` writes response bytes to stdout.  It has no portable
+    // `--output` option, so bind stdout directly to a private descriptor and
+    // keep the response out of a UTF-8 string buffer.
+    result = spawnSync("gh", args, { cwd: root, env, stdio: ["pipe", descriptor, "pipe"] });
+  } finally {
+    try { closeSync(descriptor); } catch { /* descriptor cleanup is best effort */ }
+  }
+  const status = result?.status === null ? 1 : result?.status ?? 1;
+  if (result?.error || status !== 0) fail(`GitHub binary request failed: ${String(result?.stderr ?? "").trim() || result?.error?.message || `exit ${status}`}`, "GITHUB_API_FAILED");
+  return { status, outputPath };
+}
+
+function archiveListing(zipPath) {
+  const namesResult = spawnSync("unzip", ["-Z1", zipPath], { encoding: "utf8", stdio: "pipe", maxBuffer: 64 * 1024 });
+  if (namesResult.error || namesResult.status !== 0) fail("maintenance CI artifact is not a readable ZIP", "GITHUB_API_FAILED");
+  const names = String(namesResult.stdout ?? "").split(/\r?\n/u).filter(Boolean);
+  if (names.length === 0 || names.length > MAX_CI_ARCHIVE_ENTRIES || new Set(names).size !== names.length) fail("maintenance CI artifact entry count is outside the fixed bound", "GITHUB_API_FAILED");
+  if (names.some((name) => name.endsWith("/") || name.includes("\0") || name.split("/").some((part) => part === ".." || part === "."))) fail("maintenance CI artifact contains an unsafe entry name", "GITHUB_API_FAILED");
+  const detailsResult = spawnSync("unzip", ["-l", zipPath], { encoding: "utf8", stdio: "pipe", maxBuffer: 128 * 1024 });
+  if (detailsResult.error || detailsResult.status !== 0) fail("maintenance CI artifact listing could not be verified", "GITHUB_API_FAILED");
+  const sizes = new Map();
+  for (const line of String(detailsResult.stdout ?? "").split(/\r?\n/u)) {
+    const match = line.match(/^\s*(\d+)\s+(?:\d{2}-\d{2}-\d{4}|\d{4}-\d{2}-\d{2})\s+\d{2}:\d{2}\s+(.+?)\s*$/u);
+    if (!match) continue;
+    const size = Number(match[1]);
+    if (!Number.isSafeInteger(size) || size < 0 || size > MAX_CI_ENTRY_BYTES) fail("maintenance CI artifact entry exceeds its uncompressed bound", "ARTIFACT_TOO_LARGE");
+    sizes.set(match[2], size);
+  }
+  if (sizes.size !== names.length || names.some((name) => !sizes.has(name))) fail("maintenance CI artifact listing is incomplete", "GITHUB_API_FAILED");
+  const total = [...sizes.values()].reduce((sum, size) => sum + size, 0);
+  if (!Number.isSafeInteger(total) || total > MAX_CI_TOTAL_BYTES) fail("maintenance CI artifact exceeds its total uncompressed bound", "ARTIFACT_TOO_LARGE");
+  return { names, sizes };
+}
+
+function readArchiveJson(zipPath, name, expectedSize) {
+  const result = spawnSync("unzip", ["-p", zipPath, name], { encoding: null, stdio: "pipe", maxBuffer: MAX_CI_ENTRY_BYTES + 1 });
+  if (result.error || result.status !== 0) fail(`maintenance CI artifact entry ${name} could not be read`, "GITHUB_API_FAILED");
+  const bytes = Buffer.from(result.stdout ?? Buffer.alloc(0));
+  if (bytes.byteLength !== expectedSize || bytes.byteLength > MAX_CI_ENTRY_BYTES) fail(`maintenance CI artifact entry ${name} changed while reading`, "GITHUB_API_FAILED");
+  try { return { value: JSON.parse(bytes.toString("utf8")), bytes }; } catch (error) { fail(`maintenance CI artifact entry ${name} is not valid JSON: ${error.message}`, "ARTIFACT_INVALID"); }
+}
+
 function ghRepoValue(repo) {
   const value = repo ?? process.env.GITHUB_REPOSITORY;
   if (typeof value !== "string" || !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u.test(value)) fail("GITHUB_REPOSITORY or --repo owner/name is required", "GITHUB_API_FAILED");
@@ -790,14 +866,20 @@ export function createGhAdapter({ repo = process.env.GITHUB_REPOSITORY, root = R
     const prepared = apiArgs(method, apiPath(pathValue), body);
     return ghJson(prepared.args, { root, env, input: prepared.input, allowFailure });
   };
-  const readBranchFiles = async (headSha, paths) => {
+  const readFilesAt = async (headSha, paths, { allowMissing = false } = {}) => {
+    requireSha(headSha, "commit SHA");
+    if (!Array.isArray(paths) || paths.length === 0 || paths.some((pathValue) => !safeRelativePath(pathValue))) fail("commit file paths are invalid", "PATH_INVALID");
     const tree = api(`/git/trees/${headSha}?recursive=1`);
     if (tree?.truncated === true) fail("managed branch tree is truncated", "HUMAN_BRANCH_EDIT");
     const entries = new Map((tree?.tree ?? []).filter((entry) => entry?.type === "blob" && typeof entry.path === "string").map((entry) => [entry.path, entry]));
     const files = {};
     for (const pathValue of paths) {
       const entry = entries.get(pathValue);
-      if (!entry?.sha) fail(`managed branch output ${pathValue} is missing`, "HUMAN_BRANCH_EDIT");
+      if (!entry?.sha) {
+        if (allowMissing) { files[pathValue] = null; continue; }
+        fail(`managed branch output ${pathValue} is missing`, "HUMAN_BRANCH_EDIT");
+      }
+      if (entry.mode !== undefined && entry.mode !== "100644") fail(`managed branch output ${pathValue} is not a regular blob`, "HUMAN_BRANCH_EDIT");
       const blob = api(`/git/blobs/${entry.sha}`);
       if (blob?.encoding !== "base64" || typeof blob.content !== "string") fail(`managed branch output ${pathValue} is not a base64 blob`, "HUMAN_BRANCH_EDIT");
       const bytes = Buffer.from(blob.content.replace(/\s+/gu, ""), "base64");
@@ -806,12 +888,29 @@ export function createGhAdapter({ repo = process.env.GITHUB_REPOSITORY, root = R
     }
     return files;
   };
+  const readBranchFiles = (headSha, paths) => readFilesAt(headSha, paths);
   return {
     async getBranchSha(branch = DEFAULT_BASE_BRANCH) {
       if (![DEFAULT_BASE_BRANCH, ...ALLOWED_BOT_BRANCHES].includes(branch)) fail("branch read is outside the fixed policy", "BRANCH_POLICY");
       const response = api(`/git/ref/heads/${branch}`, undefined, undefined, { allowFailure: true });
       if (response === null) return null;
       return responseSha(response.object ?? response, `${branch} ref SHA`);
+    },
+    async getMainSha() {
+      return this.getBranchSha(DEFAULT_BASE_BRANCH);
+    },
+    async getPullRequest(number) {
+      if (!Number.isSafeInteger(Number(number)) || Number(number) < 1) fail("pull request number is invalid", "GITHUB_API_FAILED");
+      const result = ghResult(["pr", "view", String(number), "--repo", repoValue, "--json", "number,state,merged,mergeCommit,headRefName,baseRefName,headRefOid,baseRefOid,headRepository,baseRepository,body"], { root, env });
+      try {
+        const value = JSON.parse(result.stdout);
+        return {
+          ...value,
+          number: Number(value.number),
+          head: { ref: value.headRefName, sha: value.headRefOid, repo: { full_name: value.headRepository?.full_name ?? value.headRepository?.fullName ?? value.headRepository?.nameWithOwner } },
+          base: { ref: value.baseRefName, sha: value.baseRefOid, repo: { full_name: value.baseRepository?.full_name ?? value.baseRepository?.fullName ?? value.baseRepository?.nameWithOwner } },
+        };
+      } catch (error) { fail(`GitHub PR response was not valid JSON: ${error.message}`, "GITHUB_API_FAILED"); }
     },
     async getBranchMetadata(branch) {
       if (!ALLOWED_BOT_BRANCHES.includes(branch)) fail("branch metadata read is outside the fixed policy", "BRANCH_POLICY");
@@ -836,15 +935,27 @@ export function createGhAdapter({ repo = process.env.GITHUB_REPOSITORY, root = R
         parentSha: parents.length === 1 ? responseSha(parents[0], "managed bot branch parent SHA") : null,
       };
       if (parents.length !== 1 || metadata.parentSha !== metadata.baseSha) fail("managed bot branch parent does not match its frozen base provenance", "HUMAN_BRANCH_EDIT");
-      if (metadata.outputPaths.length === 0 || metadata.outputPaths.some((pathValue) => !ALL_OUTPUT_SET.has(pathValue)) || new Set(metadata.outputPaths).size !== metadata.outputPaths.length || [...metadata.outputPaths].sort().join("\0") !== metadata.outputPaths.join("\0")) fail("managed bot branch declared output paths are invalid", "HUMAN_BRANCH_EDIT");
+      const outputSet = metadata.managedBy === "erpc-sdk-data-maintenance" ? DATA_OUTPUT_SET : ALL_OUTPUT_SET;
+      if (metadata.outputPaths.length === 0 || metadata.outputPaths.some((pathValue) => !outputSet.has(pathValue)) || new Set(metadata.outputPaths).size !== metadata.outputPaths.length || [...metadata.outputPaths].sort().join("\0") !== metadata.outputPaths.join("\0")) fail("managed bot branch declared output paths are invalid", "HUMAN_BRANCH_EDIT");
       const changedPaths = await this.getChangedPaths(branch, { baseSha: metadata.baseSha });
       if (changedPaths.some((pathValue) => !metadata.outputPaths.includes(pathValue))) fail("managed bot branch changed a path outside its declared output set", "HUMAN_BRANCH_EDIT");
       const files = await readBranchFiles(sha, metadata.outputPaths);
-      metadata.actualOutputDigest = outputDigest(files);
+      metadata.actualOutputDigest = metadata.managedBy === "erpc-sdk-data-maintenance" ? dataOutputDigest(files) : outputDigest(files);
       metadata.actualContentDigest = contentDigest(files);
       if (metadata.actualOutputDigest !== metadata.outputDigest) fail("managed bot branch content differs from its recorded output digest", "HUMAN_BRANCH_EDIT");
       if (metadata.actualContentDigest !== metadata.contentDigest) fail("managed bot branch bytes differ from their recorded content digest", "HUMAN_BRANCH_EDIT");
       return metadata;
+    },
+    async getBranchFiles(branch, paths, { headSha = undefined } = {}) {
+      if (!ALLOWED_BOT_BRANCHES.includes(branch) || !Array.isArray(paths) || paths.some((pathValue) => !safeRelativePath(pathValue))) fail("branch file read is outside the maintenance policy", "BRANCH_POLICY");
+      const sha = headSha ?? await this.getBranchSha(branch);
+      requireSha(sha, "managed branch head SHA");
+      return readBranchFiles(sha, paths);
+    },
+    async getBaseFiles(baseSha, paths) {
+      if (baseSha !== undefined) requireSha(baseSha, "candidate base SHA");
+      if (!Array.isArray(paths) || paths.some((pathValue) => !safeRelativePath(pathValue))) fail("base file read is outside the maintenance policy", "BRANCH_POLICY");
+      return readFilesAt(baseSha, paths, { allowMissing: true });
     },
     async getChangedPaths(branch, { baseSha, headSha = undefined } = {}) {
       if (!ALLOWED_BOT_BRANCHES.includes(branch)) fail("branch diff is outside the fixed policy", "BRANCH_POLICY");
@@ -854,7 +965,7 @@ export function createGhAdapter({ repo = process.env.GITHUB_REPOSITORY, root = R
       const response = api(`/compare/${encodeURIComponent(baseSha)}...${encodeURIComponent(head)}`);
       return (response?.files ?? []).map((file) => safeRelativePath(file.filename, "GitHub changed path"));
     },
-    async commitFiles({ branch, parentSha, expectedOldSha = null, baseSha, files, message }) {
+    async commitFiles({ branch, parentSha, expectedOldSha = null, baseSha, files, message, metadata = undefined }) {
       if (!ALLOWED_BOT_BRANCHES.includes(branch)) fail("cannot write an unapproved maintenance branch", "BRANCH_POLICY");
       requireSha(parentSha, "commit parent SHA");
       requireSha(baseSha, "commit base SHA");
@@ -863,7 +974,8 @@ export function createGhAdapter({ repo = process.env.GITHUB_REPOSITORY, root = R
       const parentCommit = api(`/git/commits/${parentSha}`);
       const baseTree = responseSha(parentCommit?.tree ?? parentCommit?.treeSha, "commit base tree SHA");
       for (const [pathValue, content] of Object.entries(files)) {
-        if (!ALL_OUTPUT_SET.has(pathValue)) fail(`commit path is outside the operational allowlist: ${pathValue}`, "EXACT_DIFF_ALLOWLIST");
+        const outputSet = metadata?.managedBy === "erpc-sdk-data-maintenance" ? DATA_OUTPUT_SET : ALL_OUTPUT_SET;
+        if (!outputSet.has(pathValue)) fail(`commit path is outside the operational allowlist: ${pathValue}`, "EXACT_DIFF_ALLOWLIST");
         if (typeof content !== "string" || Buffer.byteLength(content, "utf8") > MAX_JSON_BYTES) fail(`commit content for ${pathValue} is invalid or too large`, "ARTIFACT_TOO_LARGE");
         const blob = api("/git/blobs", "POST", { content: Buffer.from(content, "utf8").toString("base64"), encoding: "base64" });
         entries.push({ path: pathValue, mode: "100644", type: "blob", sha: responseSha(blob, `${pathValue} blob SHA`) });
@@ -921,6 +1033,110 @@ export function createGhAdapter({ repo = process.env.GITHUB_REPOSITORY, root = R
       }
       fail("dispatched workflow run head could not be verified", "WORKFLOW_HEAD_MISMATCH");
     },
+    async getWorkflowRun(runId, expectedAttempt = undefined) {
+      if (!Number.isSafeInteger(Number(runId)) || Number(runId) < 1) fail("workflow run ID is invalid", "GITHUB_API_FAILED");
+      const run = api(`/actions/runs/${encodeURIComponent(String(runId))}`);
+      const actualId = responseValue(run, ["id", "workflow_run_id", "run_id", "runId"]);
+      const actualAttempt = responseValue(run, ["run_attempt", "runAttempt", "workflow_run_attempt", "workflowRunAttempt"]);
+      if (String(actualId) !== String(runId) || !Number.isSafeInteger(Number(actualAttempt)) || (expectedAttempt !== undefined && Number(actualAttempt) !== Number(expectedAttempt))) fail("workflow run identity or attempt is not exact", "WORKFLOW_PROVENANCE_INVALID");
+      const jobs = api(`/actions/runs/${encodeURIComponent(String(runId))}/jobs?per_page=100`);
+      return { ...run, jobs: jobs?.jobs ?? [], run_attempt: Number(actualAttempt) };
+    },
+    async getMaintenanceObservation(runId, expectedAttempt = undefined, context = {}) {
+      const run = await this.getWorkflowRun(runId, expectedAttempt);
+      const actualRunId = run?.id ?? run?.run_id ?? run?.workflow_run_id ?? run?.runId;
+      const actualAttempt = run?.run_attempt ?? run?.runAttempt ?? run?.workflow_run_attempt ?? run?.workflowRunAttempt;
+      if (!Number.isSafeInteger(Number(actualRunId)) || Number(actualRunId) !== Number(runId) || !Number.isSafeInteger(Number(actualAttempt)) || (expectedAttempt !== undefined && Number(actualAttempt) !== Number(expectedAttempt))) fail("CI run identity is not exact", "WORKFLOW_PROVENANCE_INVALID");
+      const runHead = run?.head_sha ?? run?.headSha;
+      requireSha(runHead, "CI run head SHA");
+      if (context.expectedHead !== undefined && runHead !== context.expectedHead) fail("CI run head does not match the requested PR head", "CI_HEAD_MISMATCH");
+      if (run?.event !== "workflow_dispatch") fail("data maintenance CI run must be an explicit workflow_dispatch", "CI_EVENT_INVALID");
+      const runWorkflow = run?.path ?? run?.workflowPath ?? run?.workflow_path;
+      if (runWorkflow !== WORKFLOW_PATH) fail("CI run is not the managed data workflow", "CI_PROVENANCE_INVALID");
+      const runBranch = run?.head_branch ?? run?.headBranch;
+      if (runBranch !== BOT_BRANCH || run?.ref !== undefined && run.ref !== `refs/heads/${BOT_BRANCH}`) fail("CI run is not bound to the managed data branch", "CI_HEAD_MISMATCH");
+      const runRepo = run?.repository?.full_name ?? run?.repository?.fullName ?? run?.head_repository?.full_name ?? run?.headRepository?.full_name;
+      if (runRepo !== repoValue) fail("CI run repository is not the configured repository", "CI_PROVENANCE_INVALID");
+      const artifacts = api(`/actions/runs/${encodeURIComponent(String(runId))}/artifacts?per_page=100`);
+      const list = artifacts?.artifacts ?? [];
+      if (!Array.isArray(list)) fail("GitHub artifacts response is invalid", "GITHUB_API_FAILED");
+      const expectedName = `${DATA_CI_ARTIFACT_PREFIX}${runHead}-${Number(runId)}-${Number(actualAttempt)}`;
+      const matches = list.filter((entry) => entry?.name === expectedName);
+      if (matches.length === 0) return null;
+      if (matches.length !== 1) fail("multiple exact CI maintenance artifacts were returned for the requested run", "CI_PROVENANCE_INVALID");
+      const artifact = matches[0];
+      if (artifact.expired === true) fail("exact CI maintenance artifact is expired", "CI_ARTIFACT_MISSING");
+      const artifactRunId = artifact.workflow_run?.id ?? artifact.workflowRun?.id ?? artifact.workflow_run_id ?? artifact.workflowRunId;
+      if (!Number.isSafeInteger(Number(artifactRunId)) || Number(artifactRunId) !== Number(runId)) fail("CI maintenance artifact is not bound to the requested run", "CI_PROVENANCE_INVALID");
+      const artifactId = artifact.id;
+      if (!Number.isSafeInteger(Number(artifactId)) || Number(artifactId) < 1) fail("CI maintenance artifact ID is invalid", "CI_PROVENANCE_INVALID");
+      const directory = mkdtempSync(join(tmpdir(), "erpc-maintenance-artifact-"));
+      const zipPath = join(directory, "artifact.zip");
+      try {
+        ghBinary(["api", apiPath(`/actions/artifacts/${encodeURIComponent(String(artifactId))}/zip`), "--header", `X-GitHub-Api-Version: ${GITHUB_API_VERSION}`], { root, env, outputPath: zipPath });
+        const archiveSize = statSync(zipPath).size;
+        if (!Number.isSafeInteger(archiveSize) || archiveSize <= 0 || archiveSize > MAX_CI_ARCHIVE_BYTES) fail("CI maintenance artifact compressed size is outside the fixed bound", "ARTIFACT_TOO_LARGE");
+        const listing = archiveListing(zipPath);
+        const exactEntries = [DATA_CI_OBSERVATION_ENTRY, DATA_CI_PROVENANCE_ENTRY].sort();
+        if (listing.names.sort().join("\0") !== exactEntries.join("\0")) fail("CI maintenance artifact must contain exactly the bound observation and provenance entries", "CI_PROVENANCE_INVALID");
+        const observationEntry = readArchiveJson(zipPath, DATA_CI_OBSERVATION_ENTRY, listing.sizes.get(DATA_CI_OBSERVATION_ENTRY));
+        const provenanceEntry = readArchiveJson(zipPath, DATA_CI_PROVENANCE_ENTRY, listing.sizes.get(DATA_CI_PROVENANCE_ENTRY));
+        const provenance = provenanceEntry.value;
+        if (!provenance || typeof provenance !== "object" || Array.isArray(provenance) || provenance.kind !== "erpc-sdk-ci-provenance") fail("CI maintenance provenance artifact kind is invalid", "CI_PROVENANCE_INVALID");
+        const provenanceHead = provenance.headSha ?? provenance.head_sha ?? provenance.testedHeadSha ?? provenance.tested_head_sha;
+        const provenanceSource = provenance.sourceSha ?? provenance.source_sha;
+        const provenanceBase = provenance.baseSha ?? provenance.base_sha;
+        const provenanceWorkflow = provenance.workflowPath ?? provenance.workflow_path ?? provenance.workflow;
+        const provenanceRun = provenance.runId ?? provenance.run_id ?? provenance.workflowRunId ?? provenance.workflow_run_id;
+        const provenanceAttempt = provenance.runAttempt ?? provenance.run_attempt ?? provenance.workflowRunAttempt ?? provenance.workflow_run_attempt;
+        const provenanceEvent = provenance.event ?? provenance.eventName;
+        const observationDigest = provenance.observationSha256 ?? provenance.observationSHA256 ?? provenance.observationDigest ?? provenance.observationSha;
+        const observationLength = provenance.observationByteLength ?? provenance.observationBytes ?? provenance.observationLength;
+        requireSha(provenanceHead, "CI provenance head SHA");
+        requireSha(provenanceSource, "CI provenance source SHA");
+        requireSha(provenanceBase, "CI provenance base SHA");
+        if (provenanceHead !== runHead || provenanceSource !== runHead || provenanceWorkflow !== WORKFLOW_PATH || Number(provenanceRun) !== Number(runId) || Number(provenanceAttempt) !== Number(actualAttempt) || provenanceEvent !== "workflow_dispatch" || provenance.ref !== undefined && provenance.ref !== `refs/heads/${BOT_BRANCH}`) fail("CI provenance artifact does not identify the exact run/head/workflow", "CI_PROVENANCE_INVALID");
+        if (context.expectedBase !== undefined && provenanceBase !== context.expectedBase) fail("CI provenance artifact base SHA does not match the requested base", "CI_BASE_MISMATCH");
+        if (typeof observationDigest !== "string" || !DIGEST_RE.test(observationDigest) || observationDigest !== createHash("sha256").update(observationEntry.bytes).digest("hex")) fail("CI provenance artifact does not bind the original observation bytes", "CI_PROVENANCE_INVALID");
+        if (!Number.isSafeInteger(observationLength) || observationLength !== observationEntry.bytes.byteLength) fail("CI provenance artifact observation byte length is invalid", "CI_PROVENANCE_INVALID");
+        return { run, observation: observationEntry.value, provenance };
+      } finally {
+        try { rmSync(directory, { recursive: true, force: true }); } catch { /* best-effort cleanup of this exact temporary directory */ }
+      }
+    },
+    async getCommit(commitSha) {
+      requireSha(commitSha, "commit SHA");
+      const commit = api(`/git/commits/${encodeURIComponent(commitSha)}`);
+      return { ...commit, sha: commit?.sha ?? commitSha, parents: commit?.parents ?? [], tree: commit?.tree ?? { sha: commit?.treeSha } };
+    },
+    async getMergePolicy({ base = DEFAULT_BASE_BRANCH } = {}) {
+      if (base !== DEFAULT_BASE_BRANCH) fail(`merge policy base must be ${DEFAULT_BASE_BRANCH}`, "BRANCH_POLICY");
+      const protection = api(`/branches/${encodeURIComponent(base)}/protection`, undefined, undefined, { allowFailure: true });
+      const rules = api(`/rulesets?includes_parents=true`, undefined, undefined, { allowFailure: true });
+      const requiredChecks = protection?.required_status_checks?.contexts ?? protection?.required_status_checks?.checks?.map((check) => check.context ?? check.name) ?? [];
+      const strict = protection?.required_status_checks?.strict === true;
+      const protectedBranch = protection !== null && protection !== undefined;
+      const matchingRule = Array.isArray(rules) ? rules.find((rule) => rule?.target === "branch" && rule?.enforcement === "active" && (!rule.conditions?.ref_name?.include || rule.conditions.ref_name.include.some((pattern) => pattern === "refs/heads/main" || pattern === "~DEFAULT_BRANCH"))) : null;
+      // A list endpoint's ruleset summary does not prove that this actor is
+      // subject to the rule or that the rule covers main.  The supported
+      // automatic path therefore requires classic branch protection with
+      // enforce-admins enabled; an unrelated ruleset can never authorize it.
+      const actorAllowed = protectedBranch && protection?.enforce_admins?.enabled === true;
+      return { protected: protectedBranch, strict, upToDate: protection?.required_status_checks?.strict === true, actorAllowed, requiredChecks, ruleset: matchingRule };
+    },
+    async mergePullRequest({ number, expectedHead, expectedBase } = {}) {
+      if (!Number.isSafeInteger(Number(number)) || Number(number) < 1) fail("merge pull request number is invalid", "GITHUB_API_FAILED");
+      requireSha(expectedHead, "merge expected head SHA");
+      requireSha(expectedBase, "merge expected base SHA");
+      // The REST merge endpoint accepts `sha` and therefore atomically binds
+      // the merge request to the exact managed PR head. `gh pr merge` without
+      // --match-head-commit can merge a newer human commit after a race.
+      const response = api(`/pulls/${encodeURIComponent(String(number))}/merge`, "PUT", { sha: expectedHead, merge_method: "merge" });
+      if (response?.merged !== true) fail("GitHub refused the exact-head PR merge", "MERGE_HEAD_MISMATCH");
+      const mergeSha = response?.merge_commit_sha ?? response?.mergeCommitSha ?? response?.sha;
+      requireSha(mergeSha, "GitHub merge commit SHA");
+      return { ...response, sha: mergeSha, expectedBase };
+    },
     async findWorkflowRun(expectedHeadSha, branch) {
       requireSha(expectedHeadSha, "workflow expected head SHA");
       if (!ALLOWED_BOT_BRANCHES.includes(branch)) fail("workflow lookup branch is outside the policy", "WORKFLOW_POLICY");
@@ -960,6 +1176,12 @@ export function usage() {
 }
 
 export async function run(argumentsList = process.argv.slice(2)) {
+  if (["collect", "replay", "write-pr", "promote", "verify-merged"].includes(argumentsList[0])) {
+    // M2 uses a separate data envelope and exact generated-output allowlist;
+    // keep the historical observer writer below intact for legacy workflows.
+    const dataModule = await import("./data-promotion.mjs");
+    return dataModule.run(argumentsList);
+  }
   const options = parseArguments(argumentsList);
   if (options.help) { process.stdout.write(`${usage()}\n`); return null; }
   const root = resolve(options.root);
@@ -977,6 +1199,19 @@ export async function run(argumentsList = process.argv.slice(2)) {
   else process.stdout.write(`${result.result?.status ?? (payload.actionRequired ? "READY" : "NO_ACTION")}: ${payload.branch} ${payload.semanticFingerprint}\n`);
   return result;
 }
+
+// Re-export the M2 controller surface from the established maintenance entry
+// point so workflow callers do not need to know which policy module owns a
+// particular stage.
+export {
+  buildDataCandidate,
+  collectMaintenanceObservation,
+  promoteDataCandidate,
+  replayMaintenanceObservation,
+  verifyDataCi,
+  verifyMergedCandidate,
+  writeDataMaintenancePr,
+};
 
 const invokedPath = process.argv[1] ? pathToFileURL(resolve(process.argv[1])).href : null;
 if (invokedPath !== null && import.meta.url === invokedPath) {

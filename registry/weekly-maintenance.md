@@ -1,9 +1,9 @@
-# Weekly maintenance runbook
+# Catalog maintenance runbook
 
-This runbook describes the installed weekly maintenance workflows for the SDK
-repository. They observe the bounded catalog, prepare reviewable pull requests,
-and run CI. They do not approve, merge, tag, publish, or activate a release;
-package publication remains human-invoked.
+This runbook describes the installed catalog maintenance workflows for the SDK
+repository. They observe the bounded source-checkout data, prepare reviewable
+pull requests, and run CI. They do not approve, merge, tag, publish, or
+activate a release; package publication remains human-invoked.
 
 ## Cadence and ownership
 
@@ -11,19 +11,32 @@ The workflows are installed on `main` with these UTC schedules:
 
 | Workflow | Schedule | Reviewable PR | Network behavior |
 | --- | --- | --- | --- |
-| [`registry-maintenance.yml`](../.github/workflows/registry-maintenance.yml) | Tuesday 03:17 UTC | Observation findings on `codex/registry-maintenance` | Observer reads configured RPC endpoints and reviewed HTTP sources online; catalog/runtime checks are local |
-| [`release-preparation.yml`](../.github/workflows/release-preparation.yml) | Thursday 03:47 UTC | Release preparation on `codex/release-preparation` | Observer reads configured RPC endpoints and reviewed HTTP sources online; release inspection and catalog reads are local |
+| [`registry-maintenance.yml`](../.github/workflows/registry-maintenance.yml) | Daily 03:17 UTC | Discovery/ranking findings on `codex/registry-maintenance` | Reads configured RPC endpoints and reviewed HTTP sources online; catalog/runtime checks are local |
+| [`pool-monitor.yml`](../.github/workflows/pool-monitor.yml) | Hourly at minute 13 | Read-only pool observation artifact | Reads a persisted rotating batch of 32 configured pools; never mutates canonical data |
+| [`release-preparation.yml`](../.github/workflows/release-preparation.yml) | Thursday 03:47 UTC | Release preparation on `codex/release-preparation` | Reads configured RPC endpoints and reviewed HTTP sources online; release inspection and catalog reads are local |
 
-The weekly observer remains token-only. It does not perform online DEX or pool
-maintenance. DEX catalog checks and 32 shared native quote cases run in CI
-against the checked-out source and fixtures; these checks are not automatic
-online DEX maintenance.
+The daily collector performs bounded three-chain factory/program discovery and
+ranking collection for review. The hourly pool monitor is read-only and uses a
+persisted rotating batch of 32. Neither workflow silently writes canonical
+rankings or enables a new swap or bridge path. DEX catalog checks and shared
+native quote cases run in CI against the checked-out source and fixtures.
 
-Both workflows also support an explicit manual dispatch. A run stays quiet
+These workflows also support an explicit manual dispatch. A run stays quiet
 while the observed state is unchanged; otherwise it reports a changed catalog,
 a prepared candidate, a failed check, or a required human action. The bot
 creates or updates reviewable PRs and dispatches CI for review. It does not
 approve, merge, tag, or publish.
+
+Automatic effects are opt-in policy paths and are currently off:
+`ERPC_ENABLE_AUTOMATIC_DATA_MERGE=OFF` and
+`ERPC_ENABLE_AUTOMATIC_RELEASE=OFF`. When the corresponding policy variables
+and branch protections are enabled, eligible additive data can merge only
+after exact CI. A later published baseline-to-data merge followed by a
+version-only PR can produce the paired root and Go tags, after which an
+explicit publisher dispatch is still required. An unprotected publishing
+environment is never an approval, and this runbook does not claim that a live
+scheduled run has succeeded. This documentation does not perform settings,
+tag, merge, or publication actions.
 
 The first successful workflow and its idempotent rerun were manual dispatches:
 [`run 35006595913`](https://github.com/elsoul/erpc-sdk/actions/runs/35006595913)
@@ -38,6 +51,17 @@ reported 55 matching observations, two Avalanche symbol differences, three
 RPC errors, and 35 of 41 sources usable. Its result was partial and had no
 eligible source-baseline bootstrap.
 
+The latest source-checkout review on 2026-09-16 used frozen commit
+`5ef97abd66f40a2db77a4f85595cf64d1032f7c8` and local execution provenance. It
+admitted 5 tokens and 8 pools, produced 11 ranking records, and retained 54
+explicit unranked rows. The candidate digests are token
+`5a7ed7f57a8cfaed87c46512586da8123e94fae80f1ce18ebb3861ccb95a9f70`, DEX
+`a0268a45d2b037ab8ea35aad1c45366d2582cbc9b10681ded590b56e07b011c8`, and
+ranking `f8ae479007fa782995aaaf6aa1c414ba1b6a10a92b7abe481b055293a91ac01c`.
+See the [local integration review](./evidence/discovery-ranking-review-2026-09-16.json)
+and its [raw evidence](./evidence/discovery-receipts-2026-09-16.json). This
+capture has no GitHub run provenance and is not a promotion approval.
+
 Root and Rydia own the catalog observation. Bahamut owns the workflow details.
 Sephiroth owns release preparation. A human legal owner is still to be
 assigned; engineering review is due before acceptance of a release candidate.
@@ -48,6 +72,35 @@ each of the four release environments (`npm`, `crates-io`, `pypi`, and
 `rubygems`) and `rulesets[]` for `main`; no settings were changed. These
 responses are evidence of the observed API state only and do not assert active
 reviewer or ruleset protection.
+
+## Source-checkout behavior
+
+[`discovery.mjs`](./discovery.mjs) reads verified address facts from the three
+configured RPC networks: Ethereum and Avalanche factory pair indexes and
+Solana program partitions. New token proposals remain `unclassified`, use
+address-only names and symbols, and keep `stableCurrency`,
+`underlyingAssetId`, and `economicReferenceAssetId` as `null` until reviewed.
+Admission is capped at 8 tokens and 8 pools per run. Direct reviewed native
+pairs use WETH, WAVAX, or classic WSOL, with native liquidity floors of 10 ETH,
+100 AVAX, and 100 SOL in native atomic units.
+
+Discovery state is bounded and resumable. A cap- or dependency-deferred pool
+returns to the pending cursor only when a fresh verified proposal and receipt
+identify the same pair index or pool pubkey; the next collector revalidates it
+through RPC. Public IDs and aliases are append-only, and an RPC outage does
+not retire an existing record. See [`data-promotion.mjs`](./data-promotion.mjs)
+and [`discovery-config.json`](./discovery-config.json) for the source
+configuration and replay boundary.
+
+Ranking uses total supply multiplied by the direct native pool price, encoded as
+exact rational native atomic units. It is explicitly not circulating market
+capitalization. Partial coverage and unranked reasons remain in ranking
+metadata. The optional global USD market-cap metric is rights-gated and
+disabled by default; no vendor market-cap redistribution is implied. Offline
+catalog and ranking list APIs read bundled data only and do not call an
+external vendor API, RPC endpoint, or current clock. The current bundled
+snapshot is partial; its observed ranking metadata and digest are recorded in
+[`token-rankings.json`](./token-rankings.json) and the local integration review.
 
 ## Stage 1: inspect the source and baseline
 
@@ -240,7 +293,8 @@ or bulk source-text copy is issued by this process.
 
 Existing temporary drivers are historical native-capture evidence for the token
 catalog. DEX native runtime captures are produced and checked by the CI parity
-jobs; the weekly observer remains token-only. Ranking, actual package
-publication, route selection, transaction building/signing/sending, Solana
-CLMM quotes, and bridging remain separate future work. DEX catalog CI checks do
-not turn the weekly token observer into online DEX maintenance.
+jobs. The source-checkout ranking contract is offline and its populated
+canonical integration remains subject to fresh collection and review. Actual
+package publication, route selection, transaction building/signing/sending,
+Solana CLMM quotes, and bridging remain separate future work. DEX catalog CI
+checks do not grant discovery facts a new swap or bridge capability.

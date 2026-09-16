@@ -5,6 +5,7 @@ import test from "node:test";
 import {
   CATALOG,
   TOKEN_CHAIN_IDS,
+  computeDigest as computeTokenDigest,
 } from "./token-catalog.mjs";
 import {
   DEFAULT_RPC_ENDPOINTS,
@@ -47,7 +48,7 @@ function accountFor(deployment, slot, overrides = {}) {
   };
 }
 
-function makeRpcTransport({ wrongChain = null, malformedDecimals = null, wrongOwner = null, oldSlot = null, delays = new Map() } = {}) {
+function makeRpcTransport({ catalog = CATALOG, wrongChain = null, malformedDecimals = null, wrongOwner = null, oldSlot = null, delays = new Map() } = {}) {
   const calls = [];
   const transport = async (request) => {
     const payload = JSON.parse(Buffer.from(request.body).toString("utf8"));
@@ -59,14 +60,14 @@ function makeRpcTransport({ wrongChain = null, malformedDecimals = null, wrongOw
     if (payload.method === "eth_getCode") return { statusCode: 200, body: JSON.stringify({ jsonrpc: "2.0", id: payload.id, result: "0x60006000" }) };
     if (payload.method === "eth_call") {
       const data = payload.params[0].data;
-      const deployment = CATALOG.deployments.find((entry) => entry.address?.toLowerCase() === payload.params[0].to.toLowerCase());
+      const deployment = catalog.deployments.find((entry) => entry.address?.toLowerCase() === payload.params[0].to.toLowerCase());
       const result = data === "0x313ce567" ? abiUint(malformedDecimals === deployment?.deploymentId ? 256 : deployment.decimals) : abiString(deployment?.symbol ?? "UNKNOWN");
       return { statusCode: 200, body: JSON.stringify({ jsonrpc: "2.0", id: payload.id, result }) };
     }
     if (payload.method === "getGenesisHash") return { statusCode: 200, body: JSON.stringify({ jsonrpc: "2.0", id: payload.id, result: DEFAULT_RPC_ENDPOINTS.solana.expectedGenesisHash }) };
     if (payload.method === "getSlot") return { statusCode: 200, body: JSON.stringify({ jsonrpc: "2.0", id: payload.id, result: 447257739 }) };
     if (payload.method === "getAccountInfo") {
-      const deployment = CATALOG.deployments.find((entry) => entry.address === payload.params[0]);
+      const deployment = catalog.deployments.find((entry) => entry.address === payload.params[0]);
       const account = accountFor(deployment, oldSlot === deployment?.deploymentId ? 447257738 : 447257740, {
         owner: wrongOwner === deployment?.deploymentId ? "11111111111111111111111111111111" : undefined,
       });
@@ -189,11 +190,13 @@ test("trusted recomputation permits only prior findings carried across transient
   assert.throws(() => validateObservationArtifacts(rpcArtifacts, { sourceSha: "a".repeat(40), catalog: CATALOG, config }), /derived|artifact/u);
 });
 
-test("successful observation covers all 60 deployments, uses pinned EVM blocks, and is bootstrap-eligible", async () => {
+test("successful observation covers all current deployments, uses pinned EVM blocks, and is bootstrap-eligible", async () => {
   const rpcTransport = makeRpcTransport();
   const artifacts = await observeTokenCatalog(baseOptions({ rpcTransport }));
   assert.equal(artifacts.receipts.status, "complete");
-  assert.equal(artifacts.receipts.deployments.length, 60);
+  assert.equal(artifacts.receipts.deployments.length, CATALOG.deployments.length);
+  assert.equal(artifacts.receipts.deployments.find((entry) => entry.deploymentId === "deployment-0002").status, "success");
+  assert.equal(artifacts.receipts.deployments.find((entry) => entry.deploymentId === "deployment-0006").status, "success");
   assert.equal(artifacts.receipts.sources.length, 41);
   assert.equal(artifacts.reviewCandidate.baseline.eligibleBootstrap, true);
   assert.equal(exitCodeForArtifacts(artifacts), 2);
@@ -206,6 +209,48 @@ test("successful observation covers all 60 deployments, uses pinned EVM blocks, 
   assert.equal(new Set(evmBlocks.filter((value) => value === "0x18c7852")).size, 1);
   assert.equal(new Set(evmBlocks.filter((value) => value === "0x5aee016")).size, 1);
   assert.equal(rpcTransport.calls.filter((call) => call.method === "eth_blockNumber").length, 2);
+});
+
+test("current unclassified RPC evidence is excluded from web sources and proven by same-chain RPC receipts", async () => {
+  const rpcSourceUrls = new Set(Object.values(DEFAULT_RPC_ENDPOINTS).map((endpoint) => endpoint.url));
+  assert.ok(CATALOG.assets.some((asset) => asset.representationKind === "unclassified" && asset.evidence.some((url) => rpcSourceUrls.has(url))));
+  const sourceTransport = makeSourceTransport();
+  const artifacts = await observeTokenCatalog(baseOptions({ sourceTransport }));
+  assert.equal(artifacts.receipts.sources.length, 41);
+  assert.equal(sourceTransport.calls.some((request) => rpcSourceUrls.has(request.url)), false);
+  for (const deployment of CATALOG.deployments.filter((entry) => CATALOG.assets.find((asset) => asset.assetId === entry.assetId)?.representationKind === "unclassified" && entry.evidence.some((url) => rpcSourceUrls.has(url)))) {
+    const receipt = artifacts.receipts.deployments.find((entry) => entry.deploymentId === deployment.deploymentId);
+    assert.equal(receipt.chainId, deployment.chainId);
+    assert.equal(receipt.verification, deployment.chainId === TOKEN_CHAIN_IDS.solana ? "rpc-account-info" : "rpc");
+  }
+});
+
+test("future unclassified Solana RPC evidence requires an exact same-chain token receipt", async () => {
+  const catalog = structuredClone(CATALOG);
+  const address = "5R6nWQf8R7p3dJ1eQ4zX6mY2wV9kC8bT5sH4gF3dE2a1";
+  const assetId = "asset-appended-solana-rpc-proof";
+  const deploymentId = "deployment-appended-solana-rpc-proof";
+  catalog.assets.push({ assetId, name: `Unclassified token at ${address}`, representationKind: "unclassified", stableCurrency: null, underlyingAssetId: null, economicReferenceAssetId: null, evidence: [DEFAULT_RPC_ENDPOINTS.solana.url], asOfDate: CATALOG.manualAsOf });
+  catalog.deployments.push({ deploymentId, assetId, chainId: TOKEN_CHAIN_IDS.solana, symbol: address, decimals: 9, standard: "spl-token", address, status: "active", replacedByDeploymentId: null, evidence: [DEFAULT_RPC_ENDPOINTS.solana.url], asOfDate: CATALOG.manualAsOf });
+  catalog.aliases.push({ namespace: "solana", name: "DISCOVERED_SOLANA_RPC_PROOF", deploymentId });
+  catalog.contentDigest = computeTokenDigest(catalog);
+  const artifacts = await observeTokenCatalog(baseOptions({ catalog, rpcTransport: makeRpcTransport({ catalog }) }));
+  const receipt = artifacts.receipts.deployments.find((entry) => entry.deploymentId === deploymentId);
+  assert.equal(receipt.status, "success");
+  assert.equal(receipt.verification, "rpc-account-info");
+  assert.equal(artifacts.receipts.sources.length, 41);
+  const wrongChain = structuredClone(catalog);
+  const wrongDeployment = wrongChain.deployments.find((entry) => entry.deploymentId === deploymentId);
+  const wrongAsset = wrongChain.assets.find((entry) => entry.assetId === assetId);
+  wrongDeployment.evidence = [DEFAULT_RPC_ENDPOINTS.ethereum.url];
+  wrongAsset.evidence = [DEFAULT_RPC_ENDPOINTS.ethereum.url];
+  wrongChain.contentDigest = computeTokenDigest(wrongChain);
+  assert.throws(() => validateObserverConfig(config, wrongChain), (error) => error.code === "CONFIG_URL_SET_MISMATCH");
+  const malicious = structuredClone(catalog);
+  malicious.deployments.find((entry) => entry.deploymentId === deploymentId).evidence = ["https://evil.example/rpc"];
+  malicious.assets.find((entry) => entry.assetId === assetId).evidence = ["https://evil.example/rpc"];
+  malicious.contentDigest = computeTokenDigest(malicious);
+  assert.throws(() => validateObserverConfig(config, malicious), (error) => error.code === "CONFIG_URL_SET_MISMATCH");
 });
 
 test("artifact validator rejects contradictory success details and recomputation drift", async () => {
@@ -268,7 +313,7 @@ test("wrong chain identity skips all downstream calls for that network", async (
   const rpcTransport = makeRpcTransport({ wrongChain: "ethereum-public" });
   const artifacts = await observeTokenCatalog(baseOptions({ rpcTransport }));
   const ethereum = artifacts.receipts.deployments.filter((entry) => entry.chainId === TOKEN_CHAIN_IDS.ethereum);
-  assert.equal(ethereum.length, 29);
+  assert.equal(ethereum.length, CATALOG.deployments.filter((entry) => entry.chainId === TOKEN_CHAIN_IDS.ethereum).length);
   assert.ok(ethereum.every((entry) => entry.status === "skipped"));
   assert.equal(rpcTransport.calls.filter((call) => call.endpointId === "ethereum-public" && ["eth_blockNumber", "eth_getCode", "eth_call"].includes(call.method)).length, 0);
 });
@@ -286,7 +331,7 @@ test("Solana uses finalized anchor and minContextSlot, checks owner/type, and ne
   const rpcTransport = makeRpcTransport({ wrongOwner: "deployment-0006", oldSlot: "deployment-0007" });
   const artifacts = await observeTokenCatalog(baseOptions({ rpcTransport }));
   const accountCalls = rpcTransport.calls.filter((call) => call.method === "getAccountInfo");
-  assert.equal(accountCalls.length, 18);
+  assert.equal(accountCalls.length, CATALOG.deployments.filter((entry) => entry.chainId === TOKEN_CHAIN_IDS.solana && entry.standard !== "native").length);
   assert.ok(accountCalls.every((call) => call.params[1].commitment === "finalized" && call.params[1].encoding === "jsonParsed" && call.params[1].minContextSlot === 447257739));
   assert.equal(rpcTransport.calls.filter((call) => /symbol|Supply|Metadata/u.test(call.method)).length, 0);
   assert.equal(artifacts.receipts.deployments.find((entry) => entry.deploymentId === "deployment-0006").errorCode, "SOLANA_STANDARD_MISMATCH");
@@ -346,4 +391,44 @@ test("run budget bounds injected slow transports and marks the run partial", asy
   assert.ok(Date.now() - started < 500, "bounded transport should not hang for the fixed 10/12 second socket timeout");
   assert.equal(artifacts.receipts.status, "partial");
   assert.equal(exitCodeForArtifacts(artifacts), 3);
+});
+
+test("unclassified EVM deployments require code and decimals without fetching or matching a symbol", async () => {
+  const catalog = structuredClone(CATALOG);
+  const deployment = catalog.deployments.find((entry) => entry.deploymentId === "deployment-0008");
+  const asset = catalog.assets.find((entry) => entry.assetId === deployment.assetId);
+  asset.representationKind = "unclassified";
+  asset.name = `Unclassified token at ${deployment.address}`;
+  asset.stableCurrency = null;
+  asset.underlyingAssetId = null;
+  asset.economicReferenceAssetId = null;
+  catalog.contentDigest = computeTokenDigest(catalog);
+  const rpc = makeRpcTransport();
+  const artifacts = await observeTokenCatalog(baseOptions({ catalog, rpcTransport: rpc }));
+  const receipt = artifacts.receipts.deployments.find((entry) => entry.deploymentId === deployment.deploymentId);
+  assert.equal(receipt.status, "success");
+  assert.equal(receipt.symbolSource, "address-only");
+  assert.equal(receipt.observedSymbol, undefined);
+  assert.equal(rpc.calls.some((call) => call.method === "eth_call" && call.params[0].to.toLowerCase() === deployment.address.toLowerCase() && call.params[0].data === "0x95d89b41"), false);
+});
+
+test("a newly appended unclassified EVM deployment is observed with only code and decimals", async () => {
+  const catalog = structuredClone(CATALOG);
+  const address = "0x1111111111111111111111111111111111111111";
+  const assetId = "asset-appended-observer-fixture";
+  const deploymentId = "deployment-appended-observer-fixture";
+  const evidenceUrl = config.sources[0].url;
+  catalog.assets.push({ assetId, name: `Unclassified token at ${address}`, representationKind: "unclassified", stableCurrency: null, underlyingAssetId: null, economicReferenceAssetId: null, evidence: [evidenceUrl], asOfDate: CATALOG.manualAsOf });
+  catalog.deployments.push({ deploymentId, assetId, chainId: TOKEN_CHAIN_IDS.ethereum, symbol: address, decimals: 18, standard: "erc20", address, status: "active", replacedByDeploymentId: null, evidence: [evidenceUrl], asOfDate: CATALOG.manualAsOf });
+  catalog.aliases.push({ namespace: "ethereum", name: "DISCOVERED_1111111111111111", deploymentId });
+  catalog.contentDigest = computeTokenDigest(catalog);
+  const rpc = makeRpcTransport({ catalog });
+  const artifacts = await observeTokenCatalog(baseOptions({ catalog, rpcTransport: rpc }));
+  const receipt = artifacts.receipts.deployments.find((entry) => entry.deploymentId === deploymentId);
+  assert.equal(receipt.status, "success");
+  assert.equal(receipt.symbolSource, "address-only");
+  assert.equal(receipt.observedSymbol, undefined);
+  assert.ok(rpc.calls.some((call) => call.method === "eth_getCode" && call.params[0].toLowerCase() === address));
+  assert.ok(rpc.calls.some((call) => call.method === "eth_call" && call.params[0].to.toLowerCase() === address && call.params[0].data === "0x313ce567"));
+  assert.equal(rpc.calls.some((call) => call.method === "eth_call" && call.params[0].to.toLowerCase() === address && call.params[0].data === "0x95d89b41"), false);
 });

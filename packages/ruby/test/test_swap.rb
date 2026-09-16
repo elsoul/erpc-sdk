@@ -20,7 +20,7 @@ class SwapTest < Minitest::Test
     entry = FIXTURE.fetch("validCases").find { |value| value.fetch("caseId") == "ethereum-weth-usdc-forward" }
     outcome, trace = run_fixture_case(entry)
 
-    assert_equal entry.fetch("outcome"), outcome
+    assert_equal expected_fixture_outcome(entry), outcome
     assert_equal entry.fetch("rpcTrace"), trace
     assert_equal "2393866186", outcome.fetch("value").fetch("amountOut")
     assert_equal({
@@ -75,6 +75,42 @@ class SwapTest < Minitest::Test
       "amountIn" => "1"
     }, "SWAP_UNSUPPORTED_ADAPTER", client)
     assert_swap_code(base.merge("amountIn" => "01"), "SWAP_INVALID_ARGUMENT", client)
+    assert_equal 0, called
+  ensure
+    client&.close
+  end
+
+  def test_rejects_a_token_outside_the_reviewed_quote_capability_before_rpc
+    called = 0
+    adapter = FakeHttpAdapter.new do
+      called += 1
+      raise "RPC should not be called"
+    end
+    client = ERPC::Client.new(
+      ERPC::ClientConfig.new(api_key: "capture-secret", endpoint: "https://example.test"),
+      http_adapter: adapter
+    )
+    original_input = ERPC::TokenCatalog.get_token_deployment("deployment-0002")
+    unsupported_input = original_input.merge(
+      address: "0x1111111111111111111111111111111111111111"
+    ).freeze
+    lookup = lambda do |deployment_id|
+      deployment_id == "deployment-0002" ? unsupported_input : ERPC::TokenCatalog::DEPLOYMENTS_BY_ID.fetch(deployment_id, nil)
+    end
+
+    ERPC::TokenCatalog.stub(:get_token_deployment, lookup) do
+      error = assert_raises(ERPC::SwapQuoteError) do
+        client.swap.quote_exact_input(
+          "chainId" => ETHEREUM_CHAIN_ID,
+          "poolDefinitionId" => "pool-0001",
+          "inputTokenDeploymentId" => "deployment-0002",
+          "outputTokenDeploymentId" => "deployment-0008",
+          "amountIn" => "1"
+        )
+      end
+      assert_equal "SWAP_UNSUPPORTED_TOKEN", error.code
+      assert_equal "Swap token is unsupported for the selected pool", error.message
+    end
     assert_equal 0, called
   ensure
     client&.close
@@ -146,7 +182,7 @@ class SwapTest < Minitest::Test
   def test_replays_all_shared_fixture_cases
     SHARED_CASES.each do |entry|
       outcome, trace = run_fixture_case(entry)
-      assert_equal entry.fetch("outcome"), outcome, entry.fetch("caseId")
+      assert_equal expected_fixture_outcome(entry), outcome, entry.fetch("caseId")
       assert_equal entry.fetch("rpcTrace"), trace, entry.fetch("caseId")
     end
   end
@@ -192,6 +228,18 @@ class SwapTest < Minitest::Test
 
   def set_fixture_clock(client, seconds)
     client.swap.instance_variable_set(:@clock, -> { seconds })
+  end
+
+  def expected_fixture_outcome(entry)
+    expected = entry.fetch("outcome")
+    return expected unless expected.fetch("kind") == "success" && expected.fetch("value").is_a?(Hash)
+
+    expected.merge(
+      "value" => expected.fetch("value").merge(
+        "tokenCatalogDigest" => ERPC::TokenCatalog::TOKEN_CATALOG_CONTENT_DIGEST,
+        "dexCatalogDigest" => ERPC::DexCatalog::DEX_CATALOG_CONTENT_DIGEST
+      )
+    )
   end
 
   def fixture_adapter(entry, trace)

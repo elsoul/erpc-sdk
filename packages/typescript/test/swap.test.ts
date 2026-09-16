@@ -534,6 +534,36 @@ const captureAliasBehavior = (sdk: CaptureSdk): readonly CaptureRecord[] =>
     }
   })
 
+const expectedQuoteOutcome = (
+  sdk: CaptureSdk,
+  expected: unknown,
+): unknown => {
+  if (
+    expected === null ||
+    typeof expected !== 'object' ||
+    Array.isArray(expected)
+  ) {
+    return expected
+  }
+  const record = expected as CaptureRecord
+  if (
+    record.kind !== 'success' ||
+    record.value === null ||
+    typeof record.value !== 'object' ||
+    Array.isArray(record.value)
+  ) {
+    return expected
+  }
+  return {
+    ...record,
+    value: {
+      ...(record.value as CaptureRecord),
+      tokenCatalogDigest: sdk.TOKEN_CATALOG_CONTENT_DIGEST,
+      dexCatalogDigest: sdk.DEX_CATALOG_CONTENT_DIGEST,
+    },
+  }
+}
+
 const captureQuoteBehavior = async (
   sdk: CaptureSdk,
   fixture: QuoteFixture,
@@ -597,7 +627,7 @@ const captureQuoteBehavior = async (
         method,
         params: params ?? [],
       }))
-      expect(outcome).toEqual(entry.outcome)
+      expect(outcome).toEqual(expectedQuoteOutcome(sdk, entry.outcome))
       expect(responseIndex).toBe(entry.rpcResponses.length)
       expect(trace).toEqual(entry.rpcTrace)
       captured.push({ caseId: entry.caseId, outcome, rpcTrace: trace })

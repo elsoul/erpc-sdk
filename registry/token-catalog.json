@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "catalogVersion": "1.0.0",
   "manualAsOf": "2026-09-15",
-  "contentDigest": "62879dfe8bb49a154d2a1bff356321e5dbe78d8cef0cd3409ef2b22cfd3445a4",
+  "contentDigest": "5a7ed7f57a8cfaed87c46512586da8123e94fae80f1ce18ebb3861ccb95a9f70",
   "assets": [
     {
       "assetId": "asset-0001",
@@ -483,6 +483,66 @@
         "https://developers.jup.ag/docs/guides/how-to-get-token-information"
       ],
       "asOfDate": "2026-09-15"
+    },
+    {
+      "assetId": "discovered-token-0a7f98c8752f15ee02ce0d801f25df8ff78864a1d70aff7e204f7bdb3f8a0692",
+      "name": "Unclassified token at 0x49d5c2bdffac6ce2bfdb6640f4f80f226bc10bab",
+      "representationKind": "unclassified",
+      "stableCurrency": null,
+      "underlyingAssetId": null,
+      "economicReferenceAssetId": null,
+      "evidence": [
+        "https://api.avax.network/ext/bc/C/rpc"
+      ],
+      "asOfDate": "2026-09-16"
+    },
+    {
+      "assetId": "discovered-token-288036a90ee0fa72a2751a78a6934cc6ced9e16de91c97ae8e109e2ee6189bc5",
+      "name": "Unclassified token at 0xc7198437980c041c805a1edcba50c1ce5db95118",
+      "representationKind": "unclassified",
+      "stableCurrency": null,
+      "underlyingAssetId": null,
+      "economicReferenceAssetId": null,
+      "evidence": [
+        "https://api.avax.network/ext/bc/C/rpc"
+      ],
+      "asOfDate": "2026-09-16"
+    },
+    {
+      "assetId": "discovered-token-9f9965cc065c9becf8d2cb58071524baafea37d27fda9bf683a93ea85f2e653d",
+      "name": "Unclassified token at 0x50b7545627a5162f82a992c33b87adc75187b218",
+      "representationKind": "unclassified",
+      "stableCurrency": null,
+      "underlyingAssetId": null,
+      "economicReferenceAssetId": null,
+      "evidence": [
+        "https://api.avax.network/ext/bc/C/rpc"
+      ],
+      "asOfDate": "2026-09-16"
+    },
+    {
+      "assetId": "discovered-token-b475569f6a15e97ac04e531dd813e9dcc902521c098d60d6ae4d21d53baf1395",
+      "name": "Unclassified token at 0x9f8f72aa9304c8b593d555f12ef6589cc3a579a2",
+      "representationKind": "unclassified",
+      "stableCurrency": null,
+      "underlyingAssetId": null,
+      "economicReferenceAssetId": null,
+      "evidence": [
+        "https://ethereum-rpc.publicnode.com"
+      ],
+      "asOfDate": "2026-09-16"
+    },
+    {
+      "assetId": "discovered-token-e375086901067fe3de023bcdc70f1bafca798e1719ed7e676a98f57de3350a07",
+      "name": "Unclassified token at 0x2260fac5e5542a773aa44fbcfedf7c193bc2c599",
+      "representationKind": "unclassified",
+      "stableCurrency": null,
+      "underlyingAssetId": null,
+      "economicReferenceAssetId": null,
+      "evidence": [
+        "https://ethereum-rpc.publicnode.com"
+      ],
+      "asOfDate": "2026-09-16"
     }
   ],
   "deployments": [
@@ -1400,18 +1460,88 @@
         "https://developers.jup.ag/docs/guides/how-to-get-token-information"
       ],
       "asOfDate": "2026-09-15"
+    },
+    {
+      "deploymentId": "discovered-token-0a7f98c8752f15ee02ce0d801f25df8ff78864a1d70aff7e204f7bdb3f8a0692",
+      "assetId": "discovered-token-0a7f98c8752f15ee02ce0d801f25df8ff78864a1d70aff7e204f7bdb3f8a0692",
+      "chainId": "eip155:43114",
+      "symbol": "0x49d5c2bdffac6ce2bfdb6640f4f80f226bc10bab",
+      "decimals": 18,
+      "standard": "erc20",
+      "address": "0x49d5c2bdffac6ce2bfdb6640f4f80f226bc10bab",
+      "status": "active",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://api.avax.network/ext/bc/C/rpc"
+      ],
+      "asOfDate": "2026-09-16"
+    },
+    {
+      "deploymentId": "discovered-token-288036a90ee0fa72a2751a78a6934cc6ced9e16de91c97ae8e109e2ee6189bc5",
+      "assetId": "discovered-token-288036a90ee0fa72a2751a78a6934cc6ced9e16de91c97ae8e109e2ee6189bc5",
+      "chainId": "eip155:43114",
+      "symbol": "0xc7198437980c041c805a1edcba50c1ce5db95118",
+      "decimals": 6,
+      "standard": "erc20",
+      "address": "0xc7198437980c041c805a1edcba50c1ce5db95118",
+      "status": "active",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://api.avax.network/ext/bc/C/rpc"
+      ],
+      "asOfDate": "2026-09-16"
+    },
+    {
+      "deploymentId": "discovered-token-9f9965cc065c9becf8d2cb58071524baafea37d27fda9bf683a93ea85f2e653d",
+      "assetId": "discovered-token-9f9965cc065c9becf8d2cb58071524baafea37d27fda9bf683a93ea85f2e653d",
+      "chainId": "eip155:43114",
+      "symbol": "0x50b7545627a5162f82a992c33b87adc75187b218",
+      "decimals": 8,
+      "standard": "erc20",
+      "address": "0x50b7545627a5162f82a992c33b87adc75187b218",
+      "status": "active",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://api.avax.network/ext/bc/C/rpc"
+      ],
+      "asOfDate": "2026-09-16"
+    },
+    {
+      "deploymentId": "discovered-token-b475569f6a15e97ac04e531dd813e9dcc902521c098d60d6ae4d21d53baf1395",
+      "assetId": "discovered-token-b475569f6a15e97ac04e531dd813e9dcc902521c098d60d6ae4d21d53baf1395",
+      "chainId": "eip155:1",
+      "symbol": "0x9f8f72aa9304c8b593d555f12ef6589cc3a579a2",
+      "decimals": 18,
+      "standard": "erc20",
+      "address": "0x9f8f72aa9304c8b593d555f12ef6589cc3a579a2",
+      "status": "active",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://ethereum-rpc.publicnode.com"
+      ],
+      "asOfDate": "2026-09-16"
+    },
+    {
+      "deploymentId": "discovered-token-e375086901067fe3de023bcdc70f1bafca798e1719ed7e676a98f57de3350a07",
+      "assetId": "discovered-token-e375086901067fe3de023bcdc70f1bafca798e1719ed7e676a98f57de3350a07",
+      "chainId": "eip155:1",
+      "symbol": "0x2260fac5e5542a773aa44fbcfedf7c193bc2c599",
+      "decimals": 8,
+      "standard": "erc20",
+      "address": "0x2260fac5e5542a773aa44fbcfedf7c193bc2c599",
+      "status": "active",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://ethereum-rpc.publicnode.com"
+      ],
+      "asOfDate": "2026-09-16"
     }
   ],
   "aliases": [
     {
-      "namespace": "ethereum",
-      "name": "ETH",
-      "deploymentId": "deployment-0001"
-    },
-    {
-      "namespace": "ethereum",
-      "name": "WETH",
-      "deploymentId": "deployment-0002"
+      "namespace": "avalancheC",
+      "name": "AUSD",
+      "deploymentId": "deployment-0035"
     },
     {
       "namespace": "avalancheC",
@@ -1420,13 +1550,303 @@
     },
     {
       "namespace": "avalancheC",
+      "name": "DISCOVERED_0A7F98C8752F15EE",
+      "deploymentId": "discovered-token-0a7f98c8752f15ee02ce0d801f25df8ff78864a1d70aff7e204f7bdb3f8a0692"
+    },
+    {
+      "namespace": "avalancheC",
+      "name": "DISCOVERED_288036A90EE0FA72",
+      "deploymentId": "discovered-token-288036a90ee0fa72a2751a78a6934cc6ced9e16de91c97ae8e109e2ee6189bc5"
+    },
+    {
+      "namespace": "avalancheC",
+      "name": "DISCOVERED_9F9965CC065C9BEC",
+      "deploymentId": "discovered-token-9f9965cc065c9becf8d2cb58071524baafea37d27fda9bf683a93ea85f2e653d"
+    },
+    {
+      "namespace": "avalancheC",
+      "name": "EURC",
+      "deploymentId": "deployment-0012"
+    },
+    {
+      "namespace": "avalancheC",
+      "name": "EUROP",
+      "deploymentId": "deployment-0045"
+    },
+    {
+      "namespace": "avalancheC",
+      "name": "GHO",
+      "deploymentId": "deployment-0030"
+    },
+    {
+      "namespace": "avalancheC",
+      "name": "JOE",
+      "deploymentId": "deployment-0059"
+    },
+    {
+      "namespace": "avalancheC",
+      "name": "JPYC",
+      "deploymentId": "deployment-0039"
+    },
+    {
+      "namespace": "avalancheC",
+      "name": "LINK",
+      "deploymentId": "deployment-0058"
+    },
+    {
+      "namespace": "avalancheC",
+      "name": "USDC",
+      "deploymentId": "deployment-0009"
+    },
+    {
+      "namespace": "avalancheC",
+      "name": "USDC_E",
+      "deploymentId": "deployment-0018"
+    },
+    {
+      "namespace": "avalancheC",
+      "name": "USDT",
+      "deploymentId": "deployment-0015"
+    },
+    {
+      "namespace": "avalancheC",
       "name": "WAVAX",
       "deploymentId": "deployment-0004"
+    },
+    {
+      "namespace": "ethereum",
+      "name": "AAVE",
+      "deploymentId": "deployment-0056"
+    },
+    {
+      "namespace": "ethereum",
+      "name": "AUSD",
+      "deploymentId": "deployment-0034"
+    },
+    {
+      "namespace": "ethereum",
+      "name": "DAI",
+      "deploymentId": "deployment-0019"
+    },
+    {
+      "namespace": "ethereum",
+      "name": "DISCOVERED_B475569F6A15E97A",
+      "deploymentId": "discovered-token-b475569f6a15e97ac04e531dd813e9dcc902521c098d60d6ae4d21d53baf1395"
+    },
+    {
+      "namespace": "ethereum",
+      "name": "DISCOVERED_E375086901067FE3",
+      "deploymentId": "discovered-token-e375086901067fe3de023bcdc70f1bafca798e1719ed7e676a98f57de3350a07"
+    },
+    {
+      "namespace": "ethereum",
+      "name": "ETH",
+      "deploymentId": "deployment-0001"
+    },
+    {
+      "namespace": "ethereum",
+      "name": "EURA",
+      "deploymentId": "deployment-0051"
+    },
+    {
+      "namespace": "ethereum",
+      "name": "EURAU",
+      "deploymentId": "deployment-0042"
+    },
+    {
+      "namespace": "ethereum",
+      "name": "EURC",
+      "deploymentId": "deployment-0011"
+    },
+    {
+      "namespace": "ethereum",
+      "name": "EURCV",
+      "deploymentId": "deployment-0040"
+    },
+    {
+      "namespace": "ethereum",
+      "name": "EURE",
+      "deploymentId": "deployment-0054"
+    },
+    {
+      "namespace": "ethereum",
+      "name": "EURE_V1",
+      "deploymentId": "deployment-0053"
+    },
+    {
+      "namespace": "ethereum",
+      "name": "EUROP",
+      "deploymentId": "deployment-0044"
+    },
+    {
+      "namespace": "ethereum",
+      "name": "EURS",
+      "deploymentId": "deployment-0052"
+    },
+    {
+      "namespace": "ethereum",
+      "name": "EURT",
+      "deploymentId": "deployment-0017"
+    },
+    {
+      "namespace": "ethereum",
+      "name": "FDUSD",
+      "deploymentId": "deployment-0031"
+    },
+    {
+      "namespace": "ethereum",
+      "name": "GHO",
+      "deploymentId": "deployment-0029"
+    },
+    {
+      "namespace": "ethereum",
+      "name": "GYEN",
+      "deploymentId": "deployment-0047"
+    },
+    {
+      "namespace": "ethereum",
+      "name": "JPYC",
+      "deploymentId": "deployment-0038"
+    },
+    {
+      "namespace": "ethereum",
+      "name": "LINK",
+      "deploymentId": "deployment-0057"
+    },
+    {
+      "namespace": "ethereum",
+      "name": "PYUSD",
+      "deploymentId": "deployment-0022"
+    },
+    {
+      "namespace": "ethereum",
+      "name": "RLUSD",
+      "deploymentId": "deployment-0033"
+    },
+    {
+      "namespace": "ethereum",
+      "name": "UNI",
+      "deploymentId": "deployment-0055"
+    },
+    {
+      "namespace": "ethereum",
+      "name": "USDC",
+      "deploymentId": "deployment-0008"
+    },
+    {
+      "namespace": "ethereum",
+      "name": "USDE",
+      "deploymentId": "deployment-0028"
+    },
+    {
+      "namespace": "ethereum",
+      "name": "USDG",
+      "deploymentId": "deployment-0024"
+    },
+    {
+      "namespace": "ethereum",
+      "name": "USDP",
+      "deploymentId": "deployment-0026"
+    },
+    {
+      "namespace": "ethereum",
+      "name": "USDS",
+      "deploymentId": "deployment-0020"
+    },
+    {
+      "namespace": "ethereum",
+      "name": "USDT",
+      "deploymentId": "deployment-0014"
+    },
+    {
+      "namespace": "ethereum",
+      "name": "WETH",
+      "deploymentId": "deployment-0002"
+    },
+    {
+      "namespace": "ethereum",
+      "name": "ZUSD",
+      "deploymentId": "deployment-0049"
+    },
+    {
+      "namespace": "solana",
+      "name": "AUSD",
+      "deploymentId": "deployment-0036"
+    },
+    {
+      "namespace": "solana",
+      "name": "EURAU",
+      "deploymentId": "deployment-0043"
+    },
+    {
+      "namespace": "solana",
+      "name": "EURC",
+      "deploymentId": "deployment-0013"
+    },
+    {
+      "namespace": "solana",
+      "name": "EURCV",
+      "deploymentId": "deployment-0041"
+    },
+    {
+      "namespace": "solana",
+      "name": "EUROP",
+      "deploymentId": "deployment-0046"
+    },
+    {
+      "namespace": "solana",
+      "name": "FDUSD",
+      "deploymentId": "deployment-0032"
+    },
+    {
+      "namespace": "solana",
+      "name": "GYEN",
+      "deploymentId": "deployment-0048"
+    },
+    {
+      "namespace": "solana",
+      "name": "JUP",
+      "deploymentId": "deployment-0060"
+    },
+    {
+      "namespace": "solana",
+      "name": "JUPUSD",
+      "deploymentId": "deployment-0037"
+    },
+    {
+      "namespace": "solana",
+      "name": "PYUSD",
+      "deploymentId": "deployment-0023"
     },
     {
       "namespace": "solana",
       "name": "SOL",
       "deploymentId": "deployment-0005"
+    },
+    {
+      "namespace": "solana",
+      "name": "USDC",
+      "deploymentId": "deployment-0010"
+    },
+    {
+      "namespace": "solana",
+      "name": "USDG",
+      "deploymentId": "deployment-0025"
+    },
+    {
+      "namespace": "solana",
+      "name": "USDP",
+      "deploymentId": "deployment-0027"
+    },
+    {
+      "namespace": "solana",
+      "name": "USDS",
+      "deploymentId": "deployment-0021"
+    },
+    {
+      "namespace": "solana",
+      "name": "USDT",
+      "deploymentId": "deployment-0016"
     },
     {
       "namespace": "solana",
@@ -1439,269 +1859,9 @@
       "deploymentId": "deployment-0007"
     },
     {
-      "namespace": "ethereum",
-      "name": "USDC",
-      "deploymentId": "deployment-0008"
-    },
-    {
-      "namespace": "avalancheC",
-      "name": "USDC",
-      "deploymentId": "deployment-0009"
-    },
-    {
-      "namespace": "solana",
-      "name": "USDC",
-      "deploymentId": "deployment-0010"
-    },
-    {
-      "namespace": "ethereum",
-      "name": "EURC",
-      "deploymentId": "deployment-0011"
-    },
-    {
-      "namespace": "avalancheC",
-      "name": "EURC",
-      "deploymentId": "deployment-0012"
-    },
-    {
-      "namespace": "solana",
-      "name": "EURC",
-      "deploymentId": "deployment-0013"
-    },
-    {
-      "namespace": "ethereum",
-      "name": "USDT",
-      "deploymentId": "deployment-0014"
-    },
-    {
-      "namespace": "avalancheC",
-      "name": "USDT",
-      "deploymentId": "deployment-0015"
-    },
-    {
-      "namespace": "solana",
-      "name": "USDT",
-      "deploymentId": "deployment-0016"
-    },
-    {
-      "namespace": "ethereum",
-      "name": "EURT",
-      "deploymentId": "deployment-0017"
-    },
-    {
-      "namespace": "avalancheC",
-      "name": "USDC_E",
-      "deploymentId": "deployment-0018"
-    },
-    {
-      "namespace": "ethereum",
-      "name": "DAI",
-      "deploymentId": "deployment-0019"
-    },
-    {
-      "namespace": "ethereum",
-      "name": "USDS",
-      "deploymentId": "deployment-0020"
-    },
-    {
-      "namespace": "solana",
-      "name": "USDS",
-      "deploymentId": "deployment-0021"
-    },
-    {
-      "namespace": "ethereum",
-      "name": "PYUSD",
-      "deploymentId": "deployment-0022"
-    },
-    {
-      "namespace": "solana",
-      "name": "PYUSD",
-      "deploymentId": "deployment-0023"
-    },
-    {
-      "namespace": "ethereum",
-      "name": "USDG",
-      "deploymentId": "deployment-0024"
-    },
-    {
-      "namespace": "solana",
-      "name": "USDG",
-      "deploymentId": "deployment-0025"
-    },
-    {
-      "namespace": "ethereum",
-      "name": "USDP",
-      "deploymentId": "deployment-0026"
-    },
-    {
-      "namespace": "solana",
-      "name": "USDP",
-      "deploymentId": "deployment-0027"
-    },
-    {
-      "namespace": "ethereum",
-      "name": "USDE",
-      "deploymentId": "deployment-0028"
-    },
-    {
-      "namespace": "ethereum",
-      "name": "GHO",
-      "deploymentId": "deployment-0029"
-    },
-    {
-      "namespace": "avalancheC",
-      "name": "GHO",
-      "deploymentId": "deployment-0030"
-    },
-    {
-      "namespace": "ethereum",
-      "name": "FDUSD",
-      "deploymentId": "deployment-0031"
-    },
-    {
-      "namespace": "solana",
-      "name": "FDUSD",
-      "deploymentId": "deployment-0032"
-    },
-    {
-      "namespace": "ethereum",
-      "name": "RLUSD",
-      "deploymentId": "deployment-0033"
-    },
-    {
-      "namespace": "ethereum",
-      "name": "AUSD",
-      "deploymentId": "deployment-0034"
-    },
-    {
-      "namespace": "avalancheC",
-      "name": "AUSD",
-      "deploymentId": "deployment-0035"
-    },
-    {
-      "namespace": "solana",
-      "name": "AUSD",
-      "deploymentId": "deployment-0036"
-    },
-    {
-      "namespace": "solana",
-      "name": "JUPUSD",
-      "deploymentId": "deployment-0037"
-    },
-    {
-      "namespace": "ethereum",
-      "name": "JPYC",
-      "deploymentId": "deployment-0038"
-    },
-    {
-      "namespace": "avalancheC",
-      "name": "JPYC",
-      "deploymentId": "deployment-0039"
-    },
-    {
-      "namespace": "ethereum",
-      "name": "EURCV",
-      "deploymentId": "deployment-0040"
-    },
-    {
-      "namespace": "solana",
-      "name": "EURCV",
-      "deploymentId": "deployment-0041"
-    },
-    {
-      "namespace": "ethereum",
-      "name": "EURAU",
-      "deploymentId": "deployment-0042"
-    },
-    {
-      "namespace": "solana",
-      "name": "EURAU",
-      "deploymentId": "deployment-0043"
-    },
-    {
-      "namespace": "ethereum",
-      "name": "EUROP",
-      "deploymentId": "deployment-0044"
-    },
-    {
-      "namespace": "avalancheC",
-      "name": "EUROP",
-      "deploymentId": "deployment-0045"
-    },
-    {
-      "namespace": "solana",
-      "name": "EUROP",
-      "deploymentId": "deployment-0046"
-    },
-    {
-      "namespace": "ethereum",
-      "name": "GYEN",
-      "deploymentId": "deployment-0047"
-    },
-    {
-      "namespace": "solana",
-      "name": "GYEN",
-      "deploymentId": "deployment-0048"
-    },
-    {
-      "namespace": "ethereum",
-      "name": "ZUSD",
-      "deploymentId": "deployment-0049"
-    },
-    {
       "namespace": "solana",
       "name": "ZUSD",
       "deploymentId": "deployment-0050"
-    },
-    {
-      "namespace": "ethereum",
-      "name": "EURA",
-      "deploymentId": "deployment-0051"
-    },
-    {
-      "namespace": "ethereum",
-      "name": "EURS",
-      "deploymentId": "deployment-0052"
-    },
-    {
-      "namespace": "ethereum",
-      "name": "EURE_V1",
-      "deploymentId": "deployment-0053"
-    },
-    {
-      "namespace": "ethereum",
-      "name": "EURE",
-      "deploymentId": "deployment-0054"
-    },
-    {
-      "namespace": "ethereum",
-      "name": "UNI",
-      "deploymentId": "deployment-0055"
-    },
-    {
-      "namespace": "ethereum",
-      "name": "AAVE",
-      "deploymentId": "deployment-0056"
-    },
-    {
-      "namespace": "ethereum",
-      "name": "LINK",
-      "deploymentId": "deployment-0057"
-    },
-    {
-      "namespace": "avalancheC",
-      "name": "LINK",
-      "deploymentId": "deployment-0058"
-    },
-    {
-      "namespace": "avalancheC",
-      "name": "JOE",
-      "deploymentId": "deployment-0059"
-    },
-    {
-      "namespace": "solana",
-      "name": "JUP",
-      "deploymentId": "deployment-0060"
     }
   ]
 }

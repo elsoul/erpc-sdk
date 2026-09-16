@@ -3,13 +3,28 @@
 require_relative "test_helper"
 
 class DexCatalogTest < Minitest::Test
-  def test_catalog_contains_the_four_deployments_and_four_pools
-    assert_equal 4, ERPC::DexCatalog::DEX_DEPLOYMENTS.length
-    assert_equal 4, ERPC::DexCatalog::POOL_DEFINITIONS.length
-    assert_equal 3, ERPC::DexCatalog::NATIVE_WRAP_DEFINITIONS.length
-    assert_equal 8, ERPC::DexCatalog::DEX_ALIASES.length
+  def test_catalog_contains_seed_deployments_and_pools
+    refute_empty ERPC::DexCatalog::DEX_DEPLOYMENTS
+    refute_empty ERPC::DexCatalog::POOL_DEFINITIONS
+    refute_empty ERPC::DexCatalog::NATIVE_WRAP_DEFINITIONS
+    refute_empty ERPC::DexCatalog::DEX_ALIASES
     assert_equal "dex-deployment-0001", ERPC::Dexes::Ethereum.fetch(:UNISWAP_V2)
     assert_equal "pool-0003", ERPC::Pools::Solana.fetch(:ORCA_WHIRLPOOLS_WSOL_EURC)
+  end
+
+  def test_every_catalog_alias_points_to_its_compiled_constant
+    ERPC::DexCatalog::DEX_ALIASES.each do |alias_record|
+      namespace = alias_record.fetch(:namespace)
+      group = alias_record.fetch(:dex_deployment_id).nil? ? ERPC::Pools : ERPC::Dexes
+      group_name = namespace == "avalancheC" ? :AvalancheC : namespace.to_sym.capitalize
+      compiled = group.const_get(group_name)
+      alias_name = alias_record.fetch(:name).to_sym
+
+      assert compiled.frozen?
+      assert compiled.key?(alias_name)
+      expected = alias_record.fetch(:dex_deployment_id) || alias_record.fetch(:pool_definition_id)
+      assert_equal expected, compiled.fetch(alias_name)
+    end
   end
 
   def test_lookups_are_offline_and_pair_order_is_unordered
@@ -31,8 +46,16 @@ class DexCatalogTest < Minitest::Test
       "deployment-0013",
       "deployment-0006"
     )
-    assert_equal %w[pool-0003 pool-0004], forward.map { |value| value.fetch(:pool_definition_id) }
-    assert_equal forward.map { |value| value.fetch(:pool_definition_id) }, reverse.map { |value| value.fetch(:pool_definition_id) }
+    solana_pair_ids = ERPC::DexCatalog::POOL_DEFINITIONS.select do |pool|
+      pool.fetch(:chain_id) == ERPC::DexChainIDs::SOLANA_MAINNET &&
+        [pool.fetch(:token0_deployment_id), pool.fetch(:token1_deployment_id)].sort ==
+          %w[deployment-0006 deployment-0013]
+    end.map { |pool| pool.fetch(:pool_definition_id) }
+    forward_ids = forward.map { |value| value.fetch(:pool_definition_id) }
+    assert_equal solana_pair_ids, forward_ids
+    assert_includes forward_ids, "pool-0003"
+    assert_includes forward_ids, "pool-0004"
+    assert_equal forward_ids, reverse.map { |value| value.fetch(:pool_definition_id) }
     assert_equal [], ERPC::DexCatalog.find_pool_definitions_by_pair(
       ERPC::DexChainIDs::ETHEREUM_MAINNET,
       "deployment-0001",
@@ -41,14 +64,27 @@ class DexCatalogTest < Minitest::Test
   end
 
   def test_filters_and_native_wrap_lookup_keep_lifecycle_records_visible
-    assert_equal %w[pool-0001], ERPC::DexCatalog.list_pool_definitions(
+    filtered = ERPC::DexCatalog::POOL_DEFINITIONS.select do |pool|
+      pool.fetch(:chain_id) == ERPC::DexChainIDs::ETHEREUM_MAINNET &&
+        [pool.fetch(:token0_deployment_id), pool.fetch(:token1_deployment_id)].include?("deployment-0002") &&
+        pool.fetch(:adapter).fetch(:kind) == "evm-constant-product-v2"
+    end.map { |pool| pool.fetch(:pool_definition_id) }
+    ethereum_pools = ERPC::DexCatalog.list_pool_definitions(
       chainId: ERPC::DexChainIDs::ETHEREUM_MAINNET,
       tokenDeploymentId: "deployment-0002",
       adapterKind: "evm-constant-product-v2"
     ).map { |value| value.fetch(:pool_definition_id) }
-    assert_equal %w[pool-0003 pool-0004], ERPC::DexCatalog.list_pool_definitions(
+    assert_equal filtered, ethereum_pools
+    assert_includes ethereum_pools, "pool-0001"
+    solana_pool_ids = ERPC::DexCatalog::POOL_DEFINITIONS.select do |pool|
+      pool.fetch(:chain_id) == ERPC::DexChainIDs::SOLANA_MAINNET
+    end.map { |pool| pool.fetch(:pool_definition_id) }
+    listed_solana_pool_ids = ERPC::DexCatalog.list_pool_definitions(
       { "chainId" => ERPC::DexChainIDs::SOLANA_MAINNET }
     ).map { |value| value.fetch(:pool_definition_id) }
+    assert_equal solana_pool_ids, listed_solana_pool_ids
+    assert_includes listed_solana_pool_ids, "pool-0003"
+    assert_includes listed_solana_pool_ids, "pool-0004"
     assert_empty ERPC::DexCatalog.list_pool_definitions({ "unknown" => "value" })
 
     wrap = ERPC::DexCatalog.get_native_wrap_definition("deployment-0005")

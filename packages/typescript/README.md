@@ -71,6 +71,28 @@ standard, address, and flattened asset metadata. See the
 [canonical registry guide](https://github.com/elsoul/erpc-sdk/blob/main/registry/README.md)
 for the source data and ID policy.
 
+## Offline token rankings
+
+Ranking data is bundled as an immutable snapshot and is available without an
+API key or network request:
+
+```ts
+import {
+  TOKEN_CHAIN_IDS,
+  TOKEN_RANKINGS_METADATA,
+  listTokenRankings,
+} from '@elsoul/erpc-sdk'
+
+const ethereumRankings = listTokenRankings(TOKEN_CHAIN_IDS.ethereumMainnet)
+console.log({ status: TOKEN_RANKINGS_METADATA.status, ethereumRankings })
+```
+
+Rows use the reviewed ranking metric recorded in
+`TOKEN_RANKINGS_METADATA`. For the native total-supply-value metric, values are
+exact rational values in atomic native units. The snapshot can be unconfigured
+or partial, has no current-time filtering, and does not fetch live prices or
+supply data; check its metadata before presenting a ranking as current.
+
 ## Offline DEX and pool catalog
 
 DEX deployments, pool addresses, native/wrapped relationships, and
@@ -102,9 +124,11 @@ const weth = getNativeWrapDefinition(tokens.ethereum.ETH)
 const pool = pools.ethereum.UNISWAP_V2_USDC_WETH
 ```
 
-The initial Ethereum Uniswap V2 and Avalanche LFJ legacy constant-product
+The reviewed Ethereum Uniswap V2 and Avalanche LFJ legacy constant-product
 pools support RPC-only exact-input quotes. Solana Orca and Raydium records are
-available for lookup while their CLMM quote adapters are being added:
+available for lookup while their CLMM quote adapters are being added. Catalog
+growth adds lookup and monitoring data; it does not implicitly add swap
+eligibility:
 
 ```ts
 const quote = await erpc.swap.quoteExactInput({
