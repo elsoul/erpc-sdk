@@ -1,5 +1,8 @@
 name: Verify and promote maintenance data
 
+run-name: >-
+  erpc-data-ci-${{ github.event_name == 'workflow_run' && github.event.workflow_run.id || inputs.ci_run_id }}-${{ github.event_name == 'workflow_run' && github.event.workflow_run.run_attempt || inputs.ci_run_attempt }}-${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || inputs.expected_head_sha }}-${{ ((github.event_name == 'workflow_run' && vars.ERPC_ENABLE_AUTOMATIC_DATA_MERGE == 'true') || (github.event_name == 'workflow_dispatch' && inputs.apply == true)) && 'apply' || 'verify' }}
+
 on:
   # A successful, explicitly dispatched CI run on the managed data branch
   # wakes this trusted-main controller. The CI jobs themselves remain read
@@ -75,15 +78,18 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 1
-          ref: refs/heads/main
+          ref: ${{ github.sha }}
           clean: true
           persist-credentials: false
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: 24
       - name: Verify trusted-main controller checkout
+        env:
+          EXPECTED_CONTROLLER_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_CONTROLLER_SHA"
           test "$(git rev-parse --abbrev-ref HEAD)" = HEAD
           test -z "$(git status --porcelain)"
       - name: Bind the exact CI run, artifact, managed PR, and frozen base

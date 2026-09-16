@@ -1,5 +1,13 @@
 name: Weekly release preparation
 
+run-name: >-
+  ${{ ((github.event_name == 'workflow_run') || (github.event_name == 'workflow_dispatch' && inputs.mode == 'reconcile')) &&
+  format('erpc-release-ci-{0}-{1}-{2}-{3}',
+  github.event_name == 'workflow_run' && github.event.workflow_run.id || inputs.ci_run_id,
+  github.event_name == 'workflow_run' && github.event.workflow_run.run_attempt || inputs.ci_run_attempt,
+  github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || inputs.expected_head_sha,
+  ((github.event_name == 'workflow_run' && vars.ERPC_ENABLE_AUTOMATIC_RELEASE == 'true') || (github.event_name == 'workflow_dispatch' && inputs.apply == true)) && 'apply' || 'verify') || 'Weekly release preparation' }}
+
 on:
   schedule:
     - cron: '47 3 * * 4'
@@ -10,6 +18,14 @@ on:
       - codex/release-preparation
   workflow_dispatch:
     inputs:
+      mode:
+        description: Select weekly preparation or exact CI reconciliation
+        required: false
+        default: prepare
+        type: choice
+        options:
+          - prepare
+          - reconcile
       version:
         description: Optional stable version for an explicitly approved manual preparation
         required: false
@@ -18,6 +34,31 @@ on:
         description: Optional YYYY-MM-DD release date
         required: false
         type: string
+      pr_number:
+        description: Exact managed release PR number for reconciliation
+        required: false
+        type: number
+      ci_run_id:
+        description: Exact successful CI workflow run ID for reconciliation
+        required: false
+        type: number
+      ci_run_attempt:
+        description: Exact attempt for the CI workflow run
+        required: false
+        type: number
+      expected_head_sha:
+        description: Exact managed release PR head tested by CI
+        required: false
+        type: string
+      base_sha:
+        description: Frozen main commit used by the managed release PR and CI
+        required: false
+        type: string
+      apply:
+        description: Request the exact-head release reconciliation mutation
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -29,7 +70,9 @@ concurrency:
 jobs:
   reader:
     name: Inspect release preparation inputs
-    if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'prepare'))
     runs-on: ubuntu-latest
     timeout-minutes: 25
     permissions:
@@ -201,7 +244,10 @@ jobs:
   writer:
     name: Prepare and write the release PR
     needs: reader
-    if: needs.reader.result == 'success' && needs.reader.outputs.prepare_allowed == 'true'
+    if: >-
+      needs.reader.result == 'success' &&
+      needs.reader.outputs.prepare_allowed == 'true' &&
+      (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'prepare'))
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -283,59 +329,69 @@ jobs:
           fi
           node registry/maintenance-pr.mjs "${writer_args[@]}"
 
-  automatic-release-controller:
-    name: Merge eligible data patch, tag atomically, and dispatch release
+  reconciliation-binding:
+    name: Verify exact release CI reconciliation binding
     if: >-
-      github.event_name == 'workflow_run' &&
+      (github.event_name == 'workflow_run' &&
       github.event.workflow_run.name == 'CI' &&
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'workflow_dispatch' &&
       github.event.workflow_run.head_branch == 'codex/release-preparation' &&
       github.event.workflow_run.head_repository.full_name == github.repository &&
-      github.event.workflow_run.repository.full_name == github.repository &&
-      vars.ERPC_ENABLE_AUTOMATIC_RELEASE == 'true'
+      github.event.workflow_run.repository.full_name == github.repository) ||
+      (github.event_name == 'workflow_dispatch' &&
+      github.ref == 'refs/heads/main' &&
+      inputs.mode == 'reconcile')
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 20
     permissions:
-      contents: write
+      contents: read
       actions: read
-      pull-requests: write
+      pull-requests: read
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          fetch-depth: 0
-          ref: refs/heads/main
+          fetch-depth: 1
+          ref: ${{ github.sha }}
           clean: true
           persist-credentials: false
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: 24
-      - name: Download exact release-preparation CI source binding
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
-        with:
-          name: ci-source-binding-${{ github.event.workflow_run.head_sha }}-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
-          run-id: ${{ github.event.workflow_run.id }}
-          github-token: ${{ github.token }}
-          path: ${{ runner.temp }}/release-ci-binding
-      - name: Resolve exact managed release PR and CI provenance
+      - name: Verify immutable trusted-main checkout
         env:
-          GH_TOKEN: ${{ github.token }}
-          GITHUB_TOKEN: ${{ github.token }}
-          REPOSITORY: ${{ github.repository }}
-          RUN_ID: ${{ github.event.workflow_run.id }}
-          RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
-          EXPECTED_HEAD: ${{ github.event.workflow_run.head_sha }}
-          BINDING_DIR: ${{ runner.temp }}/release-ci-binding
-          OUTPUT_FILE: ${{ runner.temp }}/release-binding.json
+          EXPECTED_CONTROLLER_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          gh api "/repos/$REPOSITORY/actions/runs/$RUN_ID" --header 'X-GitHub-Api-Version: 2026-03-10' > "$RUNNER_TEMP/release-ci-run.json"
-          gh api "/repos/$REPOSITORY/actions/runs/$RUN_ID/jobs?per_page=100" --header 'X-GitHub-Api-Version: 2026-03-10' > "$RUNNER_TEMP/release-ci-jobs.json"
-          gh pr list --repo "$REPOSITORY" --head codex/release-preparation --base main --state open --limit 20 --json number,headRefOid,baseRefOid,headRepository,isCrossRepository,body,state,mergedAt > "$RUNNER_TEMP/release-prs.json"
-          node --input-type=module - "$BINDING_DIR/source-binding.json" "$BINDING_DIR/ci-provenance.json" "$RUNNER_TEMP/release-ci-run.json" "$RUNNER_TEMP/release-ci-jobs.json" "$RUNNER_TEMP/release-prs.json" "$REPOSITORY" "$RUN_ID" "$RUN_ATTEMPT" "$EXPECTED_HEAD" "$OUTPUT_FILE" <<'NODE'
+          test "$(git rev-parse HEAD)" = "$EXPECTED_CONTROLLER_SHA"
+          test "$(git rev-parse --abbrev-ref HEAD)" = HEAD
+          test -z "$(git status --porcelain)"
+      - name: Download exact CI source binding for reconciliation
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: ci-source-binding-${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || inputs.expected_head_sha }}-${{ github.event_name == 'workflow_run' && github.event.workflow_run.id || inputs.ci_run_id }}-${{ github.event_name == 'workflow_run' && github.event.workflow_run.run_attempt || inputs.ci_run_attempt }}
+          run-id: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.id || inputs.ci_run_id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/release-reconciliation-binding
+      - name: Fetch exact reconciliation CI and PR records
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.id || inputs.ci_run_id }}
+          RUN_ATTEMPT: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.run_attempt || inputs.ci_run_attempt }}
+          EXPECTED_HEAD: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || inputs.expected_head_sha }}
+          PR_NUMBER: ${{ github.event_name == 'workflow_run' && '' || inputs.pr_number }}
+          BASE_SHA: ${{ github.event_name == 'workflow_run' && '' || inputs.base_sha }}
+          OUTPUT_DIR: ${{ runner.temp }}/release-reconciliation-binding
+        run: |
+          set -euo pipefail
+          gh api "/repos/$REPOSITORY/actions/runs/$RUN_ID" --header 'X-GitHub-Api-Version: 2026-03-10' > "$OUTPUT_DIR/ci-run.json"
+          gh api "/repos/$REPOSITORY/actions/runs/$RUN_ID/jobs?per_page=100" --header 'X-GitHub-Api-Version: 2026-03-10' > "$OUTPUT_DIR/ci-jobs.json"
+          gh pr list --repo "$REPOSITORY" --head codex/release-preparation --base main --state open --limit 20 --json number,headRefOid,baseRefOid,headRepository,isCrossRepository,body,state,mergedAt > "$OUTPUT_DIR/release-prs.json"
+          node --input-type=module - "$OUTPUT_DIR/source-binding.json" "$OUTPUT_DIR/ci-provenance.json" "$OUTPUT_DIR/ci-run.json" "$OUTPUT_DIR/ci-jobs.json" "$OUTPUT_DIR/release-prs.json" "$REPOSITORY" "$RUN_ID" "$RUN_ATTEMPT" "$EXPECTED_HEAD" "$PR_NUMBER" "$BASE_SHA" "$OUTPUT_DIR/reconciliation-binding.json" <<'NODE'
           import { readFileSync, writeFileSync } from 'node:fs'
 
-          const [bindingFile, provenanceFile, runFile, jobsFile, prsFile, repository, runIdText, attemptText, expectedHead, outputFile] = process.argv.slice(2)
+          const [bindingFile, provenanceFile, runFile, jobsFile, prsFile, repository, runIdText, attemptText, expectedHead, prNumberText, inputBase, outputFile] = process.argv.slice(2)
           const binding = JSON.parse(readFileSync(bindingFile, 'utf8'))
           const provenance = JSON.parse(readFileSync(provenanceFile, 'utf8'))
           const run = JSON.parse(readFileSync(runFile, 'utf8'))
@@ -343,6 +399,134 @@ jobs:
           const prs = JSON.parse(readFileSync(prsFile, 'utf8'))
           const runId = Number(runIdText)
           const runAttempt = Number(attemptText)
+          const inputPrNumber = prNumberText === '' ? null : Number(prNumberText)
+          const expectedBase = inputBase === '' ? binding.baseSha : inputBase
+          const sha = /^[0-9a-f]{40}$/u
+          const repositoryName = (value) => value?.nameWithOwner ?? value?.fullName ?? value?.full_name ?? null
+          if (!Number.isSafeInteger(runId) || runId < 1 || !Number.isSafeInteger(runAttempt) || runAttempt < 1 || !sha.test(expectedHead) || !sha.test(expectedBase) || expectedHead === expectedBase) throw new Error('release reconciliation tuple is invalid')
+          if (inputPrNumber !== null && (!Number.isSafeInteger(inputPrNumber) || inputPrNumber < 1)) throw new Error('release reconciliation PR number is invalid')
+          if (binding.kind !== 'erpc-sdk-ci-source-binding' || binding.testedHeadSha !== expectedHead || binding.headSha !== expectedHead || binding.baseSha !== expectedBase || binding.workflowPath !== '.github/workflows/ci.yml' || binding.event !== 'workflow_dispatch' || binding.ref !== 'refs/heads/codex/release-preparation' || Number(binding.runId) !== runId || Number(binding.runAttempt) !== runAttempt) throw new Error('downloaded CI source binding is not exact')
+          if (provenance.kind !== 'erpc-sdk-ci-provenance' || provenance.headSha !== expectedHead || provenance.testedHeadSha !== expectedHead || provenance.sourceSha !== expectedHead || provenance.baseSha !== expectedBase || provenance.workflowPath !== '.github/workflows/ci.yml' || provenance.event !== 'workflow_dispatch' || provenance.ref !== 'refs/heads/codex/release-preparation' || Number(provenance.runId) !== runId || Number(provenance.runAttempt) !== runAttempt) throw new Error('downloaded CI provenance is not exact')
+          if (String(run.id) !== String(runId) || Number(run.run_attempt) !== runAttempt || run.status !== 'completed' || run.conclusion !== 'success' || run.event !== 'workflow_dispatch' || run.path !== '.github/workflows/ci.yml' || run.head_sha !== expectedHead || run.head_branch !== 'codex/release-preparation' || repositoryName(run.repository) !== repository || repositoryName(run.head_repository) !== repository) throw new Error('release CI API run is not the exact successful same-repository run')
+          if (!jobs.some((job) => job.name === 'required-ci' && job.status === 'completed' && job.conclusion === 'success')) throw new Error('release CI run lacks a successful required-ci job')
+          if (!Array.isArray(prs)) throw new Error('managed release PR query did not return an array')
+          const matches = prs.filter((pr) => (inputPrNumber === null || Number(pr.number) === inputPrNumber) && pr.headRefOid === expectedHead && pr.baseRefOid === expectedBase && repositoryName(pr.headRepository) === repository && pr.isCrossRepository !== true && String(pr.state).toLowerCase() === 'open' && pr.mergedAt === null)
+          if (matches.length !== 1) throw new Error('exactly one open same-repository release PR must bind this CI head/base')
+          const pr = matches[0]
+          if (!String(pr.body ?? '').includes('Branch: `codex/release-preparation`') || !String(pr.body ?? '').includes('Release preparation:')) throw new Error('managed release PR metadata is missing or stale')
+          const result = {
+            schemaVersion: 1,
+            kind: 'erpc-sdk-release-reconciliation-binding',
+            repository,
+            branch: 'codex/release-preparation',
+            workflowPath: '.github/workflows/ci.yml',
+            prNumber: Number(pr.number),
+            runId,
+            runAttempt,
+            expectedHead,
+            baseSha: expectedBase,
+            sourceBinding: binding,
+            provenance,
+            ciRun: { id: run.id, runAttempt: Number(run.run_attempt), status: run.status, conclusion: run.conclusion, event: run.event, path: run.path, headSha: run.head_sha, headBranch: run.head_branch, repository: repositoryName(run.repository) },
+            requiredJobs: jobs.filter((job) => job.name === 'required-ci').map((job) => ({ name: job.name, status: job.status, conclusion: job.conclusion })),
+            pullRequest: { number: Number(pr.number), headSha: pr.headRefOid, baseSha: pr.baseRefOid, headRepository: repositoryName(pr.headRepository), state: pr.state, mergedAt: pr.mergedAt },
+          }
+          writeFileSync(outputFile, `${JSON.stringify(result, null, 2)}\n`, { flag: 'w' })
+          NODE
+      - name: Upload exact read-only reconciliation binding
+        if: always()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: release-reconciliation-binding-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/release-reconciliation-binding/source-binding.json
+            ${{ runner.temp }}/release-reconciliation-binding/ci-provenance.json
+            ${{ runner.temp }}/release-reconciliation-binding/reconciliation-binding.json
+          if-no-files-found: warn
+          retention-days: 14
+
+  automatic-release-controller:
+    name: Merge eligible data patch, tag atomically, and dispatch release
+    needs:
+      - reconciliation-binding
+    if: >-
+      always() &&
+      vars.ERPC_ENABLE_AUTOMATIC_RELEASE == 'true' &&
+      ((github.event_name == 'workflow_run' &&
+      github.event.workflow_run.name == 'CI' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'workflow_dispatch' &&
+      github.event.workflow_run.head_branch == 'codex/release-preparation' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      github.event.workflow_run.repository.full_name == github.repository &&
+      needs.reconciliation-binding.result == 'success') ||
+      (github.event_name == 'workflow_dispatch' &&
+      github.ref == 'refs/heads/main' &&
+      inputs.mode == 'reconcile' &&
+      inputs.apply == true &&
+      needs.reconciliation-binding.result == 'success'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    permissions:
+      contents: write
+      actions: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+          clean: true
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+      - name: Verify immutable trusted-main controller checkout
+        env:
+          EXPECTED_CONTROLLER_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_CONTROLLER_SHA"
+          test "$(git rev-parse --abbrev-ref HEAD)" = HEAD
+          test -z "$(git status --porcelain)"
+      - name: Download exact release-preparation CI source binding
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: ci-source-binding-${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || inputs.expected_head_sha }}-${{ github.event_name == 'workflow_run' && github.event.workflow_run.id || inputs.ci_run_id }}-${{ github.event_name == 'workflow_run' && github.event.workflow_run.run_attempt || inputs.ci_run_attempt }}
+          run-id: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.id || inputs.ci_run_id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/release-ci-binding
+      - name: Resolve exact managed release PR and CI provenance
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+          RUN_ID: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.id || inputs.ci_run_id }}
+          RUN_ATTEMPT: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.run_attempt || inputs.ci_run_attempt }}
+          EXPECTED_HEAD: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || inputs.expected_head_sha }}
+          INPUT_PR_NUMBER: ${{ github.event_name == 'workflow_run' && '' || inputs.pr_number }}
+          INPUT_BASE_SHA: ${{ github.event_name == 'workflow_run' && '' || inputs.base_sha }}
+          BINDING_DIR: ${{ runner.temp }}/release-ci-binding
+          OUTPUT_FILE: ${{ runner.temp }}/release-binding.json
+        run: |
+          set -euo pipefail
+          gh api "/repos/$REPOSITORY/actions/runs/$RUN_ID" --header 'X-GitHub-Api-Version: 2026-03-10' > "$RUNNER_TEMP/release-ci-run.json"
+          gh api "/repos/$REPOSITORY/actions/runs/$RUN_ID/jobs?per_page=100" --header 'X-GitHub-Api-Version: 2026-03-10' > "$RUNNER_TEMP/release-ci-jobs.json"
+          gh pr list --repo "$REPOSITORY" --head codex/release-preparation --base main --state open --limit 20 --json number,headRefOid,baseRefOid,headRepository,isCrossRepository,body,state,mergedAt > "$RUNNER_TEMP/release-prs.json"
+          node --input-type=module - "$BINDING_DIR/source-binding.json" "$BINDING_DIR/ci-provenance.json" "$RUNNER_TEMP/release-ci-run.json" "$RUNNER_TEMP/release-ci-jobs.json" "$RUNNER_TEMP/release-prs.json" "$REPOSITORY" "$EVENT_NAME" "$RUN_ID" "$RUN_ATTEMPT" "$EXPECTED_HEAD" "$INPUT_PR_NUMBER" "$INPUT_BASE_SHA" "$OUTPUT_FILE" <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs'
+
+          const [bindingFile, provenanceFile, runFile, jobsFile, prsFile, repository, eventName, runIdText, attemptText, expectedHead, prNumberText, inputBase, outputFile] = process.argv.slice(2)
+          const binding = JSON.parse(readFileSync(bindingFile, 'utf8'))
+          const provenance = JSON.parse(readFileSync(provenanceFile, 'utf8'))
+          const run = JSON.parse(readFileSync(runFile, 'utf8'))
+          const jobs = JSON.parse(readFileSync(jobsFile, 'utf8'))?.jobs ?? []
+          const prs = JSON.parse(readFileSync(prsFile, 'utf8'))
+          const runId = Number(runIdText)
+          const runAttempt = Number(attemptText)
+          const inputPrNumber = prNumberText === '' ? null : Number(prNumberText)
+          const expectedBase = inputBase === '' ? binding.baseSha : inputBase
           const sha = /^[0-9a-f]{40}$/u
           const releasePaths = [
             'packages/typescript/package.json',
@@ -354,17 +538,18 @@ jobs:
             'CHANGELOG.md',
           ].sort()
           const repoName = (value) => value?.nameWithOwner ?? value?.fullName ?? value?.full_name ?? null
-          if (!sha.test(expectedHead) || !Number.isSafeInteger(runId) || runId < 1 || !Number.isSafeInteger(runAttempt) || runAttempt < 1) throw new Error('release CI binding inputs are invalid')
-          if (binding.kind !== 'erpc-sdk-ci-source-binding' || binding.testedHeadSha !== expectedHead || binding.headSha !== expectedHead || !sha.test(binding.baseSha) || binding.workflowPath !== '.github/workflows/ci.yml' || Number(binding.runId) !== runId || Number(binding.runAttempt) !== runAttempt) throw new Error('release CI source binding is not exact')
-          if (provenance.kind !== 'erpc-sdk-ci-provenance' || provenance.headSha !== expectedHead || provenance.sourceSha !== expectedHead || provenance.baseSha !== binding.baseSha || provenance.workflowPath !== '.github/workflows/ci.yml' || provenance.event !== 'workflow_dispatch' || Number(provenance.runId) !== runId || Number(provenance.runAttempt) !== runAttempt) throw new Error('release CI provenance is not exact')
+          if ((eventName !== 'workflow_run' && eventName !== 'workflow_dispatch') || !sha.test(expectedHead) || !sha.test(expectedBase) || expectedHead === expectedBase || !Number.isSafeInteger(runId) || runId < 1 || !Number.isSafeInteger(runAttempt) || runAttempt < 1) throw new Error('release CI binding inputs are invalid')
+          if (inputPrNumber !== null && (!Number.isSafeInteger(inputPrNumber) || inputPrNumber < 1)) throw new Error('release reconciliation PR number is invalid')
+          if (binding.kind !== 'erpc-sdk-ci-source-binding' || binding.testedHeadSha !== expectedHead || binding.headSha !== expectedHead || binding.baseSha !== expectedBase || binding.workflowPath !== '.github/workflows/ci.yml' || binding.event !== 'workflow_dispatch' || binding.ref !== 'refs/heads/codex/release-preparation' || Number(binding.runId) !== runId || Number(binding.runAttempt) !== runAttempt) throw new Error('release CI source binding is not exact')
+          if (provenance.kind !== 'erpc-sdk-ci-provenance' || provenance.headSha !== expectedHead || provenance.testedHeadSha !== expectedHead || provenance.sourceSha !== expectedHead || provenance.baseSha !== expectedBase || provenance.workflowPath !== '.github/workflows/ci.yml' || provenance.event !== 'workflow_dispatch' || provenance.ref !== 'refs/heads/codex/release-preparation' || Number(provenance.runId) !== runId || Number(provenance.runAttempt) !== runAttempt) throw new Error('release CI provenance is not exact')
           if (String(run.id) !== String(runId) || Number(run.run_attempt) !== runAttempt || run.status !== 'completed' || run.conclusion !== 'success' || run.event !== 'workflow_dispatch' || run.path !== '.github/workflows/ci.yml' || run.head_sha !== expectedHead || run.head_branch !== 'codex/release-preparation' || repoName(run.repository) !== repository || repoName(run.head_repository) !== repository) throw new Error('release CI API run is not the exact successful same-repository run')
           if (!jobs.some((job) => job.name === 'required-ci' && job.status === 'completed' && job.conclusion === 'success')) throw new Error('release CI run lacks a successful required-ci job')
           if (!Array.isArray(prs)) throw new Error('managed release PR query did not return an array')
-          const matches = prs.filter((pr) => pr.headRefOid === expectedHead && repoName(pr.headRepository) === repository && pr.isCrossRepository !== true && String(pr.state).toLowerCase() === 'open' && pr.mergedAt === null)
+          const matches = prs.filter((pr) => (inputPrNumber === null || Number(pr.number) === inputPrNumber) && pr.headRefOid === expectedHead && pr.baseRefOid === expectedBase && repoName(pr.headRepository) === repository && pr.isCrossRepository !== true && String(pr.state).toLowerCase() === 'open' && pr.mergedAt === null)
           if (matches.length !== 1) throw new Error('exactly one open same-repository release PR must bind this CI head')
           const pr = matches[0]
-          if (pr.baseRefOid !== binding.baseSha || !String(pr.body ?? '').includes('Branch: `codex/release-preparation`') || !String(pr.body ?? '').includes('Release preparation:')) throw new Error('managed release PR metadata is missing or stale')
-          writeFileSync(outputFile, `${JSON.stringify({ schemaVersion: 1, kind: 'erpc-sdk-release-controller-binding', repository, branch: 'codex/release-preparation', workflowPath: '.github/workflows/ci.yml', prNumber: Number(pr.number), runId, runAttempt, expectedHead, baseSha: binding.baseSha, releasePaths }, null, 2)}\n`, { flag: 'w' })
+          if (!String(pr.body ?? '').includes('Branch: `codex/release-preparation`') || !String(pr.body ?? '').includes('Release preparation:')) throw new Error('managed release PR metadata is missing or stale')
+          writeFileSync(outputFile, `${JSON.stringify({ schemaVersion: 1, kind: 'erpc-sdk-release-controller-binding', repository, branch: 'codex/release-preparation', workflowPath: '.github/workflows/ci.yml', prNumber: Number(pr.number), runId, runAttempt, expectedHead, baseSha: expectedBase, releasePaths }, null, 2)}\n`, { flag: 'w' })
           NODE
       - name: Verify the exact seven-file release candidate against the published paired baseline
         env:
