@@ -3,6 +3,28 @@
 require_relative "test_helper"
 
 class RestTest < Minitest::Test
+  def test_keyless_price_sse_fails_locally_without_http_io
+    calls = 0
+    adapter = FakeHttpAdapter.new do
+      calls += 1
+      raise "keyless SSE should not use HTTP"
+    end
+    erpc = ERPC::Client.new(
+      ERPC::ClientConfig.new(
+        ethereum_rpc: ERPC::RpcEndpointConfig.new(http_url: "https://customer.example/rpc")
+      ),
+      http_adapter: adapter
+    )
+
+    assert_raises(ERPC::NotConfiguredError) do
+      erpc.price.stream_price_updates(ids: ["feed"]).to_a
+    end
+    assert_equal 0, calls
+    assert_empty adapter.requests
+  ensure
+    erpc&.close
+  end
+
   def test_price_rest_uses_bearer_and_repeated_ids
     adapter = FakeHttpAdapter.new do |request|
       assert_equal "Bearer secret", request[:headers]["authorization"]

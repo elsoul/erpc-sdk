@@ -1,3 +1,4 @@
+import { createServer } from 'node:http'
 import { describe, expect, it } from 'vitest'
 import {
   AVALANCHE_AVAX_METHODS,
@@ -8,8 +9,11 @@ import {
   AVALANCHE_X_CHAIN_METHODS,
   createErpcClient,
   ErpcBatchPolicyError,
+  ErpcConfigError,
+  ErpcHttpError,
   ErpcInvalidResponseError,
   ErpcJsonRpcError,
+  ErpcNotConfiguredError,
   ErpcTransportError,
   ETHEREUM_RPC_METHODS,
   ETHEREUM_SUBSCRIPTION_METHODS,
@@ -629,5 +633,242 @@ describe('ERPC client', () => {
       ...SOLANA_ANALYTICS_METHODS,
     ]
     expect(new Set(all)).toHaveLength(all.length)
+  })
+
+  it('supports a keyless direct Solana endpoint with an intact target and scoped headers', async () => {
+    const directUrl = 'https://customer.example/customer/path?token=a%2Fb&region=eu'
+    let capturedUrl = ''
+    let capturedHeaders: Headers | undefined
+    let capturedCredentials: RequestCredentials | undefined
+    const client = createErpcClient({
+      solanaRpc: {
+        httpUrl: directUrl,
+        headers: {
+          Accept: 'text/plain',
+          'Content-Type': 'text/plain',
+          authorization: 'Bearer direct-secret',
+          'x-node-scope': 'solana-only',
+        },
+      },
+      headers: {
+        authorization: 'Bearer global-secret',
+        'x-global': 'must-not-be-forwarded',
+      },
+      fetch: async (input, init) => {
+        capturedUrl = String(input)
+        capturedHeaders = new Headers(init?.headers)
+        capturedCredentials = init?.credentials
+        const request = JSON.parse(String(init?.body)) as { readonly id: number }
+        return new Response(JSON.stringify({
+          jsonrpc: '2.0',
+          id: request.id,
+          result: 'ok',
+        }))
+      },
+    })
+
+    await expect(client.solana.rpc.getHealth().send()).resolves.toBe('ok')
+    expect(capturedUrl).toBe(directUrl)
+    expect(capturedHeaders?.get('authorization')).toBe('Bearer direct-secret')
+    expect(capturedHeaders?.get('x-node-scope')).toBe('solana-only')
+    expect(capturedHeaders?.get('accept')).toBe('application/json')
+    expect(capturedHeaders?.get('content-type')).toBe('application/json')
+    expect(capturedHeaders?.get('x-global')).toBeNull()
+    expect(capturedCredentials).toBe('omit')
+    expect(client.solana.rpc.endpoint).toBe('https://customer.example/customer/path')
+    client.close()
+  })
+
+  it('does not follow redirects from direct HTTP endpoints', async () => {
+    let firstCalls = 0
+    let secondCalls = 0
+    let firstSecret: string | undefined
+    let secondSecret: string | undefined
+    let redirectTarget = ''
+    const serverB = createServer((request, response) => {
+      secondCalls += 1
+      secondSecret = request.headers['x-node-secret']?.toString()
+      response.writeHead(200, { 'content-type': 'application/json' })
+      response.end(JSON.stringify({ jsonrpc: '2.0', id: 1, result: 'unexpected' }))
+    })
+    const serverA = createServer((request, response) => {
+      firstCalls += 1
+      firstSecret = request.headers['x-node-secret']?.toString()
+      response.writeHead(307, { location: redirectTarget })
+      response.end()
+    })
+    const listen = (server: ReturnType<typeof createServer>): Promise<number> =>
+      new Promise((resolve, reject) => {
+        const onError = (error: Error) => reject(error)
+        server.once('error', onError)
+        server.listen(0, '127.0.0.1', () => {
+          server.off('error', onError)
+          const address = server.address()
+          if (typeof address !== 'object' || address === null) {
+            reject(new Error('local test server did not expose an address'))
+            return
+          }
+          resolve(address.port)
+        })
+      })
+    const close = (server: ReturnType<typeof createServer>): Promise<void> =>
+      new Promise((resolve) => {
+        if (!server.listening) {
+          resolve()
+          return
+        }
+        server.close(() => resolve())
+      })
+
+    let client: ReturnType<typeof createErpcClient> | undefined
+    try {
+      const secondPort = await listen(serverB)
+      redirectTarget = `http://127.0.0.1:${secondPort}/final`
+      const firstPort = await listen(serverA)
+      const directUrl =
+        `http://127.0.0.1:${firstPort}/customer/path?token=a%2Fb&region=eu`
+      client = createErpcClient({
+        solanaRpc: {
+          httpUrl: directUrl,
+          headers: { 'x-node-secret': 'local-direct-secret' },
+        },
+        fetch: globalThis.fetch,
+      })
+
+      const error = await client.solana.rpc.getHealth().send().catch((value) => value)
+      expect(error).toBeInstanceOf(ErpcHttpError)
+      expect(error).toMatchObject({ status: 307 })
+      expect(String(error)).not.toContain('local-direct-secret')
+      expect(firstCalls).toBe(1)
+      expect(firstSecret).toBe('local-direct-secret')
+      expect(secondCalls).toBe(0)
+      expect(secondSecret).toBeUndefined()
+    } finally {
+      client?.close()
+      await close(serverA)
+      await close(serverB)
+    }
+  })
+
+  it('requires either an API key or a direct RPC override', () => {
+    expect(() => createErpcClient({
+      fetch: async () => new Response('{}'),
+    })).toThrow(ErpcConfigError)
+  })
+
+  it('rejects unconfigured RPC and REST namespaces locally in keyless mode', async () => {
+    let fetchCount = 0
+    const client = createErpcClient({
+      solanaRpc: { httpUrl: 'https://customer.example/rpc' },
+      fetch: async () => {
+        fetchCount += 1
+        return new Response('{}')
+      },
+    })
+
+    await expect(client.ethereum.rpc.eth_chainId().send()).rejects.toMatchObject({
+      code: 'ERPC_NOT_CONFIGURED',
+      namespace: 'ethereum.rpc',
+    })
+    await expect(client.avalanche.xChain.getHeight().send()).rejects.toBeInstanceOf(
+      ErpcNotConfiguredError,
+    )
+    await expect(client.price.getPriceFeeds()).rejects.toMatchObject({
+      code: 'ERPC_NOT_CONFIGURED',
+      namespace: 'price',
+    })
+    expect(fetchCount).toBe(0)
+    client.close()
+  })
+
+  it.each([
+    'https:customer.example/rpc',
+    'https://customer.example/rpc#',
+    'https://user:password@customer.example/rpc',
+    'https://@customer.example/rpc',
+  ])('rejects unsafe direct URL %s without echoing it', (httpUrl) => {
+    expect(() => createErpcClient({
+      ethereumRpc: { httpUrl },
+      fetch: async () => new Response('{}'),
+    })).toThrowError(ErpcConfigError)
+  })
+
+  it('redacts direct query and scoped authorization values in JSON-RPC errors', async () => {
+    const client = createErpcClient({
+      ethereumRpc: {
+        httpUrl: 'https://customer.example/rpc?token=a%2Fb',
+        headers: { authorization: 'Bearer direct-secret' },
+      },
+      fetch: async (_input, init) => {
+        const request = JSON.parse(String(init?.body)) as { readonly id: number }
+        return new Response(JSON.stringify({
+          jsonrpc: '2.0',
+          id: request.id,
+          error: {
+            code: -32000,
+            message: 'a%2fb direct-secret',
+            data: { 'a/b': 'direct-secret' },
+          },
+        }))
+      },
+    })
+
+    const error = await client.ethereum.rpc.eth_chainId().send().catch((value) => value)
+    expect(error).toBeInstanceOf(ErpcJsonRpcError)
+    expect(String(error)).not.toContain('a%2fb')
+    expect(String(error)).not.toContain('direct-secret')
+    expect(JSON.stringify(error)).not.toContain('a/b')
+    expect(JSON.stringify(error)).not.toContain('direct-secret')
+    client.close()
+  })
+
+  it('redacts percent-triplet hex case without folding ordinary plaintext case', async () => {
+    const rawSecret = 'MiXeD/Secret?A'
+    const upperEncoded = 'MiXeD%2FSecret%3FA'
+    const lowerEncoded = 'MiXeD%2fSecret%3fA'
+    const mixedEncoded = 'MiXeD%2FSecret%3fA'
+    const distinctLowercase = 'mixed/secret?a'
+    const client = createErpcClient({
+      ethereumRpc: {
+        httpUrl: `https://customer.example/rpc?token=${upperEncoded}`,
+      },
+      fetch: async (_input, init) => {
+        const request = JSON.parse(String(init?.body)) as { readonly id: number }
+        return new Response(JSON.stringify({
+          jsonrpc: '2.0',
+          id: request.id,
+          error: {
+            code: -32000,
+            message: [
+              rawSecret,
+              upperEncoded,
+              lowerEncoded,
+              mixedEncoded,
+              distinctLowercase,
+            ].join(' | '),
+            data: {
+              [rawSecret]: upperEncoded,
+              [lowerEncoded]: mixedEncoded,
+              distinctLowercase,
+            },
+          },
+        }))
+      },
+    })
+
+    const error = await client.ethereum.rpc.eth_chainId().send().catch((value) => value)
+    expect(error).toBeInstanceOf(ErpcJsonRpcError)
+    expect((error as ErpcJsonRpcError).message).not.toContain(rawSecret)
+    expect((error as ErpcJsonRpcError).message).not.toContain(upperEncoded)
+    expect((error as ErpcJsonRpcError).message).not.toContain(lowerEncoded)
+    expect((error as ErpcJsonRpcError).message).not.toContain(mixedEncoded)
+    expect((error as ErpcJsonRpcError).message).toContain(distinctLowercase)
+    const data = JSON.stringify((error as ErpcJsonRpcError).data)
+    expect(data).not.toContain(rawSecret)
+    expect(data).not.toContain(upperEncoded)
+    expect(data).not.toContain(lowerEncoded)
+    expect(data).not.toContain(mixedEncoded)
+    expect(data).toContain(distinctLowercase)
+    client.close()
   })
 })

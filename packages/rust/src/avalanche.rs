@@ -289,17 +289,18 @@ pub struct AvalancheClient {
 
 impl AvalancheClient {
     pub(crate) fn new(
-        transport: Arc<HttpJsonRpcTransport>,
+        c_chain_transport: &Arc<HttpJsonRpcTransport>,
+        native_transport: Arc<HttpJsonRpcTransport>,
         websocket: Arc<WebSocketJsonRpcTransport>,
         index: AvalancheIndexTransports,
     ) -> Self {
         Self {
-            rpc: EthereumRpcClient::new(Arc::clone(&transport)),
-            avax: AvalancheAvaxClient::new(Arc::clone(&transport)),
-            x_chain: AvalancheXChainClient::new(Arc::clone(&transport)),
-            p_chain: AvalanchePChainClient::new(Arc::clone(&transport)),
-            proposer_vm: AvalancheProposerVmClient::new(Arc::clone(&transport)),
-            info: AvalancheInfoClient::new(transport),
+            rpc: EthereumRpcClient::new(Arc::clone(c_chain_transport)),
+            avax: AvalancheAvaxClient::new(Arc::clone(&native_transport)),
+            x_chain: AvalancheXChainClient::new(Arc::clone(&native_transport)),
+            p_chain: AvalanchePChainClient::new(Arc::clone(&native_transport)),
+            proposer_vm: AvalancheProposerVmClient::new(Arc::clone(&native_transport)),
+            info: AvalancheInfoClient::new(native_transport),
             index: AvalancheIndexClient {
                 c_chain_blocks: AvalancheIndexRpcClient::new(index.c_chain_blocks),
                 p_chain_blocks: AvalancheIndexRpcClient::new(index.p_chain_blocks),

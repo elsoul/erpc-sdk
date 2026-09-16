@@ -2,6 +2,7 @@ import {
   ErpcAbortedError,
   ErpcHttpError,
   ErpcInvalidResponseError,
+  ErpcNotConfiguredError,
   ErpcTimeoutError,
   ErpcTransportError,
 } from '../errors'
@@ -17,11 +18,12 @@ export type QueryValue =
 export type Query = Readonly<Record<string, QueryValue>>
 
 export interface RestTransportConfig {
-  readonly apiKey: string
+  readonly apiKey?: string
   readonly endpoint: URL
   readonly fetch: typeof globalThis.fetch
   readonly headers: Readonly<Record<string, string>>
   readonly timeoutMs: number
+  readonly unavailableNamespace?: string
 }
 
 export interface RestStreamResponse {
@@ -112,13 +114,15 @@ export class RestTransport {
   readonly #fetch: typeof globalThis.fetch
   readonly #headers: Readonly<Record<string, string>>
   readonly #timeoutMs: number
+  readonly #unavailableNamespace: string | undefined
 
   constructor(config: RestTransportConfig) {
-    this.#apiKey = config.apiKey
+    this.#apiKey = config.apiKey ?? ''
     this.#endpoint = new URL(config.endpoint)
     this.#fetch = config.fetch
     this.#headers = config.headers
     this.#timeoutMs = config.timeoutMs
+    this.#unavailableNamespace = config.unavailableNamespace
     const endpoint = new URL(config.endpoint)
     endpoint.search = ''
     endpoint.hash = ''
@@ -138,6 +142,9 @@ export class RestTransport {
     query?: Query,
     options: RpcSendOptions = {},
   ): Promise<TResult> {
+    if (this.#unavailableNamespace !== undefined) {
+      throw new ErpcNotConfiguredError(this.#unavailableNamespace)
+    }
     const controlled = controlledSignal(this.#timeoutMs, options.signal)
     try {
       const response = await this.#get(path, query, controlled.signal)
@@ -160,6 +167,9 @@ export class RestTransport {
     query?: Query,
     options: RpcSendOptions = {},
   ): Promise<RestStreamResponse> {
+    if (this.#unavailableNamespace !== undefined) {
+      throw new ErpcNotConfiguredError(this.#unavailableNamespace)
+    }
     const controlled = controlledSignal(this.#timeoutMs, options.signal)
     try {
       const response = await this.#get(path, query, controlled.signal)
@@ -181,13 +191,16 @@ export class RestTransport {
   }
 
   #get(path: string, query: Query | undefined, signal: AbortSignal) {
+    const headers: Record<string, string> = {
+      ...this.#headers,
+      accept: 'application/json',
+    }
+    if (this.#unavailableNamespace === undefined) {
+      headers.authorization = `Bearer ${this.#apiKey}`
+    }
     return this.#fetch(this.url(path, query), {
       method: 'GET',
-      headers: {
-        ...this.#headers,
-        authorization: `Bearer ${this.#apiKey}`,
-        accept: 'application/json',
-      },
+      headers,
       signal,
     })
   }

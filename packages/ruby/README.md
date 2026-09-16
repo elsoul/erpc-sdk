@@ -28,6 +28,36 @@ ensure
 end
 ```
 
+## Dedicated RPC endpoints
+
+Supply a full HTTP(S) JSON-RPC URL to use a customer-owned node without an
+eRPC API key. The URL path and query are sent exactly as provided. Direct URLs
+are final HTTP request targets; the Ruby adapter does not follow redirects.
+The direct endpoint options shown here are available in this source checkout
+and are absent from the published `0.7.0` gem.
+
+```ruby
+config = ERPC::ClientConfig.new(
+  ethereum_rpc: ERPC::RpcEndpointConfig.new(
+    http_url: "https://node.example/rpc/customer?token=..."
+  )
+)
+erpc = ERPC::Client.new(config)
+```
+
+An independent WebSocket URL enables subscriptions. Scoped headers apply to
+direct HTTP requests for that RPC endpoint.
+
+```ruby
+config = ERPC::ClientConfig.new(
+  ethereum_rpc: ERPC::RpcEndpointConfig.new(
+    http_url: "https://node.example/rpc",
+    websocket_url: "wss://ws.example/socket?token=...",
+    headers: { "authorization" => "Bearer node-token" }
+  )
+)
+```
+
 ## Offline token catalog
 
 The gem bundles a generated token catalog for Ethereum, Solana, and Avalanche
@@ -88,8 +118,8 @@ being treated as zero.
 
 The source tree bundles the generated DEX deployment, pool, and native/wrapped
 token catalog. These lookups are synchronous and offline, and the returned
-records are frozen. The published `0.6.0` gem predates these exports; this
-source-tree feature is planned for unreleased `0.7.0`.
+records are frozen. The published `0.7.0` gem includes these DEX and swap
+exports.
 
 ```ruby
 pool = ERPC::DexCatalog.get_pool_definition("pool-0001")

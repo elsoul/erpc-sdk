@@ -4,6 +4,298 @@ require_relative "test_helper"
 require "base64"
 
 class ClientTest < Minitest::Test
+  def test_keyless_direct_rpc_preserves_the_exact_target_and_scoped_headers
+    direct_url = "https://customer.example/customer/path?token=a%2Fb&region=eu"
+    adapter = FakeHttpAdapter.new do |request|
+      body = JSON.parse(request.fetch(:body))
+      ERPC::HttpResponse.new(
+        status: 200,
+        body: JSON.generate("jsonrpc" => "2.0", "id" => body.fetch("id"), "result" => "ok")
+      )
+    end
+    erpc = ERPC::Client.new(
+      ERPC::ClientConfig.new(
+        ethereum_rpc: ERPC::RpcEndpointConfig.new(
+          http_url: direct_url,
+          headers: {
+            "authorization" => "Bearer direct-secret",
+            "x-node-scope" => "ethereum-only",
+            "Accept" => "text/plain"
+          }
+        ),
+        headers: {
+          "authorization" => "Bearer global-secret",
+          "x-global" => "must-not-be-forwarded"
+        }
+      ),
+      http_adapter: adapter
+    )
+
+    assert_equal "ok", erpc.ethereum.rpc.eth_chain_id.send
+    request = adapter.requests.fetch(0)
+    assert_equal direct_url, request.fetch(:url)
+    assert_equal "Bearer direct-secret", request.fetch(:headers).fetch("authorization")
+    assert_equal "ethereum-only", request.fetch(:headers).fetch("x-node-scope")
+    assert_equal "application/json", request.fetch(:headers).fetch("accept")
+    assert_equal "application/json", request.fetch(:headers).fetch("content-type")
+    refute request.fetch(:headers).key?("x-global")
+    assert_equal "https://customer.example/customer/path", erpc.ethereum.rpc.endpoint
+    refute_includes request.fetch(:url), "api-key"
+  ensure
+    erpc&.close
+  end
+
+  def test_keyless_config_requires_a_valid_direct_override
+    assert_raises(ERPC::ConfigError) { ERPC::ClientConfig.new }
+    %w[
+      https:customer.example/rpc
+      https://customer.example/rpc#
+      https://user:password@customer.example/rpc
+      https://@customer.example/rpc
+      http://:123/rpc
+    ].each do |url|
+      error = assert_raises(ERPC::ConfigError) do
+        ERPC::RpcEndpointConfig.new(http_url: url)
+      end
+      refute_includes error.message, url
+    end
+  end
+
+  def test_keyless_unconfigured_namespaces_fail_without_http_io
+    calls = 0
+    adapter = FakeHttpAdapter.new do
+      calls += 1
+      raise "unconfigured namespace should not use HTTP"
+    end
+    erpc = ERPC::Client.new(
+      ERPC::ClientConfig.new(
+        solana_rpc: ERPC::RpcEndpointConfig.new(http_url: "https://customer.example/solana")
+      ),
+      http_adapter: adapter,
+      websocket_factory: ->(*) { raise "unconfigured namespace should not use WebSocket" }
+    )
+
+    error = assert_raises(ERPC::NotConfiguredError) { erpc.ethereum.rpc.eth_chain_id.send }
+    assert_equal "ethereum.rpc", error.namespace
+    assert_raises(ERPC::NotConfiguredError) { erpc.avalanche.x_chain.get_height.send }
+    assert_raises(ERPC::NotConfiguredError) { erpc.price.get_price_feeds }
+    assert_equal 0, calls
+  ensure
+    erpc&.close
+  end
+
+  def test_direct_avalanche_c_rpc_is_separate_from_native_and_index_transports
+    adapter = FakeHttpAdapter.new do |request|
+      body = JSON.parse(request.fetch(:body))
+      ERPC::HttpResponse.new(
+        status: 200,
+        body: JSON.generate("jsonrpc" => "2.0", "id" => body.fetch("id"), "result" => body.fetch("method"))
+      )
+    end
+    endpoint = ERPC::RpcEndpointConfig.new(
+      http_url: "https://customer.example/c?token=c",
+      headers: { "x-c-chain" => "direct-only" }
+    )
+    erpc = ERPC::Client.new(
+      ERPC::ClientConfig.new(api_key: "shared-key", avalanche_c_rpc: endpoint),
+      http_adapter: adapter
+    )
+
+    assert_equal "eth_chainId", erpc.avalanche.rpc.eth_chain_id.send
+    assert_equal "platform.getHeight", erpc.avalanche.p_chain.get_height.send
+    assert_equal "index.getContainerByID",
+                 erpc.avalanche.index.x_chain_transactions.get_container_by_id(id: "tx-id").send
+    assert_equal "https://customer.example/c?token=c", adapter.requests.fetch(0).fetch(:url)
+    assert_equal "https://ava-rpc.erpc.global/ava?api-key=shared-key", adapter.requests.fetch(1).fetch(:url)
+    assert_equal "https://ava-rpc.erpc.global/ava/ext/index/X/tx?api-key=shared-key",
+                 adapter.requests.fetch(2).fetch(:url)
+    assert_equal "direct-only", adapter.requests.fetch(0).fetch(:headers).fetch("x-c-chain")
+    refute adapter.requests.fetch(1).fetch(:headers).key?("x-c-chain")
+  ensure
+    erpc&.close
+  end
+
+  def test_mixed_direct_rpc_and_legacy_rest_headers_are_isolated
+    adapter = FakeHttpAdapter.new do |request|
+      body = JSON.parse(request.fetch(:body)) if request[:body]
+      if request[:method] == :post
+        result = "ok"
+        ERPC::HttpResponse.new(
+          status: 200,
+          body: JSON.generate("jsonrpc" => "2.0", "id" => body.fetch("id"), "result" => result)
+        )
+      else
+        ERPC::HttpResponse.new(status: 200, body: JSON.generate([]))
+      end
+    end
+    erpc = ERPC::Client.new(
+      ERPC::ClientConfig.new(
+        api_key: "shared-key",
+        ethereum_rpc: ERPC::RpcEndpointConfig.new(
+          http_url: "https://customer.example/eth?token=direct",
+          headers: { "x-direct" => "eth-only" }
+        ),
+        headers: { "x-global" => "legacy-only" }
+      ),
+      http_adapter: adapter
+    )
+
+    assert_equal "ok", erpc.ethereum.rpc.eth_chain_id.send
+    erpc.solana.rpc.get_slot.send
+    erpc.price.get_price_feeds
+    direct, legacy, rest = adapter.requests
+    assert_equal "eth-only", direct.fetch(:headers).fetch("x-direct")
+    refute direct.fetch(:headers).key?("x-global")
+    refute URI.parse(direct.fetch(:url)).query.to_s.include?("api-key")
+    assert_equal "legacy-only", legacy.fetch(:headers).fetch("x-global")
+    assert_equal "shared-key", URI.decode_www_form(URI.parse(legacy.fetch(:url)).query).to_h.fetch("api-key")
+    assert_equal "legacy-only", rest.fetch(:headers).fetch("x-global")
+    assert_equal "Bearer shared-key", rest.fetch(:headers).fetch("authorization")
+    refute rest.fetch(:headers).key?("x-direct")
+  ensure
+    erpc&.close
+  end
+
+  def test_direct_malformed_json_drops_the_native_parser_cause
+    provider_secret = "provider-secret"
+    adapter = FakeHttpAdapter.new do |_request|
+      ERPC::HttpResponse.new(status: 200, body: "{\"error\":\"#{provider_secret}")
+    end
+    erpc = ERPC::Client.new(
+      ERPC::ClientConfig.new(
+        ethereum_rpc: ERPC::RpcEndpointConfig.new(
+          http_url: "https://customer.example/rpc?token=#{provider_secret}"
+        )
+      ),
+      http_adapter: adapter
+    )
+
+    error = assert_raises(ERPC::InvalidResponseError) { erpc.ethereum.rpc.eth_chain_id.send }
+    assert_nil error.cause
+    refute_includes error.message, provider_secret
+  ensure
+    erpc&.close
+  end
+
+  def test_direct_redaction_handles_mixed_case_percent_escapes_without_folding_plaintext
+    query_secret = "MiXeD/Secret"
+    header_secret = "HeaderMiXeD/Secret"
+    adapter = FakeHttpAdapter.new do |request|
+      body = JSON.parse(request.fetch(:body))
+      ERPC::HttpResponse.new(
+        status: 200,
+        body: JSON.generate(
+          "jsonrpc" => "2.0",
+          "id" => body.fetch("id"),
+          "error" => {
+            "code" => -32_000,
+            "message" => [
+              query_secret,
+              "MiXeD%2FSecret",
+              "MiXeD%2fSecret",
+              "MiXeD%2fSecret",
+              header_secret,
+              "HeaderMiXeD%2fSecret",
+              "mixed/secret"
+            ].join(" "),
+            "data" => {
+              "MiXeD%2FSecret" => "MiXeD/Secret",
+              "MiXeD%2fSecret" => "HeaderMiXeD%2fSecret",
+              "mixed/secret" => "mixed/secret"
+            }
+          }
+        )
+      )
+    end
+    endpoint = ERPC::RpcEndpointConfig.new(
+      http_url: "https://customer.example/rpc?token=MiXeD%2FSecret",
+      headers: { "authorization" => "Bearer #{header_secret}" }
+    )
+    erpc = ERPC::Client.new(ERPC::ClientConfig.new(ethereum_rpc: endpoint), http_adapter: adapter)
+
+    error = assert_raises(ERPC::JsonRpcError) { erpc.ethereum.rpc.eth_chain_id.send }
+    assert_equal "mixed/secret", error.data.fetch("mixed/secret")
+    refute_includes error.message, query_secret
+    refute_includes error.message, "MiXeD%2FSecret"
+    refute_includes error.message, "MiXeD%2fSecret"
+    refute_includes error.message, "MiXeD%2FsEcReT"
+    refute_includes error.message, header_secret
+    refute_includes error.message, "HeaderMiXeD%2fSecret"
+    assert_includes error.message, "mixed/secret"
+    refute error.data.key?("MiXeD%2FSecret")
+    refute error.data.key?("MiXeD%2fSecret")
+    assert_equal "[REDACTED]", error.data.fetch("[REDACTED]")
+  ensure
+    erpc&.close
+  end
+
+  def test_direct_http_target_does_not_follow_redirects
+    source_server = TCPServer.new("127.0.0.1", 0)
+    destination_server = TCPServer.new("127.0.0.1", 0)
+    source_port = source_server.local_address.ip_port
+    destination_port = destination_server.local_address.ip_port
+    source_requests = Queue.new
+    destination_requests = Queue.new
+    source_thread = Thread.new do
+      socket = source_server.accept
+      request_line = socket.gets("\r\n")
+      headers = {}
+      while (line = socket.gets("\r\n"))
+        break if line == "\r\n"
+
+        name, value = line.split(":", 2)
+        headers[name.downcase] = value.to_s.strip
+      end
+      content_length = headers.fetch("content-length", "0").to_i
+      socket.read(content_length) if content_length.positive?
+      source_requests << { path: request_line.to_s.split.fetch(1), headers: headers }
+      socket.write(
+        "HTTP/1.1 307 Temporary Redirect\r\n" \
+        "Location: http://127.0.0.1:#{destination_port}/final\r\n" \
+        "Content-Length: 0\r\n" \
+        "Connection: close\r\n\r\n"
+      )
+    ensure
+      socket&.close
+    end
+    destination_thread = Thread.new do
+      ready = IO.select([destination_server], nil, nil, 0.5)
+      if ready
+        socket = destination_server.accept
+        destination_requests << socket.gets("\r\n").to_s
+      else
+        destination_requests << nil
+      end
+    ensure
+      socket&.close
+    end
+    source_thread.report_on_exception = false
+    destination_thread.report_on_exception = false
+    erpc = ERPC::Client.new(
+      ERPC::ClientConfig.new(
+        timeout: 1.0,
+        ethereum_rpc: ERPC::RpcEndpointConfig.new(
+          http_url: "http://127.0.0.1:#{source_port}/redirect?token=direct",
+          headers: { "x-direct-scope" => "direct-only" }
+        )
+      )
+    )
+
+    assert_raises(ERPC::HttpError) { erpc.ethereum.rpc.eth_chain_id.send }
+    source_request = Timeout.timeout(1.0) { source_requests.pop }
+    assert_equal "/redirect?token=direct", source_request.fetch(:path)
+    assert_equal "direct-only", source_request.fetch(:headers).fetch("x-direct-scope")
+    assert_nil Timeout.timeout(1.0) { destination_requests.pop }
+  ensure
+    erpc&.close
+    [source_thread, destination_thread].each do |thread|
+      thread&.join(1)
+      thread&.kill if thread&.alive?
+    end
+    source_server&.close
+    destination_server&.close
+  end
+
   def test_config_normalizes_endpoints_and_redacts_credential
     config = ERPC::ClientConfig.new(
       api_key: " secret ",

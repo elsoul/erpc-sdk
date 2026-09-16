@@ -31,6 +31,43 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
+## Direct RPC endpoints
+
+This section documents unreleased source-checkout work; direct RPC endpoint
+overrides are not included in the published 0.7.0 package.
+
+Supply a complete HTTP(S) request target for any chain. Its path and query are
+sent as provided, without adding an eRPC route or API-key parameter:
+
+Direct requests use that final URL exactly and do not follow redirects.
+
+```python
+from erpc_sdk import ErpcClient, ErpcClientConfig, RpcEndpointConfig
+
+config = ErpcClientConfig(
+    solana_rpc=RpcEndpointConfig(
+        http_url="https://solana.example.test/customer/path?region=eu",
+    ),
+)
+```
+
+Subscriptions use an independent WS(S) target. HTTP headers are scoped to that
+chain's direct HTTP endpoint:
+
+```python
+config = ErpcClientConfig(
+    ethereum_rpc=RpcEndpointConfig(
+        http_url="https://ethereum.example.test/rpc",
+        websocket_url="wss://ethereum.example.test/stream",
+        headers={"Authorization": "Bearer provider-token"},
+    ),
+)
+```
+
+An API key remains optional when at least one direct endpoint is configured;
+non-overridden chains and REST services continue to use eRPC when a key is
+provided.
+
 ## Offline token catalog
 
 The token catalog is bundled with the package, so lookups need no client, API
@@ -121,8 +158,7 @@ Avalanche LFJ legacy constant-product pools. Solana Orca and Raydium records
 are available for lookup while their CLMM quote adapters are being added.
 Newly discovered pools remain available for lookup, monitoring, and rankings
 until a reviewed quote capability is admitted.
-The DEX catalog is in the source tree for the upcoming 0.7.0 release; the
-published package remains 0.6.0 until that release is approved.
+The DEX catalog and swap exports are included in the published 0.7.0 package.
 
 Both exact wire names (`getSlot`, `eth_chainId`) and Python snake-case aliases
 (`get_slot`, `eth_chain_id`) create inert requests. Network I/O starts only

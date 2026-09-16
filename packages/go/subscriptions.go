@@ -3,6 +3,7 @@ package erpc
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/url"
 	"sync"
 	"sync/atomic"
@@ -30,11 +31,14 @@ type wsResult struct {
 }
 
 type webSocketTransport struct {
-	connectionURL  *url.URL
-	publicEndpoint string
-	credential     string
-	timeout        time.Duration
-	nextID         atomic.Uint64
+	connectionURL        *url.URL
+	publicEndpoint       string
+	credential           string
+	timeout              time.Duration
+	direct               bool
+	unavailableNamespace string
+	redactionVariants    []string
+	nextID               atomic.Uint64
 
 	mu            sync.Mutex
 	writeMu       sync.Mutex
@@ -45,20 +49,57 @@ type webSocketTransport struct {
 }
 
 func newWebSocketTransport(connectionURL *url.URL, timeout time.Duration) *webSocketTransport {
+	credential := connectionURL.Query().Get("api-key")
+	return newConfiguredWebSocketTransport(connectionURL, timeout, credential, false, nil, "")
+}
+
+func newDirectWebSocketTransport(endpoint *resolvedRPCEndpointConfig, timeout time.Duration, namespace string) *webSocketTransport {
+	if endpoint.webSocketURL == nil {
+		return newUnavailableWebSocketTransport(timeout, namespace)
+	}
+	return newConfiguredWebSocketTransport(
+		endpoint.webSocketURL, timeout, "", true, endpoint.redactionVariants, "",
+	)
+}
+
+func newUnavailableWebSocketTransport(timeout time.Duration, namespace string) *webSocketTransport {
+	endpoint := unavailableEndpoint(namespace)
+	return newConfiguredWebSocketTransport(endpoint, timeout, "", false, nil, namespace)
+}
+
+func newConfiguredWebSocketTransport(
+	connectionURL *url.URL,
+	timeout time.Duration,
+	credential string,
+	direct bool,
+	redactionVariants []string,
+	unavailableNamespace string,
+) *webSocketTransport {
 	public := *connectionURL
 	public.RawQuery = ""
+	public.ForceQuery = false
 	public.Fragment = ""
-	credential := connectionURL.Query().Get("api-key")
 	return &webSocketTransport{
-		connectionURL: connectionURL, publicEndpoint: public.String(), credential: credential, timeout: timeout,
-		pending: make(map[uint64]chan wsResult), subscriptions: make(map[string]chan json.RawMessage),
+		connectionURL: cloneURL(connectionURL), publicEndpoint: public.String(), credential: credential,
+		timeout: timeout, direct: direct, unavailableNamespace: unavailableNamespace,
+		redactionVariants: append([]string(nil), redactionVariants...),
+		pending:           make(map[uint64]chan wsResult), subscriptions: make(map[string]chan json.RawMessage),
 		orphans: make(map[string][]json.RawMessage),
 	}
 }
 
 func (t *webSocketTransport) endpoint() string { return t.publicEndpoint }
 
+func (t *webSocketTransport) String() string {
+	return fmt.Sprintf("WebSocketTransport{Endpoint:%q}", t.publicEndpoint)
+}
+
+func (t *webSocketTransport) GoString() string { return t.String() }
+
 func (t *webSocketTransport) ensureConnection(ctx context.Context) (*websocket.Conn, error) {
+	if t.unavailableNamespace != "" {
+		return nil, notConfiguredError(t.unavailableNamespace)
+	}
 	t.mu.Lock()
 	if t.conn != nil {
 		conn := t.conn
@@ -195,10 +236,14 @@ func (t *webSocketTransport) dispatch(value json.RawMessage) {
 }
 
 func (t *webSocketTransport) rpcError(value *rpcErrorObject) error {
+	variants := t.redactionVariants
+	if !t.direct {
+		variants = credentialVariants(t.credential)
+	}
 	return &Error{
 		Kind: ErrorRPC, Code: value.Code,
-		Message: redactCredential(value.Message, t.credential),
-		Data:    redactJSON(value.Data, t.credential),
+		Message: redactString(value.Message, variants),
+		Data:    redactJSONWithVariants(value.Data, variants),
 	}
 }
 

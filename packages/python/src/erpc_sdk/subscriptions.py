@@ -6,7 +6,7 @@ import asyncio
 import inspect
 import itertools
 import json
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterable
 from contextlib import suppress
 from typing import Generic, TypeVar, cast
 
@@ -17,12 +17,13 @@ from .errors import (
     ErpcAbortedError,
     ErpcInvalidResponseError,
     ErpcJsonRpcError,
+    ErpcNotConfiguredError,
     ErpcTimeoutError,
     ErpcTransportError,
     redact_text,
     redact_value,
 )
-from .transport import _wait
+from .transport import _wait, strip_url_query
 from .types import (
     DEFAULT_REQUEST_OPTIONS,
     JsonRpcId,
@@ -41,10 +42,20 @@ TId = TypeVar("TId", int, str)
 class WebSocketJsonRpcTransport:
     """Lazy persistent WebSocket transport; the credential URL is never exposed."""
 
-    def __init__(self, connection_url: str, credential: str, timeout: float) -> None:
+    def __init__(
+        self,
+        connection_url: str,
+        credential: str,
+        timeout: float,
+        *,
+        direct: bool = False,
+        redactions: Iterable[str] = (),
+    ) -> None:
         self._connection_url = connection_url
         self._credential = credential
         self._timeout = timeout
+        self._direct = direct
+        self._redactions = tuple(redactions) or ((credential,) if credential else ())
         self._ids = itertools.count(1)
         self._connection: ClientConnection | None = None
         self._connect_lock = asyncio.Lock()
@@ -52,6 +63,11 @@ class WebSocketJsonRpcTransport:
         self._pending: dict[JsonRpcId, asyncio.Future[object]] = {}
         self._listeners: set[NotificationListener] = set()
         self._closed = False
+
+    @property
+    def endpoint(self) -> str:
+        """Return a diagnostic-safe endpoint without direct query values."""
+        return strip_url_query(self._connection_url)
 
     async def _ensure_connection(self) -> ClientConnection:
         if self._closed:
@@ -61,13 +77,16 @@ class WebSocketJsonRpcTransport:
         async with self._connect_lock:
             if self._connection is not None:
                 return self._connection
+            connection_error: ErpcTransportError | ErpcTimeoutError | None = None
             try:
                 async with asyncio.timeout(self._timeout):
                     connection = await connect(self._connection_url, open_timeout=self._timeout)
-            except TimeoutError as error:
-                raise ErpcTimeoutError(self._timeout) from error
-            except (OSError, WebSocketException) as error:
-                raise ErpcTransportError("Unable to reach ERPC WebSocket") from error
+            except TimeoutError:
+                connection_error = ErpcTimeoutError(self._timeout)
+            except (OSError, WebSocketException):
+                connection_error = ErpcTransportError("Unable to reach ERPC WebSocket")
+            if connection_error is not None:
+                raise connection_error
             self._connection = connection
             self._reader_task = asyncio.create_task(self._read(connection))
             return connection
@@ -89,16 +108,19 @@ class WebSocketJsonRpcTransport:
             body["params"] = params
         future: asyncio.Future[object] = asyncio.get_running_loop().create_future()
         self._pending[request_id] = future
+        request_error: ErpcTransportError | None = None
         try:
             try:
                 await _wait(connection.send(json.dumps(body)), self._timeout, options)
                 response = await _wait(future, self._timeout, options)
             except (ErpcAbortedError, ErpcTimeoutError):
                 raise
-            except (OSError, WebSocketException) as error:
-                raise ErpcTransportError("Unable to reach ERPC WebSocket") from error
+            except (OSError, WebSocketException):
+                request_error = ErpcTransportError("Unable to reach ERPC WebSocket")
         finally:
             self._pending.pop(request_id, None)
+        if request_error is not None:
+            raise request_error
         if not isinstance(response, dict) or response.get("id") != request_id:
             raise ErpcInvalidResponseError("ERPC returned an invalid WebSocket response")
         if "error" in response:
@@ -112,8 +134,8 @@ class WebSocketJsonRpcTransport:
             data = rpc_error.get("data")
             raise ErpcJsonRpcError(
                 code,
-                redact_text(message, self._credential),
-                redact_value(data, self._credential) if data is not None else None,
+                redact_text(message, self._redactions),
+                redact_value(data, self._redactions) if data is not None else None,
             )
         if "result" not in response:
             raise ErpcInvalidResponseError("ERPC returned an invalid WebSocket response")
@@ -181,6 +203,38 @@ class WebSocketJsonRpcTransport:
             if not pending.done():
                 pending.set_exception(error)
         self._pending.clear()
+        self._listeners.clear()
+
+
+class UnavailableWebSocketJsonRpcTransport(WebSocketJsonRpcTransport):
+    """A local transport target for an unconfigured subscription namespace."""
+
+    def __init__(self, namespace: str) -> None:
+        self._namespace = namespace
+        self._listeners: set[NotificationListener] = set()
+
+    @property
+    def endpoint(self) -> str:
+        return ""
+
+    async def request(
+        self,
+        method: str,
+        params: JsonRpcParams | None = None,
+        options: RequestOptions = DEFAULT_REQUEST_OPTIONS,
+    ) -> JsonValue:
+        del method, params, options
+        raise ErpcNotConfiguredError(self._namespace)
+
+    def on_notification(self, listener: NotificationListener) -> Callable[[], None]:
+        self._listeners.add(listener)
+
+        def remove() -> None:
+            self._listeners.discard(listener)
+
+        return remove
+
+    async def close(self) -> None:
         self._listeners.clear()
 
 

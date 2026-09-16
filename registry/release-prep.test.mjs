@@ -27,6 +27,11 @@ import { replayTokenRankings } from "./token-rankings.mjs";
 
 const BASELINE_TAG_COMMIT = "d77169fbf9e927d51113af7a2ee51a5c9b10f3fc";
 const WORKTREE_BASE = APPROVED_SOURCE_SHA;
+const HISTORICAL_FIXTURE_TAGS = Object.freeze([
+  ["v0.2.0", "304f1211211ca839423caacc17e09760f0b3b387"],
+  ["v0.6.0", BASELINE_TAG_COMMIT],
+  ["packages/go/v0.6.0", BASELINE_TAG_COMMIT],
+]);
 
 function git(root, args, { stdio = "pipe" } = {}) {
   return execFileSync("git", ["-C", root, ...args], { encoding: "utf8", stdio }).trim();
@@ -46,22 +51,15 @@ function historicalTokenCatalog(root) {
   return JSON.parse(git(root, ["show", `${WORKTREE_BASE}:registry/token-catalog.json`]));
 }
 
-function newWorktree() {
-  const root = mkdtempSync(path.join(tmpdir(), "erpc-release-prep-test-"));
-  execFileSync("git", ["worktree", "add", "--detach", root, WORKTREE_BASE], { encoding: "utf8", stdio: "ignore" });
-  const planTarget = path.join(root, "registry/release-plan.json");
-  writeFileSync(planTarget, readFileSync(path.join(process.cwd(), "registry/release-plan.json"), "utf8"));
-  commitAll(root, "fixture approved release plan");
-  return root;
+function seedHistoricalFixtureTags(root) {
+  for (const [tag, commit] of HISTORICAL_FIXTURE_TAGS) {
+    execFileSync("git", ["-C", root, "tag", tag, commit], { encoding: "utf8", stdio: "ignore" });
+  }
 }
 
-function removeWorktree(root) {
-  try { execFileSync("git", ["worktree", "remove", "--force", root], { encoding: "utf8", stdio: "ignore" }); } catch { rmSync(root, { recursive: true, force: true }); }
-}
-
-function newIsolatedRepo() {
-  const root = mkdtempSync(path.join(tmpdir(), "erpc-release-prep-repo-"));
-  execFileSync("git", ["clone", "--local", "--no-hardlinks", REPOSITORY_ROOT, root], { encoding: "utf8", stdio: "ignore" });
+function newFixtureRepo(prefix) {
+  const root = mkdtempSync(path.join(tmpdir(), prefix));
+  execFileSync("git", ["clone", "--local", "--no-hardlinks", "--no-tags", REPOSITORY_ROOT, root], { encoding: "utf8", stdio: "ignore" });
   try {
     execFileSync("git", ["-C", root, "checkout", "--detach", WORKTREE_BASE], { encoding: "utf8", stdio: "ignore" });
   } catch (error) {
@@ -70,18 +68,21 @@ function newIsolatedRepo() {
   const initialHead = git(root, ["rev-parse", "HEAD"]);
   assert.equal(initialHead, WORKTREE_BASE, "isolated fixture must start at the approved historical source");
   assert.equal(git(root, ["rev-parse", "--abbrev-ref", "HEAD"]), "HEAD", "isolated fixture must be detached at the historical source");
+  assert.equal(git(root, ["tag", "--list"]), "", "isolated fixture must not inherit source tags");
   const planTarget = path.join(root, "registry/release-plan.json");
-  const expectedPlan = readFileSync(path.join(REPOSITORY_ROOT, "registry/release-plan.json"), "utf8");
-  const existingPlan = existsSync(planTarget) ? readFileSync(planTarget, "utf8") : null;
-  if (existingPlan !== expectedPlan) {
-    writeFileSync(planTarget, expectedPlan);
-    execFileSync("git", ["-C", root, "add", "registry/release-plan.json"], { encoding: "utf8", stdio: "ignore" });
-    execFileSync("git", ["-C", root, "-c", "user.name=Release Prep Test", "-c", "user.email=release-prep-test@example.invalid", "commit", "-m", "fixture approved release plan"], { encoding: "utf8", stdio: "ignore" });
-  }
+  writeFileSync(planTarget, readFileSync(path.join(REPOSITORY_ROOT, "registry/release-plan.json"), "utf8"));
+  commitAll(root, "fixture approved release plan");
+  seedHistoricalFixtureTags(root);
   assert.equal(git(root, ["status", "--porcelain"]), "", "isolated fixture must be clean after plan checkout");
   assert.equal(git(root, ["rev-parse", "--abbrev-ref", "HEAD"]), "HEAD", "isolated fixture must remain detached after plan checkout");
   return root;
 }
+
+function newWorktree() { return newFixtureRepo("erpc-release-prep-test-"); }
+
+function removeWorktree(root) { removeIsolatedRepo(root); }
+
+function newIsolatedRepo() { return newFixtureRepo("erpc-release-prep-repo-"); }
 
 function removeIsolatedRepo(root) {
   rmSync(root, { recursive: true, force: true });
@@ -135,6 +136,22 @@ test("strict stable versions reject prereleases and leading zeroes", () => {
   assert.deepEqual(parseStableVersion("0.7.0"), { value: "0.7.0", major: 0, minor: 7, patch: 0 });
   assert.equal(compareVersions("0.7.0", BASELINE_VERSION), 1);
   for (const value of ["01.2.3", "0.07.0", "0.7.00", "0.7.0-beta.1", "v0.7.0", "0.7"]) assert.throws(() => parseStableVersion(value));
+});
+
+test("historical fixtures isolate newer source tags and leave source refs untouched", () => {
+  const sourceRefsBefore = git(REPOSITORY_ROOT, ["for-each-ref", "--format=%(refname) %(objectname)", "refs/tags"]);
+  assert.match(sourceRefsBefore, /^refs\/tags\/v0\.7\.0 /mu);
+  assert.match(sourceRefsBefore, /^refs\/tags\/packages\/go\/v0\.7\.0 /mu);
+  const root = newIsolatedRepo();
+  try {
+    assert.equal(git(root, ["tag", "--list", "v0.7.0"]), "");
+    assert.equal(git(root, ["tag", "--list", "packages/go/v0.7.0"]), "");
+    assert.equal(git(root, ["rev-parse", "refs/tags/v0.6.0"]), BASELINE_TAG_COMMIT);
+    assert.equal(git(root, ["rev-parse", "refs/tags/packages/go/v0.6.0"]), BASELINE_TAG_COMMIT);
+  } finally {
+    removeIsolatedRepo(root);
+  }
+  assert.equal(git(REPOSITORY_ROOT, ["for-each-ref", "--format=%(refname) %(objectname)", "refs/tags"]), sourceRefsBefore);
 });
 
 test("clean released baseline reports the approved catalog candidate through later operations commits", async () => {

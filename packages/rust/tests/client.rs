@@ -9,8 +9,8 @@ use erpc_sdk::{
     AVALANCHE_P_CHAIN_METHODS, AVALANCHE_PROPOSER_VM_METHODS, AVALANCHE_X_CHAIN_METHODS,
     AssetRequest, CancellationToken, ETHEREUM_RPC_METHODS, ErpcClient, ErpcClientConfig,
     ErpcCloudClient, ErpcCloudClientConfig, ErpcError, ErpcErrorCode, RpcBatchCall,
-    SOLANA_ANALYTICS_METHODS, SOLANA_DAS_METHODS, SOLANA_HISTORY_METHODS, SOLANA_LEADER_METHODS,
-    SOLANA_RPC_METHODS, SlotStatsOptions,
+    RpcEndpointConfig, SOLANA_ANALYTICS_METHODS, SOLANA_DAS_METHODS, SOLANA_HISTORY_METHODS,
+    SOLANA_LEADER_METHODS, SOLANA_RPC_METHODS, SlotStatsOptions,
 };
 use serde_json::{Value, json};
 use wiremock::{
@@ -402,6 +402,474 @@ fn configuration_rejects_invalid_values() {
     .err()
     .expect("non-local Cloud HTTP must fail");
     assert_eq!(error.code(), ErpcErrorCode::Config);
+}
+
+#[tokio::test]
+async fn direct_rpc_preserves_request_target_and_isolated_headers() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/customer/path"))
+        .and(query_param("token", "a/b"))
+        .and(query_param("region", "eu"))
+        .and(header("authorization", "Bearer scoped-secret"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": "ok"
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let client = ErpcClient::new(
+        ErpcClientConfig::for_rpc()
+            .with_header("x-global", "global-secret")
+            .with_solana_rpc(
+                RpcEndpointConfig::new(format!(
+                    "{}/customer/path?token=a%2Fb&region=eu",
+                    server.uri()
+                ))
+                .with_header("authorization", "Bearer scoped-secret"),
+            ),
+    )
+    .unwrap();
+    assert_eq!(client.solana.rpc.get_health().send().await.unwrap(), "ok");
+
+    let requests = server.received_requests().await.unwrap();
+    assert_eq!(requests.len(), 1);
+    let request_url = requests[0].url.to_string();
+    assert!(request_url.contains("/customer/path?token=a%2Fb&region=eu"));
+    assert!(!request_url.contains("api-key"));
+    assert!(!requests[0].headers.contains_key("x-global"));
+
+    let error = client.ethereum.rpc.eth_chain_id().send().await.unwrap_err();
+    assert_eq!(error.code(), ErpcErrorCode::NotConfigured);
+    assert!(error.to_string().contains("ethereum.rpc"));
+    assert_eq!(server.received_requests().await.unwrap().len(), 1);
+
+    let error = client.price.get_price_feeds(None, None).await.unwrap_err();
+    assert_eq!(error.code(), ErpcErrorCode::NotConfigured);
+    assert_eq!(server.received_requests().await.unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn mixed_direct_and_legacy_transports_keep_headers_and_routes_scoped() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/customer/solana"))
+        .and(header("x-node-scope", "solana-only"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": "ok"
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/eth"))
+        .and(query_param("api-key", "shared-key"))
+        .and(header("x-global", "legacy-only"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": "0x1"
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/v2/price_feeds"))
+        .and(header("x-global", "legacy-only"))
+        .and(header("authorization", "Bearer shared-key"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([])))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let client = ErpcClient::new(
+        ErpcClientConfig::new("shared-key")
+            .with_endpoint(server.uri())
+            .with_header("x-global", "legacy-only")
+            .with_solana_rpc(
+                RpcEndpointConfig::new(format!("{}/customer/solana", server.uri()))
+                    .with_header("x-node-scope", "solana-only"),
+            ),
+    )
+    .unwrap();
+    assert_eq!(client.solana.rpc.get_health().send().await.unwrap(), "ok");
+    assert_eq!(
+        client.ethereum.rpc.eth_chain_id().send().await.unwrap(),
+        "0x1"
+    );
+    assert!(
+        client
+            .price
+            .get_price_feeds(None, None)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+
+    let requests = server.received_requests().await.unwrap();
+    assert_eq!(requests.len(), 3);
+    let direct = requests
+        .iter()
+        .find(|request| request.url.path() == "/customer/solana")
+        .expect("direct request");
+    assert!(direct.headers.contains_key("x-node-scope"));
+    assert!(!direct.headers.contains_key("x-global"));
+    let legacy = requests
+        .iter()
+        .find(|request| request.url.path() == "/eth")
+        .expect("legacy RPC request");
+    assert!(legacy.headers.contains_key("x-global"));
+    assert!(!legacy.headers.contains_key("x-node-scope"));
+    let rest = requests
+        .iter()
+        .find(|request| request.url.path() == "/v2/price_feeds")
+        .expect("legacy REST request");
+    assert!(rest.headers.contains_key("x-global"));
+    assert!(!rest.headers.contains_key("x-node-scope"));
+}
+
+#[tokio::test]
+async fn direct_rpc_errors_redact_query_and_scoped_credentials() {
+    let server = MockServer::start().await;
+    let full_header = "Authorization: Bearer scoped/secret";
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "error": {
+                "code": -32000,
+                "message": format!(
+                    "{full_header} scoped/secret scoped%2Fsecret a/b a%2Fb"
+                ),
+                "data": {
+                    full_header: "Bearer scoped/secret",
+                    "query": "a/b a%2Fb"
+                }
+            }
+        })))
+        .mount(&server)
+        .await;
+    let client = ErpcClient::new(
+        ErpcClientConfig::for_rpc().with_solana_rpc(
+            RpcEndpointConfig::new(format!("{}/customer/path?token=a%2Fb", server.uri()))
+                .with_header("authorization", "Bearer scoped/secret"),
+        ),
+    )
+    .unwrap();
+    let error = client.solana.rpc.get_health().send().await.unwrap_err();
+    let rendered = format!("{error:?}");
+    for secret in [
+        "scoped/secret",
+        "scoped%2Fsecret",
+        "a/b",
+        "a%2Fb",
+        full_header,
+    ] {
+        assert!(!rendered.contains(secret), "leaked {secret}: {rendered}");
+    }
+    assert!(rendered.contains("[REDACTED]"));
+}
+
+#[tokio::test]
+async fn malformed_direct_response_does_not_retain_native_error_or_body() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_raw("{\"provider\":\"malformed-secret\"", "application/json"),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+    let client = ErpcClient::new(
+        ErpcClientConfig::for_rpc()
+            .with_solana_rpc(RpcEndpointConfig::new(format!("{}/rpc", server.uri()))),
+    )
+    .unwrap();
+    let error = client.solana.rpc.get_health().send().await.unwrap_err();
+    assert_eq!(error.code(), ErpcErrorCode::InvalidResponse);
+    assert!(!error.to_string().contains("malformed-secret"));
+    assert!(!format!("{error:?}").contains("malformed-secret"));
+    assert!(std::error::Error::source(&error).is_none());
+}
+
+#[tokio::test]
+async fn direct_http_does_not_follow_redirects_or_forward_credentials() {
+    let redirect_server = MockServer::start().await;
+    let destination_server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/rpc"))
+        .and(header("x-node-secret", "redirect-secret"))
+        .respond_with(
+            ResponseTemplate::new(307)
+                .insert_header("location", format!("{}/target", destination_server.uri())),
+        )
+        .expect(1)
+        .mount(&redirect_server)
+        .await;
+    let client = ErpcClient::new(
+        ErpcClientConfig::for_rpc().with_solana_rpc(
+            RpcEndpointConfig::new(format!("{}/rpc", redirect_server.uri()))
+                .with_header("x-node-secret", "redirect-secret"),
+        ),
+    )
+    .unwrap();
+    let error = client.solana.rpc.get_health().send().await.unwrap_err();
+    assert!(matches!(error, ErpcError::Http { status: 307 }));
+    assert_eq!(redirect_server.received_requests().await.unwrap().len(), 1);
+    assert!(
+        destination_server
+            .received_requests()
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[tokio::test]
+async fn direct_basic_credentials_redact_decoded_parts_and_variants() {
+    let server = MockServer::start().await;
+    let component = "Zml4dHVyZS11c2VyOmZpeHR1cmUtcGFzc3dvcmQ=";
+    let basic_value = format!("Basic {component}");
+    let full_header = format!("Authorization: {basic_value}");
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "error": {
+                "code": -32000,
+                "message": format!(
+                    "{full_header} {component} fixture-user:fixture-password \
+                     fixture-user fixture-password fixture-user%3Afixture-password"
+                ),
+                "data": {
+                    full_header.clone(): full_header.clone(),
+                    component: component,
+                    "fixture-user:fixture-password": "fixture-user:fixture-password",
+                    "fixture-user": "fixture-password",
+                    "fixture-user%3Afixture-password": "fixture-password"
+                }
+            }
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let client = ErpcClient::new(
+        ErpcClientConfig::for_rpc().with_solana_rpc(
+            RpcEndpointConfig::new(format!("{}/rpc", server.uri()))
+                .with_header("authorization", basic_value),
+        ),
+    )
+    .unwrap();
+    let error = client.solana.rpc.get_health().send().await.unwrap_err();
+    let display = error.to_string();
+    let debug = format!("{error:?}");
+    for secret in [
+        "Zml4dHVyZS11c2VyOmZpeHR1cmUtcGFzc3dvcmQ=",
+        "fixture-user:fixture-password",
+        "fixture-user%3Afixture-password",
+        "fixture-user",
+        "fixture-password",
+    ] {
+        assert!(!display.contains(secret), "leaked {secret}: {display}");
+        assert!(!debug.contains(secret), "leaked {secret}: {debug}");
+    }
+}
+
+#[tokio::test]
+async fn direct_non_ascii_header_credentials_are_redacted() {
+    let server = MockServer::start().await;
+    let secret = "fixture-MiXeD-é-secret";
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "error": {
+                "code": -32000,
+                "message": format!(
+                    "{secret} fixture-MiXeD-%C3%A9-secret fixture-MiXeD-%c3%a9-secret"
+                ),
+                "data": {
+                    secret: secret,
+                    "fixture-MiXeD-%C3%A9-secret": "fixture-MiXeD-%c3%a9-secret",
+                    "fixture-MiXeD-%c3%A9-secret": secret
+                }
+            }
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let client = ErpcClient::new(
+        ErpcClientConfig::for_rpc().with_solana_rpc(
+            RpcEndpointConfig::new(format!("{}/rpc", server.uri()))
+                .with_header("x-node-secret", secret),
+        ),
+    )
+    .unwrap();
+    let error = client.solana.rpc.get_health().send().await.unwrap_err();
+    let display = error.to_string();
+    let debug = format!("{error:?}");
+    for value in [
+        secret,
+        "fixture-MiXeD-%C3%A9-secret",
+        "fixture-MiXeD-%c3%a9-secret",
+    ] {
+        assert!(!display.contains(value), "leaked {value}: {display}");
+        assert!(!debug.contains(value), "leaked {value}: {debug}");
+    }
+}
+
+#[tokio::test]
+async fn direct_redaction_matches_percent_hex_case_without_lowercasing_plaintext() {
+    let server = MockServer::start().await;
+    let secret = "MiXeD/Secret+";
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "error": {
+                "code": -32000,
+                "message": format!(
+                    "{secret} MiXeD%2FSecret%2B MiXeD%2fSecret%2b \
+                     MiXeD%2FSecret%2b mixed%2fsecret%2b"
+                ),
+                "data": {
+                    "MiXeD/Secret+": "MiXeD/Secret+",
+                    "MiXeD%2FSecret%2B": "MiXeD%2fSecret%2b",
+                    "MiXeD%2FSecret%2b": "mixed%2fsecret%2b",
+                    "mixed%2fsecret%2b": "mixed%2fsecret%2b"
+                }
+            }
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let client = ErpcClient::new(ErpcClientConfig::for_rpc().with_solana_rpc(
+        RpcEndpointConfig::new(format!("{}/rpc", server.uri())).with_header("x-secret", secret),
+    ))
+    .unwrap();
+    let error = client.solana.rpc.get_health().send().await.unwrap_err();
+    let rendered = format!("{error:?}");
+    for value in [
+        secret,
+        "MiXeD%2FSecret%2B",
+        "MiXeD%2fSecret%2b",
+        "MiXeD%2FSecret%2b",
+    ] {
+        assert!(!rendered.contains(value), "leaked {value}: {rendered}");
+    }
+    assert!(rendered.contains("mixed%2fsecret%2b"));
+}
+
+#[tokio::test]
+async fn avalanche_direct_c_chain_is_separate_from_native_transport() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/customer/avax"))
+        .and(query_param("token", "a/b"))
+        .and(body_json(json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "eth_chainId",
+            "params": []
+        })))
+        .respond_with(rpc_result(1, &json!("0xa86a")))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/ava"))
+        .and(query_param("api-key", "key"))
+        .and(body_json(json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "platform.getHeight"
+        })))
+        .respond_with(rpc_result(1, &json!({"height": "123"})))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/ava/ext/index/X/tx"))
+        .and(query_param("api-key", "key"))
+        .and(body_json(json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "index.getContainerByID",
+            "params": {"id": "tx-id"}
+        })))
+        .respond_with(rpc_result(1, &json!({"id": "tx-id"})))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let client = ErpcClient::new(
+        ErpcClientConfig::new("key")
+            .with_endpoint(server.uri())
+            .with_avalanche_endpoint(server.uri())
+            .with_avalanche_c_rpc(RpcEndpointConfig::new(format!(
+                "{}/customer/avax?token=a%2Fb",
+                server.uri()
+            ))),
+    )
+    .unwrap();
+    assert_eq!(
+        client.avalanche.rpc.eth_chain_id().send().await.unwrap(),
+        "0xa86a"
+    );
+    assert_eq!(
+        client.avalanche.p_chain.get_height().send().await.unwrap(),
+        json!({"height": "123"})
+    );
+    assert_eq!(
+        client
+            .avalanche
+            .index
+            .x_chain_transactions
+            .get_container_by_id(json!({"id": "tx-id"}))
+            .unwrap()
+            .send()
+            .await
+            .unwrap(),
+        json!({"id": "tx-id"})
+    );
+    let requests = server.received_requests().await.unwrap();
+    assert_eq!(requests.len(), 3);
+    assert!(requests.iter().any(|request| {
+        let url = request.url.to_string();
+        url.contains("/customer/avax?token=a%2Fb") && !url.contains("api-key")
+    }));
+    assert!(requests.iter().any(|request| request.url.path() == "/ava"));
+}
+
+#[test]
+fn direct_url_validation_requires_safe_absolute_targets() {
+    for value in [
+        "https:opaque?token=direct-secret",
+        "https://user:direct-secret@example.invalid/rpc",
+        "https://@example.invalid/rpc",
+        "http://:123/rpc",
+        "https://example.invalid/rpc#",
+        "https://example.invalid/rpc?token=direct-secret#fragment",
+    ] {
+        let error = ErpcClient::new(
+            ErpcClientConfig::for_rpc().with_solana_rpc(RpcEndpointConfig::new(value)),
+        )
+        .err()
+        .expect("invalid direct URL must fail");
+        assert_eq!(error.code(), ErpcErrorCode::Config);
+        assert!(!error.to_string().contains("direct-secret"));
+    }
+    let config = RpcEndpointConfig::new("https://example.invalid/rpc?token=direct-secret")
+        .with_header("authorization", "Bearer header-secret");
+    let rendered = format!("{config:?}");
+    assert!(!rendered.contains("direct-secret"));
+    assert!(!rendered.contains("header-secret"));
 }
 
 #[tokio::test]

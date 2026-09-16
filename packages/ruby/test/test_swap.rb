@@ -47,6 +47,65 @@ class SwapTest < Minitest::Test
     client&.close
   end
 
+  def test_routes_ethereum_quote_reads_to_the_exact_direct_rpc_target
+    entry = FIXTURE.fetch("validCases").find { |value| value.fetch("caseId") == "ethereum-weth-usdc-forward" }
+    trace = []
+    adapter = fixture_adapter(entry, trace)
+    direct_url = "https://customer.example/customer/path?token=a%2Fb&region=eu"
+    client = ERPC::Client.new(
+      ERPC::ClientConfig.new(
+        ethereum_rpc: ERPC::RpcEndpointConfig.new(http_url: direct_url)
+      ),
+      http_adapter: adapter
+    )
+    set_fixture_clock(client, entry.fetch("nowSeconds"))
+
+    result = client.swap.quote_exact_input(entry.fetch("request"))
+    assert_equal "2393866186", result.fetch("amountOut")
+    assert_equal 11, trace.length
+    assert_equal [direct_url], adapter.requests.map { |request| request.fetch(:url) }.uniq
+  ensure
+    client&.close
+  end
+
+  def test_routes_avalanche_quote_reads_to_the_exact_direct_c_rpc_target
+    entry = FIXTURE.fetch("validCases").find { |value| value.fetch("caseId") == "avalanche-wavax-usdc-forward" }
+    trace = []
+    adapter = fixture_adapter(entry, trace)
+    direct_url = "https://customer.example/customer/path?token=a%2Fb&region=eu"
+    client = ERPC::Client.new(
+      ERPC::ClientConfig.new(
+        avalanche_c_rpc: ERPC::RpcEndpointConfig.new(http_url: direct_url)
+      ),
+      http_adapter: adapter
+    )
+    set_fixture_clock(client, entry.fetch("nowSeconds"))
+
+    result = client.swap.quote_exact_input(entry.fetch("request"))
+    assert_equal "7329527", result.fetch("amountOut")
+    assert_equal 11, trace.length
+    assert_equal [direct_url], adapter.requests.map { |request| request.fetch(:url) }.uniq
+  ensure
+    client&.close
+  end
+
+  def test_wrong_chain_still_fails_before_a_direct_rpc_call
+    entry = FIXTURE.fetch("validCases").find { |value| value.fetch("caseId") == "ethereum-weth-usdc-forward" }
+    adapter = FakeHttpAdapter.new { raise "wrong-chain validation should not use RPC" }
+    client = ERPC::Client.new(
+      ERPC::ClientConfig.new(
+        ethereum_rpc: ERPC::RpcEndpointConfig.new(http_url: "https://customer.example/rpc")
+      ),
+      http_adapter: adapter
+    )
+    request = entry.fetch("request").merge("chainId" => AVALANCHE_CHAIN_ID)
+
+    assert_swap_code(request, "SWAP_CHAIN_MISMATCH", client)
+    assert_empty adapter.requests
+  ensure
+    client&.close
+  end
+
   def test_rejects_invalid_catalog_requests_before_rpc
     called = 0
     adapter = FakeHttpAdapter.new do

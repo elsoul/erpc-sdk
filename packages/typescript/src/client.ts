@@ -4,6 +4,7 @@ import {
   resolveConfig,
   websocketUrl,
   type ErpcClientConfig,
+  type ResolvedRpcEndpointConfig,
 } from './config'
 import { PriceClient } from './price'
 import {
@@ -48,72 +49,149 @@ export interface ErpcClient {
   close(): void
 }
 
+const unavailableEndpoint = (namespace: string): URL =>
+  new URL(
+    `https://unconfigured.invalid/${namespace.replace(/[^a-z\d._-]+/giu, '-')}`,
+  )
+
 export const createErpcClient = (config: ErpcClientConfig): ErpcClient => {
   const resolved = resolveConfig(config)
-  const sharedTransport = {
-    apiKey: resolved.apiKey,
+  const legacyTransport = {
     fetch: resolved.fetch,
     headers: resolved.headers,
     timeoutMs: resolved.timeoutMs,
+    ...(resolved.apiKey === undefined ? {} : { apiKey: resolved.apiKey }),
   }
 
-  const solanaTransport = new HttpJsonRpcTransport({
-    ...sharedTransport,
-    endpoint: resolved.endpoint,
-  })
-  const ethereumEndpoint = endpointWithPath(resolved.endpoint, '/eth')
-  const ethereumTransport = new HttpJsonRpcTransport({
-    ...sharedTransport,
-    endpoint: ethereumEndpoint,
-  })
-  const avalancheTransport = new HttpJsonRpcTransport({
-    ...sharedTransport,
-    endpoint: endpointWithPath(resolved.avalancheEndpoint, '/ava'),
-  })
-  const avalancheIndexTransport = (path: string) =>
+  const createUnavailableHttp = (namespace: string) =>
     new HttpJsonRpcTransport({
-      ...sharedTransport,
-      endpoint: endpointWithPath(resolved.avalancheEndpoint, path),
+      endpoint: unavailableEndpoint(namespace),
+      fetch: resolved.fetch,
+      headers: {},
+      timeoutMs: resolved.timeoutMs,
+      unavailableNamespace: namespace,
     })
 
-  const solanaWebSocket = new WebSocketJsonRpcTransport({
-    endpoint: websocketUrl(resolved.endpoint, resolved.apiKey),
-    timeoutMs: resolved.timeoutMs,
-    ...(resolved.webSocket === undefined
-      ? {}
-      : { webSocket: resolved.webSocket }),
-  })
-  const ethereumWebSocket = new WebSocketJsonRpcTransport({
-    endpoint: websocketUrl(resolved.endpoint, resolved.apiKey, '/eth'),
-    timeoutMs: resolved.timeoutMs,
-    ...(resolved.webSocket === undefined
-      ? {}
-      : { webSocket: resolved.webSocket }),
-  })
-  const avalancheWebSocket = new WebSocketJsonRpcTransport({
-    endpoint: websocketUrl(
-      resolved.avalancheEndpoint,
-      resolved.apiKey,
-      '/ava-ws',
-    ),
-    timeoutMs: resolved.timeoutMs,
-    ...(resolved.webSocket === undefined
-      ? {}
-      : { webSocket: resolved.webSocket }),
-  })
+  const createUnavailableWebSocket = (namespace: string) =>
+    new WebSocketJsonRpcTransport({
+      endpoint: unavailableEndpoint(namespace),
+      timeoutMs: resolved.timeoutMs,
+      unavailableNamespace: namespace,
+    })
 
-  const priceTransport = new RestTransport({
-    ...sharedTransport,
-    endpoint: resolved.endpoint,
-  })
-  const accountTransport = new RestTransport({
-    ...sharedTransport,
-    endpoint: resolved.accountEndpoint,
-  })
-  const userTransport = new RestTransport({
-    ...sharedTransport,
-    endpoint: resolved.userEndpoint,
-  })
+  const createDirectHttp = (
+    endpoint: ResolvedRpcEndpointConfig,
+  ) =>
+    new HttpJsonRpcTransport({
+      direct: true,
+      endpoint: endpoint.httpUrl,
+      fetch: resolved.fetch,
+      headers: endpoint.headers,
+      timeoutMs: resolved.timeoutMs,
+    })
+
+  const createDirectWebSocket = (
+    endpoint: ResolvedRpcEndpointConfig,
+    namespace: string,
+  ) => {
+    if (endpoint.webSocketUrl === undefined) {
+      return createUnavailableWebSocket(namespace)
+    }
+    return new WebSocketJsonRpcTransport({
+      endpoint: endpoint.webSocketUrl,
+      redactionHeaders: endpoint.headers,
+      timeoutMs: resolved.timeoutMs,
+      ...(resolved.webSocket === undefined
+        ? {}
+        : { webSocket: resolved.webSocket }),
+    })
+  }
+
+  const createLegacyHttp = (endpoint: URL) =>
+    new HttpJsonRpcTransport({ ...legacyTransport, endpoint })
+
+  const createLegacyWebSocket = (endpoint: URL) =>
+    new WebSocketJsonRpcTransport({
+      endpoint,
+      timeoutMs: resolved.timeoutMs,
+      ...(resolved.webSocket === undefined
+        ? {}
+        : { webSocket: resolved.webSocket }),
+    })
+
+  const solanaTransport = resolved.solanaRpc === undefined
+    ? resolved.apiKey === undefined
+      ? createUnavailableHttp('solana.rpc')
+      : createLegacyHttp(resolved.endpoint)
+    : createDirectHttp(resolved.solanaRpc)
+
+  const ethereumTransport = resolved.ethereumRpc === undefined
+    ? resolved.apiKey === undefined
+      ? createUnavailableHttp('ethereum.rpc')
+      : createLegacyHttp(endpointWithPath(resolved.endpoint, '/eth'))
+    : createDirectHttp(resolved.ethereumRpc)
+
+  const avalancheTransport = resolved.avalancheCRpc === undefined
+    ? resolved.apiKey === undefined
+      ? createUnavailableHttp('avalanche.rpc')
+      : createLegacyHttp(endpointWithPath(resolved.avalancheEndpoint, '/ava'))
+    : createDirectHttp(resolved.avalancheCRpc)
+
+  const avalancheNativeTransport = resolved.apiKey === undefined
+    ? createUnavailableHttp('avalanche.native')
+    : createLegacyHttp(endpointWithPath(resolved.avalancheEndpoint, '/ava'))
+
+  const avalancheIndexTransport = (path: string, namespace: string) =>
+    resolved.apiKey === undefined
+      ? createUnavailableHttp(namespace)
+      : createLegacyHttp(endpointWithPath(resolved.avalancheEndpoint, path))
+
+  const solanaWebSocket = resolved.solanaRpc === undefined
+    ? resolved.apiKey === undefined
+      ? createUnavailableWebSocket('solana.subscriptions')
+      : createLegacyWebSocket(websocketUrl(resolved.endpoint, resolved.apiKey))
+    : createDirectWebSocket(resolved.solanaRpc, 'solana.subscriptions')
+
+  const ethereumWebSocket = resolved.ethereumRpc === undefined
+    ? resolved.apiKey === undefined
+      ? createUnavailableWebSocket('ethereum.subscriptions')
+      : createLegacyWebSocket(
+        websocketUrl(resolved.endpoint, resolved.apiKey, '/eth'),
+      )
+    : createDirectWebSocket(resolved.ethereumRpc, 'ethereum.subscriptions')
+
+  const avalancheWebSocket = resolved.avalancheCRpc === undefined
+    ? resolved.apiKey === undefined
+      ? createUnavailableWebSocket('avalanche.subscriptions')
+      : createLegacyWebSocket(
+        websocketUrl(resolved.avalancheEndpoint, resolved.apiKey, '/ava-ws'),
+      )
+    : createDirectWebSocket(
+      resolved.avalancheCRpc,
+      'avalanche.subscriptions',
+    )
+
+  const createUnavailableRest = (namespace: string) =>
+    new RestTransport({
+      endpoint: unavailableEndpoint(namespace),
+      fetch: resolved.fetch,
+      headers: {},
+      timeoutMs: resolved.timeoutMs,
+      unavailableNamespace: namespace,
+    })
+
+  const priceTransport = resolved.apiKey === undefined
+    ? createUnavailableRest('price')
+    : new RestTransport({ ...legacyTransport, endpoint: resolved.endpoint })
+  const accountTransport = resolved.apiKey === undefined
+    ? createUnavailableRest('account')
+    : new RestTransport({
+      ...legacyTransport,
+      endpoint: resolved.accountEndpoint,
+    })
+  const userTransport = resolved.apiKey === undefined
+    ? createUnavailableRest('usage')
+    : new RestTransport({ ...legacyTransport, endpoint: resolved.userEndpoint })
 
   const solana: ErpcSolanaClient = {
     ...createSolanaClient(solanaTransport),
@@ -125,11 +203,23 @@ export const createErpcClient = (config: ErpcClientConfig): ErpcClient => {
   }
   const avalanche: ErpcAvalancheClient = {
     ...createAvalancheClient(avalancheTransport, {
-      cChainBlocks: avalancheIndexTransport('/ava/ext/index/C/block'),
-      pChainBlocks: avalancheIndexTransport('/ava/ext/index/P/block'),
-      xChainBlocks: avalancheIndexTransport('/ava/ext/index/X/block'),
-      xChainTransactions: avalancheIndexTransport('/ava/ext/index/X/tx'),
-    }),
+      cChainBlocks: avalancheIndexTransport(
+        '/ava/ext/index/C/block',
+        'avalanche.index.cChainBlocks',
+      ),
+      pChainBlocks: avalancheIndexTransport(
+        '/ava/ext/index/P/block',
+        'avalanche.index.pChainBlocks',
+      ),
+      xChainBlocks: avalancheIndexTransport(
+        '/ava/ext/index/X/block',
+        'avalanche.index.xChainBlocks',
+      ),
+      xChainTransactions: avalancheIndexTransport(
+        '/ava/ext/index/X/tx',
+        'avalanche.index.xChainTransactions',
+      ),
+    }, avalancheNativeTransport),
     subscriptions: new EthereumSubscriptions(avalancheWebSocket),
   }
   const swap = createSwapClient({

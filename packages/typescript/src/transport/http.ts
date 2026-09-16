@@ -3,8 +3,10 @@ import {
   ErpcHttpError,
   ErpcInvalidResponseError,
   ErpcJsonRpcError,
+  ErpcNotConfiguredError,
   ErpcTimeoutError,
   ErpcTransportError,
+  directRedactionVariants,
   redactJsonRpcError,
 } from '../errors'
 import type {
@@ -18,12 +20,14 @@ import type {
 } from '../rpc/types'
 
 export interface HttpTransportConfig {
-  readonly apiKey: string
+  readonly apiKey?: string
+  readonly direct?: boolean
   readonly endpoint: URL
   readonly fetch: typeof globalThis.fetch
   readonly headers: Readonly<Record<string, string>>
   readonly maxBatchSize?: number
   readonly timeoutMs: number
+  readonly unavailableNamespace?: string
 }
 
 interface ControlledSignal {
@@ -75,21 +79,54 @@ const parseJson = (text: string): unknown => {
   }
 }
 
+const directRequestHeaders = (
+  headers: Readonly<Record<string, string>>,
+): Headers | Readonly<Record<string, string>> => {
+  try {
+    const result = new Headers(headers)
+    result.set('accept', 'application/json')
+    result.set('content-type', 'application/json')
+    return result
+  } catch {
+    // Keep the transport error generic when a caller supplied an invalid
+    // header, while still removing protocol-header case duplicates.
+    const result: Record<string, string> = {}
+    for (const [name, value] of Object.entries(headers)) {
+      const lowerName = name.toLowerCase()
+      if (lowerName === 'accept' || lowerName === 'content-type') continue
+      result[name] = value
+    }
+    result.accept = 'application/json'
+    result['content-type'] = 'application/json'
+    return result
+  }
+}
+
 export class HttpJsonRpcTransport {
   readonly endpoint: string
   readonly maxBatchSize: number
 
   readonly #apiKey: string
+  readonly #direct: boolean
+  readonly #requestEndpoint: URL
   readonly #fetch: typeof globalThis.fetch
   readonly #headers: Readonly<Record<string, string>>
+  readonly #redactionVariants: readonly string[]
   readonly #timeoutMs: number
+  readonly #unavailableNamespace: string | undefined
   #nextId = 1
 
   constructor(config: HttpTransportConfig) {
-    this.#apiKey = config.apiKey
+    this.#apiKey = config.apiKey ?? ''
+    this.#direct = config.direct ?? false
+    this.#requestEndpoint = new URL(config.endpoint)
     this.#fetch = config.fetch
     this.#headers = config.headers
+    this.#redactionVariants = this.#direct
+      ? directRedactionVariants(this.#requestEndpoint, this.#headers)
+      : []
     this.#timeoutMs = config.timeoutMs
+    this.#unavailableNamespace = config.unavailableNamespace
     this.maxBatchSize = config.maxBatchSize ?? 256
 
     const endpoint = new URL(config.endpoint)
@@ -103,6 +140,7 @@ export class HttpJsonRpcTransport {
     params?: JsonRpcParams,
     options: RpcSendOptions = {},
   ): Promise<TResult> {
+    this.#ensureConfigured()
     const id = this.#id()
     const request = this.#request(id, method, params)
     const response = await this.#post(request, options)
@@ -113,6 +151,7 @@ export class HttpJsonRpcTransport {
     calls: readonly RpcBatchCall[],
     options: RpcSendOptions = {},
   ): Promise<TResult> {
+    this.#ensureConfigured()
     if (calls.length === 0) return [] as unknown as TResult
     if (calls.length > this.maxBatchSize) {
       throw new ErpcInvalidResponseError(
@@ -127,7 +166,13 @@ export class HttpJsonRpcTransport {
     const raw = await this.#post(requests, options)
     if (!Array.isArray(raw)) {
       if (isFailure(raw)) {
-        throw new ErpcJsonRpcError(redactJsonRpcError(raw.error, this.#apiKey))
+        throw new ErpcJsonRpcError(
+          redactJsonRpcError(
+            raw.error,
+            this.#direct ? undefined : this.#apiKey,
+            this.#redactionVariants,
+          ),
+        )
       }
       throw new ErpcInvalidResponseError('ERPC returned a non-array batch response')
     }
@@ -173,6 +218,12 @@ export class HttpJsonRpcTransport {
     return id
   }
 
+  #ensureConfigured(): void {
+    if (this.#unavailableNamespace !== undefined) {
+      throw new ErpcNotConfiguredError(this.#unavailableNamespace)
+    }
+  }
+
   #request(
     id: JsonRpcId,
     method: string,
@@ -192,19 +243,29 @@ export class HttpJsonRpcTransport {
     body: unknown,
     options: RpcSendOptions,
   ): Promise<unknown> {
-    const url = new URL(this.endpoint)
-    url.searchParams.set('api-key', this.#apiKey)
+    this.#ensureConfigured()
+
+    const url = new URL(this.#requestEndpoint)
+    if (!this.#direct) url.searchParams.set('api-key', this.#apiKey)
     const controlled = controlledSignal(this.#timeoutMs, options.signal)
 
     try {
       const response = await this.#fetch(url, {
         method: 'POST',
-        headers: {
-          ...this.#headers,
-          'content-type': 'application/json',
-        },
+        headers: this.#direct
+          ? directRequestHeaders(this.#headers)
+          : {
+              ...this.#headers,
+              'content-type': 'application/json',
+            },
         body: JSON.stringify(body),
         signal: controlled.signal,
+        ...(this.#direct
+          ? {
+              credentials: 'omit' as const,
+              redirect: 'manual' as const,
+            }
+          : {}),
       })
       const text = await response.text()
       if (!response.ok) throw new ErpcHttpError(response.status)
@@ -230,7 +291,11 @@ export class HttpJsonRpcTransport {
     }
     if (isFailure(response)) {
       throw new ErpcJsonRpcError(
-        redactJsonRpcError(response.error, this.#apiKey),
+        redactJsonRpcError(
+          response.error,
+          this.#direct ? undefined : this.#apiKey,
+          this.#redactionVariants,
+        ),
       )
     }
     if (!('result' in response)) throw new ErpcInvalidResponseError()

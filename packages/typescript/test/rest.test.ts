@@ -3,6 +3,7 @@ import {
   createErpcCloudClient,
   createErpcClient,
   ErpcAbortedError,
+  ErpcNotConfiguredError,
   ErpcTransportError,
 } from '../src'
 
@@ -432,5 +433,139 @@ describe('REST APIs', () => {
     await expect(
       client.usage.getMonthlyApiKeyUsage({ yearMonth: '2026-13' }),
     ).rejects.toThrow('yearMonth must use YYYY-MM format')
+  })
+
+  it('isolates direct scoped headers from keyed RPC and REST headers', async () => {
+    const captures: Array<{ readonly headers: Headers; readonly url: string }> = []
+    const directUrl = 'https://customer.example/customer/path?token=a%2Fb&region=eu'
+    const client = createErpcClient({
+      apiKey: 'shared-key',
+      ethereumRpc: {
+        httpUrl: directUrl,
+        headers: {
+          authorization: 'Bearer direct-token',
+          'x-direct': 'direct-only',
+        },
+      },
+      headers: {
+        authorization: 'Bearer shared-token',
+        'x-shared': 'shared-only',
+      },
+      fetch: async (input, init) => {
+        const url = String(input)
+        captures.push({ url, headers: new Headers(init?.headers) })
+        if (url.startsWith('https://customer.example/')) {
+          const request = JSON.parse(String(init?.body)) as { readonly id: number }
+          return new Response(JSON.stringify({
+            jsonrpc: '2.0',
+            id: request.id,
+            result: 'direct',
+          }))
+        }
+        if (url.includes('/v2/price_feeds')) return new Response('[]')
+        const request = JSON.parse(String(init?.body)) as { readonly id: number }
+        return new Response(JSON.stringify({
+          jsonrpc: '2.0',
+          id: request.id,
+          result: 'legacy',
+        }))
+      },
+    })
+
+    await expect(client.ethereum.rpc.eth_chainId().send()).resolves.toBe('direct')
+    await expect(client.solana.rpc.getHealth().send()).resolves.toBe('legacy')
+    await expect(client.price.getPriceFeeds()).resolves.toEqual([])
+
+    expect(captures).toHaveLength(3)
+    expect(captures[0]?.url).toBe(directUrl)
+    expect(captures[0]?.headers.get('authorization')).toBe('Bearer direct-token')
+    expect(captures[0]?.headers.get('x-direct')).toBe('direct-only')
+    expect(captures[0]?.headers.get('x-shared')).toBeNull()
+    expect(captures[1]?.headers.get('authorization')).toBe('Bearer shared-token')
+    expect(captures[1]?.headers.get('x-shared')).toBe('shared-only')
+    expect(captures[1]?.headers.get('x-direct')).toBeNull()
+    expect(captures[2]?.headers.get('authorization')).toBe('Bearer shared-key')
+    expect(captures[2]?.headers.get('x-shared')).toBe('shared-only')
+    expect(captures[2]?.headers.get('x-direct')).toBeNull()
+    client.close()
+  })
+
+  it('keeps Avalanche C direct while native and index stay on legacy or unavailable transports', async () => {
+    const keyedCaptures: Array<{ readonly body: Record<string, unknown>; readonly url: string }> = []
+    const directUrl = 'https://customer.example/customer/path?token=a%2Fb&region=eu'
+    const keyedClient = createErpcClient({
+      apiKey: 'shared-key',
+      avalancheCRpc: { httpUrl: directUrl },
+      fetch: async (input, init) => {
+        const body = JSON.parse(String(init?.body)) as Record<string, unknown>
+        keyedCaptures.push({ body, url: String(input) })
+        return new Response(JSON.stringify({
+          jsonrpc: '2.0',
+          id: body.id,
+          result: body.method,
+        }))
+      },
+    })
+
+    await expect(keyedClient.avalanche.rpc.eth_chainId().send()).resolves.toBe('eth_chainId')
+    await expect(
+      keyedClient.avalanche.avax.getAtomicTxStatus({ txID: 'tx-id' }).send(),
+    ).resolves.toBe('avax.getAtomicTxStatus')
+    await expect(
+      keyedClient.avalanche.index.xChainTransactions
+        .getContainerByID({ id: 'tx-id' })
+        .send(),
+    ).resolves.toBe('index.getContainerByID')
+    expect(keyedCaptures[0]?.url).toBe(directUrl)
+    expect(keyedCaptures[0]?.url).not.toContain('api-key=')
+    expect(keyedCaptures[1]?.url).toBe(
+      'https://ava-rpc.erpc.global/ava?api-key=shared-key',
+    )
+    expect(keyedCaptures[2]?.url).toBe(
+      'https://ava-rpc.erpc.global/ava/ext/index/X/tx?api-key=shared-key',
+    )
+    keyedClient.close()
+
+    let keylessFetchCount = 0
+    const keylessClient = createErpcClient({
+      avalancheCRpc: { httpUrl: directUrl },
+      fetch: async (_input, init) => {
+        keylessFetchCount += 1
+        const body = JSON.parse(String(init?.body)) as { readonly id: number }
+        return new Response(JSON.stringify({
+          jsonrpc: '2.0',
+          id: body.id,
+          result: 'direct',
+        }))
+      },
+    })
+    await expect(keylessClient.avalanche.rpc.eth_chainId().send()).resolves.toBe('direct')
+    await expect(keylessClient.avalanche.xChain.getHeight().send()).rejects.toBeInstanceOf(
+      ErpcNotConfiguredError,
+    )
+    await expect(
+      keylessClient.avalanche.index.cChainBlocks.getLastAccepted({}).send(),
+    ).rejects.toMatchObject({ code: 'ERPC_NOT_CONFIGURED' })
+    expect(keylessFetchCount).toBe(1)
+    keylessClient.close()
+  })
+
+  it('rejects unavailable price SSE locally without starting fetch', async () => {
+    let fetchCount = 0
+    const client = createErpcClient({
+      ethereumRpc: { httpUrl: 'https://customer.example/rpc' },
+      fetch: async () => {
+        fetchCount += 1
+        return new Response('data: {}\n\n')
+      },
+    })
+
+    const stream = client.price.streamPriceUpdates({ ids: ['feed-id'] })
+    await expect(stream.next()).rejects.toMatchObject({
+      code: 'ERPC_NOT_CONFIGURED',
+      namespace: 'price',
+    })
+    expect(fetchCount).toBe(0)
+    client.close()
   })
 })

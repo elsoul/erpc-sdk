@@ -9,6 +9,8 @@ import httpx
 from .config import (
     ErpcClientConfig,
     ErpcCloudClientConfig,
+    RpcEndpointConfig,
+    direct_endpoint_redactions,
     endpoint_with_path,
     websocket_url,
 )
@@ -38,10 +40,16 @@ from .rpc import (
 from .subscriptions import (
     EthereumSubscriptions,
     SolanaSubscriptions,
+    UnavailableWebSocketJsonRpcTransport,
     WebSocketJsonRpcTransport,
 )
 from .swap import SwapClient
-from .transport import HttpJsonRpcTransport, RestTransport
+from .transport import (
+    HttpJsonRpcTransport,
+    RestTransport,
+    UnavailableHttpJsonRpcTransport,
+    UnavailableRestTransport,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,6 +90,84 @@ class AvalancheClient:
     subscriptions: EthereumSubscriptions
 
 
+def _rpc_transport(
+    config: ErpcClientConfig,
+    override: RpcEndpointConfig | None,
+    legacy_endpoint: str,
+    namespace: str,
+    client: httpx.AsyncClient,
+) -> HttpJsonRpcTransport:
+    if override is not None:
+        return HttpJsonRpcTransport(
+            api_key=None,
+            endpoint=override.http_url,
+            headers=override.headers,
+            timeout=config.timeout,
+            client=client,
+            direct=True,
+            redactions=direct_endpoint_redactions(override),
+        )
+    if config.api_key is None:
+        return UnavailableHttpJsonRpcTransport(namespace)
+    return HttpJsonRpcTransport(
+        api_key=config.api_key,
+        endpoint=legacy_endpoint,
+        headers=config.headers,
+        timeout=config.timeout,
+        client=client,
+    )
+
+
+def _legacy_rpc_transport(
+    config: ErpcClientConfig,
+    endpoint: str,
+    namespace: str,
+    client: httpx.AsyncClient,
+) -> HttpJsonRpcTransport:
+    if config.api_key is None:
+        return UnavailableHttpJsonRpcTransport(namespace)
+    return HttpJsonRpcTransport(
+        api_key=config.api_key,
+        endpoint=endpoint,
+        headers=config.headers,
+        timeout=config.timeout,
+        client=client,
+    )
+
+
+def _shared_or_unavailable(
+    selected: HttpJsonRpcTransport,
+    config: ErpcClientConfig,
+    override: RpcEndpointConfig | None,
+    namespace: str,
+) -> HttpJsonRpcTransport:
+    """Preserve shared legacy/direct IDs while naming keyless failures locally."""
+    if config.api_key is None and override is None:
+        return UnavailableHttpJsonRpcTransport(namespace)
+    return selected
+
+
+def _websocket_transport(
+    config: ErpcClientConfig,
+    override: RpcEndpointConfig | None,
+    legacy_url: str,
+    namespace: str,
+) -> WebSocketJsonRpcTransport:
+    if override is not None:
+        if override.websocket_url is None:
+            return UnavailableWebSocketJsonRpcTransport(namespace)
+        return WebSocketJsonRpcTransport(
+            override.websocket_url,
+            "",
+            config.timeout,
+            direct=True,
+            redactions=direct_endpoint_redactions(override),
+        )
+    if config.api_key is None:
+        return UnavailableWebSocketJsonRpcTransport(namespace)
+    return WebSocketJsonRpcTransport(legacy_url, config.api_key, config.timeout)
+
+
 class ErpcClient:
     """Async-first client for JSON-RPC, REST, streams, and subscriptions."""
 
@@ -94,50 +180,89 @@ class ErpcClient:
         client = http_client or httpx.AsyncClient(timeout=None, follow_redirects=False)
         self._http_client = client
         self._owns_http_client = http_client is None
-        solana_transport = HttpJsonRpcTransport(
-            api_key=config.api_key,
-            endpoint=config.endpoint,
-            headers=config.headers,
-            timeout=config.timeout,
-            client=client,
+        solana_transport = _rpc_transport(
+            config,
+            config.solana_rpc,
+            config.endpoint,
+            "solana.rpc",
+            client,
         )
-        ethereum_transport = HttpJsonRpcTransport(
-            api_key=config.api_key,
-            endpoint=endpoint_with_path(config.endpoint, "/eth"),
-            headers=config.headers,
-            timeout=config.timeout,
-            client=client,
+        solana_das_transport = _shared_or_unavailable(
+            solana_transport, config, config.solana_rpc, "solana.das"
         )
-        avalanche_transport = HttpJsonRpcTransport(
-            api_key=config.api_key,
-            endpoint=endpoint_with_path(config.avalanche_endpoint, "/ava"),
-            headers=config.headers,
-            timeout=config.timeout,
-            client=client,
+        solana_history_transport = _shared_or_unavailable(
+            solana_transport, config, config.solana_rpc, "solana.history"
+        )
+        solana_leaders_transport = _shared_or_unavailable(
+            solana_transport, config, config.solana_rpc, "solana.leaders"
+        )
+        solana_analytics_transport = _shared_or_unavailable(
+            solana_transport, config, config.solana_rpc, "solana.analytics"
+        )
+        ethereum_transport = _rpc_transport(
+            config,
+            config.ethereum_rpc,
+            endpoint_with_path(config.endpoint, "/eth"),
+            "ethereum.rpc",
+            client,
+        )
+        avalanche_transport = _rpc_transport(
+            config,
+            config.avalanche_c_rpc,
+            endpoint_with_path(config.avalanche_endpoint, "/ava"),
+            "avalanche.rpc",
+            client,
+        )
+        avalanche_legacy_transport = _legacy_rpc_transport(
+            config,
+            endpoint_with_path(config.avalanche_endpoint, "/ava"),
+            "avalanche.avax",
+            client,
+        )
+        avalanche_x_chain_transport = _shared_or_unavailable(
+            avalanche_legacy_transport, config, None, "avalanche.x_chain"
+        )
+        avalanche_p_chain_transport = _shared_or_unavailable(
+            avalanche_legacy_transport, config, None, "avalanche.p_chain"
+        )
+        avalanche_proposer_vm_transport = _shared_or_unavailable(
+            avalanche_legacy_transport, config, None, "avalanche.proposer_vm"
+        )
+        avalanche_info_transport = _shared_or_unavailable(
+            avalanche_legacy_transport, config, None, "avalanche.info"
         )
 
-        def avalanche_index_transport(path: str) -> HttpJsonRpcTransport:
-            return HttpJsonRpcTransport(
-                api_key=config.api_key,
-                endpoint=endpoint_with_path(config.avalanche_endpoint, path),
-                headers=config.headers,
-                timeout=config.timeout,
-                client=client,
+        def avalanche_index_transport(path: str, namespace: str) -> HttpJsonRpcTransport:
+            return _legacy_rpc_transport(
+                config,
+                endpoint_with_path(config.avalanche_endpoint, path),
+                namespace,
+                client,
             )
-        solana_ws = WebSocketJsonRpcTransport(
-            websocket_url(config.endpoint, config.api_key),
-            config.api_key,
-            config.timeout,
+
+        solana_ws = _websocket_transport(
+            config,
+            config.solana_rpc,
+            websocket_url(config.endpoint, config.api_key or "")
+            if config.api_key is not None
+            else "",
+            "solana.subscriptions",
         )
-        ethereum_ws = WebSocketJsonRpcTransport(
-            websocket_url(config.endpoint, config.api_key, "/eth"),
-            config.api_key,
-            config.timeout,
+        ethereum_ws = _websocket_transport(
+            config,
+            config.ethereum_rpc,
+            websocket_url(config.endpoint, config.api_key or "", "/eth")
+            if config.api_key is not None
+            else "",
+            "ethereum.subscriptions",
         )
-        avalanche_ws = WebSocketJsonRpcTransport(
-            websocket_url(config.avalanche_endpoint, config.api_key, "/ava-ws"),
-            config.api_key,
-            config.timeout,
+        avalanche_ws = _websocket_transport(
+            config,
+            config.avalanche_c_rpc,
+            websocket_url(config.avalanche_endpoint, config.api_key or "", "/ava-ws")
+            if config.api_key is not None
+            else "",
+            "avalanche.subscriptions",
         )
         self.solana = SolanaClient(
             rpc=RpcNamespace(
@@ -146,18 +271,18 @@ class ErpcClient:
                 parameter_mode="positional",
                 batch_policy="solana-standard",
             ),
-            das=RpcNamespace(solana_transport, SOLANA_DAS_METHODS, parameter_mode="named"),
+            das=RpcNamespace(solana_das_transport, SOLANA_DAS_METHODS, parameter_mode="named"),
             history=RpcNamespace(
-                solana_transport, SOLANA_HISTORY_METHODS, parameter_mode="positional"
+                solana_history_transport, SOLANA_HISTORY_METHODS, parameter_mode="positional"
             ),
             leaders=RpcNamespace(
-                solana_transport,
+                solana_leaders_transport,
                 SOLANA_LEADER_METHODS,
                 parameter_mode="positional",
                 batch_policy="unsupported",
             ),
             analytics=RpcNamespace(
-                solana_transport,
+                solana_analytics_transport,
                 SOLANA_ANALYTICS_METHODS,
                 parameter_mode="positional",
             ),
@@ -174,35 +299,35 @@ class ErpcClient:
                 parameter_mode="positional",
             ),
             avax=RpcNamespace(
-                avalanche_transport,
+                avalanche_legacy_transport,
                 AVALANCHE_AVAX_METHODS,
                 parameter_mode="named",
                 batch_policy="unsupported",
                 method_prefix="avax",
             ),
             x_chain=RpcNamespace(
-                avalanche_transport,
+                avalanche_x_chain_transport,
                 AVALANCHE_X_CHAIN_METHODS,
                 parameter_mode="named",
                 batch_policy="unsupported",
                 method_prefix="avm",
             ),
             p_chain=RpcNamespace(
-                avalanche_transport,
+                avalanche_p_chain_transport,
                 AVALANCHE_P_CHAIN_METHODS,
                 parameter_mode="named",
                 batch_policy="unsupported",
                 method_prefix="platform",
             ),
             proposer_vm=RpcNamespace(
-                avalanche_transport,
+                avalanche_proposer_vm_transport,
                 AVALANCHE_PROPOSER_VM_METHODS,
                 parameter_mode="named",
                 batch_policy="unsupported",
                 method_prefix="proposervm",
             ),
             info=RpcNamespace(
-                avalanche_transport,
+                avalanche_info_transport,
                 AVALANCHE_INFO_METHODS,
                 parameter_mode="named",
                 batch_policy="unsupported",
@@ -210,28 +335,36 @@ class ErpcClient:
             ),
             index=AvalancheIndexClient(
                 c_chain_blocks=RpcNamespace(
-                    avalanche_index_transport("/ava/ext/index/C/block"),
+                    avalanche_index_transport(
+                        "/ava/ext/index/C/block", "avalanche.index.c_chain_blocks"
+                    ),
                     AVALANCHE_INDEX_METHODS,
                     parameter_mode="named",
                     batch_policy="unsupported",
                     method_prefix="index",
                 ),
                 p_chain_blocks=RpcNamespace(
-                    avalanche_index_transport("/ava/ext/index/P/block"),
+                    avalanche_index_transport(
+                        "/ava/ext/index/P/block", "avalanche.index.p_chain_blocks"
+                    ),
                     AVALANCHE_INDEX_METHODS,
                     parameter_mode="named",
                     batch_policy="unsupported",
                     method_prefix="index",
                 ),
                 x_chain_blocks=RpcNamespace(
-                    avalanche_index_transport("/ava/ext/index/X/block"),
+                    avalanche_index_transport(
+                        "/ava/ext/index/X/block", "avalanche.index.x_chain_blocks"
+                    ),
                     AVALANCHE_INDEX_METHODS,
                     parameter_mode="named",
                     batch_policy="unsupported",
                     method_prefix="index",
                 ),
                 x_chain_transactions=RpcNamespace(
-                    avalanche_index_transport("/ava/ext/index/X/tx"),
+                    avalanche_index_transport(
+                        "/ava/ext/index/X/tx", "avalanche.index.x_chain_transactions"
+                    ),
                     AVALANCHE_INDEX_METHODS,
                     parameter_mode="named",
                     batch_policy="unsupported",
@@ -241,33 +374,38 @@ class ErpcClient:
             subscriptions=EthereumSubscriptions(avalanche_ws),
         )
         self.swap = SwapClient(ethereum_transport, avalanche_transport)
-        self.price = PriceClient(
-            RestTransport(
-                credential=config.api_key,
-                endpoint=config.endpoint,
-                headers=config.headers,
-                timeout=config.timeout,
-                client=client,
+        if config.api_key is None:
+            self.price = PriceClient(UnavailableRestTransport("price"))
+            self.account = AccountClient(UnavailableRestTransport("account"))
+            self.usage = UsageClient(UnavailableRestTransport("usage"))
+        else:
+            self.price = PriceClient(
+                RestTransport(
+                    credential=config.api_key,
+                    endpoint=config.endpoint,
+                    headers=config.headers,
+                    timeout=config.timeout,
+                    client=client,
+                )
             )
-        )
-        self.account = AccountClient(
-            RestTransport(
-                credential=config.api_key,
-                endpoint=config.account_endpoint,
-                headers=config.headers,
-                timeout=config.timeout,
-                client=client,
+            self.account = AccountClient(
+                RestTransport(
+                    credential=config.api_key,
+                    endpoint=config.account_endpoint,
+                    headers=config.headers,
+                    timeout=config.timeout,
+                    client=client,
+                )
             )
-        )
-        self.usage = UsageClient(
-            RestTransport(
-                credential=config.api_key,
-                endpoint=config.user_endpoint,
-                headers=config.headers,
-                timeout=config.timeout,
-                client=client,
+            self.usage = UsageClient(
+                RestTransport(
+                    credential=config.api_key,
+                    endpoint=config.user_endpoint,
+                    headers=config.headers,
+                    timeout=config.timeout,
+                    client=client,
+                )
             )
-        )
         self._closed = False
 
     async def close(self) -> None:

@@ -15,6 +15,8 @@ pub enum ErpcErrorCode {
     BatchPolicy,
     /// Client configuration was invalid.
     Config,
+    /// A requested service has no configured transport.
+    NotConfigured,
     /// An HTTP response had a non-success status.
     Http,
     /// A response did not satisfy the ERPC contract.
@@ -51,6 +53,9 @@ pub enum ErpcError {
     /// Invalid client configuration.
     #[error("{0}")]
     Config(String),
+    /// A requested namespace has no configured transport.
+    #[error("ERPC namespace '{0}' is not configured")]
+    NotConfigured(String),
     /// Non-success HTTP response.
     #[error("ERPC request failed with HTTP {status}")]
     Http {
@@ -89,6 +94,7 @@ impl ErpcError {
             Self::Aborted => ErpcErrorCode::Aborted,
             Self::BatchPolicy(_) => ErpcErrorCode::BatchPolicy,
             Self::Config(_) => ErpcErrorCode::Config,
+            Self::NotConfigured(_) => ErpcErrorCode::NotConfigured,
             Self::Http { .. } => ErpcErrorCode::Http,
             Self::InvalidResponse(_) => ErpcErrorCode::InvalidResponse,
             Self::JsonRpc { .. } => ErpcErrorCode::Rpc,
@@ -108,6 +114,9 @@ pub(crate) fn timeout(duration: std::time::Duration) -> ErpcError {
 }
 
 fn encoded_variants(credential: &str) -> Vec<String> {
+    if credential.is_empty() {
+        return Vec::new();
+    }
     let mut values = vec![credential.to_owned()];
     let query_encoded: String =
         url::form_urlencoded::byte_serialize(credential.as_bytes()).collect();
@@ -131,41 +140,126 @@ fn encoded_variants(credential: &str) -> Vec<String> {
     values
 }
 
-fn redact_text(value: &str, credential: &str) -> String {
-    encoded_variants(credential)
+fn redaction_variants(secrets: &[String]) -> Vec<String> {
+    let mut variants = secrets
         .iter()
-        .fold(value.to_owned(), |result, variant| {
-            result.replace(variant, "[REDACTED]")
-        })
+        .flat_map(|secret| encoded_variants(secret))
+        .collect::<Vec<_>>();
+    variants.sort_by_key(|value| std::cmp::Reverse(value.len()));
+    variants.dedup();
+    variants
 }
 
-fn redact_value(value: Value, credential: &str, depth: usize) -> Value {
+fn redact_text_with_variants(value: &str, variants: &[String]) -> String {
+    variants.iter().fold(value.to_owned(), |result, variant| {
+        let result = result.replace(variant, "[REDACTED]");
+        if has_percent_escape(variant) {
+            redact_percent_escape_case_insensitive(&result, variant)
+        } else {
+            result
+        }
+    })
+}
+
+fn has_percent_escape(value: &str) -> bool {
+    value.as_bytes().windows(3).any(is_percent_escape)
+}
+
+fn is_percent_escape(bytes: &[u8]) -> bool {
+    bytes.len() == 3
+        && bytes[0] == b'%'
+        && bytes[1].is_ascii_hexdigit()
+        && bytes[2].is_ascii_hexdigit()
+}
+
+fn redact_percent_escape_case_insensitive(value: &str, pattern: &str) -> String {
+    let value_bytes = value.as_bytes();
+    let pattern_bytes = pattern.as_bytes();
+    if !pattern.is_ascii() || pattern_bytes.len() > value_bytes.len() {
+        return value.to_owned();
+    }
+    let mut result = String::with_capacity(value.len());
+    let mut cursor = 0;
+    while cursor + pattern_bytes.len() <= value_bytes.len() {
+        let Some(relative) = value_bytes[cursor..]
+            .windows(pattern_bytes.len())
+            .position(|candidate| percent_escape_pattern_matches(candidate, pattern_bytes))
+        else {
+            break;
+        };
+        let start = cursor + relative;
+        let end = start + pattern_bytes.len();
+        result.push_str(&value[cursor..start]);
+        result.push_str("[REDACTED]");
+        cursor = end;
+    }
+    if result.is_empty() {
+        return value.to_owned();
+    }
+    result.push_str(&value[cursor..]);
+    result
+}
+
+fn percent_escape_pattern_matches(candidate: &[u8], pattern: &[u8]) -> bool {
+    let mut index = 0;
+    while index < pattern.len() {
+        if index + 2 < pattern.len()
+            && pattern[index] == b'%'
+            && pattern[index + 1].is_ascii_hexdigit()
+            && pattern[index + 2].is_ascii_hexdigit()
+        {
+            if candidate[index] != b'%'
+                || !candidate[index + 1].eq_ignore_ascii_case(&pattern[index + 1])
+                || !candidate[index + 2].eq_ignore_ascii_case(&pattern[index + 2])
+            {
+                return false;
+            }
+            index += 3;
+        } else {
+            if candidate[index] != pattern[index] {
+                return false;
+            }
+            index += 1;
+        }
+    }
+    true
+}
+
+fn redact_value_with_variants(value: Value, variants: &[String], depth: usize) -> Value {
     if depth >= 32 {
         return Value::String("[REDACTED]".to_owned());
     }
     match value {
-        Value::String(value) => Value::String(redact_text(&value, credential)),
+        Value::String(value) => Value::String(redact_text_with_variants(&value, variants)),
         Value::Array(values) => Value::Array(
             values
                 .into_iter()
-                .map(|value| redact_value(value, credential, depth + 1))
+                .map(|value| redact_value_with_variants(value, variants, depth + 1))
                 .collect(),
         ),
         Value::Object(values) => Value::Object(
             values
                 .into_iter()
-                .map(|(key, value)| (key, redact_value(value, credential, depth + 1)))
+                .map(|(key, value)| {
+                    (
+                        redact_text_with_variants(&key, variants),
+                        redact_value_with_variants(value, variants, depth + 1),
+                    )
+                })
                 .collect(),
         ),
         other => other,
     }
 }
 
-pub(crate) fn rpc_error(error: JsonRpcErrorObject, credential: &str) -> ErpcError {
+pub(crate) fn rpc_error_with_secrets(error: JsonRpcErrorObject, secrets: &[String]) -> ErpcError {
+    let variants = redaction_variants(secrets);
     ErpcError::JsonRpc {
         code: error.code,
-        message: redact_text(&error.message, credential),
-        data: error.data.map(|value| redact_value(value, credential, 0)),
+        message: redact_text_with_variants(&error.message, &variants),
+        data: error
+            .data
+            .map(|value| redact_value_with_variants(value, &variants, 0)),
     }
 }
 
@@ -175,6 +269,7 @@ impl fmt::Display for ErpcErrorCode {
             Self::Aborted => "ERPC_ABORTED",
             Self::BatchPolicy => "ERPC_BATCH_POLICY",
             Self::Config => "ERPC_CONFIG",
+            Self::NotConfigured => "ERPC_NOT_CONFIGURED",
             Self::Http => "ERPC_HTTP",
             Self::InvalidResponse => "ERPC_INVALID_RESPONSE",
             Self::Rpc => "ERPC_RPC",

@@ -18,9 +18,9 @@ module ERPC
       response = start(uri, timeout) { |http| http.request(request) }
       HttpResponse.new(status: response.code.to_i, body: response.body.to_s)
     rescue Net::OpenTimeout, Net::ReadTimeout, Net::WriteTimeout
-      raise TimeoutError, timeout
+      raise TimeoutError, timeout, cause: nil
     rescue IOError, EOFError, SocketError, SystemCallError, OpenSSL::SSL::SSLError
-      raise TransportError, "Unable to reach ERPC"
+      raise TransportError, "Unable to reach ERPC", cause: nil
     end
 
     def stream(url:, headers:, timeout: DEFAULT_TIMEOUT)
@@ -36,11 +36,11 @@ module ERPC
           end
         end
       rescue Net::OpenTimeout, Net::ReadTimeout, Net::WriteTimeout
-        raise TimeoutError, timeout
+        raise TimeoutError, timeout, cause: nil
       rescue HttpError
         raise
       rescue IOError, EOFError, SocketError, SystemCallError, OpenSSL::SSL::SSLError
-        raise TransportError, "Unable to reach ERPC"
+        raise TransportError, "Unable to reach ERPC", cause: nil
       end
     end
 
@@ -57,20 +57,34 @@ module ERPC
   end
 
   class HttpJsonRpcTransport
-    attr_reader :endpoint, :max_batch_size
+    attr_reader :max_batch_size
 
-    def initialize(api_key:, endpoint:, headers:, timeout:, adapter:, max_batch_size: 256)
+    def initialize(api_key: nil, endpoint:, headers: {}, timeout:, adapter:, max_batch_size: 256,
+                   direct: false, redactions: [], unavailable_namespace: nil)
       @api_key = api_key
       @endpoint = endpoint
-      @headers = headers
+      @public_endpoint = URLs.public_endpoint(endpoint)
+      @headers = headers.to_h.dup.freeze
       @timeout = timeout
       @adapter = adapter
       @max_batch_size = max_batch_size
+      @direct = direct
+      @redactions = redactions
+      @unavailable_namespace = unavailable_namespace
       @next_id = 0
       @id_mutex = Mutex.new
     end
 
+    def endpoint
+      @public_endpoint
+    end
+
+    def inspect
+      "#<#{self.class} endpoint=#{endpoint.inspect} max_batch_size=#{max_batch_size.inspect}>"
+    end
+
     def request(method, params = nil)
+      ensure_configured
       request_id = next_id
       body = { "jsonrpc" => "2.0", "id" => request_id, "method" => method }
       body["params"] = params unless params.nil?
@@ -82,6 +96,7 @@ module ERPC
       if calls.length > max_batch_size
         raise InvalidResponseError, "A batch may contain at most #{max_batch_size} calls"
       end
+      ensure_configured
 
       requests = calls.map do |call|
         method = call.fetch(:method) { call.fetch("method") }
@@ -123,19 +138,28 @@ module ERPC
 
     private
 
+    def ensure_configured
+      return if @unavailable_namespace.nil?
+
+      raise NotConfiguredError, @unavailable_namespace
+    end
+
     def next_id
       @id_mutex.synchronize { @next_id += 1 }
     end
 
     def post(body)
-      uri = URI.parse(endpoint)
-      query = URI.decode_www_form(uri.query.to_s)
-      query << ["api-key", @api_key]
-      uri.query = URI.encode_www_form(query)
+      ensure_configured
+      uri = URI.parse(@endpoint)
+      unless @direct
+        query = URI.decode_www_form(uri.query.to_s)
+        query << ["api-key", @api_key]
+        uri.query = URI.encode_www_form(query)
+      end
       response = @adapter.request(
         method: :post,
         url: uri.to_s,
-        headers: @headers.merge("accept" => "application/json", "content-type" => "application/json"),
+        headers: protocol_headers,
         body: JSON.generate(body),
         timeout: @timeout
       )
@@ -143,7 +167,7 @@ module ERPC
 
       JSON.parse(response.body)
     rescue JSON::ParserError
-      raise InvalidResponseError, "ERPC returned malformed JSON"
+      raise InvalidResponseError, "ERPC returned malformed JSON", cause: nil
     end
 
     def unwrap(response, expected_id)
@@ -161,8 +185,17 @@ module ERPC
         raise InvalidResponseError, "ERPC returned an invalid RPC error"
       end
 
-      data = error.key?("data") ? Redaction.value(error["data"], @api_key) : nil
-      raise JsonRpcError.new(error["code"], Redaction.text(error["message"], @api_key), data)
+      credentials = @direct ? @redactions : @api_key
+      data = error.key?("data") ? Redaction.value(error["data"], credentials) : nil
+      raise JsonRpcError.new(error["code"], Redaction.text(error["message"], credentials), data)
+    end
+
+    def protocol_headers
+      headers = @headers.dup
+      if @direct
+        headers.delete_if { |name, _| %w[accept content-type].include?(name.to_s.downcase) }
+      end
+      headers.merge("accept" => "application/json", "content-type" => "application/json")
     end
 
     def valid_id?(value)
@@ -171,17 +204,26 @@ module ERPC
   end
 
   class RestTransport
-    attr_reader :endpoint
-
-    def initialize(credential:, endpoint:, headers:, timeout:, adapter:)
+    def initialize(credential: nil, endpoint:, headers: {}, timeout:, adapter:, unavailable_namespace: nil)
       @credential = credential
       @endpoint = endpoint
-      @headers = headers
+      @public_endpoint = URLs.public_endpoint(endpoint)
+      @headers = headers.to_h.dup.freeze
       @timeout = timeout
       @adapter = adapter
+      @unavailable_namespace = unavailable_namespace
+    end
+
+    def endpoint
+      @public_endpoint
+    end
+
+    def inspect
+      "#<#{self.class} endpoint=#{endpoint.inspect}>"
     end
 
     def get(path, query = nil)
+      ensure_configured
       response = @adapter.request(
         method: :get,
         url: url(path, query),
@@ -192,10 +234,11 @@ module ERPC
 
       JSON.parse(response.body)
     rescue JSON::ParserError
-      raise InvalidResponseError, "ERPC returned malformed JSON"
+      raise InvalidResponseError, "ERPC returned malformed JSON", cause: nil
     end
 
     def stream(path, query = nil)
+      ensure_configured
       @adapter.stream(
         url: url(path, query),
         headers: @headers.merge("authorization" => "Bearer #{@credential}", "accept" => "text/event-stream"),
@@ -204,6 +247,12 @@ module ERPC
     end
 
     private
+
+    def ensure_configured
+      return if @unavailable_namespace.nil?
+
+      raise NotConfiguredError, @unavailable_namespace
+    end
 
     def url(path, query)
       uri = URI.parse(URLs.with_path(endpoint, path))

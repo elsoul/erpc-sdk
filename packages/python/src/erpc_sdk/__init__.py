@@ -18,6 +18,7 @@ from .config import (
     DEFAULT_USER_ENDPOINT,
     ErpcClientConfig,
     ErpcCloudClientConfig,
+    RpcEndpointConfig,
 )
 from .dex_catalog import (
     DEX_ALIASES,
@@ -56,6 +57,7 @@ from .errors import (
     ErpcHttpError,
     ErpcInvalidResponseError,
     ErpcJsonRpcError,
+    ErpcNotConfiguredError,
     ErpcTimeoutError,
     ErpcTransportError,
 )
@@ -199,12 +201,14 @@ __all__ = [
     "ErpcHttpError",
     "ErpcInvalidResponseError",
     "ErpcJsonRpcError",
+    "ErpcNotConfiguredError",
     "ErpcTimeoutError",
     "ErpcTransportError",
     "EvmBlockSnapshot",
     "ExactInputQuoteRequest",
     "ExactInputQuoteResult",
     "HttpJsonRpcTransport",
+    "RpcEndpointConfig",
     "NATIVE_WRAP_DEFINITIONS",
     "POOLS",
     "POOL_DEFINITIONS",

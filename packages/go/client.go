@@ -5,9 +5,11 @@ package erpc
 import (
 	"context"
 	"encoding/json"
+	"net/url"
 )
 
-// Client groups all API namespaces backed by one API key.
+// Client groups all API namespaces backed by one API key and optional direct
+// chain RPC endpoints.
 type Client struct {
 	Solana    *SolanaClient
 	Ethereum  *EthereumClient
@@ -25,46 +27,103 @@ func NewClient(config Config) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	solanaHTTP := newHTTPRPCTransport(resolved, resolved.endpoint)
-	ethereumHTTP := newHTTPRPCTransport(resolved, endpointPath(resolved.endpoint, "/eth"))
-	avalancheHTTP := newHTTPRPCTransport(resolved, endpointPath(resolved.avalancheEndpoint, "/ava"))
+	solanaHTTP := rpcHTTPTransport(resolved, resolved.solanaRPC, resolved.endpoint, "solana.rpc")
+	ethereumHTTP := rpcHTTPTransport(resolved, resolved.ethereumRPC, endpointPath(resolved.endpoint, "/eth"), "ethereum.rpc")
+	avalancheHTTP := rpcHTTPTransport(resolved, resolved.avalancheCRPC, endpointPath(resolved.avalancheEndpoint, "/ava"), "avalanche.rpc")
+	avalancheNativeHTTP := legacyOrUnavailableHTTPTransport(resolved, endpointPath(resolved.avalancheEndpoint, "/ava"), "avalanche.avax")
 	avalancheIndex := &AvalancheIndexClient{
 		CChainBlocks: newAvalancheRPCNamespace(
-			newHTTPRPCTransport(resolved, endpointPath(resolved.avalancheEndpoint, "/ava/ext/index/C/block")),
+			legacyOrUnavailableHTTPTransport(resolved, endpointPath(resolved.avalancheEndpoint, "/ava/ext/index/C/block"), "avalanche.index.cChainBlocks"),
 			"index",
 			AvalancheIndexMethods,
 		),
 		PChainBlocks: newAvalancheRPCNamespace(
-			newHTTPRPCTransport(resolved, endpointPath(resolved.avalancheEndpoint, "/ava/ext/index/P/block")),
+			legacyOrUnavailableHTTPTransport(resolved, endpointPath(resolved.avalancheEndpoint, "/ava/ext/index/P/block"), "avalanche.index.pChainBlocks"),
 			"index",
 			AvalancheIndexMethods,
 		),
 		XChainBlocks: newAvalancheRPCNamespace(
-			newHTTPRPCTransport(resolved, endpointPath(resolved.avalancheEndpoint, "/ava/ext/index/X/block")),
+			legacyOrUnavailableHTTPTransport(resolved, endpointPath(resolved.avalancheEndpoint, "/ava/ext/index/X/block"), "avalanche.index.xChainBlocks"),
 			"index",
 			AvalancheIndexMethods,
 		),
 		XChainTransactions: newAvalancheRPCNamespace(
-			newHTTPRPCTransport(resolved, endpointPath(resolved.avalancheEndpoint, "/ava/ext/index/X/tx")),
+			legacyOrUnavailableHTTPTransport(resolved, endpointPath(resolved.avalancheEndpoint, "/ava/ext/index/X/tx"), "avalanche.index.xChainTransactions"),
 			"index",
 			AvalancheIndexMethods,
 		),
 	}
-	solanaWS := newWebSocketTransport(websocketURL(resolved.endpoint, resolved.apiKey, ""), resolved.timeout)
-	ethereumWS := newWebSocketTransport(websocketURL(resolved.endpoint, resolved.apiKey, "/eth"), resolved.timeout)
-	avalancheWS := newWebSocketTransport(websocketURL(resolved.avalancheEndpoint, resolved.apiKey, "/ava-ws"), resolved.timeout)
-	sharedREST := newRESTTransport(resolved.apiKey, resolved.endpoint, resolved)
-	accountREST := newRESTTransport(resolved.apiKey, resolved.accountEndpoint, resolved)
-	userREST := newRESTTransport(resolved.apiKey, resolved.userEndpoint, resolved)
+	solanaWS := rpcWebSocketTransport(resolved, resolved.solanaRPC, websocketURL(resolved.endpoint, resolved.apiKey, ""), "solana.subscriptions")
+	ethereumWS := rpcWebSocketTransport(resolved, resolved.ethereumRPC, websocketURL(resolved.endpoint, resolved.apiKey, "/eth"), "ethereum.subscriptions")
+	avalancheWS := rpcWebSocketTransport(resolved, resolved.avalancheCRPC, websocketURL(resolved.avalancheEndpoint, resolved.apiKey, "/ava-ws"), "avalanche.subscriptions")
+	sharedREST := legacyOrUnavailableRESTTransport(resolved, resolved.endpoint, "price")
+	accountREST := legacyOrUnavailableRESTTransport(resolved, resolved.accountEndpoint, "account")
+	userREST := legacyOrUnavailableRESTTransport(resolved, resolved.userEndpoint, "usage")
+	solana := newSolanaClient(solanaHTTP, solanaWS)
+	if resolved.solanaRPC == nil && resolved.apiKey == "" {
+		solana.DAS = &RPCNamespace{transport: newUnavailableHTTPRPCTransport(resolved, "solana.das"), policy: batchAny}
+		solana.History = &RPCNamespace{transport: newUnavailableHTTPRPCTransport(resolved, "solana.history"), policy: batchAny}
+		solana.Leaders = &RPCNamespace{transport: newUnavailableHTTPRPCTransport(resolved, "solana.leaders"), policy: batchUnsupported}
+		solana.Analytics = &RPCNamespace{transport: newUnavailableHTTPRPCTransport(resolved, "solana.analytics"), policy: batchAny}
+	}
+	avalanche := newAvalancheClient(avalancheHTTP, avalancheWS, avalancheIndex, avalancheNativeHTTP)
+	if resolved.avalancheCRPC == nil && resolved.apiKey == "" {
+		avalanche.AVAX = newUnavailableAvalancheNamespace(resolved, "avalanche.avax", "avax", AvalancheAVAXMethods)
+		avalanche.XChain = newUnavailableAvalancheNamespace(resolved, "avalanche.xChain", "avm", AvalancheXChainMethods)
+		avalanche.PChain = newUnavailableAvalancheNamespace(resolved, "avalanche.pChain", "platform", AvalanchePChainMethods)
+		avalanche.ProposerVM = newUnavailableAvalancheNamespace(resolved, "avalanche.proposerVM", "proposervm", AvalancheProposerVMMethods)
+		avalanche.Info = newUnavailableAvalancheNamespace(resolved, "avalanche.info", "info", AvalancheInfoMethods)
+	}
 	return &Client{
-		Solana:    newSolanaClient(solanaHTTP, solanaWS),
+		Solana:    solana,
 		Ethereum:  newEthereumClient(ethereumHTTP, ethereumWS),
-		Avalanche: newAvalancheClient(avalancheHTTP, avalancheWS, avalancheIndex),
+		Avalanche: avalanche,
 		Swap:      newSwapClient(ethereumHTTP, avalancheHTTP),
 		Price:     &PriceClient{transport: sharedREST},
 		Account:   &AccountClient{transport: accountREST},
 		Usage:     &UsageClient{transport: userREST},
 	}, nil
+}
+
+func rpcHTTPTransport(
+	config resolvedConfig,
+	override *resolvedRPCEndpointConfig,
+	legacyEndpoint *url.URL,
+	namespace string,
+) *httpRPCTransport {
+	if override != nil {
+		return newDirectHTTPRPCTransport(config, override)
+	}
+	return legacyOrUnavailableHTTPTransport(config, legacyEndpoint, namespace)
+}
+
+func legacyOrUnavailableHTTPTransport(config resolvedConfig, endpoint *url.URL, namespace string) *httpRPCTransport {
+	if config.apiKey == "" {
+		return newUnavailableHTTPRPCTransport(config, namespace)
+	}
+	return newHTTPRPCTransport(config, endpoint)
+}
+
+func rpcWebSocketTransport(
+	config resolvedConfig,
+	override *resolvedRPCEndpointConfig,
+	legacyEndpoint *url.URL,
+	namespace string,
+) *webSocketTransport {
+	if override != nil {
+		return newDirectWebSocketTransport(override, config.timeout, namespace)
+	}
+	if config.apiKey == "" {
+		return newUnavailableWebSocketTransport(config.timeout, namespace)
+	}
+	return newWebSocketTransport(legacyEndpoint, config.timeout)
+}
+
+func legacyOrUnavailableRESTTransport(config resolvedConfig, endpoint *url.URL, namespace string) *restTransport {
+	if config.apiKey == "" {
+		return newUnavailableRESTTransport(namespace, config)
+	}
+	return newRESTTransport(config.apiKey, endpoint, config)
 }
 
 // Close closes subscription connections. HTTP requests require no close.

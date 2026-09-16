@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import itertools
-from collections.abc import AsyncIterator, Awaitable, Mapping, Sequence
+from collections.abc import AsyncIterator, Awaitable, Iterable, Mapping, Sequence
 from contextlib import asynccontextmanager
 from typing import TypeVar, cast
 from urllib.parse import urlsplit, urlunsplit
@@ -14,9 +14,11 @@ import httpx
 from .config import endpoint_with_path
 from .errors import (
     ErpcAbortedError,
+    ErpcConfigError,
     ErpcHttpError,
     ErpcInvalidResponseError,
     ErpcJsonRpcError,
+    ErpcNotConfiguredError,
     ErpcTimeoutError,
     ErpcTransportError,
     redact_text,
@@ -33,6 +35,48 @@ from .types import (
 
 T = TypeVar("T")
 QueryValue = bool | float | int | Sequence[str] | str | None
+
+
+def _response_json(response: httpx.Response) -> object:
+    """Parse a response without retaining parser context or response bodies."""
+    parse_error: ErpcInvalidResponseError | None = None
+    try:
+        value = response.json()
+    except ValueError:
+        parse_error = ErpcInvalidResponseError("ERPC returned malformed JSON")
+    if parse_error is not None:
+        # Raising after leaving the native parser's exception handler keeps
+        # its body and context out of the public SDK error.
+        raise parse_error
+    return value
+
+
+def _direct_headers(headers: Mapping[str, str]) -> httpx.Headers:
+    """Build direct headers without retaining native construction errors."""
+    construction_error: ErpcConfigError | None = None
+    try:
+        result = httpx.Headers(headers)
+    except (TypeError, UnicodeError, ValueError):
+        construction_error = ErpcConfigError(
+            "direct endpoint headers must contain valid HTTP values"
+        )
+    if construction_error is not None:
+        raise construction_error
+    result["accept"] = "application/json"
+    result["content-type"] = "application/json"
+    return result
+
+
+def _direct_request(endpoint: str, headers: httpx.Headers, body: object) -> httpx.Request:
+    """Build a direct request while discarding URL/body construction details."""
+    construction_error: ErpcTransportError | None = None
+    try:
+        request = httpx.Request("POST", endpoint, headers=headers, json=body)
+    except (TypeError, UnicodeError, ValueError, httpx.InvalidURL):
+        construction_error = ErpcTransportError("Unable to construct direct HTTP request")
+    if construction_error is not None:
+        raise construction_error
+    return request
 
 
 async def _wait(awaitable: Awaitable[T], timeout: float, options: RequestOptions) -> T:
@@ -55,10 +99,10 @@ async def _wait(awaitable: Awaitable[T], timeout: float, options: RequestOptions
                 raise ErpcAbortedError
             cancel_task.cancel()
             return await request_task
-    except TimeoutError as error:
+    except TimeoutError:
         request_task.cancel()
         await asyncio.gather(request_task, return_exceptions=True)
-        raise ErpcTimeoutError(timeout) from error
+        raise ErpcTimeoutError(timeout) from None
     finally:
         if cancel_task is not None and not cancel_task.done():
             cancel_task.cancel()
@@ -74,12 +118,14 @@ class HttpJsonRpcTransport:
     def __init__(
         self,
         *,
-        api_key: str,
+        api_key: str | None,
         endpoint: str,
         headers: Mapping[str, str],
         timeout: float,
         client: httpx.AsyncClient,
         max_batch_size: int = 256,
+        direct: bool = False,
+        redactions: Iterable[str] = (),
     ) -> None:
         self._api_key = api_key
         self._endpoint = endpoint
@@ -87,12 +133,14 @@ class HttpJsonRpcTransport:
         self._timeout = timeout
         self._client = client
         self._max_batch_size = max_batch_size
+        self._direct = direct
+        self._redactions = tuple(redactions)
         self._ids = itertools.count(1)
 
     @property
     def endpoint(self) -> str:
         """Return the public endpoint without credentials."""
-        return self._endpoint
+        return strip_url_query(self._endpoint) if self._direct else self._endpoint
 
     @property
     def max_batch_size(self) -> int:
@@ -164,27 +212,47 @@ class HttpJsonRpcTransport:
         return results
 
     async def _post(self, body: object, options: RequestOptions) -> object:
+        transport_error: ErpcTransportError | None = None
         try:
-            response = await _wait(
-                self._client.post(
+            if self._direct:
+                request = _direct_request(
                     self._endpoint,
-                    params={"api-key": self._api_key},
-                    headers=self._headers,
-                    json=body,
-                ),
-                self._timeout,
-                options,
-            )
+                    _direct_headers(self._headers),
+                    body,
+                )
+                response = await _wait(
+                    self._client.send(
+                        request,
+                        auth=None,
+                        follow_redirects=False,
+                    ),
+                    self._timeout,
+                    options,
+                )
+            else:
+                if self._api_key is None:
+                    raise ErpcNotConfiguredError("rpc")
+                response = await _wait(
+                    self._client.post(
+                        self._endpoint,
+                        params={"api-key": self._api_key},
+                        headers=self._headers,
+                        json=body,
+                    ),
+                    self._timeout,
+                    options,
+                )
         except (ErpcAbortedError, ErpcTimeoutError):
             raise
-        except httpx.HTTPError as error:
-            raise ErpcTransportError() from error
+        except httpx.HTTPError:
+            transport_error = ErpcTransportError()
+        if transport_error is not None:
+            # Raise after leaving the native exception handler so its context
+            # is not retained on the SDK error object.
+            raise transport_error
         if not response.is_success:
             raise ErpcHttpError(response.status_code)
-        try:
-            return response.json()
-        except ValueError as error:
-            raise ErpcInvalidResponseError("ERPC returned malformed JSON") from error
+        return _response_json(response)
 
     def _unwrap(self, response: object, expected_id: JsonRpcId) -> JsonValue:
         if not isinstance(response, dict) or response.get("id") != expected_id:
@@ -204,11 +272,51 @@ class HttpJsonRpcTransport:
         if not isinstance(code, int) or isinstance(code, bool) or not isinstance(message, str):
             raise ErpcInvalidResponseError("ERPC returned an invalid RPC error")
         data = error.get("data")
+        credentials = self._redactions if self._direct else (self._api_key or "")
         raise ErpcJsonRpcError(
             code,
-            redact_text(message, self._api_key),
-            redact_value(data, self._api_key) if data is not None else None,
+            redact_text(message, credentials),
+            redact_value(data, credentials) if data is not None else None,
         )
+
+
+class UnavailableHttpJsonRpcTransport(HttpJsonRpcTransport):
+    """A local transport target for an unconfigured RPC namespace."""
+
+    def __init__(self, namespace: str) -> None:
+        self._namespace = namespace
+        self._max_batch_size = 256
+
+    @property
+    def endpoint(self) -> str:
+        return ""
+
+    @property
+    def max_batch_size(self) -> int:
+        return self._max_batch_size
+
+    async def request(
+        self,
+        method: str,
+        params: JsonRpcParams | None = None,
+        options: RequestOptions = DEFAULT_REQUEST_OPTIONS,
+    ) -> JsonValue:
+        del method, params, options
+        raise ErpcNotConfiguredError(self._namespace)
+
+    async def batch(
+        self,
+        calls: Sequence[RpcBatchCall],
+        options: RequestOptions = DEFAULT_REQUEST_OPTIONS,
+    ) -> list[JsonValue]:
+        del options
+        if not calls:
+            return []
+        if len(calls) > self._max_batch_size:
+            raise ErpcInvalidResponseError(
+                f"A batch may contain at most {self._max_batch_size} calls"
+            )
+        raise ErpcNotConfiguredError(self._namespace)
 
 
 class RestTransport:
@@ -276,14 +384,11 @@ class RestTransport:
             )
         except (ErpcAbortedError, ErpcTimeoutError):
             raise
-        except httpx.HTTPError as error:
-            raise ErpcTransportError() from error
+        except httpx.HTTPError:
+            raise ErpcTransportError() from None
         if not response.is_success:
             raise ErpcHttpError(response.status_code)
-        try:
-            return cast(JsonValue, response.json())
-        except ValueError as error:
-            raise ErpcInvalidResponseError("ERPC returned malformed JSON") from error
+        return cast(JsonValue, _response_json(response))
 
     @asynccontextmanager
     async def stream(
@@ -297,17 +402,52 @@ class RestTransport:
             response = await _wait(self._client.send(request, stream=True), self._timeout, options)
         except (ErpcAbortedError, ErpcTimeoutError):
             raise
-        except httpx.HTTPError as error:
-            raise ErpcTransportError() from error
+        except httpx.HTTPError:
+            raise ErpcTransportError() from None
         if not response.is_success:
             await response.aclose()
             raise ErpcHttpError(response.status_code)
         try:
             yield response
-        except httpx.HTTPError as error:
-            raise ErpcTransportError() from error
+        except httpx.HTTPError:
+            raise ErpcTransportError() from None
         finally:
             await response.aclose()
+
+
+class UnavailableRestTransport(RestTransport):
+    """A local transport target for an unconfigured REST/SSE namespace."""
+
+    def __init__(self, namespace: str) -> None:
+        self._namespace = namespace
+
+    @property
+    def endpoint(self) -> str:
+        return ""
+
+    def url(self, path: str) -> str:
+        del path
+        return ""
+
+    async def get(
+        self,
+        path: str,
+        query: Mapping[str, QueryValue] | None = None,
+        options: RequestOptions = DEFAULT_REQUEST_OPTIONS,
+    ) -> JsonValue:
+        del path, query, options
+        raise ErpcNotConfiguredError(self._namespace)
+
+    @asynccontextmanager
+    async def stream(
+        self,
+        path: str,
+        query: Mapping[str, QueryValue] | None = None,
+        options: RequestOptions = DEFAULT_REQUEST_OPTIONS,
+    ) -> AsyncIterator[httpx.Response]:
+        del path, query, options
+        raise ErpcNotConfiguredError(self._namespace)
+        yield cast(httpx.Response, None)
 
 
 def strip_url_query(url: str) -> str:

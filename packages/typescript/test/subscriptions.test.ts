@@ -92,4 +92,46 @@ describe('WebSocket subscriptions', () => {
     await expect(avalancheSubscription.unsubscribe()).resolves.toBe(true)
     client.close()
   })
+
+  it('does not derive a shared WebSocket when a direct endpoint omits one', async () => {
+    MockWebSocket.instances.length = 0
+    const client = createErpcClient({
+      apiKey: 'shared-secret',
+      ethereumRpc: { httpUrl: 'https://customer.example/rpc' },
+      fetch: async () => new Response('{}'),
+      webSocket: MockWebSocket as unknown as typeof globalThis.WebSocket,
+    })
+
+    await expect(
+      client.ethereum.subscriptions.subscribe('newHeads', () => undefined),
+    ).rejects.toMatchObject({
+      code: 'ERPC_NOT_CONFIGURED',
+      namespace: 'ethereum.subscriptions',
+    })
+    expect(MockWebSocket.instances).toHaveLength(0)
+    client.close()
+  })
+
+  it('uses an explicit direct WebSocket URL without adding the API key', async () => {
+    MockWebSocket.instances.length = 0
+    const client = createErpcClient({
+      apiKey: 'shared-secret',
+      ethereumRpc: {
+        httpUrl: 'https://customer.example/rpc',
+        webSocketUrl: 'wss://customer.example/socket?token=a%2Fb',
+      },
+      fetch: async () => new Response('{}'),
+      webSocket: MockWebSocket as unknown as typeof globalThis.WebSocket,
+    })
+
+    const subscription = await client.ethereum.subscriptions.subscribe(
+      'newHeads',
+      () => undefined,
+    )
+    expect(MockWebSocket.instances[0]?.url).toBe(
+      'wss://customer.example/socket?token=a%2Fb',
+    )
+    await expect(subscription.unsubscribe()).resolves.toBe(true)
+    client.close()
+  })
 })
