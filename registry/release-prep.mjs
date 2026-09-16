@@ -21,6 +21,7 @@ import { OUTPUTS as RANKING_GENERATED_OUTPUTS } from "./generate-token-rankings.
 import { computeDigest, validateCatalog } from "./token-catalog.mjs";
 import { computeDigest as computeRankingDigest, validateRankingArtifact } from "./token-rankings.mjs";
 import { verifyPublicCompatibility } from "./verify-public-compatibility.mjs";
+import { normalizeRubyLockVersion, replaceRubyLockVersion, rubyLockVersion } from "./ruby-lockfile.mjs";
 
 const MODULE_DIRECTORY = dirname(fileURLToPath(import.meta.url));
 export const REPOSITORY_ROOT = resolve(MODULE_DIRECTORY, "..");
@@ -46,6 +47,7 @@ export const PACKAGE_VERSION_PATHS = Object.freeze([
   "packages/python/pyproject.toml",
   "packages/python/src/erpc_sdk/__init__.py",
   "packages/ruby/lib/erpc_sdk/version.rb",
+  "packages/ruby/Gemfile.lock",
   "Cargo.lock",
 ]);
 
@@ -395,6 +397,9 @@ function normalizeVersionSource(text, relativePath) {
     if (relativePath === "packages/ruby/lib/erpc_sdk/version.rb") {
       return replaceExactly(text, /(^\s*VERSION\s*=\s*")[^"]+("\s*$)/mu, "$1<VERSION>$2", `${relativePath} version`);
     }
+    if (relativePath === "packages/ruby/Gemfile.lock") {
+      return normalizeRubyLockVersion(text);
+    }
     if (relativePath === "Cargo.lock") {
       return normalizeCargoLockVersion(text, "<VERSION>");
     }
@@ -466,6 +471,7 @@ function parseVersionFromText(file, relativePath) {
   if (relativePath === "packages/python/pyproject.toml") return file.match(/^\[project\][\s\S]*?^version\s*=\s*"([^"]+)"/mu)?.[1] ?? null;
   if (relativePath === "packages/python/src/erpc_sdk/__init__.py") return file.match(/^__version__\s*=\s*"([^"]+)"$/mu)?.[1] ?? null;
   if (relativePath === "packages/ruby/lib/erpc_sdk/version.rb") return file.match(/^\s*VERSION\s*=\s*"([^"]+)"$/mu)?.[1] ?? null;
+  if (relativePath === "packages/ruby/Gemfile.lock") return rubyLockVersion(file);
   return null;
 }
 
@@ -480,7 +486,8 @@ function cargoLockVersion(file) {
 function readVersions(root) {
   const versions = {};
   const errors = [];
-  for (const relativePath of PACKAGE_VERSION_PATHS.slice(0, -1)) {
+  for (const relativePath of PACKAGE_VERSION_PATHS) {
+    if (relativePath === "Cargo.lock") continue;
     const value = parseVersionFromText(readText(root, relativePath), relativePath);
     versions[relativePath] = value;
     if (!value) errors.push(`${relativePath} has no uniquely anchored package version`);
@@ -902,6 +909,11 @@ function replacePackageVersion(root, relativePath, version) {
   }
   if (relativePath === "packages/ruby/lib/erpc_sdk/version.rb") {
     return replaceExactly(text, /(^\s*VERSION\s*=\s*")[^"]+("\s*$)/mu, `$1${version}$2`, `${relativePath} version`);
+  }
+  if (relativePath === "packages/ruby/Gemfile.lock") {
+    const result = replaceRubyLockVersion(text, version);
+    if (result === null) fail(`${relativePath} local erpc-sdk spec must be unique and valid`);
+    return result;
   }
   if (relativePath === "Cargo.lock") {
     const result = normalizeCargoLockVersion(text, version);

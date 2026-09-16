@@ -18,7 +18,7 @@
       "rules": ["verified-root-and-go-pair-required", "no-bootstrap-bypass"]
     },
     {
-      "caseId": "narrow-seven-file-patch",
+      "caseId": "narrow-eight-file-patch",
       "expect": "auto-patch-release-eligible-when-published-baseline-is-verified",
       "rules": ["all-package-versions-agree", "cargo-lock-only-sdk-version", "changelog-section"]
     },
@@ -59,6 +59,7 @@
     "packages/python/pyproject.toml",
     "packages/python/src/erpc_sdk/__init__.py",
     "packages/ruby/lib/erpc_sdk/version.rb",
+    "packages/ruby/Gemfile.lock",
     "Cargo.lock",
     "CHANGELOG.md"
   ]

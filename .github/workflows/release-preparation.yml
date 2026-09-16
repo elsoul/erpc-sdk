@@ -518,6 +518,7 @@ jobs:
           gh pr list --repo "$REPOSITORY" --head codex/release-preparation --base main --state open --limit 20 --json number,headRefOid,baseRefOid,headRepository,isCrossRepository,body,state,mergedAt > "$RUNNER_TEMP/release-prs.json"
           node --input-type=module - "$BINDING_DIR/source-binding.json" "$BINDING_DIR/ci-provenance.json" "$RUNNER_TEMP/release-ci-run.json" "$RUNNER_TEMP/release-ci-jobs.json" "$RUNNER_TEMP/release-prs.json" "$REPOSITORY" "$EVENT_NAME" "$RUN_ID" "$RUN_ATTEMPT" "$EXPECTED_HEAD" "$INPUT_PR_NUMBER" "$INPUT_BASE_SHA" "$OUTPUT_FILE" <<'NODE'
           import { readFileSync, writeFileSync } from 'node:fs'
+          import { PREPARATION_OUTPUT_PATHS } from './registry/release-prep.mjs'
 
           const [bindingFile, provenanceFile, runFile, jobsFile, prsFile, repository, eventName, runIdText, attemptText, expectedHead, prNumberText, inputBase, outputFile] = process.argv.slice(2)
           const binding = JSON.parse(readFileSync(bindingFile, 'utf8'))
@@ -530,15 +531,7 @@ jobs:
           const inputPrNumber = prNumberText === '' ? null : Number(prNumberText)
           const expectedBase = inputBase === '' ? binding.baseSha : inputBase
           const sha = /^[0-9a-f]{40}$/u
-          const releasePaths = [
-            'packages/typescript/package.json',
-            'packages/rust/Cargo.toml',
-            'packages/python/pyproject.toml',
-            'packages/python/src/erpc_sdk/__init__.py',
-            'packages/ruby/lib/erpc_sdk/version.rb',
-            'Cargo.lock',
-            'CHANGELOG.md',
-          ].sort()
+          const releasePaths = [...PREPARATION_OUTPUT_PATHS].sort()
           const repoName = (value) => value?.nameWithOwner ?? value?.fullName ?? value?.full_name ?? null
           if ((eventName !== 'workflow_run' && eventName !== 'workflow_dispatch') || !sha.test(expectedHead) || !sha.test(expectedBase) || expectedHead === expectedBase || !Number.isSafeInteger(runId) || runId < 1 || !Number.isSafeInteger(runAttempt) || runAttempt < 1) throw new Error('release CI binding inputs are invalid')
           if (inputPrNumber !== null && (!Number.isSafeInteger(inputPrNumber) || inputPrNumber < 1)) throw new Error('release reconciliation PR number is invalid')
@@ -553,7 +546,7 @@ jobs:
           if (!String(pr.body ?? '').includes('Branch: `codex/release-preparation`') || !String(pr.body ?? '').includes('Release preparation:')) throw new Error('managed release PR metadata is missing or stale')
           writeFileSync(outputFile, `${JSON.stringify({ schemaVersion: 1, kind: 'erpc-sdk-release-controller-binding', repository, branch: 'codex/release-preparation', workflowPath: '.github/workflows/ci.yml', prNumber: Number(pr.number), runId, runAttempt, expectedHead, baseSha: expectedBase, releasePaths }, null, 2)}\n`, { flag: 'w' })
           NODE
-      - name: Verify the exact seven-file release candidate against the published paired baseline
+      - name: Verify the exact eight-file release candidate against the published paired baseline
         env:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
@@ -579,9 +572,10 @@ jobs:
           run('git', ['fetch', '--no-tags', 'origin', 'refs/heads/codex/release-preparation:refs/remotes/origin/codex/release-preparation'])
           if (run('git', ['rev-parse', 'refs/remotes/origin/codex/release-preparation']) !== binding.expectedHead) throw new Error('release branch moved after the exact CI run; refusing stale release preparation')
           const changed = run('git', ['diff', '--name-only', `${binding.baseSha}...${binding.expectedHead}`, '--']).split(/\r?\n/u).filter(Boolean).sort()
-          if (changed.join('\0') !== expected.join('\0')) throw new Error('release PR changed paths are not exactly the seven version/changelog files')
+          if (changed.join('\0') !== expected.join('\0')) throw new Error('release PR changed paths are not exactly the eight version/changelog files')
           run('git', ['worktree', 'add', '--detach', worktree, binding.expectedHead])
           try {
+            const { rubyLockVersion } = await import('./registry/ruby-lockfile.mjs')
             const report = JSON.parse(run(process.execPath, ['registry/release-prep.mjs', 'inspect', '--root', worktree, '--expected-head', binding.expectedHead, '--format=json']))
             if (!report.latestActualPairedTag?.paired || !report.releasedBaseline?.peelCommit || report.status !== 'PREPARED_UNPUBLISHED' || typeof report.selectedVersion !== 'string') throw new Error('release candidate is not an unpublished candidate from a verified paired baseline')
             const [major, minor, patch] = report.releasedBaseline.version.split('.').map(Number)
@@ -594,8 +588,9 @@ jobs:
               read('packages/python/pyproject.toml').match(/^\[project\][\s\S]*?^version\s*=\s*"([^"]+)"/mu)?.[1],
               read('packages/python/src/erpc_sdk/__init__.py').match(/^__version__\s*=\s*"([^"]+)"$/mu)?.[1],
               read('packages/ruby/lib/erpc_sdk/version.rb').match(/^\s*VERSION\s*=\s*"([^"]+)"$/mu)?.[1],
+              rubyLockVersion(read('packages/ruby/Gemfile.lock')),
             ]
-            if (versions.some((version) => version !== report.selectedVersion)) throw new Error('release version files are not anchored to the selected next patch version')
+            if (versions.some((version) => version !== report.selectedVersion)) throw new Error('release version files and Ruby Gemfile.lock are not anchored to the selected next patch version')
             const lockBlocks = read('Cargo.lock').split(/^\[\[package\]\]\s*$/mu).slice(1).filter((block) => /^name\s*=\s*"erpc-sdk"\s*$/mu.test(block) && !/^source\s*=/mu.test(block))
             if (lockBlocks.length !== 1 || lockBlocks[0].match(/^version\s*=\s*"([^"]+)"$/mu)?.[1] !== report.selectedVersion) throw new Error('Cargo.lock has no unique anchored source-less erpc-sdk version')
             const escaped = report.selectedVersion.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')
@@ -714,7 +709,7 @@ jobs:
           const prBaseRepo = pull.base?.repo?.full_name ?? pull.base?.repo?.fullName ?? pull.baseRepo
           if (prHead !== binding.expectedHead || prBase !== binding.baseSha || prHeadRef !== binding.branch || prBaseRef !== 'main' || prHeadRepo !== repository || prBaseRepo !== repository || String(pull.state).toLowerCase() !== 'open' || pull.merged === true) throw new Error('release PR changed or is no longer an exact open same-repository candidate')
           const changedPaths = (await adapter.getChangedPaths(binding.branch, { baseSha: binding.baseSha, headSha: binding.expectedHead })).sort()
-          if (changedPaths.join('\0') !== binding.releasePaths.join('\0')) throw new Error('release PR changed paths no longer match the exact seven-file allowlist')
+          if (changedPaths.join('\0') !== binding.releasePaths.join('\0')) throw new Error('release PR changed paths no longer match the exact eight-file allowlist')
           const run = await adapter.getWorkflowRun(binding.runId, binding.runAttempt)
           run.baseSha = binding.baseSha
           run.workflowPath = binding.workflowPath

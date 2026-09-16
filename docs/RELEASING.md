@@ -113,8 +113,9 @@ environment. Source verification has read-only repository permission.
 2. Set the same `X.Y.Z` version in `packages/typescript/package.json`,
    `packages/rust/Cargo.toml`, `packages/python/pyproject.toml`, and
    `packages/python/src/erpc_sdk/__init__.py`, and
-   `packages/ruby/lib/erpc_sdk/version.rb`. Update the root `Cargo.lock` with
-   the Rust package version. Go has no version file; its version comes from the
+   `packages/ruby/lib/erpc_sdk/version.rb`. Update the root `Cargo.lock` and
+   `packages/ruby/Gemfile.lock` local package entries with the matching
+   package version. Go has no version file; its version comes from the
    subdirectory tag.
 3. Confirm that all package manifests agree before committing:
 
@@ -122,10 +123,12 @@ environment. Source verification has read-only repository permission.
    node scripts/verify-release.mjs "v${ERPC_RELEASE_VERSION}"
    ```
 
-4. Run `corepack pnpm install` if the pnpm lockfile changes, `cargo update
-   --workspace` when Cargo dependencies change, `go mod tidy` when Go
-   dependencies change, and update Python or Ruby lock data when their
-   dependencies change.
+4. Do not update dependencies as part of a version-only release. Keep the
+   committed lock data and frozen Ruby install intact. Run `corepack pnpm
+   install` if the pnpm lockfile changes, `cargo update --workspace` when
+   Cargo dependencies change, and `go mod tidy` when Go dependencies change.
+   Apart from the SDK version entries above, update Python or Ruby lock data
+   only when separately reviewed dependency changes require it.
 5. Update `CHANGELOG.md` and relevant public documentation.
 6. Install each language's development dependencies and run:
 
@@ -144,8 +147,14 @@ environment. Source verification has read-only repository permission.
 8. Have the version change reviewed and merged to `main`. Do not tag a pull
    request branch or an unmerged commit.
 
-The release command deliberately does not modify versions, stage files, or
-create a commit. Those remain normal reviewed source changes.
+The release command deliberately does not modify versions, lockfiles, stage
+files, or create a commit. Those remain normal reviewed source changes.
+
+The eight release preparation outputs are the five package version sources,
+`Cargo.lock`, `packages/ruby/Gemfile.lock`, and `CHANGELOG.md`. The local Ruby
+lock must contain the unique `PATH` `erpc-sdk` entry with `remote: .` at the
+same version as `packages/ruby/lib/erpc_sdk/version.rb`; a dependency refresh
+or disabling Bundler's frozen install is outside release preparation.
 
 ## Release with one command
 
@@ -223,7 +232,8 @@ tests, wheel and source-distribution builds, and Twine inspection. Go
 validation includes module tidiness, formatting, vet, race-enabled tests, and
 package listing on the minimum supported Go version. Ruby validation includes
 syntax checks, unit tests on the minimum supported Ruby version, explicit gem
-content inspection, and a packaged load-path smoke test.
+content inspection, a packaged load-path smoke test, and the anchored local
+`Gemfile.lock` version check.
 
 CI also verifies that all five SDKs expose the same fourteen ordered RPC method
 catalogs. The root tag must match the four versioned package manifests, the

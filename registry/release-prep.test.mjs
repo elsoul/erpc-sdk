@@ -22,6 +22,7 @@ import {
 import { computeDigest as computeDexDigest } from "./dex-catalog.mjs";
 import { CATALOG, computeDigest, validateCatalog } from "./token-catalog.mjs";
 import { renderLanguage as renderRankingLanguage } from "./generate-token-rankings.mjs";
+import { replaceRubyLockVersion, rubyLockVersion } from "./ruby-lockfile.mjs";
 import { replayTokenRankings } from "./token-rankings.mjs";
 
 const BASELINE_TAG_COMMIT = "d77169fbf9e927d51113af7a2ee51a5c9b10f3fc";
@@ -116,6 +117,11 @@ function replaceVersionInFixture(root, version) {
     assert.equal([...source.matchAll(new RegExp(pattern.source, `${pattern.flags}g`))].length, 1, relativePath);
     writeFileSync(target, source.replace(pattern, `$1${version}$2`));
   }
+  const rubyLockPath = path.join(root, "packages/ruby/Gemfile.lock");
+  const rubyLock = readFileSync(rubyLockPath, "utf8");
+  const replacedRubyLock = replaceRubyLockVersion(rubyLock, version);
+  assert.notEqual(replacedRubyLock, null, "packages/ruby/Gemfile.lock");
+  writeFileSync(rubyLockPath, replacedRubyLock);
   const lock = path.join(root, "Cargo.lock");
   const source = readFileSync(lock, "utf8");
   const blocks = source.split(/^\[\[package\]\]\s*$/mu);
@@ -157,7 +163,7 @@ test("missing release plan never fabricates an approved version", async () => {
   });
 });
 
-test("approved preparation writes exactly seven files, preserves bytes, and is date-idempotent", async () => {
+test("approved preparation writes exactly eight files, preserves bytes, and is date-idempotent", async () => {
   await withWorktree(async (root, expectedHead) => {
     const before = new Map([...PACKAGE_VERSION_PATHS, "CHANGELOG.md"].map((relativePath) => [relativePath, readFileSync(path.join(root, relativePath), "utf8")]));
     const first = prepareRelease({ root, expectedHead, releaseDate: "2026-09-15" });
@@ -168,6 +174,8 @@ test("approved preparation writes exactly seven files, preserves bytes, and is d
     assert.match(changelog, /^## 0\.7\.0 — 2026-09-15$/mu);
     assert.match(changelog, /Add an offline token catalog to all five SDKs/u);
     assert.match(changelog, /Add shared asset and deployment lookups/u);
+    assert.equal(rubyLockVersion(readFileSync(path.join(root, "packages/ruby/Gemfile.lock"), "utf8")), "0.7.0");
+    assert.equal(first.writtenFiles.length, 8);
     assert.equal(readFileSync(path.join(root, "Cargo.lock"), "utf8").replace(/version = "0\.7\.0"/u, "version = \"0.6.0\""), before.get("Cargo.lock"));
     const afterFirst = readFileSync(path.join(root, "CHANGELOG.md"), "utf8");
     const second = prepareRelease({ root, expectedHead, releaseDate: "2026-09-16" });
@@ -343,6 +351,33 @@ test("non-SDK Cargo.lock dependency changes remain manual-version shipping chang
     assert.ok(report.plan.unexpectedPackageChanges.includes("Cargo.lock"));
     assert.ok(report.shippingChanges.includes("Cargo.lock"));
     void expectedHead;
+  });
+});
+
+test("Ruby lockfile version-only changes are managed while dependency and malformed edits are rejected", async () => {
+  await withWorktree(async (root, expectedHead) => {
+    const lockPath = path.join(root, "packages/ruby/Gemfile.lock");
+    const source = readFileSync(lockPath, "utf8");
+    const changed = source.replace("minitest (5.27.0)", "minitest (5.27.1)");
+    assert.notEqual(changed, source);
+    writeFileSync(lockPath, changed);
+    const head = commitAll(root, "unapproved Ruby dependency lock change");
+    const report = inspectRelease({ root, expectedHead: head });
+    assert.equal(report.status, STATUS.MANUAL_VERSION_REQUIRED);
+    assert.equal(report.prepareAllowed, false);
+    assert.ok(report.plan.unexpectedPackageChanges.includes("packages/ruby/Gemfile.lock"));
+    assert.ok(report.shippingChanges.includes("packages/ruby/Gemfile.lock"));
+    void expectedHead;
+  });
+
+  await withWorktree(async (root, expectedHead) => {
+    const lockPath = path.join(root, "packages/ruby/Gemfile.lock");
+    const source = readFileSync(lockPath, "utf8");
+    writeFileSync(lockPath, source.replace("    erpc-sdk (0.6.0)", "    erpc-sdk (0.6.0)\n    erpc-sdk (0.6.1)"));
+    const head = commitAll(root, "malformed Ruby lock identity");
+    const report = inspectRelease({ root, expectedHead: head });
+    assert.equal(report.status, STATUS.INVALID_INPUT);
+    assert.ok(report.versions.errors.some((error) => error.includes("packages/ruby/Gemfile.lock")));
   });
 });
 

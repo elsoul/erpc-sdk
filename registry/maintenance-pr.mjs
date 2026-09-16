@@ -27,6 +27,7 @@ import {
   PACKAGE_VERSION_PATHS,
   prepareRelease,
 } from "./release-prep.mjs";
+import { rubyLockVersion } from "./ruby-lockfile.mjs";
 import { validateCatalog } from "./token-catalog.mjs";
 import {
   buildDataCandidate,
@@ -375,6 +376,7 @@ function parseVersionFromText(text, relativePath) {
   if (relativePath === "packages/python/pyproject.toml") return text.match(/^\[project\][\s\S]*?^version\s*=\s*"([^"]+)"/mu)?.[1] ?? null;
   if (relativePath === "packages/python/src/erpc_sdk/__init__.py") return text.match(/^__version__\s*=\s*"([^"]+)"$/mu)?.[1] ?? null;
   if (relativePath === "packages/ruby/lib/erpc_sdk/version.rb") return text.match(/^\s*VERSION\s*=\s*"([^"]+)"$/mu)?.[1] ?? null;
+  if (relativePath === "packages/ruby/Gemfile.lock") return rubyLockVersion(text);
   if (relativePath === "Cargo.lock") {
     const blocks = text.split(/^\[\[package\]\]\s*$/mu).slice(1).filter((block) => /^name\s*=\s*"erpc-sdk"\s*$/mu.test(block) && !/^source\s*=/mu.test(block));
     return blocks.length === 1 ? blocks[0].match(/^version\s*=\s*"([^"]+)"$/mu)?.[1] ?? null : null;
@@ -428,7 +430,7 @@ function releaseSemantic(report, files) {
 function payloadFiles({ observation, state, release }) {
   if (release) {
     const files = { ...release.files };
-    if (Object.keys(files).sort().join("\0") !== [...RELEASE_VERSION_PATHS].sort().join("\0")) fail("release output file set is not exactly the seven-file preparation allowlist", "RELEASE_INVALID");
+    if (Object.keys(files).sort().join("\0") !== [...RELEASE_VERSION_PATHS].sort().join("\0")) fail("release output file set is not exactly the eight-file preparation allowlist", "RELEASE_INVALID");
     for (const pathValue of Object.keys(files)) if (!RELEASE_VERSION_PATHS.has(pathValue)) fail(`release output is outside the exact preparation allowlist: ${pathValue}`, "RELEASE_INVALID");
     return { files, baseline: null };
   }
@@ -717,7 +719,9 @@ export async function writeMaintenancePr({ adapter, payload, frozenMainSha, dryR
   const candidates = await listPullRequests(adapter, branch, baseBranch);
   const existingPr = branchCandidate(candidates, branch);
   const historicalPr = historicalBranchCandidate(candidates, branch);
-  const branchAlreadyMatches = existingMetadata?.semanticFingerprint === payload.semanticFingerprint && (existingMetadata.outputDigest === undefined || existingMetadata.outputDigest === payload.outputDigest);
+  const branchAlreadyMatches = existingMetadata?.baseSha === frozenMainSha
+    && existingMetadata?.semanticFingerprint === payload.semanticFingerprint
+    && (existingMetadata.outputDigest === undefined || existingMetadata.outputDigest === payload.outputDigest);
   if (historicalPr && !existingPr && candidateFingerprint(historicalPr) === payload.semanticFingerprint) return { status: "NO_CHANGE_HISTORY", branch, headSha: beforeSha, pullRequest: redactSecrets(historicalPr), semanticFingerprint: payload.semanticFingerprint, dispatched: false };
   if (branchAlreadyMatches && existingPr) {
     if (dryRun) return { status: "DRY_RUN", branch, oldHead: beforeSha, pullRequest: redactSecrets(existingPr), metadata: managedMetadata(payload), semanticFingerprint: payload.semanticFingerprint, outputPaths: payload.outputPaths, workflow: null };
