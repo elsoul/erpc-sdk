@@ -12,14 +12,120 @@ const credentialVariants = (credential: string): readonly string[] => {
   } catch {
     // URLSearchParams still provides a safe encoded representation.
   }
-  return [...new Set([credential, componentEncoded, queryEncoded])]
+  return [
+    ...new Set([
+      credential,
+      componentEncoded,
+      queryEncoded,
+    ]),
+  ]
     .filter((value): value is string => Boolean(value))
     .sort((left, right) => right.length - left.length)
 }
 
+const directEndpointVariants = (endpoint: URL): readonly string[] => {
+  const values: string[] = []
+  const add = (value: string | undefined): void => {
+    if (value) values.push(value)
+  }
+
+  for (const value of endpoint.searchParams.values()) add(value)
+
+  // URLSearchParams normalizes percent escapes. Preserve the raw query
+  // components too, so an upstream error echoing a lower-case escape is still
+  // safe to expose.
+  const rawQuery = endpoint.search.startsWith('?')
+    ? endpoint.search.slice(1)
+    : endpoint.search
+  for (const part of rawQuery.split('&')) {
+    const separator = part.indexOf('=')
+    const rawValue = separator === -1 ? '' : part.slice(separator + 1)
+    add(rawValue)
+    if (rawValue) {
+      try {
+        add(decodeURIComponent(rawValue.replaceAll('+', ' ')))
+      } catch {
+        // Invalid escapes are retained as raw input and have no decoded form.
+      }
+    }
+  }
+
+  return values
+}
+
+const headerVariants = (
+  headers: Readonly<Record<string, string>>,
+): readonly string[] => {
+  const values: string[] = []
+  for (const [name, value] of Object.entries(headers)) {
+    values.push(value)
+    if (
+      name.toLowerCase() !== 'authorization' &&
+      name.toLowerCase() !== 'proxy-authorization'
+    ) continue
+    const match = /^\s*[^\s]+\s+(.+?)\s*$/u.exec(value)
+    if (match?.[1]) values.push(match[1])
+    if (match?.[1] && /^basic$/iu.test(value.trim().split(/\s+/u, 1)[0] ?? '')) {
+      try {
+        const decoded = globalThis.atob(match[1])
+        values.push(decoded)
+        const separator = decoded.indexOf(':')
+        if (separator !== -1) {
+          values.push(decoded.slice(0, separator), decoded.slice(separator + 1))
+        }
+      } catch {
+        // Non-base64 Basic credentials remain covered by their raw forms.
+      }
+    }
+  }
+  return values
+}
+
+export const directRedactionVariants = (
+  endpoint: URL,
+  headers: Readonly<Record<string, string>> = {},
+): readonly string[] =>
+  [...new Set([...directEndpointVariants(endpoint), ...headerVariants(headers)])]
+    .flatMap((value) => credentialVariants(value))
+    .filter((value, index, all) => all.indexOf(value) === index)
+    .sort((left, right) => right.length - left.length)
+
+const escapeRegex = (value: string): string =>
+  value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')
+
+const hexCharacterPattern = (value: string): string => {
+  const lower = value.toLowerCase()
+  const upper = value.toUpperCase()
+  if (lower === upper) return escapeRegex(value)
+  return `[${lower}${upper}]`
+}
+
+const percentTripletPattern = (value: string): string => {
+  const pattern = /%([0-9a-f])([0-9a-f])/giu
+  let result = ''
+  let offset = 0
+  for (const match of value.matchAll(pattern)) {
+    const index = match.index ?? 0
+    result += escapeRegex(value.slice(offset, index))
+    result += `%${hexCharacterPattern(match[1] ?? '')}${hexCharacterPattern(
+      match[2] ?? '',
+    )}`
+    offset = index + match[0].length
+  }
+  return result + escapeRegex(value.slice(offset))
+}
+
 const redactString = (value: string, variants: readonly string[]): string => {
   let redacted = value
-  for (const variant of variants) redacted = redacted.replaceAll(variant, REDACTED)
+  for (const variant of variants) {
+    if (!variant) continue
+    const pattern = percentTripletPattern(variant)
+    if (pattern === escapeRegex(variant)) {
+      redacted = redacted.replaceAll(variant, REDACTED)
+    } else {
+      redacted = redacted.replace(new RegExp(pattern, 'gu'), REDACTED)
+    }
+  }
   return redacted
 }
 
@@ -40,7 +146,7 @@ const redactValue = (
 
   const result: Record<string, unknown> = {}
   for (const [key, item] of Object.entries(value)) {
-    Object.defineProperty(result, key, {
+    Object.defineProperty(result, redactString(key, variants), {
       configurable: true,
       enumerable: true,
       value: redactValue(item, variants, seen, depth + 1),
@@ -53,9 +159,13 @@ const redactValue = (
 export const redactJsonRpcError = (
   error: JsonRpcErrorObject,
   credential: string | undefined,
+  additionalCredentials: readonly string[] = [],
 ): JsonRpcErrorObject => {
-  if (!credential) return error
-  const variants = credentialVariants(credential)
+  const variants = [...new Set([
+    ...(credential ? credentialVariants(credential) : []),
+    ...additionalCredentials,
+  ])].sort((left, right) => right.length - left.length)
+  if (variants.length === 0) return error
   const result: {
     code: number
     data?: unknown
@@ -76,6 +186,7 @@ export type ErpcErrorCode =
   | 'ERPC_CONFIG'
   | 'ERPC_HTTP'
   | 'ERPC_INVALID_RESPONSE'
+  | 'ERPC_NOT_CONFIGURED'
   | 'ERPC_RPC'
   | 'ERPC_TIMEOUT'
   | 'ERPC_TRANSPORT'
@@ -94,6 +205,16 @@ export class ErpcConfigError extends ErpcError {
   constructor(message: string) {
     super('ERPC_CONFIG', message)
     this.name = 'ErpcConfigError'
+  }
+}
+
+export class ErpcNotConfiguredError extends ErpcError {
+  readonly namespace: string
+
+  constructor(namespace: string) {
+    super('ERPC_NOT_CONFIGURED', `ERPC namespace '${namespace}' is not configured`)
+    this.name = 'ErpcNotConfiguredError'
+    this.namespace = namespace
   }
 }
 

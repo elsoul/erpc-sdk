@@ -3,8 +3,8 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use erpc_sdk::{
-    DEX_CHAIN_IDS, ErpcClient, ErpcClientConfig, ErpcError, ExactInputQuoteRequest, SwapFreshness,
-    SwapQuoteError, SwapQuoteErrorCode,
+    DEX_CHAIN_IDS, ErpcClient, ErpcClientConfig, ErpcError, ExactInputQuoteRequest,
+    RpcEndpointConfig, SwapFreshness, SwapQuoteError, SwapQuoteErrorCode,
 };
 use serde_json::{Value, json};
 use wiremock::{
@@ -57,6 +57,58 @@ async fn mount_eth_trace(
     second_latest_hash: Option<&str>,
     malformed_factory_pair: bool,
 ) {
+    mount_trace_on(
+        server,
+        "/eth",
+        Some(("api-key", "key")),
+        "0x1",
+        ETH_FACTORY,
+        ETH_POOL,
+        ETH_USDC,
+        ETH_WETH,
+        timestamp,
+        second_latest_hash,
+        malformed_factory_pair,
+    )
+    .await;
+}
+
+async fn mount_avalanche_trace(
+    server: &MockServer,
+    route: &str,
+    query: Option<(&str, &str)>,
+    timestamp: u64,
+) {
+    mount_trace_on(
+        server,
+        route,
+        query,
+        "0xa86a",
+        "0x9ad6c38be94206ca50bb0d90783181662f0cfa10",
+        "0xf4003f4efbe8691b60249e6afbd307abe7758adb",
+        "0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7",
+        "0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e",
+        timestamp,
+        None,
+        false,
+    )
+    .await;
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn mount_trace_on(
+    server: &MockServer,
+    route: &str,
+    query: Option<(&str, &str)>,
+    chain_result: &str,
+    factory: &str,
+    pool: &str,
+    token0: &str,
+    token1: &str,
+    timestamp: u64,
+    second_latest_hash: Option<&str>,
+    malformed_factory_pair: bool,
+) {
     let header = json!({
         "number": ETH_BLOCK,
         "hash": ETH_HASH,
@@ -68,12 +120,17 @@ async fn mount_eth_trace(
         "timestamp": format!("0x{timestamp:x}"),
     });
     let pair = if malformed_factory_pair {
-        json!(format!("{}00", address_word(ETH_POOL).as_str().unwrap()))
+        json!(format!("{}00", address_word(pool).as_str().unwrap()))
     } else {
-        address_word(ETH_POOL)
+        address_word(pool)
     };
+    let factory_get_pair_data = format!(
+        "0xe6a43905{}{}",
+        &address_word(token0).as_str().expect("factory token word")[2..],
+        &address_word(token1).as_str().expect("factory token word")[2..],
+    );
     let entries = vec![
-        ("eth_chainId", json!([]), json!("0x1")),
+        ("eth_chainId", json!([]), json!(chain_result)),
         (
             "eth_getBlockByNumber",
             json!(["latest", false]),
@@ -81,37 +138,37 @@ async fn mount_eth_trace(
         ),
         (
             "eth_getCode",
-            json!([ETH_FACTORY, {"blockHash": ETH_HASH, "requireCanonical": true}]),
+            json!([factory, {"blockHash": ETH_HASH, "requireCanonical": true}]),
             json!("0x6000"),
         ),
         (
             "eth_getCode",
-            json!([ETH_POOL, {"blockHash": ETH_HASH, "requireCanonical": true}]),
+            json!([pool, {"blockHash": ETH_HASH, "requireCanonical": true}]),
             json!("0x6000"),
         ),
         (
             "eth_call",
-            json!([{"to": ETH_FACTORY, "data": "0xe6a43905000000000000000000000000a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48000000000000000000000000c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"}, {"blockHash": ETH_HASH, "requireCanonical": true}]),
+            json!([{"to": factory, "data": factory_get_pair_data}, {"blockHash": ETH_HASH, "requireCanonical": true}]),
             pair,
         ),
         (
             "eth_call",
-            json!([{"to": ETH_POOL, "data": "0xc45a0155"}, {"blockHash": ETH_HASH, "requireCanonical": true}]),
-            address_word(ETH_FACTORY),
+            json!([{"to": pool, "data": "0xc45a0155"}, {"blockHash": ETH_HASH, "requireCanonical": true}]),
+            address_word(factory),
         ),
         (
             "eth_call",
-            json!([{"to": ETH_POOL, "data": "0x0dfe1681"}, {"blockHash": ETH_HASH, "requireCanonical": true}]),
-            address_word(ETH_USDC),
+            json!([{"to": pool, "data": "0x0dfe1681"}, {"blockHash": ETH_HASH, "requireCanonical": true}]),
+            address_word(token0),
         ),
         (
             "eth_call",
-            json!([{"to": ETH_POOL, "data": "0xd21220a7"}, {"blockHash": ETH_HASH, "requireCanonical": true}]),
-            address_word(ETH_WETH),
+            json!([{"to": pool, "data": "0xd21220a7"}, {"blockHash": ETH_HASH, "requireCanonical": true}]),
+            address_word(token1),
         ),
         (
             "eth_call",
-            json!([{"to": ETH_POOL, "data": "0x0902f1ac"}, {"blockHash": ETH_HASH, "requireCanonical": true}]),
+            json!([{"to": pool, "data": "0x0902f1ac"}, {"blockHash": ETH_HASH, "requireCanonical": true}]),
             reserves_word(9_922_163_268_622, 4_131_396_377_933_182_743_090),
         ),
         (
@@ -123,19 +180,20 @@ async fn mount_eth_trace(
     ];
     for (index, (rpc_method, params, result)) in entries.into_iter().enumerate() {
         let id = u64::try_from(index + 1).expect("small request id");
-        Mock::given(method("POST"))
-            .and(path("/eth"))
-            .and(query_param("api-key", "key"))
-            .and(body_json(json!({
-                "jsonrpc": "2.0",
-                "id": id,
-                "method": rpc_method,
-                "params": params,
-            })))
-            .respond_with(rpc_result(id, &result))
-            .expect(1)
-            .mount(server)
-            .await;
+        let mut mock = Mock::given(method("POST")).and(path(route));
+        if let Some((name, value)) = query {
+            mock = mock.and(query_param(name, value));
+        }
+        mock.and(body_json(json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "method": rpc_method,
+            "params": params,
+        })))
+        .respond_with(rpc_result(id, &result))
+        .expect(1)
+        .mount(server)
+        .await;
     }
 }
 
@@ -149,6 +207,17 @@ fn ethereum_request() -> ExactInputQuoteRequest {
         pool_definition_id: "pool-0001".to_owned(),
         input_token_deployment_id: "deployment-0002".to_owned(),
         output_token_deployment_id: "deployment-0008".to_owned(),
+        amount_in: "1000000000000000000".to_owned(),
+        freshness: None,
+    }
+}
+
+fn avalanche_request() -> ExactInputQuoteRequest {
+    ExactInputQuoteRequest {
+        chain_id: "eip155:43114".to_owned(),
+        pool_definition_id: "pool-0002".to_owned(),
+        input_token_deployment_id: "deployment-0004".to_owned(),
+        output_token_deployment_id: "deployment-0009".to_owned(),
         amount_in: "1000000000000000000".to_owned(),
         freshness: None,
     }
@@ -196,6 +265,100 @@ async fn quote_uses_exact_eip1898_sequence_and_decimal_result() {
     assert!(request_body(&requests[1]).contains("latest"));
     assert!(request_body(&requests[2]).contains("requireCanonical"));
     assert!(request_body(&requests[10]).contains(ETH_BLOCK));
+}
+
+#[tokio::test]
+async fn quotes_use_keyless_direct_ethereum_and_avalanche_transports() {
+    let ethereum_server = MockServer::start().await;
+    mount_trace_on(
+        &ethereum_server,
+        "/customer/ethereum",
+        Some(("token", "ethereum")),
+        "0x1",
+        ETH_FACTORY,
+        ETH_POOL,
+        ETH_USDC,
+        ETH_WETH,
+        now_seconds(),
+        None,
+        false,
+    )
+    .await;
+    let ethereum = ErpcClient::new(ErpcClientConfig::for_rpc().with_ethereum_rpc(
+        RpcEndpointConfig::new(format!(
+            "{}/customer/ethereum?token=ethereum",
+            ethereum_server.uri()
+        )),
+    ))
+    .expect("keyless direct Ethereum client");
+    ethereum
+        .swap
+        .quote_exact_input(ethereum_request())
+        .await
+        .expect("direct Ethereum quote");
+    let mut wrong_ethereum = ethereum_request();
+    wrong_ethereum.chain_id = "eip155:43114".to_owned();
+    assert_eq!(
+        ethereum
+            .swap
+            .quote_exact_input(wrong_ethereum)
+            .await
+            .unwrap_err()
+            .code(),
+        Some(SwapQuoteErrorCode::ChainMismatch)
+    );
+    let ethereum_requests = ethereum_server.received_requests().await.unwrap();
+    assert_eq!(ethereum_requests.len(), 11);
+    assert!(ethereum_requests.iter().all(|request| {
+        request.url.path() == "/customer/ethereum"
+            && request
+                .url
+                .query_pairs()
+                .any(|(key, value)| key == "token" && value == "ethereum")
+            && !request.url.query_pairs().any(|(key, _)| key == "api-key")
+    }));
+
+    let avalanche_server = MockServer::start().await;
+    mount_avalanche_trace(
+        &avalanche_server,
+        "/customer/avalanche",
+        Some(("token", "avalanche")),
+        now_seconds(),
+    )
+    .await;
+    let avalanche = ErpcClient::new(ErpcClientConfig::for_rpc().with_avalanche_c_rpc(
+        RpcEndpointConfig::new(format!(
+            "{}/customer/avalanche?token=avalanche",
+            avalanche_server.uri()
+        )),
+    ))
+    .expect("keyless direct Avalanche client");
+    avalanche
+        .swap
+        .quote_exact_input(avalanche_request())
+        .await
+        .expect("direct Avalanche quote");
+    let mut wrong_avalanche = avalanche_request();
+    wrong_avalanche.chain_id = "eip155:1".to_owned();
+    assert_eq!(
+        avalanche
+            .swap
+            .quote_exact_input(wrong_avalanche)
+            .await
+            .unwrap_err()
+            .code(),
+        Some(SwapQuoteErrorCode::ChainMismatch)
+    );
+    let avalanche_requests = avalanche_server.received_requests().await.unwrap();
+    assert_eq!(avalanche_requests.len(), 11);
+    assert!(avalanche_requests.iter().all(|request| {
+        request.url.path() == "/customer/avalanche"
+            && request
+                .url
+                .query_pairs()
+                .any(|(key, value)| key == "token" && value == "avalanche")
+            && !request.url.query_pairs().any(|(key, _)| key == "api-key")
+    }));
 }
 
 #[tokio::test]

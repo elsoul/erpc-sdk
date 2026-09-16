@@ -3,6 +3,7 @@ package erpc
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -10,15 +11,23 @@ import (
 )
 
 type restTransport struct {
-	token    string
-	endpoint *url.URL
-	headers  http.Header
-	timeout  time.Duration
-	client   *http.Client
+	token                string
+	endpoint             *url.URL
+	headers              http.Header
+	timeout              time.Duration
+	client               *http.Client
+	unavailableNamespace string
 }
 
 func newRESTTransport(token string, endpoint *url.URL, config resolvedConfig) *restTransport {
-	return &restTransport{token: token, endpoint: endpoint, headers: config.headers.Clone(), timeout: config.timeout, client: config.httpClient}
+	return &restTransport{token: token, endpoint: cloneURL(endpoint), headers: config.headers.Clone(), timeout: config.timeout, client: config.httpClient}
+}
+
+func newUnavailableRESTTransport(namespace string, config resolvedConfig) *restTransport {
+	return &restTransport{
+		endpoint: unavailableEndpoint(namespace), timeout: config.timeout,
+		client: config.httpClient, unavailableNamespace: namespace,
+	}
 }
 
 func (t *restTransport) getJSON(ctx context.Context, path string, query url.Values, result any) error {
@@ -34,6 +43,9 @@ func (t *restTransport) getJSON(ctx context.Context, path string, query url.Valu
 }
 
 func (t *restTransport) get(ctx context.Context, path string, query url.Values, accept string) (*http.Response, error) {
+	if t.unavailableNamespace != "" {
+		return nil, notConfiguredError(t.unavailableNamespace)
+	}
 	u := endpointPath(t.endpoint, path)
 	u.RawQuery = query.Encode()
 	requestContext, cancel := context.WithTimeout(ctx, t.timeout)
@@ -70,3 +82,9 @@ func (c *cancelReadCloser) Close() error {
 	c.cancel()
 	return c.ReadCloser.Close()
 }
+
+func (t *restTransport) String() string {
+	return fmt.Sprintf("RESTTransport{Endpoint:%q}", publicEndpointURL(t.endpoint))
+}
+
+func (t *restTransport) GoString() string { return t.String() }

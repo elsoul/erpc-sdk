@@ -3,8 +3,10 @@ import {
   ErpcConfigError,
   ErpcInvalidResponseError,
   ErpcJsonRpcError,
+  ErpcNotConfiguredError,
   ErpcTimeoutError,
   ErpcTransportError,
+  directRedactionVariants,
   redactJsonRpcError,
 } from '../errors'
 import type { JsonRpcTransport } from '../rpc/client'
@@ -27,7 +29,9 @@ export type RpcNotificationListener = (notification: RpcNotification) => void
 export interface WebSocketTransportConfig {
   readonly endpoint: URL
   readonly maxBatchSize?: number
+  readonly redactionHeaders?: Readonly<Record<string, string>>
   readonly timeoutMs: number
+  readonly unavailableNamespace?: string
   readonly webSocket?: typeof globalThis.WebSocket
 }
 
@@ -60,7 +64,9 @@ export class WebSocketJsonRpcTransport implements JsonRpcTransport {
   readonly #credential: string | undefined
   readonly #listeners = new Set<RpcNotificationListener>()
   readonly #pending = new Map<JsonRpcId, PendingResponse>()
+  readonly #redactionVariants: readonly string[]
   readonly #timeoutMs: number
+  readonly #unavailableNamespace: string | undefined
   readonly #webSocket?: typeof globalThis.WebSocket
   #connectPromise: Promise<void> | undefined
   #nextId = 1
@@ -73,12 +79,20 @@ export class WebSocketJsonRpcTransport implements JsonRpcTransport {
     this.#connectionUrl = config.endpoint.toString()
     this.endpoint = publicEndpoint(config.endpoint)
     this.maxBatchSize = config.maxBatchSize ?? 256
+    this.#redactionVariants = directRedactionVariants(
+      config.endpoint,
+      config.redactionHeaders,
+    )
     this.#timeoutMs = config.timeoutMs
+    this.#unavailableNamespace = config.unavailableNamespace
   }
 
   async connect(): Promise<void> {
     if (this.#socket?.readyState === 1) return
     if (this.#connectPromise) return this.#connectPromise
+    if (this.#unavailableNamespace !== undefined) {
+      throw new ErpcNotConfiguredError(this.#unavailableNamespace)
+    }
     if (!this.#webSocket) {
       throw new ErpcConfigError(
         'A WebSocket implementation is required for subscriptions',
@@ -86,11 +100,21 @@ export class WebSocketJsonRpcTransport implements JsonRpcTransport {
     }
 
     this.#connectPromise = new Promise<void>((resolve, reject) => {
-      const socket = new this.#webSocket!(this.#connectionUrl)
+      let socket: WebSocket
+      try {
+        socket = new this.#webSocket!(this.#connectionUrl)
+      } catch {
+        reject(new ErpcTransportError('Unable to connect to ERPC WebSocket'))
+        return
+      }
       this.#socket = socket
 
       const timeout = setTimeout(() => {
-        socket.close()
+        try {
+          socket.close()
+        } catch {
+          // The timeout result is stable even when a custom socket rejects close.
+        }
         reject(new ErpcTimeoutError(this.#timeoutMs))
       }, this.#timeoutMs)
 
@@ -157,6 +181,9 @@ export class WebSocketJsonRpcTransport implements JsonRpcTransport {
     calls: readonly RpcBatchCall[],
     options: RpcSendOptions = {},
   ): Promise<TResult> {
+    if (this.#unavailableNamespace !== undefined) {
+      throw new ErpcNotConfiguredError(this.#unavailableNamespace)
+    }
     if (calls.length === 0) return [] as unknown as TResult
     if (calls.length > this.maxBatchSize) {
       throw new ErpcInvalidResponseError(
@@ -281,7 +308,11 @@ export class WebSocketJsonRpcTransport implements JsonRpcTransport {
       if (isRpcError(message.error)) {
         pending.reject(
           new ErpcJsonRpcError(
-            redactJsonRpcError(message.error, this.#credential),
+            redactJsonRpcError(
+              message.error,
+              this.#credential,
+              this.#redactionVariants,
+            ),
           ),
         )
       }

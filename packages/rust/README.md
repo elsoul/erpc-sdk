@@ -41,6 +41,53 @@ RPC helpers return an inert `PendingRpcRequest`. Network I/O starts when
 or vector; named indexed-asset methods accept serializable structs or JSON
 objects. The wire method names remain unchanged.
 
+## Direct RPC endpoints
+
+Use `RpcEndpointConfig` when a chain should send JSON-RPC calls to a caller-owned
+node. The caller supplies the final HTTP RPC URL as the complete request target,
+including any path and query; the SDK does not add an eRPC route or API key and
+does not follow HTTP redirects. `for_rpc()` allows a keyless client when at
+least one direct endpoint is configured.
+
+Direct RPC endpoint support is on unreleased `main` and is not included in the
+published `erpc-sdk` 0.7.0 package.
+
+```rust,no_run
+# use erpc_sdk::{ErpcClient, ErpcClientConfig, RpcEndpointConfig};
+# async fn example() -> erpc_sdk::Result<()> {
+let erpc = ErpcClient::new(
+    ErpcClientConfig::for_rpc().with_solana_rpc(
+        RpcEndpointConfig::new("https://node.example/rpc?tenant=customer")
+            .with_header("authorization", "Bearer node-token"),
+    ),
+)?;
+let slot = erpc.solana.rpc.get_slot(Vec::<serde_json::Value>::new())?
+    .send().await?;
+# let _ = slot;
+# Ok(())
+# }
+```
+
+Subscriptions require an explicit independent `websocket_url` when using a
+direct endpoint. Endpoint-scoped HTTP headers apply to direct HTTP JSON-RPC
+requests only and are not forwarded to the independent WebSocket connection.
+
+```rust,no_run
+# use erpc_sdk::{ErpcClient, ErpcClientConfig, RpcEndpointConfig};
+# async fn example() -> erpc_sdk::Result<()> {
+let erpc = ErpcClient::new(
+    ErpcClientConfig::for_rpc().with_ethereum_rpc(
+        RpcEndpointConfig::new("https://node.example/rpc")
+            .with_websocket_url("wss://node.example/socket")
+            .with_header("authorization", "Bearer node-token"),
+    ),
+)?;
+let heads = erpc.ethereum.subscriptions.subscribe("newHeads", Vec::new()).await?;
+let _header: serde_json::Value = heads.next().await?;
+# Ok(())
+# }
+```
+
 For Solana transaction-version options and response handling, see the
 [Solana v1 guide](https://github.com/elsoul/erpc-sdk/blob/main/packages/typescript/docs/solana-v1.md).
 
@@ -194,9 +241,8 @@ publication are not active yet.
 
 ## DEX catalog and exact-input quotes
 
-The source tree currently contains the unreleased 0.7.0 DEX and swap exports;
-the published 0.6.0 package does not include them yet. The source tree also
-ships an offline DEX and pool catalog. The six lookup functions
+The published 0.7.0 package includes the reviewed DEX and swap exports. The
+source tree also ships an offline DEX and pool catalog. The six lookup functions
 (`get_dex_deployment`, `get_pool_definition`,
 `find_pool_definition_by_address`, `find_pool_definitions_by_pair`,
 `list_pool_definitions`, and `get_native_wrap_definition`) never access an RPC

@@ -6,8 +6,11 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
+	"net/http/cookiejar"
 	"net/http/httptest"
+	"net/url"
 	"reflect"
 	"strings"
 	"sync/atomic"
@@ -247,6 +250,376 @@ func TestTypedRequestAndCredentialBoundary(t *testing.T) {
 	}
 }
 
+func TestDirectURLValidationRequiresSafeExplicitAuthority(t *testing.T) {
+	for _, value := range []string{
+		"https:customer.example/rpc",
+		"https://customer.example/rpc#",
+		"https://user:password@customer.example/rpc",
+		"https://@customer.example/rpc",
+		"http://:123/rpc",
+	} {
+		t.Run(value, func(t *testing.T) {
+			_, err := NewClient(Config{EthereumRPC: &RPCEndpointConfig{HTTPURL: value}})
+			if err == nil {
+				t.Fatal("expected configuration error")
+			}
+			if strings.Contains(err.Error(), value) {
+				t.Fatalf("configuration error echoed direct URL: %v", err)
+			}
+		})
+	}
+	if _, err := NewClient(Config{}); err == nil {
+		t.Fatal("expected keyless configuration error")
+	}
+}
+
+func TestKeylessDirectRPCUsesExactTargetAndScopedHeaders(t *testing.T) {
+	const (
+		directToken  = "a%2Fb"
+		directRegion = "eu"
+	)
+	directPath := "/customer/path?token=" + directToken + "&region=" + directRegion
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.RequestURI(); got != directPath {
+			t.Errorf("request target = %q, want %q", got, directPath)
+		}
+		if got := r.URL.Query().Get("api-key"); got != "" {
+			t.Errorf("unexpected api key = %q", got)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer direct-secret" {
+			t.Errorf("authorization = %q", got)
+		}
+		if got := r.Header.Get("X-Node-Scope"); got != "solana-only" {
+			t.Errorf("node scope = %q", got)
+		}
+		if got := r.Header.Get("X-Global"); got != "" {
+			t.Errorf("global header leaked = %q", got)
+		}
+		var request wireRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Fatal(err)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"jsonrpc": "2.0", "id": request.ID, "result": uint64(42),
+		})
+	}))
+	defer server.Close()
+
+	client, err := NewClient(Config{
+		Headers: http.Header{
+			"Authorization": {"Bearer global-secret"},
+			"X-Global":      {"must-not-be-forwarded"},
+		},
+		SolanaRPC: &RPCEndpointConfig{
+			HTTPURL: server.URL + directPath,
+			Headers: http.Header{
+				"Authorization": {"Bearer direct-secret"},
+				"X-Node-Scope":  {"solana-only"},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+
+	slot, err := client.Solana.RPC.GetSlot(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if slot != 42 {
+		t.Fatalf("slot = %d", slot)
+	}
+	if got, want := client.Solana.RPC.Endpoint(), server.URL+"/customer/path"; got != want {
+		t.Fatalf("public endpoint = %q, want %q", got, want)
+	}
+	rendered := fmt.Sprintf("%#v", Config{
+		APIKey: "global-secret",
+		SolanaRPC: &RPCEndpointConfig{
+			HTTPURL: server.URL + directPath,
+			Headers: http.Header{"Authorization": {"Bearer direct-secret"}},
+		},
+	})
+	for _, secret := range []string{"global-secret", directToken, "direct-secret"} {
+		if strings.Contains(rendered, secret) {
+			t.Fatalf("configuration diagnostic contains %q: %s", secret, rendered)
+		}
+	}
+	endpointDiagnostic := fmt.Sprintf("%#v", &RPCEndpointConfig{
+		HTTPURL: server.URL + directPath,
+		Headers: http.Header{"Authorization": {"Bearer direct-secret"}},
+	})
+	for _, secret := range []string{directToken, "direct-secret"} {
+		if strings.Contains(endpointDiagnostic, secret) {
+			t.Fatalf("endpoint diagnostic contains %q: %s", secret, endpointDiagnostic)
+		}
+	}
+	clientDiagnostic := fmt.Sprintf("%#v", client)
+	for _, secret := range []string{directToken, "direct-secret"} {
+		if strings.Contains(clientDiagnostic, secret) {
+			t.Fatalf("client diagnostic contains %q: %s", secret, clientDiagnostic)
+		}
+	}
+}
+
+func TestDirectRPCDoesNotFollowRedirectsOrMutateSuppliedClient(t *testing.T) {
+	var firstRequests, secondRequests, suppliedRedirects atomic.Int32
+	redirectTarget := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		secondRequests.Add(1)
+		if got := r.Header.Get("X-Node-Secret"); got != "" {
+			t.Errorf("scoped header leaked to redirect target = %q", got)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"jsonrpc": "2.0", "id": uint64(1), "result": "must-not-be-read",
+		})
+	}))
+	defer redirectTarget.Close()
+	redirectSource := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		firstRequests.Add(1)
+		if got := r.Header.Get("X-Node-Secret"); got != "scoped-secret" {
+			t.Errorf("source scoped header = %q", got)
+		}
+		w.Header().Set("Location", redirectTarget.URL+"/stolen")
+		w.WriteHeader(http.StatusTemporaryRedirect)
+	}))
+	defer redirectSource.Close()
+
+	redirectPolicy := func(*http.Request, []*http.Request) error {
+		suppliedRedirects.Add(1)
+		return nil
+	}
+	supplied := &http.Client{CheckRedirect: redirectPolicy}
+	originalPolicy := supplied.CheckRedirect
+	client, err := NewClient(Config{
+		HTTPClient: supplied,
+		EthereumRPC: &RPCEndpointConfig{
+			HTTPURL: redirectSource.URL + "/rpc?token=source",
+			Headers: http.Header{"X-Node-Secret": {"scoped-secret"}},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	_, err = client.Ethereum.RPC.ChainID(context.Background())
+	var sdkErr *Error
+	if !errors.As(err, &sdkErr) || sdkErr.Kind != ErrorHTTP || sdkErr.Status != http.StatusTemporaryRedirect {
+		t.Fatalf("redirect error = %#v", err)
+	}
+	if firstRequests.Load() != 1 || secondRequests.Load() != 0 {
+		t.Fatalf("source requests = %d, redirect requests = %d", firstRequests.Load(), secondRequests.Load())
+	}
+	if suppliedRedirects.Load() != 0 {
+		t.Fatalf("supplied redirect policy was called %d times", suppliedRedirects.Load())
+	}
+	if reflect.ValueOf(supplied.CheckRedirect).Pointer() != reflect.ValueOf(originalPolicy).Pointer() {
+		t.Fatal("supplied client redirect policy was mutated")
+	}
+}
+
+func TestDirectRPCErrorsRedactQueryAndScopedCredentials(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request wireRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Fatal(err)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"jsonrpc": "2.0", "id": request.ID,
+			"error": map[string]any{
+				"code":    -32000,
+				"message": "a%2fb a/b direct-secret",
+				"data":    map[string]any{"a/b": "direct-secret"},
+			},
+		})
+	}))
+	defer server.Close()
+	client, err := NewClient(Config{EthereumRPC: &RPCEndpointConfig{
+		HTTPURL: server.URL + "/rpc?token=a%2Fb",
+		Headers: http.Header{"Authorization": {"Bearer direct-secret"}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	_, err = client.Ethereum.RPC.ChainID(context.Background())
+	if err == nil {
+		t.Fatal("expected RPC error")
+	}
+	var sdkErr *Error
+	if !errors.As(err, &sdkErr) || sdkErr.Kind != ErrorRPC {
+		t.Fatalf("error = %#v", err)
+	}
+	rendered := fmt.Sprintf("%v %#v", err, sdkErr.Data)
+	for _, secret := range []string{"a%2fb", "a%2Fb", "a/b", "direct-secret"} {
+		if strings.Contains(rendered, secret) {
+			t.Fatalf("error contains %q: %s", secret, rendered)
+		}
+	}
+}
+
+func TestDirectRedactionPreservesPlaintextCaseAndMatchesEscapeCase(t *testing.T) {
+	const mixedSecret = "MiXeD/Secret:Part"
+	encodedSecret := url.QueryEscape(mixedSecret)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request wireRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Fatal(err)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"jsonrpc": "2.0", "id": request.ID,
+			"error": map[string]any{
+				"code": -32000,
+				"message": "MiXeD%2FSecret%3APart MiXeD%2fSecret%3aPart " +
+					"MiXeD%2fSecret%3APart MiXeD/Secret:Part mixed/secret:part",
+				"data": map[string]any{
+					"MiXeD%2FSecret%3APart": "MiXeD%2FSecret%3APart",
+					"MiXeD%2fSecret%3aPart": "MiXeD%2fSecret%3aPart",
+					"MiXeD%2FSecret%3aPart": "MiXeD%2FSecret%3aPart",
+					"MiXeD%2fSecret%3APart": "MiXeD%2fSecret%3APart",
+					"MiXeD/Secret:Part":     "MiXeD/Secret:Part",
+					"mixed/secret:part":     "mixed/secret:part",
+				},
+			},
+		})
+	}))
+	defer server.Close()
+	client, err := NewClient(Config{EthereumRPC: &RPCEndpointConfig{
+		HTTPURL: server.URL + "/rpc?token=" + encodedSecret,
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	_, err = client.Ethereum.RPC.ChainID(context.Background())
+	if err == nil {
+		t.Fatal("expected RPC error")
+	}
+	var sdkErr *Error
+	if !errors.As(err, &sdkErr) || sdkErr.Kind != ErrorRPC {
+		t.Fatalf("error = %#v", err)
+	}
+	rendered := fmt.Sprintf("%v %#v", err, sdkErr.Data)
+	for _, escaped := range []string{
+		"MiXeD%2FSecret%3APart", "MiXeD%2fSecret%3aPart", "MiXeD%2FSecret%3aPart",
+		"MiXeD%2fSecret%3APart", "MiXeD/Secret:Part",
+	} {
+		if strings.Contains(rendered, escaped) {
+			t.Fatalf("redacted error contains %q: %s", escaped, rendered)
+		}
+	}
+	if !strings.Contains(rendered, "mixed/secret:part") {
+		t.Fatalf("distinct lowercase plaintext was folded or removed: %s", rendered)
+	}
+}
+
+func TestDirectRPCDisablesAmbientCookiesAndPreservesScopedCookieHeaders(t *testing.T) {
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		var request wireRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Fatal(err)
+		}
+		switch r.URL.Path {
+		case "/ambient":
+			if got := r.Header.Get("Cookie"); got != "" {
+				t.Errorf("ambient cookie forwarded = %q", got)
+			}
+		case "/scoped":
+			if got := r.Header.Get("Cookie"); got != "scoped-cookie=explicit" {
+				t.Errorf("scoped cookie = %q", got)
+			}
+		default:
+			t.Errorf("unexpected path = %q", r.URL.Path)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"jsonrpc": "2.0", "id": request.ID, "result": "ok",
+		})
+	}))
+	defer server.Close()
+	ambientURL, err := url.Parse(server.URL + "/ambient")
+	if err != nil {
+		t.Fatal(err)
+	}
+	scopedURL, err := url.Parse(server.URL + "/scoped")
+	if err != nil {
+		t.Fatal(err)
+	}
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	jar.SetCookies(ambientURL, []*http.Cookie{{Name: "ambient-cookie", Value: "ambient-secret"}})
+	jar.SetCookies(scopedURL, []*http.Cookie{{Name: "ambient-cookie", Value: "ambient-secret"}})
+	supplied := &http.Client{Jar: jar}
+
+	ambientClient, err := NewClient(Config{
+		HTTPClient:  supplied,
+		EthereumRPC: &RPCEndpointConfig{HTTPURL: ambientURL.String()},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var result string
+	if err := ambientClient.Ethereum.RPC.Request(context.Background(), "eth_chainId", nil, &result); err != nil {
+		t.Fatal(err)
+	}
+	if result != "ok" {
+		t.Fatalf("ambient result = %q", result)
+	}
+	_ = ambientClient.Close()
+
+	scopedClient, err := NewClient(Config{
+		HTTPClient: supplied,
+		EthereumRPC: &RPCEndpointConfig{
+			HTTPURL: scopedURL.String(),
+			Headers: http.Header{"Cookie": {"scoped-cookie=explicit"}},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := scopedClient.Ethereum.RPC.Request(context.Background(), "eth_chainId", nil, &result); err != nil {
+		t.Fatal(err)
+	}
+	_ = scopedClient.Close()
+	if supplied.Jar != jar {
+		t.Fatal("supplied client cookie jar was mutated")
+	}
+	if len(jar.Cookies(ambientURL)) == 0 || len(jar.Cookies(scopedURL)) == 0 {
+		t.Fatal("supplied cookie jar contents were not preserved")
+	}
+	if requests.Load() != 2 {
+		t.Fatalf("requests = %d, want 2", requests.Load())
+	}
+}
+
+func TestDirectMalformedRPCResponseDropsCredentialBearingDecoderCause(t *testing.T) {
+	const secret = "malformed-direct-secret"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("not-json " + secret))
+	}))
+	defer server.Close()
+	client, err := NewClient(Config{EthereumRPC: &RPCEndpointConfig{
+		HTTPURL: server.URL + "/rpc?token=" + secret,
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	_, err = client.Ethereum.RPC.ChainID(context.Background())
+	if err == nil {
+		t.Fatal("expected malformed response error")
+	}
+	var sdkErr *Error
+	if !errors.As(err, &sdkErr) || sdkErr.Kind != ErrorInvalidResponse {
+		t.Fatalf("error = %#v", err)
+	}
+	if strings.Contains(err.Error(), secret) || strings.Contains(fmt.Sprintf("%#v", err), secret) {
+		t.Fatalf("credential-bearing decoder cause leaked: %v", err)
+	}
+}
+
 func TestAvalancheUsesCChainEndpoint(t *testing.T) {
 	const key = "avalanche-key"
 	defaults, err := resolveConfig(Config{APIKey: key})
@@ -292,6 +665,96 @@ func TestAvalancheUsesCChainEndpoint(t *testing.T) {
 	}
 	if strings.Contains(client.Avalanche.RPC.Endpoint(), key) {
 		t.Fatal("public endpoint contains credentials")
+	}
+}
+
+func TestDirectAvalancheCChainIsSeparateFromNativeAndIndex(t *testing.T) {
+	const apiKey = "shared-key"
+	var directRequests, legacyRequests atomic.Int32
+	direct := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		directRequests.Add(1)
+		if got, want := r.URL.RequestURI(), "/customer/c?token=c"; got != want {
+			t.Errorf("direct target = %q, want %q", got, want)
+		}
+		if got := r.URL.Query().Get("api-key"); got != "" {
+			t.Errorf("direct api key = %q", got)
+		}
+		if got := r.Header.Get("X-Direct"); got != "c-chain" {
+			t.Errorf("direct header = %q", got)
+		}
+		if got := r.Header.Get("X-Global"); got != "" {
+			t.Errorf("global header leaked to direct endpoint = %q", got)
+		}
+		var request wireRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Fatal(err)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"jsonrpc": "2.0", "id": request.ID, "result": request.Method,
+		})
+	}))
+	defer direct.Close()
+	legacy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		legacyRequests.Add(1)
+		if r.URL.Path != "/ava" && r.URL.Path != "/ava/ext/index/X/tx" {
+			t.Errorf("legacy path = %q", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("api-key"); got != apiKey {
+			t.Errorf("legacy api key = %q", got)
+		}
+		if got := r.Header.Get("X-Global"); got != "legacy" {
+			t.Errorf("legacy header = %q", got)
+		}
+		if got := r.Header.Get("X-Direct"); got != "" {
+			t.Errorf("direct header leaked to legacy endpoint = %q", got)
+		}
+		var request wireRequest
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Fatal(err)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"jsonrpc": "2.0", "id": request.ID, "result": request.Method,
+		})
+	}))
+	defer legacy.Close()
+
+	client, err := NewClient(Config{
+		APIKey:            apiKey,
+		AvalancheEndpoint: legacy.URL,
+		Headers:           http.Header{"X-Global": {"legacy"}},
+		AvalancheCRPC: &RPCEndpointConfig{
+			HTTPURL: direct.URL + "/customer/c?token=c",
+			Headers: http.Header{"X-Direct": {"c-chain"}},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+
+	var result string
+	if err := client.Avalanche.RPC.Request(context.Background(), "eth_chainId", nil, &result); err != nil {
+		t.Fatal(err)
+	}
+	if result != "eth_chainId" {
+		t.Fatalf("direct result = %q", result)
+	}
+	if err := client.Avalanche.XChain.Request(context.Background(), "getHeight", nil, &result); err != nil {
+		t.Fatal(err)
+	}
+	if result != "avm.getHeight" {
+		t.Fatalf("native result = %q", result)
+	}
+	if err := client.Avalanche.Index.XChainTransactions.Request(
+		context.Background(), "getContainerByID", map[string]any{"id": "tx"}, &result,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if result != "index.getContainerByID" {
+		t.Fatalf("index result = %q", result)
+	}
+	if directRequests.Load() != 1 || legacyRequests.Load() != 2 {
+		t.Fatalf("direct requests = %d, legacy requests = %d", directRequests.Load(), legacyRequests.Load())
 	}
 }
 

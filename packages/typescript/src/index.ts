@@ -98,6 +98,8 @@ export {
   DEFAULT_TIMEOUT_MS,
   DEFAULT_USER_ENDPOINT,
   type ErpcClientConfig,
+  type ResolvedRpcEndpointConfig,
+  type RpcEndpointConfig,
 } from './config'
 export {
   CloudCreditClient,
@@ -112,6 +114,7 @@ export {
   ErpcHttpError,
   ErpcInvalidResponseError,
   ErpcJsonRpcError,
+  ErpcNotConfiguredError,
   ErpcTimeoutError,
   ErpcTransportError,
   type ErpcErrorCode,

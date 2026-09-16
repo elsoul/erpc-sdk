@@ -1,9 +1,10 @@
 # `@elsoul/erpc-sdk`
 
 Official type-safe TypeScript client for [ERPC](https://erpc.global). Use one
-client and one API key for Solana, Ethereum, Avalanche C/P/X chains, price data,
+client and an API key for Solana, Ethereum, Avalanche C/P/X chains, price data,
 indexed data, leader and validator data, analytics, subscriptions, and account
-information.
+information. Caller-owned direct endpoints can be selected for Solana,
+Ethereum, and Avalanche C-Chain JSON-RPC.
 
 ## Install
 
@@ -35,6 +36,56 @@ erpc.close()
 
 JSON-RPC method calls return pending requests. Call `.send()` to perform the
 network request.
+
+## Direct RPC endpoints
+
+The published `0.7.0` package predates this direct endpoint API; these examples
+describe the next unreleased source line.
+
+Use a caller-owned endpoint without an eRPC API key by supplying at least one
+chain override. The HTTP URL is the complete JSON-RPC request target, so its
+path and query are preserved:
+
+```ts
+const erpc = createErpcClient({
+  ethereumRpc: {
+    httpUrl: 'https://node.example/customer/path?region=eu',
+  },
+})
+
+const chainId = await erpc.ethereum.rpc.eth_chainId().send()
+```
+
+The configured HTTP URL is treated as the final target. Redirect responses are
+returned as HTTP errors, and no redirected request is made.
+
+Direct HTTP requests use `credentials: 'omit'`, so ambient browser cookies and
+authentication are not sent implicitly. Add authentication explicitly through
+the endpoint's scoped headers when needed.
+
+Provide an independent WebSocket URL and headers when the node requires them:
+
+```ts
+import type { RpcEndpointConfig } from '@elsoul/erpc-sdk'
+
+const ethereumRpc: RpcEndpointConfig = {
+  httpUrl: 'https://node.example/rpc',
+  webSocketUrl: 'wss://node.example/socket',
+  headers: {
+    authorization: 'Bearer node-token',
+  },
+}
+
+const erpc = createErpcClient({
+  ethereumRpc,
+})
+```
+
+`solanaRpc`, `ethereumRpc`, and `avalancheCRpc` select direct Solana, Ethereum,
+and Avalanche C-Chain JSON-RPC transports. Without an API key, non-overridden
+chains and ERPC REST, native, and index services fail locally. The
+`RpcEndpointConfig.headers` field applies to direct HTTP requests only; those
+headers are never sent on WSS connections.
 
 ## Offline token catalog
 
@@ -100,9 +151,8 @@ chain-qualified aliases are bundled as generated data. These lookups are
 offline and use opaque IDs, so an Ethereum USDC address cannot be confused
 with an Avalanche or Solana deployment:
 
-The published package baseline is currently `0.6.0`. The DEX catalog and swap
-exports described below are in the source tree for the unreleased `0.7.0`
-line and are not part of published `0.6.0` packages yet.
+The published package baseline is currently `0.7.0`, and it includes the
+reviewed DEX catalog and swap exports described below.
 
 ```ts
 import {

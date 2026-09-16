@@ -16,7 +16,8 @@ use url::Url;
 
 use crate::{
     ErpcError, JsonRpcErrorObject, Result,
-    error::{invalid_response, rpc_error, timeout},
+    config::redaction_secrets_for_headers,
+    error::{invalid_response, rpc_error_with_secrets, timeout},
 };
 
 /// JSON-RPC request or response identifier.
@@ -86,13 +87,16 @@ pub struct HttpTransportConfig {
 
 /// Credential-safe HTTP JSON-RPC transport.
 pub struct HttpJsonRpcTransport {
-    api_key: String,
+    api_key: Option<String>,
     endpoint: Url,
     headers: HeaderMap,
+    redaction_secrets: Vec<String>,
     max_batch_size: usize,
     timeout: Duration,
     client: Client,
     next_id: AtomicU64,
+    configured: bool,
+    namespace: String,
 }
 
 impl HttpJsonRpcTransport {
@@ -100,23 +104,105 @@ impl HttpJsonRpcTransport {
     #[must_use]
     pub fn new(config: HttpTransportConfig) -> Self {
         let mut endpoint = config.endpoint;
+        let api_key = (!config.api_key.is_empty()).then_some(config.api_key);
         endpoint.set_query(None);
         endpoint.set_fragment(None);
-        Self {
-            api_key: config.api_key,
+        let mut redaction_secrets = Vec::new();
+        if let Some(api_key) = &api_key {
+            redaction_secrets.push(api_key.clone());
+        }
+        Self::from_parts(
+            api_key,
             endpoint,
-            headers: config.headers,
-            max_batch_size: config.max_batch_size,
-            timeout: config.timeout,
-            client: config.client,
+            config.headers,
+            redaction_secrets,
+            config.max_batch_size,
+            config.timeout,
+            config.client,
+            "RPC",
+            true,
+        )
+    }
+
+    pub(crate) fn new_direct(
+        endpoint: Url,
+        headers: HeaderMap,
+        redaction_secrets: Vec<String>,
+        max_batch_size: usize,
+        timeout: Duration,
+        client: Client,
+        namespace: impl Into<String>,
+    ) -> Self {
+        let redaction_secrets = merge_secrets(redaction_secrets, &headers);
+        Self::from_parts(
+            None,
+            endpoint,
+            headers,
+            redaction_secrets,
+            max_batch_size,
+            timeout,
+            client,
+            namespace,
+            true,
+        )
+    }
+
+    pub(crate) fn unavailable(
+        namespace: impl Into<String>,
+        timeout: Duration,
+        client: Client,
+    ) -> Self {
+        let endpoint = Url::parse("http://127.0.0.1/").expect("static unavailable endpoint");
+        Self::from_parts(
+            None,
+            endpoint,
+            HeaderMap::new(),
+            Vec::new(),
+            256,
+            timeout,
+            client,
+            namespace,
+            false,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn from_parts(
+        api_key: Option<String>,
+        endpoint: Url,
+        headers: HeaderMap,
+        redaction_secrets: Vec<String>,
+        max_batch_size: usize,
+        timeout: Duration,
+        client: Client,
+        namespace: impl Into<String>,
+        configured: bool,
+    ) -> Self {
+        Self {
+            api_key,
+            endpoint,
+            headers,
+            redaction_secrets,
+            max_batch_size,
+            timeout,
+            client,
             next_id: AtomicU64::new(1),
+            configured,
+            namespace: namespace.into(),
         }
     }
 
     /// Public endpoint without credentials, query, or fragment.
     #[must_use]
     pub fn endpoint(&self) -> String {
-        self.endpoint.to_string()
+        if self.configured {
+            let mut endpoint = self.endpoint.clone();
+            endpoint.set_query(None);
+            endpoint.set_fragment(None);
+            endpoint.to_string()
+        } else {
+            String::new()
+        }
     }
 
     /// Maximum number of calls in one server batch.
@@ -132,6 +218,7 @@ impl HttpJsonRpcTransport {
         params: Option<Value>,
         options: &RequestOptions,
     ) -> Result<T> {
+        self.ensure_configured()?;
         let id = self.id();
         let request = WireRequest {
             jsonrpc: "2.0",
@@ -149,6 +236,7 @@ impl HttpJsonRpcTransport {
         calls: &[RpcBatchCall],
         options: &RequestOptions,
     ) -> Result<Vec<Value>> {
+        self.ensure_configured()?;
         if calls.is_empty() {
             return Ok(Vec::new());
         }
@@ -170,7 +258,10 @@ impl HttpJsonRpcTransport {
         let response = self.post(&requests, options).await?;
         let Value::Array(responses) = response else {
             if let Ok(failure) = serde_json::from_value::<WireFailure>(response) {
-                return Err(rpc_error(failure.error, &self.api_key));
+                return Err(rpc_error_with_secrets(
+                    failure.error,
+                    &self.redaction_secrets,
+                ));
             }
             return Err(invalid_response("ERPC returned a non-array batch response"));
         };
@@ -213,12 +304,16 @@ impl HttpJsonRpcTransport {
 
     async fn post(&self, body: &impl Serialize, options: &RequestOptions) -> Result<Value> {
         let mut url = self.endpoint.clone();
-        url.query_pairs_mut().append_pair("api-key", &self.api_key);
+        if let Some(api_key) = &self.api_key {
+            url.query_pairs_mut().append_pair("api-key", api_key);
+        }
         let operation = async {
             let response = self
                 .client
                 .post(url)
                 .headers(self.headers.clone())
+                .header(reqwest::header::ACCEPT, "application/json")
+                .header(reqwest::header::CONTENT_TYPE, "application/json")
                 .json(body)
                 .send()
                 .await
@@ -265,7 +360,7 @@ impl HttpJsonRpcTransport {
         if let Some(error) = object.get("error") {
             let error: JsonRpcErrorObject = serde_json::from_value(error.clone())
                 .map_err(|_| invalid_response("ERPC returned an invalid RPC error"))?;
-            return Err(rpc_error(error, &self.api_key));
+            return Err(rpc_error_with_secrets(error, &self.redaction_secrets));
         }
         let result = object
             .get("result")
@@ -274,6 +369,23 @@ impl HttpJsonRpcTransport {
         serde_json::from_value(result)
             .map_err(|_| invalid_response("ERPC returned an unexpected result shape"))
     }
+
+    pub(crate) fn ensure_configured(&self) -> Result<()> {
+        if self.configured {
+            Ok(())
+        } else {
+            Err(ErpcError::NotConfigured(self.namespace.clone()))
+        }
+    }
+}
+
+fn merge_secrets(mut secrets: Vec<String>, headers: &HeaderMap) -> Vec<String> {
+    for secret in redaction_secrets_for_headers(headers) {
+        if !secrets.contains(&secret) {
+            secrets.push(secret);
+        }
+    }
+    secrets
 }
 
 impl std::fmt::Display for JsonRpcId {
@@ -410,6 +522,7 @@ impl RpcNamespace {
 
     /// Validates and creates one unsplit batch request.
     pub fn batch(&self, calls: Vec<RpcBatchCall>) -> Result<PendingRpcBatchRequest> {
+        self.transport.ensure_configured()?;
         if matches!(self.policy, BatchPolicy::Unsupported) {
             if !calls.is_empty() {
                 return Err(ErpcError::BatchPolicy(

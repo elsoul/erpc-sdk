@@ -35,7 +35,7 @@ pub use cloud::{
 };
 pub use config::{
     DEFAULT_ACCOUNT_ENDPOINT, DEFAULT_AVALANCHE_ENDPOINT, DEFAULT_ENDPOINT, DEFAULT_TIMEOUT,
-    DEFAULT_USER_ENDPOINT, ErpcClientConfig,
+    DEFAULT_USER_ENDPOINT, ErpcClientConfig, RpcEndpointConfig,
 };
 pub use dex_catalog::{
     DEX_ALIASES, DEX_CATALOG_AS_OF_DATE, DEX_CATALOG_CONTENT_DIGEST, DEX_CATALOG_VERSION,
@@ -101,23 +101,83 @@ pub use usage::{
 
 use std::sync::Arc;
 
-use config::{ResolvedErpcClientConfig, endpoint_with_path, websocket_url};
+use config::{ResolvedErpcClientConfig, ResolvedRpcEndpoint, endpoint_with_path, websocket_url};
 use rest::RestTransport;
 use subscriptions::WebSocketJsonRpcTransport;
 
-fn rpc_transport(
+fn legacy_rpc_transport(
     resolved: &ResolvedErpcClientConfig,
     endpoint: url::Url,
     client: &reqwest::Client,
+    namespace: &str,
 ) -> Arc<HttpJsonRpcTransport> {
-    Arc::new(HttpJsonRpcTransport::new(HttpTransportConfig {
-        api_key: resolved.api_key.clone(),
-        endpoint,
-        headers: resolved.headers.clone(),
-        max_batch_size: 256,
-        timeout: resolved.timeout,
-        client: client.clone(),
-    }))
+    if let Some(api_key) = &resolved.api_key {
+        Arc::new(HttpJsonRpcTransport::new(HttpTransportConfig {
+            api_key: api_key.clone(),
+            endpoint,
+            headers: resolved.headers.clone(),
+            max_batch_size: 256,
+            timeout: resolved.timeout,
+            client: client.clone(),
+        }))
+    } else {
+        Arc::new(HttpJsonRpcTransport::unavailable(
+            namespace,
+            resolved.timeout,
+            client.clone(),
+        ))
+    }
+}
+
+fn direct_rpc_transport(
+    endpoint: &ResolvedRpcEndpoint,
+    client: &reqwest::Client,
+    namespace: &str,
+    timeout: std::time::Duration,
+) -> Arc<HttpJsonRpcTransport> {
+    Arc::new(HttpJsonRpcTransport::new_direct(
+        endpoint.http_url.clone(),
+        endpoint.headers.clone(),
+        endpoint.redaction_secrets.clone(),
+        256,
+        timeout,
+        client.clone(),
+        namespace,
+    ))
+}
+
+fn websocket_transport(
+    resolved: &ResolvedErpcClientConfig,
+    direct: Option<&ResolvedRpcEndpoint>,
+    legacy_endpoint: &url::Url,
+    legacy_path: &str,
+    namespace: &str,
+) -> Result<Arc<WebSocketJsonRpcTransport>> {
+    if let Some(endpoint) = direct {
+        return Ok(if let Some(websocket_url) = &endpoint.websocket_url {
+            Arc::new(WebSocketJsonRpcTransport::new_direct(
+                websocket_url.clone(),
+                endpoint.redaction_secrets.clone(),
+                resolved.timeout,
+                namespace,
+            ))
+        } else {
+            Arc::new(WebSocketJsonRpcTransport::unavailable(
+                namespace,
+                resolved.timeout,
+            ))
+        });
+    }
+    if let Some(api_key) = &resolved.api_key {
+        return Ok(Arc::new(WebSocketJsonRpcTransport::new(
+            websocket_url(legacy_endpoint, api_key, legacy_path)?,
+            resolved.timeout,
+        )));
+    }
+    Ok(Arc::new(WebSocketJsonRpcTransport::unavailable(
+        namespace,
+        resolved.timeout,
+    )))
 }
 
 fn avalanche_index_transports(
@@ -125,10 +185,11 @@ fn avalanche_index_transports(
     client: &reqwest::Client,
 ) -> avalanche::AvalancheIndexTransports {
     let index_transport = |path| {
-        rpc_transport(
+        legacy_rpc_transport(
             resolved,
             endpoint_with_path(&resolved.avalanche_endpoint, path),
             client,
+            "avalanche.index",
         )
     };
     avalanche::AvalancheIndexTransports {
@@ -160,62 +221,113 @@ pub struct ErpcClient {
 
 impl ErpcClient {
     /// Creates a client after validating all configuration.
+    #[allow(clippy::too_many_lines)]
     pub fn new(config: ErpcClientConfig) -> Result<Self> {
         let resolved = ResolvedErpcClientConfig::try_from(config)?;
         let http = ResolvedErpcClientConfig::http_client()?;
-        let solana_transport = rpc_transport(&resolved, resolved.endpoint.clone(), &http);
-        let ethereum_transport = rpc_transport(
-            &resolved,
-            endpoint_with_path(&resolved.endpoint, "/eth"),
-            &http,
+        let direct_http = ResolvedErpcClientConfig::direct_http_client()?;
+        let solana_transport = resolved.solana_rpc.as_ref().map_or_else(
+            || legacy_rpc_transport(&resolved, resolved.endpoint.clone(), &http, "solana.rpc"),
+            |endpoint| direct_rpc_transport(endpoint, &direct_http, "solana.rpc", resolved.timeout),
         );
-        let avalanche_transport = rpc_transport(
+        let ethereum_transport = resolved.ethereum_rpc.as_ref().map_or_else(
+            || {
+                legacy_rpc_transport(
+                    &resolved,
+                    endpoint_with_path(&resolved.endpoint, "/eth"),
+                    &http,
+                    "ethereum.rpc",
+                )
+            },
+            |endpoint| {
+                direct_rpc_transport(endpoint, &direct_http, "ethereum.rpc", resolved.timeout)
+            },
+        );
+        let avalanche_c_transport = resolved.avalanche_c_rpc.as_ref().map_or_else(
+            || {
+                legacy_rpc_transport(
+                    &resolved,
+                    endpoint_with_path(&resolved.avalanche_endpoint, "/ava"),
+                    &http,
+                    "avalanche.rpc",
+                )
+            },
+            |endpoint| {
+                direct_rpc_transport(endpoint, &direct_http, "avalanche.rpc", resolved.timeout)
+            },
+        );
+        let avalanche_native_transport = legacy_rpc_transport(
             &resolved,
             endpoint_with_path(&resolved.avalanche_endpoint, "/ava"),
             &http,
+            "avalanche.native",
         );
         let avalanche_index = avalanche_index_transports(&resolved, &http);
-        let solana_ws = Arc::new(WebSocketJsonRpcTransport::new(
-            websocket_url(&resolved.endpoint, &resolved.api_key, "")?,
-            resolved.timeout,
-        ));
-        let ethereum_ws = Arc::new(WebSocketJsonRpcTransport::new(
-            websocket_url(&resolved.endpoint, &resolved.api_key, "/eth")?,
-            resolved.timeout,
-        ));
-        let avalanche_ws = Arc::new(WebSocketJsonRpcTransport::new(
-            websocket_url(&resolved.avalanche_endpoint, &resolved.api_key, "/ava-ws")?,
-            resolved.timeout,
-        ));
-        let shared_rest = RestTransport::new(
-            resolved.api_key.clone(),
-            resolved.endpoint,
-            resolved.headers.clone(),
-            resolved.timeout,
-            http.clone(),
-        );
-        let account_rest = RestTransport::new(
-            resolved.api_key.clone(),
-            resolved.account_endpoint,
-            resolved.headers.clone(),
-            resolved.timeout,
-            http.clone(),
-        );
-        let user_rest = RestTransport::new(
-            resolved.api_key,
-            resolved.user_endpoint,
-            resolved.headers,
-            resolved.timeout,
-            http,
-        );
+        let solana_ws = websocket_transport(
+            &resolved,
+            resolved.solana_rpc.as_ref(),
+            &resolved.endpoint,
+            "",
+            "solana.subscriptions",
+        )?;
+        let ethereum_ws = websocket_transport(
+            &resolved,
+            resolved.ethereum_rpc.as_ref(),
+            &resolved.endpoint,
+            "/eth",
+            "ethereum.subscriptions",
+        )?;
+        let avalanche_ws = websocket_transport(
+            &resolved,
+            resolved.avalanche_c_rpc.as_ref(),
+            &resolved.avalanche_endpoint,
+            "/ava-ws",
+            "avalanche.subscriptions",
+        )?;
+        let (shared_rest, account_rest, user_rest) = if let Some(api_key) = &resolved.api_key {
+            (
+                RestTransport::new(
+                    api_key.clone(),
+                    resolved.endpoint.clone(),
+                    resolved.headers.clone(),
+                    resolved.timeout,
+                    http.clone(),
+                ),
+                RestTransport::new(
+                    api_key.clone(),
+                    resolved.account_endpoint.clone(),
+                    resolved.headers.clone(),
+                    resolved.timeout,
+                    http.clone(),
+                ),
+                RestTransport::new(
+                    api_key.clone(),
+                    resolved.user_endpoint.clone(),
+                    resolved.headers.clone(),
+                    resolved.timeout,
+                    http.clone(),
+                ),
+            )
+        } else {
+            (
+                RestTransport::unavailable("price", resolved.timeout, http.clone()),
+                RestTransport::unavailable("account", resolved.timeout, http.clone()),
+                RestTransport::unavailable("usage", resolved.timeout, http.clone()),
+            )
+        };
         let swap = SwapClient::new(
             Arc::clone(&ethereum_transport),
-            Arc::clone(&avalanche_transport),
+            Arc::clone(&avalanche_c_transport),
         );
 
         Ok(Self {
             account: AccountClient::new(account_rest),
-            avalanche: AvalancheClient::new(avalanche_transport, avalanche_ws, avalanche_index),
+            avalanche: AvalancheClient::new(
+                &avalanche_c_transport,
+                avalanche_native_transport,
+                avalanche_ws,
+                avalanche_index,
+            ),
             ethereum: EthereumClient::new(ethereum_transport, ethereum_ws),
             price: PriceClient::new(shared_rest),
             solana: SolanaClient::new(solana_transport, solana_ws),

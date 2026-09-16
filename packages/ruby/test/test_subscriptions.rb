@@ -38,6 +38,59 @@ class FakeSocketConnection
 end
 
 class SubscriptionsTest < Minitest::Test
+  def test_direct_subscription_without_websocket_url_fails_locally_even_with_key
+    calls = 0
+    factory = lambda do |*|
+      calls += 1
+      raise "direct subscription should not derive a shared socket"
+    end
+    erpc = ERPC::Client.new(
+      ERPC::ClientConfig.new(
+        api_key: "shared-key",
+        ethereum_rpc: ERPC::RpcEndpointConfig.new(http_url: "https://customer.example/rpc")
+      ),
+      websocket_factory: factory
+    )
+
+    error = assert_raises(ERPC::NotConfiguredError) do
+      erpc.ethereum.subscriptions.subscribe("newHeads")
+    end
+    assert_equal "ethereum.subscriptions", error.namespace
+    assert_equal 0, calls
+  ensure
+    erpc&.close
+  end
+
+  def test_direct_subscription_uses_the_explicit_websocket_target_without_api_key
+    connection = FakeSocketConnection.new
+    captured_url = nil
+    factory = lambda do |url, _timeout|
+      captured_url = url
+      connection
+    end
+    erpc = ERPC::Client.new(
+      ERPC::ClientConfig.new(
+        api_key: "shared-key",
+        ethereum_rpc: ERPC::RpcEndpointConfig.new(
+          http_url: "https://customer.example/rpc",
+          websocket_url: "wss://ws.customer.example/socket?token=a%2Fb",
+          headers: {
+            "authorization" => "Bearer http-only-secret",
+            "x-http-only" => "http-only"
+          }
+        )
+      ),
+      websocket_factory: factory
+    )
+
+    subscription = erpc.ethereum.subscriptions.subscribe("newHeads")
+    assert_equal "wss://ws.customer.example/socket?token=a%2Fb", captured_url
+    refute_includes captured_url, "api-key"
+    subscription.unsubscribe
+  ensure
+    erpc&.close
+  end
+
   def test_solana_routes_notifications_and_unsubscribes_once
     transport = FakeWebSocketTransport.new(7)
     subscriptions = ERPC::SolanaSubscriptions.new(transport)

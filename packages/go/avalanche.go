@@ -46,6 +46,9 @@ func (n *AvalancheRPCNamespace) Raw(ctx context.Context, method string, params a
 
 // Batch rejects native API batches locally. Only C-Chain EVM calls support batching.
 func (n *AvalancheRPCNamespace) Batch(ctx context.Context, calls []BatchCall) ([]json.RawMessage, error) {
+	if err := n.transport.ensureConfigured(); err != nil {
+		return nil, err
+	}
 	if len(calls) != 0 {
 		return nil, sdkError(ErrorBatchPolicy, "Avalanche native RPC methods do not support batching")
 	}
@@ -76,15 +79,30 @@ func newAvalancheClient(
 	transport *httpRPCTransport,
 	ws *webSocketTransport,
 	index *AvalancheIndexClient,
+	nativeTransport ...*httpRPCTransport,
 ) *AvalancheClient {
+	native := transport
+	if len(nativeTransport) > 0 && nativeTransport[0] != nil {
+		native = nativeTransport[0]
+	}
 	return &AvalancheClient{
 		RPC:           &EthereumRPCClient{RPCNamespace: &RPCNamespace{transport: transport, policy: batchAny}},
-		AVAX:          newAvalancheRPCNamespace(transport, "avax", AvalancheAVAXMethods),
-		XChain:        newAvalancheRPCNamespace(transport, "avm", AvalancheXChainMethods),
-		PChain:        newAvalancheRPCNamespace(transport, "platform", AvalanchePChainMethods),
-		ProposerVM:    newAvalancheRPCNamespace(transport, "proposervm", AvalancheProposerVMMethods),
-		Info:          newAvalancheRPCNamespace(transport, "info", AvalancheInfoMethods),
+		AVAX:          newAvalancheRPCNamespace(native, "avax", AvalancheAVAXMethods),
+		XChain:        newAvalancheRPCNamespace(native, "avm", AvalancheXChainMethods),
+		PChain:        newAvalancheRPCNamespace(native, "platform", AvalanchePChainMethods),
+		ProposerVM:    newAvalancheRPCNamespace(native, "proposervm", AvalancheProposerVMMethods),
+		Info:          newAvalancheRPCNamespace(native, "info", AvalancheInfoMethods),
 		Index:         index,
 		Subscriptions: &EthereumSubscriptions{transport: ws},
 	}
+}
+
+func newUnavailableAvalancheNamespace(
+	config resolvedConfig,
+	namespace, methodPrefix string,
+	methods []string,
+) *AvalancheRPCNamespace {
+	return newAvalancheRPCNamespace(
+		newUnavailableHTTPRPCTransport(config, namespace), methodPrefix, methods,
+	)
 }

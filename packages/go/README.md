@@ -54,6 +54,40 @@ func main() {
 Every network method accepts `context.Context`. HTTP calls are attempted once;
 transaction submission and other state-changing calls are never retried.
 
+## Caller-owned RPC endpoints (unreleased source checkout)
+
+Supply a complete HTTP request target for any chain. A direct endpoint can be
+used without an eRPC API key; its path and query are sent unchanged. The URL
+is the final RPC target: direct HTTP requests do not follow redirects.
+Direct HTTP also ignores the supplied `http.Client` cookie jar; add any
+intentional `Cookie` value to `RPCEndpointConfig.Headers`.
+
+These direct RPC examples describe the unreleased source checkout and are not
+included in published 0.7.0.
+
+```go
+client, err := erpc.NewClient(erpc.Config{
+	EthereumRPC: &erpc.RPCEndpointConfig{
+		HTTPURL: "https://node.example/customer/path?token=a%2Fb&region=eu",
+	},
+})
+```
+
+Subscriptions require a separate complete WebSocket target. Endpoint-scoped
+headers apply only to that chain's direct HTTP requests.
+
+```go
+// import "net/http"
+
+client, err := erpc.NewClient(erpc.Config{
+	SolanaRPC: &erpc.RPCEndpointConfig{
+		HTTPURL:      "https://solana.example/rpc",
+		WebSocketURL: "wss://solana.example/socket",
+		Headers:      http.Header{"Authorization": {"Bearer node-token"}},
+	},
+})
+```
+
 For Solana transaction v1 options, response fields, and large base64
 transaction forwarding, see the [Solana transaction v1 guide](https://github.com/elsoul/erpc-sdk/blob/main/packages/typescript/docs/solana-v1.md).
 
@@ -249,9 +283,10 @@ headers, two code values, five `eth_call` values, and one snapshot-block
 reread. It only returns a quote; transaction building, signing, broadcasting,
 native wrapping, routing, and bridging are separate capabilities.
 
-The DEX catalog is present in the source tree for the next unreleased SDK
-version. Published package versions remain unchanged until the release
-preparation process approves the catalog and quote implementation.
+The reviewed DEX and swap exports described above are included in published
+0.7.0. Quote capability remains limited to the reviewed Ethereum Uniswap V2
+USDC/WETH and Avalanche LFJ legacy WAVAX/USDC pools; catalog growth does not
+grant quote capability.
 
 ## License
 

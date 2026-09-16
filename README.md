@@ -25,17 +25,18 @@ analytics, subscriptions, and account balance information.
 
 | Language | Package | Status |
 | --- | --- | --- |
-| TypeScript | [`@elsoul/erpc-sdk`](https://www.npmjs.com/package/@elsoul/erpc-sdk) | Published 0.6.0 |
-| Rust | [`erpc-sdk`](https://crates.io/crates/erpc-sdk) | Published 0.6.0 |
-| Python | [`erpc-sdk`](https://pypi.org/project/erpc-sdk/) | Published 0.6.0 |
-| Go | [`github.com/elsoul/erpc-sdk/packages/go`](https://pkg.go.dev/github.com/elsoul/erpc-sdk/packages/go) | Published 0.6.0 |
-| Ruby | [`erpc-sdk`](https://rubygems.org/gems/erpc-sdk) | Published 0.6.0 |
+| TypeScript | [`@elsoul/erpc-sdk`](https://www.npmjs.com/package/@elsoul/erpc-sdk) | Published 0.7.0 |
+| Rust | [`erpc-sdk`](https://crates.io/crates/erpc-sdk) | Published 0.7.0 |
+| Python | [`erpc-sdk`](https://pypi.org/project/erpc-sdk/) | Published 0.7.0 |
+| Go | [`github.com/elsoul/erpc-sdk/packages/go`](https://pkg.go.dev/github.com/elsoul/erpc-sdk/packages/go) | Published 0.7.0 |
+| Ruby | [`erpc-sdk`](https://rubygems.org/gems/erpc-sdk) | Published 0.7.0 |
 
-The current published package baseline, [latest GitHub release](https://github.com/elsoul/erpc-sdk/releases/latest),
-and package manifests remain `0.6.0`. The source checkout contains the
-bounded token, DEX, pool, ranking, and RPC-only quote implementation planned
-for the unreleased `0.7.0` package. Installing the current published package
-does not provide these new exports yet.
+The current published package baseline and package manifests are `0.7.0` across
+all five SDKs. The [GitHub `v0.7.0` release](https://github.com/elsoul/erpc-sdk/releases/tag/v0.7.0)
+is the current release record.
+The bounded token, DEX, pool, ranking, and RPC-only quote implementation is
+included in `0.7.0`. Direct RPC endpoint configuration is unreleased and is
+not included in the published `0.7.0` packages.
 
 ## Install
 
@@ -66,7 +67,7 @@ python -m pip install erpc-sdk
 Go:
 
 ```bash
-go get github.com/elsoul/erpc-sdk/packages/go@v0.6.0
+go get github.com/elsoul/erpc-sdk/packages/go@v0.7.0
 ```
 
 Ruby:
@@ -79,6 +80,57 @@ See the package guides for [TypeScript](packages/typescript/README.md),
 [Rust](packages/rust/README.md), [Python](packages/python/README.md),
 [Go](packages/go/README.md), and [Ruby](packages/ruby/README.md). Minimum
 versions are Rust 1.85, Python 3.11, Go 1.22, and Ruby 3.1.
+
+## Direct RPC endpoints
+
+The unreleased direct RPC configuration in the source checkout lets a caller
+route selected chain JSON-RPC traffic to a dedicated node without an eRPC API
+key. It is not included in the published `0.7.0` packages.
+
+```ts
+import { createErpcClient } from '@elsoul/erpc-sdk'
+
+const erpc = createErpcClient({
+  solanaRpc: {
+    httpUrl: 'https://solana.example/customer/path?region=eu',
+  },
+})
+
+const slot = await erpc.solana.rpc.getSlot().send()
+erpc.close()
+```
+
+`solanaRpc`, `ethereumRpc`, and `avalancheCRpc` select direct Solana,
+Ethereum, and Avalanche C-Chain JSON-RPC transports. The supplied `httpUrl` is
+the complete final HTTP request target: its path and query are preserved
+exactly, no eRPC route or `api-key` is appended, and direct HTTP requests do
+not follow redirects.
+
+An optional independent `webSocketUrl` enables subscriptions; it is never
+derived from `httpUrl`, and a missing URL does not fall back to eRPC. Scoped
+`headers` apply only to the direct HTTP JSON-RPC requests:
+
+```ts
+import { createErpcClient, type RpcEndpointConfig } from '@elsoul/erpc-sdk'
+
+const ethereumRpc: RpcEndpointConfig = {
+  httpUrl: 'https://ethereum.example/rpc',
+  webSocketUrl: 'wss://ethereum.example/socket',
+  headers: { authorization: 'Bearer node-token' },
+}
+const erpc = createErpcClient({ ethereumRpc })
+```
+
+In keyless mode, non-overridden chains, eRPC REST, native, and index services,
+and direct subscriptions without `webSocketUrl` fail locally with
+`ERPC_NOT_CONFIGURED` before network I/O. Supply an eRPC API key when those
+non-overridden eRPC services are needed. `avalancheCRpc` covers C-Chain RPC,
+C-Chain subscriptions, and existing Avalanche swap quotes; native AVAX,
+P/X/proposer VM/Info, and index services remain eRPC-backed.
+
+See the language-specific direct RPC guides for [TypeScript](packages/typescript/README.md),
+[Rust](packages/rust/README.md), [Python](packages/python/README.md),
+[Go](packages/go/README.md), and [Ruby](packages/ruby/README.md).
 
 ## Offline token catalog
 
@@ -129,9 +181,7 @@ All five SDKs expose the corresponding offline list/lookup APIs and catalog
 metadata; they do not call a runtime vendor service, RPC endpoint, or current
 clock for these reads.
 
-These catalog and quote exports are planned for the unreleased `0.7.0`
-package. Until that release is published, `npm install @elsoul/erpc-sdk`
-resolves to the published `0.6.0` package and its exports do not include them.
+These catalog and quote exports are included in the published `0.7.0` package.
 
 ## DEX catalog and RPC-only quotes
 

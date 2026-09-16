@@ -34,7 +34,13 @@ type RPCNamespace struct {
 }
 
 // Endpoint returns the public endpoint without credentials, query, or fragment.
-func (n *RPCNamespace) Endpoint() string { return n.transport.endpoint.String() }
+func (n *RPCNamespace) Endpoint() string { return n.transport.publicEndpoint }
+
+func (n *RPCNamespace) String() string {
+	return fmt.Sprintf("RPCNamespace{Endpoint:%q}", n.Endpoint())
+}
+
+func (n *RPCNamespace) GoString() string { return n.String() }
 
 // Request executes one JSON-RPC call and decodes its result into result.
 func (n *RPCNamespace) Request(ctx context.Context, method string, params any, result any) error {
@@ -80,13 +86,17 @@ func (r *PendingRequest[T]) Send(ctx context.Context) (T, error) {
 }
 
 type httpRPCTransport struct {
-	apiKey   string
-	endpoint *url.URL
-	headers  http.Header
-	timeout  time.Duration
-	client   *http.Client
-	nextID   atomic.Uint64
-	maxBatch int
+	apiKey               string
+	endpoint             *url.URL
+	publicEndpoint       string
+	headers              http.Header
+	timeout              time.Duration
+	client               *http.Client
+	direct               bool
+	unavailableNamespace string
+	redactionVariants    []string
+	nextID               atomic.Uint64
+	maxBatch             int
 }
 
 type wireRequest struct {
@@ -111,16 +121,67 @@ type rpcErrorObject struct {
 
 func newHTTPRPCTransport(config resolvedConfig, endpoint *url.URL) *httpRPCTransport {
 	t := &httpRPCTransport{
-		apiKey: config.apiKey, endpoint: endpoint, headers: config.headers.Clone(),
-		timeout: config.timeout, client: config.httpClient, maxBatch: 256,
+		apiKey: config.apiKey, endpoint: cloneURL(endpoint), publicEndpoint: publicEndpointURL(endpoint),
+		headers: config.headers.Clone(), timeout: config.timeout, client: config.httpClient,
+		maxBatch: 256,
 	}
 	t.nextID.Store(0)
 	return t
 }
 
+func newDirectHTTPRPCTransport(config resolvedConfig, endpoint *resolvedRPCEndpointConfig) *httpRPCTransport {
+	t := &httpRPCTransport{
+		endpoint: cloneURL(endpoint.httpURL), publicEndpoint: publicEndpointURL(endpoint.httpURL),
+		headers: endpoint.headers.Clone(), timeout: config.timeout, client: noRedirectHTTPClient(config.httpClient),
+		direct: true, redactionVariants: append([]string(nil), endpoint.redactionVariants...), maxBatch: 256,
+	}
+	t.nextID.Store(0)
+	return t
+}
+
+func noRedirectHTTPClient(client *http.Client) *http.Client {
+	if client == nil {
+		return &http.Client{
+			CheckRedirect: func(*http.Request, []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		}
+	}
+	copy := *client
+	copy.CheckRedirect = func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
+	// A direct endpoint is the complete caller-selected target. Do not let a
+	// supplied jar add ambient cookies to that target or to a redirect target;
+	// explicit Cookie headers remain on the request itself.
+	copy.Jar = nil
+	return &copy
+}
+
+func newUnavailableHTTPRPCTransport(config resolvedConfig, namespace string) *httpRPCTransport {
+	endpoint := unavailableEndpoint(namespace)
+	t := &httpRPCTransport{
+		endpoint: endpoint, publicEndpoint: endpoint.String(), timeout: config.timeout,
+		client: config.httpClient, unavailableNamespace: namespace, maxBatch: 256,
+	}
+	t.nextID.Store(0)
+	return t
+}
+
+func cloneURL(endpoint *url.URL) *url.URL {
+	if endpoint == nil {
+		return nil
+	}
+	copy := *endpoint
+	return &copy
+}
+
 func (t *httpRPCTransport) id() uint64 { return t.nextID.Add(1) }
 
 func (t *httpRPCTransport) request(ctx context.Context, method string, params, result any) error {
+	if err := t.ensureConfigured(); err != nil {
+		return err
+	}
 	id := t.id()
 	var response wireResponse
 	if err := t.post(ctx, wireRequest{JSONRPC: "2.0", ID: id, Method: method, Params: params}, &response); err != nil {
@@ -142,6 +203,9 @@ func (t *httpRPCTransport) request(ctx context.Context, method string, params, r
 }
 
 func (t *httpRPCTransport) batch(ctx context.Context, calls []BatchCall) ([]json.RawMessage, error) {
+	if err := t.ensureConfigured(); err != nil {
+		return nil, err
+	}
 	if len(calls) == 0 {
 		return []json.RawMessage{}, nil
 	}
@@ -188,14 +252,19 @@ func (t *httpRPCTransport) batch(ctx context.Context, calls []BatchCall) ([]json
 }
 
 func (t *httpRPCTransport) post(ctx context.Context, body, destination any) error {
+	if err := t.ensureConfigured(); err != nil {
+		return err
+	}
 	payload, err := json.Marshal(body)
 	if err != nil {
 		return sdkError(ErrorConfig, "RPC parameters could not be serialized")
 	}
 	u := *t.endpoint
-	query := u.Query()
-	query.Set("api-key", t.apiKey)
-	u.RawQuery = query.Encode()
+	if !t.direct {
+		query := u.Query()
+		query.Set("api-key", t.apiKey)
+		u.RawQuery = query.Encode()
+	}
 	requestContext, cancel := context.WithTimeout(ctx, t.timeout)
 	defer cancel()
 	request, err := http.NewRequestWithContext(requestContext, http.MethodPost, u.String(), bytes.NewReader(payload))
@@ -204,6 +273,9 @@ func (t *httpRPCTransport) post(ctx context.Context, body, destination any) erro
 	}
 	request.Header = t.headers.Clone()
 	request.Header.Set("Content-Type", "application/json")
+	if t.direct {
+		request.Header.Set("Accept", "application/json")
+	}
 	response, err := t.client.Do(request)
 	if err != nil {
 		if requestContext.Err() != nil {
@@ -223,12 +295,29 @@ func (t *httpRPCTransport) post(ctx context.Context, body, destination any) erro
 }
 
 func (t *httpRPCTransport) rpcError(value *rpcErrorObject) error {
+	variants := t.redactionVariants
+	if !t.direct {
+		variants = credentialVariants(t.apiKey)
+	}
 	return &Error{
 		Kind: ErrorRPC, Code: value.Code,
-		Message: redactCredential(value.Message, t.apiKey),
-		Data:    redactJSON(value.Data, t.apiKey),
+		Message: redactString(value.Message, variants),
+		Data:    redactJSONWithVariants(value.Data, variants),
 	}
 }
+
+func (t *httpRPCTransport) ensureConfigured() error {
+	if t.unavailableNamespace != "" {
+		return notConfiguredError(t.unavailableNamespace)
+	}
+	return nil
+}
+
+func (t *httpRPCTransport) String() string {
+	return fmt.Sprintf("HTTPRPCTransport{Endpoint:%q}", t.publicEndpoint)
+}
+
+func (t *httpRPCTransport) GoString() string { return t.String() }
 
 func validateSolanaBatch(calls []BatchCall) error {
 	heavy := map[string]bool{

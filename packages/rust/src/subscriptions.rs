@@ -10,7 +10,7 @@ use url::Url;
 
 use crate::{
     ErpcError, JsonRpcErrorObject, Result,
-    error::{invalid_response, rpc_error, timeout},
+    error::{invalid_response, rpc_error_with_secrets, timeout},
 };
 
 /// JSON-RPC subscription identifier.
@@ -39,12 +39,14 @@ type PendingMap = Arc<Mutex<HashMap<u64, oneshot::Sender<Result<Value>>>>>;
 pub(crate) struct WebSocketJsonRpcTransport {
     connection_url: Url,
     public_endpoint: String,
-    credential: String,
+    redaction_secrets: Vec<String>,
     timeout: Duration,
     next_id: std::sync::atomic::AtomicU64,
     outbound: Mutex<Option<mpsc::UnboundedSender<Message>>>,
     pending: PendingMap,
     notifications: broadcast::Sender<RpcNotification>,
+    configured: bool,
+    namespace: String,
 }
 
 impl WebSocketJsonRpcTransport {
@@ -53,19 +55,64 @@ impl WebSocketJsonRpcTransport {
             .query_pairs()
             .find_map(|(key, value)| (key == "api-key").then(|| value.into_owned()))
             .unwrap_or_default();
+        let redaction_secrets = (!credential.is_empty())
+            .then_some(vec![credential])
+            .unwrap_or_default();
+        Self::from_parts(
+            connection_url,
+            redaction_secrets,
+            timeout,
+            "subscriptions",
+            true,
+        )
+    }
+
+    pub(crate) fn new_direct(
+        connection_url: Url,
+        redaction_secrets: Vec<String>,
+        timeout: Duration,
+        namespace: impl Into<String>,
+    ) -> Self {
+        Self::from_parts(connection_url, redaction_secrets, timeout, namespace, true)
+    }
+
+    pub(crate) fn unavailable(namespace: impl Into<String>, timeout: Duration) -> Self {
+        Self::from_parts(
+            Url::parse("ws://127.0.0.1/").expect("static unavailable endpoint"),
+            Vec::new(),
+            timeout,
+            namespace,
+            false,
+        )
+    }
+
+    fn from_parts(
+        connection_url: Url,
+        redaction_secrets: Vec<String>,
+        timeout: Duration,
+        namespace: impl Into<String>,
+        configured: bool,
+    ) -> Self {
         let mut public = connection_url.clone();
         public.set_query(None);
         public.set_fragment(None);
+        let public_endpoint = if configured {
+            public.to_string()
+        } else {
+            String::new()
+        };
         let (notifications, _) = broadcast::channel(256);
         Self {
             connection_url,
-            public_endpoint: public.to_string(),
-            credential,
+            public_endpoint,
+            redaction_secrets,
             timeout,
             next_id: std::sync::atomic::AtomicU64::new(1),
             outbound: Mutex::new(None),
             pending: Arc::new(Mutex::new(HashMap::new())),
             notifications,
+            configured,
+            namespace: namespace.into(),
         }
     }
 
@@ -74,6 +121,7 @@ impl WebSocketJsonRpcTransport {
     }
 
     async fn connect(&self) -> Result<mpsc::UnboundedSender<Message>> {
+        self.ensure_configured()?;
         let mut outbound = self.outbound.lock().await;
         if let Some(sender) = outbound.as_ref() {
             if !sender.is_closed() {
@@ -108,7 +156,7 @@ impl WebSocketJsonRpcTransport {
 
         let pending_for_reader = Arc::clone(&self.pending);
         let notifications = self.notifications.clone();
-        let credential = self.credential.clone();
+        let redaction_secrets = self.redaction_secrets.clone();
         tokio::spawn(async move {
             while let Some(message) = stream.next().await {
                 let Ok(message) = message else { break };
@@ -123,10 +171,22 @@ impl WebSocketJsonRpcTransport {
                 };
                 if let Value::Array(values) = value {
                     for value in values {
-                        dispatch(value, &pending_for_reader, &notifications, &credential).await;
+                        dispatch(
+                            value,
+                            &pending_for_reader,
+                            &notifications,
+                            &redaction_secrets,
+                        )
+                        .await;
                     }
                 } else {
-                    dispatch(value, &pending_for_reader, &notifications, &credential).await;
+                    dispatch(
+                        value,
+                        &pending_for_reader,
+                        &notifications,
+                        &redaction_secrets,
+                    )
+                    .await;
                 }
             }
             let mut pending = pending_for_reader.lock().await;
@@ -192,13 +252,21 @@ impl WebSocketJsonRpcTransport {
             let _ = sender.send(Message::Close(None));
         }
     }
+
+    fn ensure_configured(&self) -> Result<()> {
+        if self.configured {
+            Ok(())
+        } else {
+            Err(ErpcError::NotConfigured(self.namespace.clone()))
+        }
+    }
 }
 
 async fn dispatch(
     value: Value,
     pending: &PendingMap,
     notifications: &broadcast::Sender<RpcNotification>,
-    credential: &str,
+    redaction_secrets: &[String],
 ) {
     let Some(object) = value.as_object() else {
         return;
@@ -210,7 +278,7 @@ async fn dispatch(
         if let Some(error) = object.get("error") {
             let result = serde_json::from_value::<JsonRpcErrorObject>(error.clone()).map_or_else(
                 |_| Err(invalid_response("ERPC returned an invalid RPC error")),
-                |error| Err(rpc_error(error, credential)),
+                |error| Err(rpc_error_with_secrets(error, redaction_secrets)),
             );
             let _ = response.send(result);
         } else if let Some(result) = object.get("result") {

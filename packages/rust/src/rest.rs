@@ -16,6 +16,8 @@ pub(crate) struct RestTransport {
     headers: HeaderMap,
     timeout: Duration,
     client: Client,
+    configured: bool,
+    namespace: String,
 }
 
 impl RestTransport {
@@ -32,6 +34,20 @@ impl RestTransport {
             headers,
             timeout,
             client,
+            configured: true,
+            namespace: "REST".to_owned(),
+        }
+    }
+
+    pub fn unavailable(namespace: impl Into<String>, timeout: Duration, client: Client) -> Self {
+        Self {
+            api_key: String::new(),
+            endpoint: Url::parse("http://127.0.0.1/").expect("static unavailable endpoint"),
+            headers: HeaderMap::new(),
+            timeout,
+            client,
+            configured: false,
+            namespace: namespace.into(),
         }
     }
 
@@ -73,6 +89,9 @@ impl RestTransport {
     }
 
     async fn send(&self, path: &str, query: Query) -> Result<Response> {
+        if !self.configured {
+            return Err(ErpcError::NotConfigured(self.namespace.clone()));
+        }
         let url = self.url(path, &query);
         let response = self
             .client

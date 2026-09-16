@@ -42,8 +42,9 @@ type goQuoteFixtureCase struct {
 }
 
 type goCapturedRPCRequest struct {
-	Method string
-	Params []any
+	Method   string
+	Params   []any
+	Endpoint string
 }
 
 func TestSwapExactInputQuoteReadsConsistentSnapshot(t *testing.T) {
@@ -93,6 +94,72 @@ func TestSwapExactInputQuoteReadsConsistentSnapshot(t *testing.T) {
 	}
 	if err := client.Close(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestSwapQuotesUseSelectedDirectEthereumAndAvalancheRPC(t *testing.T) {
+	fixture := loadGoQuoteFixture(t)
+	cases := []struct {
+		name       string
+		fixture    goQuoteFixtureCase
+		configure  func(*Config, *RPCEndpointConfig)
+		wrongChain string
+	}{
+		{
+			name:    "ethereum",
+			fixture: fixture.ValidCases[0],
+			configure: func(config *Config, endpoint *RPCEndpointConfig) {
+				config.EthereumRPC = endpoint
+			},
+			wrongChain: TokenChainAvalancheCMainnet,
+		},
+		{
+			name:    "avalanche c-chain",
+			fixture: fixture.ValidCases[2],
+			configure: func(config *Config, endpoint *RPCEndpointConfig) {
+				config.AvalancheCRPC = endpoint
+			},
+			wrongChain: TokenChainEthereumMainnet,
+		},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			requests := make([]goCapturedRPCRequest, 0, len(testCase.fixture.RPCResponses))
+			server := newGoFixtureRPCServer(t, testCase.fixture.RPCResponses, &requests)
+			defer server.Close()
+			directPath := "/customer/path?token=a%2Fb&region=eu"
+			endpoint := &RPCEndpointConfig{HTTPURL: server.URL + directPath}
+			config := Config{}
+			testCase.configure(&config, endpoint)
+			client, err := NewClient(config)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer client.Close()
+			client.Swap.clock = func() int64 { return testCase.fixture.NowSeconds }
+
+			request := goRequestFromFixture(t, testCase.fixture.Request)
+			if _, err := client.Swap.QuoteExactInput(context.Background(), request); err != nil {
+				t.Fatal(err)
+			}
+			if len(requests) != 11 {
+				t.Fatalf("RPC request count = %d, want 11", len(requests))
+			}
+			for index, captured := range requests {
+				if captured.Endpoint != directPath {
+					t.Fatalf("request %d endpoint = %q, want %q", index, captured.Endpoint, directPath)
+				}
+			}
+			request.ChainID = testCase.wrongChain
+			_, err = client.Swap.QuoteExactInput(context.Background(), request)
+			var quoteErr *SwapQuoteError
+			if !errors.As(err, &quoteErr) || quoteErr.Code != SwapQuoteChainMismatch {
+				t.Fatalf("wrong-chain error = %#v", err)
+			}
+			if len(requests) != 11 {
+				t.Fatalf("wrong-chain request count = %d, want 11", len(requests))
+			}
+		})
 	}
 }
 
@@ -285,7 +352,9 @@ func newGoFixtureRPCServer(t *testing.T, responses []any, captured *[]goCaptured
 			t.Errorf("decode request: %v", err)
 			return
 		}
-		*captured = append(*captured, goCapturedRPCRequest{Method: request.Method, Params: request.Params})
+		*captured = append(*captured, goCapturedRPCRequest{
+			Method: request.Method, Params: request.Params, Endpoint: r.URL.RequestURI(),
+		})
 		if index >= len(responses) {
 			t.Errorf("request %d (%s) has no fixture response", index, request.Method)
 			return

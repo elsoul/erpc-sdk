@@ -297,16 +297,17 @@ export interface AvalancheIndexTransports {
 export const createAvalancheClient = (
   transport: HttpJsonRpcTransport,
   indexTransports: AvalancheIndexTransports,
+  nativeTransport: HttpJsonRpcTransport = transport,
 ): AvalancheClient => ({
   ...createEthereumClient(transport),
-  avax: nativeNamespace<AvalancheAvaxSchema>(transport, 'avax'),
-  xChain: nativeNamespace<AvalancheXChainSchema>(transport, 'avm'),
-  pChain: nativeNamespace<AvalanchePChainSchema>(transport, 'platform'),
+  avax: nativeNamespace<AvalancheAvaxSchema>(nativeTransport, 'avax'),
+  xChain: nativeNamespace<AvalancheXChainSchema>(nativeTransport, 'avm'),
+  pChain: nativeNamespace<AvalanchePChainSchema>(nativeTransport, 'platform'),
   proposerVm: nativeNamespace<AvalancheProposerVmSchema>(
-    transport,
+    nativeTransport,
     'proposervm',
   ),
-  info: nativeNamespace<AvalancheInfoSchema>(transport, 'info'),
+  info: nativeNamespace<AvalancheInfoSchema>(nativeTransport, 'info'),
   index: {
     cChainBlocks: nativeNamespace<AvalancheIndexSchema>(
       indexTransports.cChainBlocks,

@@ -5,8 +5,9 @@ mod support;
 use std::time::Duration;
 
 use erpc_sdk::{
-    CancellationToken, ErpcCloudClient, ErpcCloudClientConfig, ErpcError, MonthlyApiKeyUsageParams,
-    PriceStreamOptions, PriceUpdateOptions,
+    CancellationToken, ErpcClient, ErpcClientConfig, ErpcCloudClient, ErpcCloudClientConfig,
+    ErpcError, ErpcErrorCode, MonthlyApiKeyUsageParams, PriceStreamOptions, PriceUpdateOptions,
+    RpcEndpointConfig,
 };
 use futures_util::StreamExt;
 use serde_json::json;
@@ -16,6 +17,23 @@ use wiremock::{
 };
 
 use support::delayed_body_server;
+
+#[tokio::test]
+async fn keyless_unavailable_price_stream_fails_without_io() {
+    let server = MockServer::start().await;
+    let client = ErpcClient::new(
+        ErpcClientConfig::for_rpc().with_solana_rpc(RpcEndpointConfig::new(server.uri())),
+    )
+    .unwrap();
+    let error = client
+        .price
+        .stream_price_updates(&PriceStreamOptions::default(), None)
+        .await
+        .err()
+        .expect("unavailable price stream");
+    assert_eq!(error.code(), ErpcErrorCode::NotConfigured);
+    assert!(server.received_requests().await.unwrap().is_empty());
+}
 
 #[tokio::test]
 async fn cloud_catalog_is_validated_and_uses_access_token() {

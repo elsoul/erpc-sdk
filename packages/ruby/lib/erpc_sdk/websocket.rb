@@ -22,6 +22,10 @@ module ERPC
       connect
     end
 
+    def inspect
+      "#<#{self.class} endpoint=#{URLs.public_endpoint(@uri).inspect}>"
+    end
+
     def write_text(text)
       write_frame(0x1, text.b)
     end
@@ -84,13 +88,13 @@ module ERPC
       handshake
     rescue ::Timeout::Error
       tcp&.close
-      raise TimeoutError, @timeout
+      raise TimeoutError, @timeout, cause: nil
     rescue ConfigError, TimeoutError
       tcp&.close
       raise
     rescue IOError, EOFError, SocketError, SystemCallError, OpenSSL::SSL::SSLError
       tcp&.close
-      raise TransportError, "Unable to reach ERPC WebSocket"
+      raise TransportError, "Unable to reach ERPC WebSocket", cause: nil
     end
 
     def handshake
@@ -123,7 +127,7 @@ module ERPC
         raise TransportError, "ERPC returned an invalid WebSocket upgrade"
       end
     rescue ::Timeout::Error
-      raise TimeoutError, @timeout
+      raise TimeoutError, @timeout, cause: nil
     end
 
     def read_until(delimiter, limit)
@@ -176,16 +180,16 @@ module ERPC
         Timeout.timeout(@timeout) { @socket.write(prefix + mask + masked) }
       end
     rescue ::Timeout::Error
-      raise TimeoutError, @timeout
+      raise TimeoutError, @timeout, cause: nil
     rescue IOError, EOFError, SocketError, SystemCallError, OpenSSL::SSL::SSLError
-      raise TransportError, "Unable to reach ERPC WebSocket"
+      raise TransportError, "Unable to reach ERPC WebSocket", cause: nil
     end
 
     def read_exact(length)
       value = +"".b
       while value.bytesize < length
         ready = IO.select([@socket], nil, nil, @timeout)
-        raise TimeoutError, @timeout unless ready
+        raise TimeoutError, @timeout, cause: nil unless ready
 
         chunk = @socket.readpartial(length - value.bytesize)
         raise EOFError if chunk.empty?
@@ -194,7 +198,7 @@ module ERPC
       end
       value
     rescue EOFError, IOError, SocketError, SystemCallError, OpenSSL::SSL::SSLError
-      raise TransportError, "ERPC WebSocket connection closed"
+      raise TransportError, "ERPC WebSocket connection closed", cause: nil
     end
 
     def secure_compare(left, right)
@@ -205,10 +209,17 @@ module ERPC
   end
 
   class WebSocketJsonRpcTransport
-    def initialize(connection_url, credential, timeout, connection_factory: nil)
+    attr_reader :endpoint
+
+    def initialize(connection_url, credential, timeout, connection_factory: nil, direct: false,
+                   redactions: [], unavailable_namespace: nil)
       @connection_url = connection_url
       @credential = credential
       @timeout = timeout
+      @direct = direct
+      @redactions = redactions
+      @unavailable_namespace = unavailable_namespace
+      @endpoint = URLs.public_endpoint(connection_url)
       @connection_factory = connection_factory || ->(url, seconds) { WebSocketConnection.new(url, seconds) }
       @mutex = Mutex.new
       @connection = nil
@@ -218,6 +229,10 @@ module ERPC
       @next_id = 0
       @next_listener_id = 0
       @closed = false
+    end
+
+    def inspect
+      "#<#{self.class} endpoint=#{endpoint.inspect}>"
     end
 
     def request(method, params = nil)
@@ -233,7 +248,7 @@ module ERPC
 
       unwrap(response, request_id)
     rescue ::Timeout::Error
-      raise TimeoutError, @timeout
+      raise TimeoutError, @timeout, cause: nil
     ensure
       @mutex.synchronize { @pending.delete(request_id) } if request_id
     end
@@ -268,6 +283,7 @@ module ERPC
     private
 
     def ensure_connection
+      ensure_configured
       @mutex.synchronize do
         raise TransportError, "WebSocket transport is closed" if @closed
         return @connection if @connection
@@ -302,7 +318,7 @@ module ERPC
       end
     rescue StandardError => error
       @mutex.synchronize { @connection = nil if @connection.equal?(connection) }
-      fail_pending(TransportError.new(Redaction.text(error.message, @credential)))
+      fail_pending(TransportError.new(Redaction.text(error.message, redaction_credentials)))
     end
 
     def fail_pending(error)
@@ -319,13 +335,25 @@ module ERPC
         unless error.is_a?(Hash) && error["code"].is_a?(Integer) && error["message"].is_a?(String)
           raise InvalidResponseError, "ERPC returned an invalid RPC error"
         end
-        data = error.key?("data") ? Redaction.value(error["data"], @credential) : nil
-        raise JsonRpcError.new(error["code"], Redaction.text(error["message"], @credential), data)
+        credentials = redaction_credentials
+        data = error.key?("data") ? Redaction.value(error["data"], credentials) : nil
+        raise JsonRpcError.new(error["code"], Redaction.text(error["message"], credentials), data)
       end
       raise InvalidResponseError, "ERPC returned an invalid WebSocket response" unless response.key?("result")
 
       response["result"]
     end
+
+    def ensure_configured
+      return if @unavailable_namespace.nil?
+
+      raise NotConfiguredError, @unavailable_namespace
+    end
+
+    def redaction_credentials
+      @direct ? @redactions : @credential
+    end
+
   end
 
   class RpcSubscription
@@ -355,7 +383,7 @@ module ERPC
 
       Timeout.timeout(timeout) { @queue.pop }
     rescue ::Timeout::Error
-      raise TimeoutError, timeout
+      raise TimeoutError, timeout, cause: nil
     end
 
     def unsubscribe
@@ -370,6 +398,10 @@ module ERPC
   class SubscriptionsBase
     def initialize(transport)
       @transport = transport
+    end
+
+    def endpoint
+      @transport.endpoint
     end
 
     def on_notification(listener = nil, &block)

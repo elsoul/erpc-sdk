@@ -46,6 +46,7 @@ interface RpcRequest {
 }
 
 interface MockRpcOptions {
+  readonly chain?: 'avalancheC' | 'ethereum'
   readonly now?: number
   readonly latestTimestamp?: number
   readonly secondLatestHash?: string
@@ -86,7 +87,8 @@ const mockRpcFetch = (
       throw new Error('upstream transport detail')
     }
 
-    const isAvalanche = String(input).includes('/ava')
+    const isAvalanche = options.chain === 'avalancheC' ||
+      (options.chain === undefined && String(input).includes('/ava'))
     const factory = isAvalanche
       ? '0x9ad6c38be94206ca50bb0d90783181662f0cfa10'
       : ETH_FACTORY
@@ -756,6 +758,77 @@ describe('RPC-only swap quotes', () => {
     })
     expect(requests).toHaveLength(11)
     client.close()
+  })
+
+  it('uses a keyless direct Ethereum endpoint for every quote read', async () => {
+    const requests: RpcRequest[] = []
+    const urls: string[] = []
+    const directUrl = 'https://customer.example/customer/path?token=a%2Fb&region=eu'
+    const now = Math.floor(Date.now() / 1000)
+    const rpcFetch = mockRpcFetch(requests, { now, chain: 'ethereum' })
+    const client = createErpcClient({
+      ethereumRpc: { httpUrl: directUrl },
+      fetch: async (input, init) => {
+        urls.push(String(input))
+        return rpcFetch(input, init)
+      },
+    })
+
+    await expect(client.swap.quoteExactInput(ethereumRequest())).resolves.toMatchObject({
+      amountOut: '2393866186',
+      chainId: DEX_CHAIN_IDS.ethereum,
+    })
+    expect(requests).toHaveLength(11)
+    expect(urls).toHaveLength(11)
+    expect(new Set(urls)).toEqual(new Set([directUrl]))
+    expect(urls.every((url) => !url.includes('api-key='))).toBe(true)
+    client.close()
+  })
+
+  it('uses a keyless direct Avalanche C endpoint for every quote read and preserves chain mismatch', async () => {
+    const requests: RpcRequest[] = []
+    const urls: string[] = []
+    const directUrl = 'https://customer.example/customer/path?token=a%2Fb&region=eu'
+    const now = Math.floor(Date.now() / 1000)
+    const rpcFetch = mockRpcFetch(requests, { now, chain: 'avalancheC' })
+    const client = createErpcClient({
+      avalancheCRpc: { httpUrl: directUrl },
+      fetch: async (input, init) => {
+        urls.push(String(input))
+        return rpcFetch(input, init)
+      },
+    })
+
+    await expect(client.swap.quoteExactInput({
+      chainId: AVALANCHE_CHAIN_ID,
+      poolDefinitionId: 'pool-0002',
+      inputTokenDeploymentId: 'deployment-0004',
+      outputTokenDeploymentId: 'deployment-0009',
+      amountIn: '1000000000000000000',
+    })).resolves.toMatchObject({
+      amountOut: '7329527',
+      chainId: AVALANCHE_CHAIN_ID,
+    })
+    expect(requests).toHaveLength(11)
+    expect(urls).toHaveLength(11)
+    expect(new Set(urls)).toEqual(new Set([directUrl]))
+    expect(urls.every((url) => !url.includes('api-key='))).toBe(true)
+    client.close()
+
+    const mismatchRequests: RpcRequest[] = []
+    const mismatchFetch = mockRpcFetch(mismatchRequests, {
+      now,
+      chain: 'avalancheC',
+    })
+    const mismatchClient = createErpcClient({
+      ethereumRpc: { httpUrl: directUrl },
+      fetch: mismatchFetch,
+    })
+    await expect(
+      mismatchClient.swap.quoteExactInput(ethereumRequest()),
+    ).rejects.toMatchObject({ code: 'SWAP_CHAIN_MISMATCH' })
+    expect(mismatchRequests).toHaveLength(1)
+    mismatchClient.close()
   })
 
   it('snapshots request scalars before awaiting RPC and freezes the result', async () => {
