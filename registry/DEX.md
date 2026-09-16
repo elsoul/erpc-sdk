@@ -6,7 +6,7 @@ native/wrapped relationships, and aliases used by the five SDKs. The source is
 provenance and are removed from generated package data. Runtime records retain
 the catalog version, global as-of date, and SHA-256 content digest.
 
-The 2026-09-16 local integration contains 12 pool definitions and 16 DEX
+The initial reviewed 2026-09-16 local integration contains 12 pool definitions and 16 DEX
 aliases. The candidate DEX digest is
 `a0268a45d2b037ab8ea35aad1c45366d2582cbc9b10681ded590b56e07b011c8`; raw
 pool observations and the local review are linked from
