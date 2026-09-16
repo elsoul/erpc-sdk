@@ -2,11 +2,11 @@
   "schemaVersion": 1,
   "kind": "approved-release-preparation-plan",
   "planId": "erpc-sdk-0.7.0-weekly-maintenance",
-  "basisSha": "30c30d121422210d755c99c045d74b471e7d837f",
-  "basisSHA": "30c30d121422210d755c99c045d74b471e7d837f",
-  "approvedSourceSha": "30c30d121422210d755c99c045d74b471e7d837f",
+  "basisSha": "38e0d27d5dbc852ae7518d5d4e1d622abbcbbd36",
+  "basisSHA": "38e0d27d5dbc852ae7518d5d4e1d622abbcbbd36",
+  "approvedSourceSha": "38e0d27d5dbc852ae7518d5d4e1d622abbcbbd36",
   "version": "0.7.0",
-  "sourceSha": "30c30d121422210d755c99c045d74b471e7d837f",
+  "sourceSha": "38e0d27d5dbc852ae7518d5d4e1d622abbcbbd36",
   "baselineVersion": "0.6.0",
   "targetVersion": "0.7.0",
   "pairedBaselineTags": [
@@ -20,18 +20,18 @@
     }
   ],
   "approvedNotes": [
-    "Add an offline token catalog to all five SDKs, covering 39 assets and 60 deployments on Ethereum, Solana, and Avalanche C-Chain.",
+    "Add an offline token catalog to all five SDKs, covering 44 assets and 65 deployments across Ethereum, Solana, and Avalanche C-Chain, including five address-only unclassified tokens.",
     "Add shared asset and deployment lookups, chain and currency filters, address and symbol searches, alias constants, and lifecycle metadata backed by deterministic generated data.",
-    "Add an offline DEX and pool catalog to all five SDKs, with four DEX deployments, four pools, three explicit native-wrap definitions, shared lookups, and alias constants.",
-    "Add RPC-only, local exact-input quotes for Ethereum Uniswap V2 WETH/USDC and Avalanche C-Chain LFJ Joe V1 WAVAX/USDC; Solana Orca and Raydium pools remain lookup-only.",
-    "Use Rust num-bigint 0.5.1 with explicit uint256 bounds for quote arithmetic, and update the workspace-locked rustls dependency to 0.23.45."
+    "Keep RPC-only, local exact-input quotes for the two reviewed seed EVM pairs: Ethereum Uniswap V2 WETH/USDC and Avalanche C-Chain LFJ Joe V1 WAVAX/USDC; newly discovered pools do not enable quote support.",
+    "Add a shared offline ranking snapshot with 11 rows and partial onchain-total-supply-value-native coverage, using total supply times direct native pool price rather than circulating market cap; add bounded RPC-only discovery with eight-token/eight-pool caps and fresh revalidation.",
+    "Run daily maintenance PRs, hourly 32-pool rotation, and weekly guarded release preparation with opt-in exact-CI/protected-main gates; preserve Rust num-bigint 0.5.1 and rustls 0.23.45 as approved changes."
   ],
   "notes": [
-    "Add an offline token catalog to all five SDKs, covering 39 assets and 60 deployments on Ethereum, Solana, and Avalanche C-Chain.",
+    "Add an offline token catalog to all five SDKs, covering 44 assets and 65 deployments across Ethereum, Solana, and Avalanche C-Chain, including five address-only unclassified tokens.",
     "Add shared asset and deployment lookups, chain and currency filters, address and symbol searches, alias constants, and lifecycle metadata backed by deterministic generated data.",
-    "Add an offline DEX and pool catalog to all five SDKs, with four DEX deployments, four pools, three explicit native-wrap definitions, shared lookups, and alias constants.",
-    "Add RPC-only, local exact-input quotes for Ethereum Uniswap V2 WETH/USDC and Avalanche C-Chain LFJ Joe V1 WAVAX/USDC; Solana Orca and Raydium pools remain lookup-only.",
-    "Use Rust num-bigint 0.5.1 with explicit uint256 bounds for quote arithmetic, and update the workspace-locked rustls dependency to 0.23.45."
+    "Keep RPC-only, local exact-input quotes for the two reviewed seed EVM pairs: Ethereum Uniswap V2 WETH/USDC and Avalanche C-Chain LFJ Joe V1 WAVAX/USDC; newly discovered pools do not enable quote support.",
+    "Add a shared offline ranking snapshot with 11 rows and partial onchain-total-supply-value-native coverage, using total supply times direct native pool price rather than circulating market cap; add bounded RPC-only discovery with eight-token/eight-pool caps and fresh revalidation.",
+    "Run daily maintenance PRs, hourly 32-pool rotation, and weekly guarded release preparation with opt-in exact-CI/protected-main gates; preserve Rust num-bigint 0.5.1 and rustls 0.23.45 as approved changes."
   ],
   "packageChangeProvenanceGuard": {
     "unexpectedPackageCodeChangesInvalidatePlan": true,
@@ -75,7 +75,7 @@
   "authority": {
     "review": "L1-approved preparation plan; create a reviewable PR without automatic approval, merge, tag, or release",
     "publication": "human-approved future operation",
-    "asOfDate": "2026-09-15"
+    "asOfDate": "2026-09-16"
   },
   "dataPromotion": {
     "enabled": true,
