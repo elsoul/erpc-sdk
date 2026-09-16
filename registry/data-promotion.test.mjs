@@ -21,6 +21,8 @@ import { OUTPUTS as RANKING_OUTPUTS, renderLanguage as renderRankingLanguage } f
 import {
   DATA_ARTIFACT_FILENAMES,
   CANDIDATE_OUTPUT_PATHS,
+  DATA_BRANCH,
+  LEGACY_OBSERVER_OUTPUT_PATHS,
   observationEnvelope,
   collectMaintenanceObservation,
   replayMaintenanceObservation,
@@ -29,8 +31,10 @@ import {
   verifyDataCi,
   verifyMergedCandidate,
   expectedCandidateChangedPaths,
+  computeOutputDigest,
   executionFromEnvironment,
   run,
+  writeDataMaintenancePr,
 } from "./data-promotion.mjs";
 
 const FIXTURES = JSON.parse(readFileSync(new URL("./fixtures/data-promotion-cases.json", import.meta.url), "utf8"));
@@ -387,6 +391,133 @@ function emptyTestOnlyReplayOptions() {
     replayPool: () => [],
     replayRanking: (raw, { tokenCatalog: candidateTokenCatalog }) => replayTokenRankings({ candidates: [], unranked: [], provenance: [] }, { tokenCatalog: candidateTokenCatalog }),
   };
+}
+
+function workflowObservation(observation, runId = 201) {
+  const result = structuredClone(observation);
+  result.execution = { origin: "workflow_dispatch", githubRunId: runId, githubRunAttempt: 1 };
+  return result;
+}
+
+function managedDataMetadata(candidate, baseSha, headSha) {
+  return {
+    managedBy: "erpc-sdk-data-maintenance",
+    branch: DATA_BRANCH,
+    baseSha,
+    expectedSourceSha: baseSha,
+    parentSha: baseSha,
+    headSha,
+    semanticFingerprint: candidate.semanticFingerprint,
+    outputDigest: candidate.outputDigest,
+    contentDigest: computeOutputDigest(candidate.files),
+    actualOutputDigest: candidate.outputDigest,
+    actualContentDigest: computeOutputDigest(candidate.files),
+    outputPaths: [...CANDIDATE_OUTPUT_PATHS],
+  };
+}
+
+function legacyFiles() {
+  return Object.fromEntries(LEGACY_OBSERVER_OUTPUT_PATHS.map((pathValue) => [pathValue, pathValue.endsWith(".md") ? "# legacy review\n" : "{}\n"]));
+}
+
+function legacyMetadata({ branchSha, baseSha, files = legacyFiles(), outputDigest = "1".repeat(64), contentDigest = computeOutputDigest(files), managedBy = "erpc-sdk-weekly-maintenance", branch = DATA_BRANCH, sourceSha = baseSha, parentSha = baseSha } = {}) {
+  return {
+    managedBy,
+    branch,
+    baseSha,
+    expectedSourceSha: sourceSha,
+    parentSha,
+    headSha: branchSha,
+    semanticFingerprint: "2".repeat(64),
+    outputDigest,
+    contentDigest,
+    actualOutputDigest: outputDigest,
+    actualContentDigest: contentDigest,
+    outputPaths: [...LEGACY_OBSERVER_OUTPUT_PATHS],
+  };
+}
+
+function pullForLegacy({ branchSha, baseSha, mergeSha, repository = "elsoul/erpc-sdk", state = "closed", merged = true, mergedAt = "2026-09-15T18:18:39Z" } = {}) {
+  return {
+    number: 12,
+    state,
+    merged,
+    mergedAt,
+    headRefName: DATA_BRANCH,
+    baseRefName: "main",
+    headRefOid: branchSha,
+    baseRefOid: baseSha,
+    headRepository: { nameWithOwner: repository },
+    baseRepository: { nameWithOwner: repository },
+    mergeCommit: { oid: mergeSha },
+  };
+}
+
+function makeWriterAdapter({ candidate, branchSha = null, metadata = null, branchFiles = candidate.files, pullRequests = [], oldBaseAncestors = new Set(), mergeAncestors = new Set(), commitSha = "e".repeat(40), treeSha = "f".repeat(40), mainSha = candidate.baseSha, changedPaths = [...candidate.outputPaths], mainRace = false, casConflict = false } = {}) {
+  const calls = [];
+  let head = branchSha;
+  let files = branchFiles;
+  let committed = false;
+  const selectFiles = (source, paths) => Object.fromEntries(paths.map((pathValue) => [pathValue, source[pathValue]]));
+  const adapter = {
+    calls,
+    async getMainSha() {
+      calls.push(["getMainSha", committed && mainRace ? "raced" : mainSha]);
+      return committed && mainRace ? "9".repeat(40) : mainSha;
+    },
+    async getBranch() {
+      calls.push(["getBranch"]);
+      return head === null ? null : { sha: head, metadata };
+    },
+    async isAncestor(ancestor, descendant) {
+      calls.push(["isAncestor", ancestor, descendant]);
+      if (oldBaseAncestors.has(`${ancestor}\0${descendant}`) || mergeAncestors.has(`${ancestor}\0${descendant}`)) return true;
+      return ancestor === descendant;
+    },
+    async getChangedPaths(_branch, { baseSha }) {
+      calls.push(["getChangedPaths", baseSha]);
+      return metadata?.managedBy === "erpc-sdk-weekly-maintenance" && baseSha === metadata.baseSha ? [...metadata.outputPaths] : [...changedPaths];
+    },
+    async getBaseFiles(_baseSha, paths) {
+      calls.push(["getBaseFiles", _baseSha, [...paths]]);
+      return Object.fromEntries(paths.map((pathValue) => [pathValue, null]));
+    },
+    async getBranchFiles(_branch, paths, { headSha } = {}) {
+      calls.push(["getBranchFiles", headSha, [...paths]]);
+      return selectFiles(committed ? candidate.files : files, paths);
+    },
+    async commitFiles(input) {
+      calls.push(["commitFiles", input]);
+      if (casConflict || input.expectedOldSha !== head) throw Object.assign(new Error("compare-and-swap conflict"), { code: "CAS_CONFLICT" });
+      assert.equal(input.parentSha, candidate.baseSha);
+      assert.equal(input.baseSha, candidate.baseSha);
+      head = commitSha;
+      files = candidate.files;
+      committed = true;
+      return { sha: commitSha, tree: { sha: treeSha } };
+    },
+    async listPullRequests() {
+      calls.push(["listPullRequests"]);
+      return pullRequests;
+    },
+    async updatePullRequest(number, input) {
+      calls.push(["updatePullRequest", number, input]);
+      return { number, state: "open" };
+    },
+    async createPullRequest(input) {
+      calls.push(["createPullRequest", input]);
+      return { number: 99, state: "open" };
+    },
+    async dispatchWorkflow(input) {
+      calls.push(["dispatchWorkflow", input]);
+      return { id: 501 };
+    },
+    async verifyWorkflowRunHead() {
+      calls.push(["verifyWorkflowRunHead"]);
+      return { id: 501, head_sha: head, head_branch: DATA_BRANCH };
+    },
+  };
+  return adapter;
 }
 
 test("fixture inventory covers positive and adversarial M2 contracts", () => {
@@ -830,6 +961,160 @@ test("managed PR, exact CI, and merge controller complete a mocked positive flow
   assert.equal(promoted.mergeSha, mergeSha);
   assert.ok(calls.includes("dispatch"));
   assert.ok(calls.indexOf("commit-read") < calls.indexOf("merge"));
+});
+
+test("existing M2 branch on the same base is idempotent and does not recommit", async () => {
+  const base = makeObservation();
+  const candidate = replayMaintenanceObservation(base, { root: process.cwd(), config: discoveryConfig, rankingConfig });
+  const branchSha = "a".repeat(40);
+  const metadata = managedDataMetadata(candidate, candidate.baseSha, branchSha);
+  const adapter = makeWriterAdapter({
+    candidate,
+    branchSha,
+    metadata,
+    pullRequests: [{ number: 88, state: "open", head: { ref: DATA_BRANCH }, base: { ref: "main" } }],
+  });
+  const result = await writeDataMaintenancePr({ candidate, observation: workflowObservation(base), adapter, repo: "elsoul/erpc-sdk", apply: true });
+  assert.equal(result.status, "UPDATED");
+  assert.equal(adapter.calls.filter((entry) => entry[0] === "commitFiles").length, 0);
+  assert.equal(adapter.calls.filter((entry) => entry[0] === "updatePullRequest").length, 1);
+});
+
+test("existing M2 branch refreshes from an ancestor base with a CAS against its old head", async () => {
+  const base = makeObservation();
+  const candidate = replayMaintenanceObservation(base, { root: process.cwd(), config: discoveryConfig, rankingConfig });
+  const oldBaseSha = "c3d0de8d1f4d77a96eb6a169290ed096ad2a2645";
+  const branchSha = "b".repeat(40);
+  const metadata = managedDataMetadata(candidate, oldBaseSha, branchSha);
+  const adapter = makeWriterAdapter({
+    candidate,
+    branchSha,
+    metadata,
+    oldBaseAncestors: new Set([`${oldBaseSha}\0${candidate.baseSha}`]),
+    pullRequests: [{ number: 89, state: "open", head: { ref: DATA_BRANCH }, base: { ref: "main" } }],
+  });
+  const result = await writeDataMaintenancePr({ candidate, observation: workflowObservation(base, 202), adapter, repo: "elsoul/erpc-sdk", apply: true });
+  assert.equal(result.status, "UPDATED");
+  const commit = adapter.calls.find((entry) => entry[0] === "commitFiles");
+  assert.ok(commit);
+  assert.equal(commit[1].expectedOldSha, branchSha);
+  assert.equal(commit[1].parentSha, candidate.baseSha);
+  assert.equal(commit[1].baseSha, candidate.baseSha);
+  assert.ok(adapter.calls.some((entry) => entry[0] === "isAncestor" && entry[1] === oldBaseSha && entry[2] === candidate.baseSha));
+});
+
+test("authentic legacy maintenance PR handoff accepts a squash merge and writes a fresh M2 candidate", async () => {
+  const base = makeObservation();
+  const candidate = replayMaintenanceObservation(base, { root: process.cwd(), config: discoveryConfig, rankingConfig });
+  const oldBaseSha = "c3d0de8d1f4d77a96eb6a169290ed096ad2a2645";
+  const legacyHeadSha = "df756e950aa14b6ec80012e57be6e35bd43587f4";
+  const legacyMergeSha = "75f01b3ed2e3d9749d3f4fd7f4faf60e89562da1";
+  const files = legacyFiles();
+  const metadata = legacyMetadata({ branchSha: legacyHeadSha, baseSha: oldBaseSha, files });
+  const pull = pullForLegacy({ branchSha: legacyHeadSha, baseSha: oldBaseSha, mergeSha: legacyMergeSha });
+  const adapter = makeWriterAdapter({
+    candidate,
+    branchSha: legacyHeadSha,
+    metadata,
+    branchFiles: files,
+    pullRequests: [pull],
+    oldBaseAncestors: new Set([`${oldBaseSha}\0${candidate.baseSha}`]),
+    mergeAncestors: new Set([`${legacyMergeSha}\0${candidate.baseSha}`]),
+  });
+  const result = await writeDataMaintenancePr({ candidate, observation: workflowObservation(base, 203), adapter, repo: "elsoul/erpc-sdk", apply: true });
+  assert.equal(result.status, "CREATED");
+  const commit = adapter.calls.find((entry) => entry[0] === "commitFiles");
+  assert.ok(commit);
+  assert.equal(commit[1].expectedOldSha, legacyHeadSha);
+  assert.equal(commit[1].parentSha, candidate.baseSha);
+  assert.equal(commit[1].baseSha, candidate.baseSha);
+  assert.ok(adapter.calls.some((entry) => entry[0] === "createPullRequest"));
+  assert.deepEqual(adapter.calls.filter((entry) => entry[0] === "isAncestor").map((entry) => entry.slice(1)), [[oldBaseSha, candidate.baseSha], [legacyMergeSha, candidate.baseSha]]);
+});
+
+test("legacy handoff rejects open or unmerged history, wrong repositories, and forged bytes", async () => {
+  const base = makeObservation();
+  const candidate = replayMaintenanceObservation(base, { root: process.cwd(), config: discoveryConfig, rankingConfig });
+  const oldBaseSha = "c3d0de8d1f4d77a96eb6a169290ed096ad2a2645";
+  const legacyHeadSha = "df756e950aa14b6ec80012e57be6e35bd43587f4";
+  const legacyMergeSha = "75f01b3ed2e3d9749d3f4fd7f4faf60e89562da1";
+  const files = legacyFiles();
+  const cases = [
+    { name: "open", pull: pullForLegacy({ branchSha: legacyHeadSha, baseSha: oldBaseSha, mergeSha: legacyMergeSha, state: "open", merged: false, mergedAt: null }) },
+    { name: "unmerged", pull: pullForLegacy({ branchSha: legacyHeadSha, baseSha: oldBaseSha, mergeSha: legacyMergeSha, state: "closed", merged: false, mergedAt: null }) },
+    { name: "wrong repository", pull: pullForLegacy({ branchSha: legacyHeadSha, baseSha: oldBaseSha, mergeSha: legacyMergeSha, repository: "attacker/repo" }) },
+    { name: "wrong branch", metadata: legacyMetadata({ branchSha: legacyHeadSha, baseSha: oldBaseSha, files, branch: "other-branch" }), pull: pullForLegacy({ branchSha: legacyHeadSha, baseSha: oldBaseSha, mergeSha: legacyMergeSha }) },
+    { name: "missing source", metadata: (() => { const value = legacyMetadata({ branchSha: legacyHeadSha, baseSha: oldBaseSha, files }); delete value.expectedSourceSha; return value; })(), pull: pullForLegacy({ branchSha: legacyHeadSha, baseSha: oldBaseSha, mergeSha: legacyMergeSha }) },
+    { name: "forged bytes", metadata: legacyMetadata({ branchSha: legacyHeadSha, baseSha: oldBaseSha, files, contentDigest: "0".repeat(64), actualContentDigest: "0".repeat(64) }), pull: pullForLegacy({ branchSha: legacyHeadSha, baseSha: oldBaseSha, mergeSha: legacyMergeSha }) },
+  ];
+  for (const [index, scenario] of cases.entries()) {
+    const metadata = scenario.metadata ?? legacyMetadata({ branchSha: legacyHeadSha, baseSha: oldBaseSha, files });
+    const adapter = makeWriterAdapter({
+      candidate,
+      branchSha: legacyHeadSha,
+      metadata,
+      branchFiles: files,
+      pullRequests: [scenario.pull],
+      oldBaseAncestors: new Set([`${oldBaseSha}\0${candidate.baseSha}`]),
+      mergeAncestors: new Set([`${legacyMergeSha}\0${candidate.baseSha}`]),
+    });
+    await assert.rejects(() => writeDataMaintenancePr({ candidate, observation: workflowObservation(base, 210 + index), adapter, repo: "elsoul/erpc-sdk", apply: true }), /legacy|repository|digest|open|source|branch/u, scenario.name);
+    assert.equal(adapter.calls.filter((entry) => entry[0] === "commitFiles").length, 0, scenario.name);
+  }
+});
+
+test("M2 and legacy ancestry proofs plus branch CAS remain mandatory", async () => {
+  const base = makeObservation();
+  const candidate = replayMaintenanceObservation(base, { root: process.cwd(), config: discoveryConfig, rankingConfig });
+  const oldBaseSha = "c3d0de8d1f4d77a96eb6a169290ed096ad2a2645";
+  const legacyHeadSha = "df756e950aa14b6ec80012e57be6e35bd43587f4";
+  const legacyMergeSha = "75f01b3ed2e3d9749d3f4fd7f4faf60e89562da1";
+  const files = legacyFiles();
+  const pull = pullForLegacy({ branchSha: legacyHeadSha, baseSha: oldBaseSha, mergeSha: legacyMergeSha });
+  const noBaseAncestor = makeWriterAdapter({
+    candidate,
+    branchSha: legacyHeadSha,
+    metadata: legacyMetadata({ branchSha: legacyHeadSha, baseSha: oldBaseSha, files }),
+    branchFiles: files,
+    pullRequests: [pull],
+    mergeAncestors: new Set([`${legacyMergeSha}\0${candidate.baseSha}`]),
+  });
+  await assert.rejects(() => writeDataMaintenancePr({ candidate, observation: workflowObservation(base, 220), adapter: noBaseAncestor, repo: "elsoul/erpc-sdk", apply: true }), /ancestor/u);
+
+  const noMergeAncestor = makeWriterAdapter({
+    candidate,
+    branchSha: legacyHeadSha,
+    metadata: legacyMetadata({ branchSha: legacyHeadSha, baseSha: oldBaseSha, files }),
+    branchFiles: files,
+    pullRequests: [pull],
+    oldBaseAncestors: new Set([`${oldBaseSha}\0${candidate.baseSha}`]),
+  });
+  await assert.rejects(() => writeDataMaintenancePr({ candidate, observation: workflowObservation(base, 221), adapter: noMergeAncestor, repo: "elsoul/erpc-sdk", apply: true }), /ancestor/u);
+
+  const noM2Ancestor = makeWriterAdapter({
+    candidate,
+    branchSha: "b".repeat(40),
+    metadata: managedDataMetadata(candidate, oldBaseSha, "b".repeat(40)),
+  });
+  await assert.rejects(() => writeDataMaintenancePr({ candidate, observation: workflowObservation(base, 222), adapter: noM2Ancestor, repo: "elsoul/erpc-sdk", apply: true }), /ancestor/u);
+
+  const forgedM2Metadata = managedDataMetadata(candidate, candidate.baseSha, "b".repeat(40));
+  forgedM2Metadata.outputDigest = "0".repeat(64);
+  forgedM2Metadata.actualOutputDigest = "0".repeat(64);
+  const forgedM2 = makeWriterAdapter({ candidate, branchSha: "b".repeat(40), metadata: forgedM2Metadata });
+  await assert.rejects(() => writeDataMaintenancePr({ candidate, observation: workflowObservation(base, 224), adapter: forgedM2, repo: "elsoul/erpc-sdk", apply: true }), /digest/u);
+
+  const cas = makeWriterAdapter({
+    candidate,
+    branchSha: legacyHeadSha,
+    metadata: legacyMetadata({ branchSha: legacyHeadSha, baseSha: oldBaseSha, files }),
+    branchFiles: files,
+    pullRequests: [pull],
+    oldBaseAncestors: new Set([`${oldBaseSha}\0${candidate.baseSha}`]),
+    mergeAncestors: new Set([`${legacyMergeSha}\0${candidate.baseSha}`]),
+    casConflict: true,
+  });
+  await assert.rejects(() => writeDataMaintenancePr({ candidate, observation: workflowObservation(base, 225), adapter: cas, repo: "elsoul/erpc-sdk", apply: true }), { code: "CAS_CONFLICT" });
 });
 
 test("rank-only promotion accepts the actual six-file Git diff", async () => {

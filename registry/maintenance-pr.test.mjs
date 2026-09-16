@@ -381,6 +381,114 @@ else process.stdout.write(JSON.stringify({}));
   return scriptPath;
 }
 
+test("real gh adapter uses bounded REST PR reads and immutable compare ancestry", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "erpc-maintenance-gh-rest-"));
+  try {
+    const logPath = join(directory, "gh.jsonl");
+    const ancestor = "a".repeat(40);
+    const descendant = "b".repeat(40);
+    const merge = "c".repeat(40);
+    const scriptPath = join(directory, "gh");
+    writeFileSync(scriptPath, `#!/usr/bin/env node
+const { appendFileSync } = require("node:fs");
+const args = process.argv.slice(2);
+const path = args[0] === "api" ? args[1] : "";
+if (process.env.FAKE_GH_LOG) appendFileSync(process.env.FAKE_GH_LOG, JSON.stringify({ args }) + "\\n");
+const ancestor = ${JSON.stringify(ancestor)};
+const descendant = ${JSON.stringify(descendant)};
+const merge = ${JSON.stringify(merge)};
+const repository = { full_name: "owner/repo", nameWithOwner: "owner/repo" };
+const pullRequest = {
+  number: 17,
+  state: "closed",
+  title: "managed",
+  body: "managed body",
+  merged_at: "2026-09-16T12:00:00Z",
+  head: { ref: "${BOT_BRANCH}", sha: descendant, repo: repository },
+  base: { ref: "main", sha: ancestor, repo: repository },
+};
+const listedPullRequest = {
+  ...pullRequest,
+  number: 18,
+};
+if (args[0] === "pr" && args[1] === "view") process.stdout.write(JSON.stringify({
+  number: Number(args[2]),
+  headRefOid: descendant,
+  baseRefOid: ancestor,
+  headRefName: "${BOT_BRANCH}",
+  baseRefName: "main",
+  mergeCommit: { oid: merge },
+  mergedAt: "2026-09-16T12:00:00Z",
+}));
+else if (path === "/repos/owner/repo/pulls/17") process.stdout.write(JSON.stringify(pullRequest));
+else if (path.startsWith("/repos/owner/repo/pulls?")) process.stdout.write(JSON.stringify([listedPullRequest]));
+else if (path.includes("/compare/")) {
+  process.stdout.write(JSON.stringify({
+    base_commit: { sha: process.env.FAKE_COMPARE_BASE ?? ancestor },
+    merge_base_commit: { sha: process.env.FAKE_COMPARE_MERGE_BASE ?? ancestor },
+    head_commit: { sha: process.env.FAKE_COMPARE_HEAD ?? descendant },
+    status: process.env.FAKE_COMPARE_STATUS ?? "ahead",
+    repository,
+  }));
+} else process.stdout.write(JSON.stringify({}));
+`);
+    chmodSync(scriptPath, 0o755);
+    const env = { ...process.env, PATH: `${directory}:${process.env.PATH}`, FAKE_GH_LOG: logPath };
+    const adapter = createGhAdapter({ repo: "owner/repo", root: directory, env });
+
+    const pullRequest = await adapter.getPullRequest(17);
+    assert.equal(pullRequest.number, 17);
+    assert.equal(pullRequest.headRefName, BOT_BRANCH);
+    assert.equal(pullRequest.headRefOid, descendant);
+    assert.equal(pullRequest.baseRefName, "main");
+    assert.equal(pullRequest.baseRefOid, ancestor);
+    assert.equal(pullRequest.head.repo.full_name, "owner/repo");
+    assert.equal(pullRequest.base.repo.nameWithOwner, "owner/repo");
+    assert.equal(pullRequest.merged, true);
+    assert.equal(pullRequest.mergedAt, "2026-09-16T12:00:00Z");
+    assert.deepEqual(pullRequest.mergeCommit, { oid: merge });
+    assert.equal(pullRequest.merge_commit_sha, merge);
+
+    const listed = await adapter.listPullRequests({ head: BOT_BRANCH, base: "main", state: "all" });
+    assert.equal(listed.length, 1);
+    assert.equal(listed[0].number, 18);
+    assert.equal(listed[0].headRefOid, descendant);
+    assert.equal(listed[0].baseRefOid, ancestor);
+    assert.equal(listed[0].merged, true);
+    assert.equal(listed[0].mergedAt, "2026-09-16T12:00:00Z");
+    assert.deepEqual(listed[0].mergeCommit, { oid: merge });
+    assert.equal(listed[0].merge_commit_sha, merge);
+    assert.equal(listed[0].head.repo.full_name, "owner/repo");
+    assert.equal(listed[0].base.repo.full_name, "owner/repo");
+
+    assert.equal(await adapter.isAncestor(ancestor, descendant), true);
+    env.FAKE_COMPARE_STATUS = "identical";
+    env.FAKE_COMPARE_HEAD = ancestor;
+    assert.equal(await adapter.isAncestor(ancestor, ancestor), true);
+    env.FAKE_COMPARE_STATUS = "behind";
+    env.FAKE_COMPARE_HEAD = descendant;
+    assert.equal(await adapter.isAncestor(ancestor, descendant), false);
+    env.FAKE_COMPARE_BASE = "d".repeat(40);
+    await assert.rejects(() => adapter.isAncestor(ancestor, descendant), { code: "GITHUB_API_FAILED" });
+
+    const calls = readFileSync(logPath, "utf8").trim().split(/\n/u).map((line) => JSON.parse(line));
+    assert.equal(calls.filter((call) => call.args[0] === "api").length >= 3, true);
+    const enrichmentCalls = calls.filter((call) => call.args[0] === "pr" && call.args[1] === "view");
+    assert.equal(enrichmentCalls.length, 2);
+    assert.equal(enrichmentCalls[0].args[enrichmentCalls[0].args.indexOf("--json") + 1], "number,headRefOid,baseRefOid,headRefName,baseRefName,mergeCommit,mergedAt");
+    assert.equal(calls.some((call) => call.args[1] === "/repos/owner/repo/pulls/17"), true);
+    const listCall = calls.find((call) => call.args[1]?.startsWith("/repos/owner/repo/pulls?"));
+    assert.match(listCall.args[1], /state=all/u);
+    assert.match(listCall.args[1], /head=owner%3Acodex%2Fregistry-maintenance/u);
+    assert.match(listCall.args[1], /per_page=20/u);
+    const compareCall = calls.find((call) => call.args[1]?.includes("/compare/"));
+    assert.equal(compareCall.args.includes("--jq"), true);
+    assert.match(compareCall.args[compareCall.args.indexOf("--jq") + 1], /base_commit/u);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test("real gh adapter uses force-enabled beforeOid CAS for refreshed sibling commits", async () => {
   const directory = mkdtempSync(join(tmpdir(), "erpc-maintenance-gh-cas-"));
   try {
