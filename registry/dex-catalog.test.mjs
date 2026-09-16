@@ -59,25 +59,31 @@ function withDigest(value) {
 
 function mutateCatalog(operation) {
   const next = clone(CATALOG);
+  const pool = (poolDefinitionId) => next.poolDefinitions.find((entry) => entry.poolDefinitionId === poolDefinitionId);
   if (operation === "addExtraCatalogKey") {
     next.unexpected = true;
     return next;
   }
   if (operation === "setUnknownChain") next.dexDeployments[0].chainId = "eip155:999";
   if (operation === "uppercaseEvmProgram") next.dexDeployments[0].programAddress = next.dexDeployments[0].programAddress.toUpperCase();
-  if (operation === "invalidSolanaPoolAddress") next.poolDefinitions[2].address = "0";
-  if (operation === "setPoolWrongChain") next.poolDefinitions[0].chainId = DEX_CHAIN_IDS.avalancheC;
-  if (operation === "setNativePoolToken") next.poolDefinitions[0].token0DeploymentId = "deployment-0001";
-  if (operation === "duplicatePoolAddress") next.poolDefinitions[3].address = next.poolDefinitions[2].address;
+  if (operation === "invalidSolanaPoolAddress") pool("pool-0003").address = "0";
+  if (operation === "setPoolWrongChain") pool("pool-0001").chainId = DEX_CHAIN_IDS.avalancheC;
+  if (operation === "setNativePoolToken") pool("pool-0001").token0DeploymentId = "deployment-0001";
+  if (operation === "duplicatePoolAddress") {
+    const source = pool("pool-0001");
+    const duplicate = next.poolDefinitions.find((entry) => entry.chainId === source.chainId && entry.poolDefinitionId !== source.poolDefinitionId);
+    duplicate.address = source.address;
+  }
   if (operation === "poolReplacementCycle") {
-    const replacement = clone(next.poolDefinitions[0]);
+    const current = pool("pool-0001");
+    const replacement = clone(current);
     replacement.poolDefinitionId = "pool-9991";
     replacement.address = "0x1111111111111111111111111111111111111111";
     replacement.replacedByPoolDefinitionId = "pool-0001";
     next.poolDefinitions.push(replacement);
-    next.poolDefinitions[0].replacedByPoolDefinitionId = "pool-9991";
+    current.replacedByPoolDefinitionId = "pool-9991";
   }
-  if (operation === "setSolanaFee") next.poolDefinitions[2].adapter.feeNumerator = "1";
+  if (operation === "setSolanaFee") pool("pool-0003").adapter.feeNumerator = "1";
   if (operation === "duplicateAlias") next.aliases.push(clone(next.aliases[0]));
   if (operation === "setWrapWrongChain") next.nativeWrapDefinitions[1].chainId = DEX_CHAIN_IDS.ethereum;
   if (operation === "setWrapWrongAsset") next.nativeWrapDefinitions[0].wrappedTokenDeploymentId = "deployment-0008";
@@ -274,7 +280,7 @@ test("all five renderers are deterministic and omit record provenance", async ()
 
 test("Rust and Go renderers are formatter-idempotent when formatters are installed", (t) => {
   const rustfmt = process.env.RUSTFMT ?? "rustfmt";
-  const rust = spawnSync(rustfmt, ["--emit", "stdout", "--edition", "2021"], { input: renderLanguage("rust"), encoding: "utf8" });
+  const rust = spawnSync(rustfmt, ["--emit", "stdout", "--edition", "2024"], { input: renderLanguage("rust"), encoding: "utf8" });
   if (rust.error?.code === "ENOENT") t.skip("rustfmt is unavailable in this environment");
   else {
     assert.equal(rust.status, 0, rust.stderr);

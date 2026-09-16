@@ -127,10 +127,10 @@ test("healthy EVM observations are canonical, transcript-bound, and status-deriv
   const artifact = await observePools({ rpcClient: rpc, sourceSha: "1".repeat(40), clock: { now: 1694498816000 } });
   assert.equal(artifact.observations.find((row) => row.poolDefinitionId === "pool-0001").status, "healthy");
   assert.ok(Array.isArray(artifact.rpcTranscript) && artifact.rpcTranscript.length > 0);
-  assert.equal(replayPoolObservations(artifact, { sourceSha: artifact.sourceSha })[0].status, "healthy");
+  assert.equal(replayPoolObservations(artifact, { sourceSha: artifact.sourceSha }).find((row) => row.poolDefinitionId === "pool-0001").status, "healthy");
   const missingTranscript = structuredClone(artifact); delete missingTranscript.rpcTranscript;
   assert.throws(() => replayPoolObservations(missingTranscript, { sourceSha: artifact.sourceSha }), /transcript|raw evidence/u);
-  const forgedStatus = structuredClone(artifact); forgedStatus.receipts[0].reserves = ["0", "0"];
+  const forgedStatus = structuredClone(artifact); forgedStatus.receipts.find((row) => row.poolDefinitionId === "pool-0001").reserves = ["0", "0"];
   assert.throws(() => replayPoolObservations(forgedStatus, { sourceSha: artifact.sourceSha }), /status|reserves/u);
 });
 

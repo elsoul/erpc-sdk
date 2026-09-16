@@ -1826,6 +1826,25 @@ mod tests {
         }
     }
 
+    fn expected_outcome(outcome: &Value) -> Value {
+        let mut expected = outcome.clone();
+        if expected.get("kind").and_then(Value::as_str) != Some("success") {
+            return expected;
+        }
+        let Some(value) = expected.get_mut("value").and_then(Value::as_object_mut) else {
+            return expected;
+        };
+        value.insert(
+            "tokenCatalogDigest".to_owned(),
+            json!(crate::TOKEN_CATALOG_CONTENT_DIGEST),
+        );
+        value.insert(
+            "dexCatalogDigest".to_owned(),
+            json!(DEX_CATALOG_CONTENT_DIGEST),
+        );
+        expected
+    }
+
     async fn execute_fixture_case(case: &Value) -> (Value, Vec<Value>) {
         let responses = case
             .get("rpcResponses")
@@ -1944,7 +1963,7 @@ mod tests {
                     .and_then(Value::as_str)
                     .expect("quote case ID");
                 let (actual, trace) = execute_fixture_case(case).await;
-                let expected = case.get("outcome").cloned().expect("fixture outcome");
+                let expected = expected_outcome(case.get("outcome").expect("fixture outcome"));
                 assert_eq!(actual, expected, "native result mismatch for {case_id}");
                 let expected_trace = case
                     .get("rpcTrace")

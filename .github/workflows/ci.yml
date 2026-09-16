@@ -161,20 +161,18 @@ jobs:
         run: |
           node --test scripts/agent-harness.test.mjs
           node scripts/agent-harness.mjs check
+      - name: Install the pinned Rust toolchain for catalog render checks
+        run: |
+          rustup toolchain install 1.85.0 --profile minimal --component rustfmt
+          rustup default 1.85.0
+      - name: Install the pinned Go toolchain for catalog render checks
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: '1.22.x'
       - name: Run catalog and maintenance tests
-        run: >-
-          node --test
-          registry/token-catalog.test.mjs
-          registry/observer.test.mjs
-          registry/release-prep.test.mjs
-          registry/maintenance-pr.test.mjs
-          registry/ci-catalog-baseline.test.mjs
-          registry/release-command.test.mjs
-          registry/dex-catalog.test.mjs
-          registry/token-rankings.test.mjs
-          registry/verify-ranking-parity.test.mjs
-          registry/pool-observer.test.mjs
-          registry/data-promotion.test.mjs
+        run: node --test registry/*.test.mjs
+      - name: Verify generated token ranking outputs
+        run: node registry/generate-token-rankings.mjs --check --language all
       - name: Verify generated catalogs against the validated base
         env:
           VERIFIED_BASE: ${{ steps.baseline.outputs.verified_base }}

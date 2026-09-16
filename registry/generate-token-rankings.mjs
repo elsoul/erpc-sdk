@@ -40,6 +40,31 @@ function python(value) {
   if (typeof value === "object") return "{" + Object.entries(value).map(([key, child]) => q(snake(key)) + ": " + python(child)).join(", ") + "}";
   return String(value);
 }
+function pythonStringFieldLines(name, value, indent = "        ") {
+  const line = `${indent}${name}=${q(value)},`;
+  if (line.length <= 100) return [line];
+  const chunks = [];
+  const text = String(value);
+  for (let offset = 0; offset < text.length; offset += 64) chunks.push(text.slice(offset, offset + 64));
+  return [`${indent}${name}=(`, ...chunks.map((chunk) => `${indent}    ${q(chunk)}`), `${indent}),`];
+}
+function pythonDeploymentIdsLines(deploymentIds) {
+  const oneLine = `        deployment_ids=(${deploymentIds.map((deploymentId) => q(deploymentId)).join(", ")},),`;
+  if (oneLine.length <= 100) return [oneLine];
+  const lines = ["        deployment_ids=("];
+  for (const deploymentId of deploymentIds) {
+    const text = String(deploymentId);
+    if (`            ${q(text)},`.length <= 100) {
+      lines.push(`            ${q(text)},`);
+      continue;
+    }
+    const chunks = [];
+    for (let offset = 0; offset < text.length; offset += 64) chunks.push(text.slice(offset, offset + 64));
+    chunks.forEach((chunk, index) => lines.push(`            ${q(chunk)}${index === chunks.length - 1 ? "," : ""}`));
+  }
+  lines.push("        ),");
+  return lines;
+}
 function rust(value) {
   return q(value).replaceAll("\\\\", "\\\\\\\\").replaceAll("\\\"", "\\\\\"");
 }
@@ -48,8 +73,12 @@ function model(artifact, options = {}) {
   return { metadata: artifact.metadata, records: artifact.records };
 }
 function formatSource(command, argumentsList, source) {
-  const result = spawnSync(process.env[command === "rustfmt" ? "RUSTFMT" : "GOFMT"] ?? command, argumentsList, { input: source, encoding: "utf8" });
-  return result.error || result.status !== 0 ? source : result.stdout;
+  const environment = command === "rustfmt" ? "RUSTFMT" : "GOFMT";
+  const executable = process.env[environment] ?? command;
+  const result = spawnSync(executable, argumentsList, { input: source, encoding: "utf8" });
+  if (result.error) fail(`${environment} formatter is unavailable: ${result.error.message}`);
+  if (result.status !== 0) fail(`${environment} formatter failed: ${String(result.stderr ?? "").trim() || `exit ${result.status}`}`);
+  return result.stdout;
 }
 function renderTypeScript(artifact, options = {}) {
   const value = model(artifact, options);
@@ -143,12 +172,14 @@ function renderPython(artifact, options = {}) {
     "    coverage: tuple[TokenRankingCoverage, ...]",
     "    source_ids: tuple[str, ...]",
     "",
+    "",
     "class TokenRankingCoverage(NamedTuple):",
     "    chain_id: str",
     "    total_deployments: int",
     "    ranked_deployments: int",
     "    unranked_deployments: int",
     "    observed_at: str | None",
+    "",
     "",
     "class TokenRanking(NamedTuple):",
     "    rank: int",
@@ -163,6 +194,7 @@ function renderPython(artifact, options = {}) {
     "    source_id: str",
     "    source_asset_id: str | None",
     "",
+    "",
     "TOKEN_RANKINGS_METADATA = TokenRankingMetadata(",
     "    schema_version=1,",
     "    metric=" + python(value.metadata.metric) + ",",
@@ -170,12 +202,36 @@ function renderPython(artifact, options = {}) {
     "    content_digest=" + python(value.metadata.contentDigest) + ",",
     "    status=" + python(value.metadata.status) + ",",
     "    coverage=(",
-    ...value.metadata.coverage.map((row) => "        TokenRankingCoverage(chain_id=" + q(row.chainId) + ", total_deployments=" + row.totalDeployments + ", ranked_deployments=" + row.rankedDeployments + ", unranked_deployments=" + row.unrankedDeployments + ", observed_at=" + python(row.observedAt) + "),"),
+    ...value.metadata.coverage.flatMap((row) => [
+      "        TokenRankingCoverage(",
+      `            chain_id=${q(row.chainId)},`,
+      `            total_deployments=${row.totalDeployments},`,
+      `            ranked_deployments=${row.rankedDeployments},`,
+      `            unranked_deployments=${row.unrankedDeployments},`,
+      `            observed_at=${python(row.observedAt)},`,
+      "        ),",
+    ]),
     "    ),",
     "    source_ids=tuple(" + python(value.metadata.sourceIds) + "),",
     ")",
     "TOKEN_RANKINGS = (",
-    ...value.records.map((row) => "    TokenRanking(rank=" + row.rank + ", chain_id=" + q(row.chainId) + ", deployment_ids=tuple(" + python(row.deploymentIds) + "), metric=" + q(row.metric) + ", value_numerator=" + q(row.valueNumerator) + ", value_denominator=" + q(row.valueDenominator) + ", quote_currency=" + q(row.quoteCurrency) + ", quote_deployment_id=" + python(row.quoteDeploymentId) + ", observed_at=" + q(row.observedAt) + ", source_id=" + q(row.sourceId) + ", source_asset_id=" + python(row.sourceAssetId) + "),"),
+    ...value.records.flatMap((row) => {
+      return [
+        "    TokenRanking(",
+        `        rank=${row.rank},`,
+        `        chain_id=${q(row.chainId)},`,
+        ...pythonDeploymentIdsLines(row.deploymentIds),
+        `        metric=${q(row.metric)},`,
+        ...pythonStringFieldLines("value_numerator", row.valueNumerator),
+        ...pythonStringFieldLines("value_denominator", row.valueDenominator),
+        `        quote_currency=${q(row.quoteCurrency)},`,
+        `        quote_deployment_id=${python(row.quoteDeploymentId)},`,
+        `        observed_at=${q(row.observedAt)},`,
+        `        source_id=${q(row.sourceId)},`,
+        `        source_asset_id=${python(row.sourceAssetId)},`,
+        "    ),",
+      ];
+    }),
     ")",
     "TOKEN_RANKINGS_CONTENT_DIGEST = TOKEN_RANKINGS_METADATA.content_digest",
     "",
@@ -189,14 +245,17 @@ function renderGo(artifact, options = {}) {
     "package erpc",
     "",
     "func tokenRankingString(value string) *string { return &value }",
+    "",
     "type TokenRanking struct { Rank int; ChainID string; DeploymentIDs []string; Metric string; ValueNumerator string; ValueDenominator string; QuoteCurrency string; QuoteDeploymentID *string; ObservedAt string; SourceID string; SourceAssetID *string }",
     "type TokenRankingCoverage struct { ChainID string; TotalDeployments int; RankedDeployments int; UnrankedDeployments int; ObservedAt *string }",
     "type TokenRankingSnapshotMetadata struct { SchemaVersion int; Metric *string; AsOf *string; ContentDigest string; Status string; Coverage []TokenRankingCoverage; SourceIDs []string }",
+    "",
     "const TokenRankingsSchemaVersion = 1",
     "const TokenRankingsMetric = " + q(value.metadata.metric ?? ""),
     "const TokenRankingsAsOf = " + q(value.metadata.asOf ?? ""),
     "const TokenRankingsContentDigest = " + q(value.metadata.contentDigest),
     "const TokenRankingsStatus = " + q(value.metadata.status),
+    "",
     "var tokenRankingsMetricValue = " + (value.metadata.metric === null ? "(*string)(nil)" : "tokenRankingString(" + q(value.metadata.metric) + ")"),
     "var tokenRankingsAsOfValue = " + (value.metadata.asOf === null ? "(*string)(nil)" : "tokenRankingString(" + q(value.metadata.asOf) + ")"),
     "var tokenRankingsCoverage = []TokenRankingCoverage{" + value.metadata.coverage.map((row) => "{ChainID: " + q(row.chainId) + ", TotalDeployments: " + row.totalDeployments + ", RankedDeployments: " + row.rankedDeployments + ", UnrankedDeployments: " + row.unrankedDeployments + ", ObservedAt: " + (row.observedAt === null ? "nil" : "tokenRankingString(" + q(row.observedAt) + ")") + "}").join(", ") + "}",
@@ -204,6 +263,7 @@ function renderGo(artifact, options = {}) {
     "var tokenRankings = []TokenRanking{",
     rows,
     "}",
+    "",
     "func cloneTokenRanking(value TokenRanking) TokenRanking { value.DeploymentIDs = append([]string(nil), value.DeploymentIDs...); if value.QuoteDeploymentID != nil { value.QuoteDeploymentID = tokenRankingString(*value.QuoteDeploymentID) }; if value.SourceAssetID != nil { value.SourceAssetID = tokenRankingString(*value.SourceAssetID) }; return value }",
     "func ListTokenRankings(chainID string) []TokenRanking { result := make([]TokenRanking, 0); for _, value := range tokenRankings { if value.ChainID == chainID { result = append(result, cloneTokenRanking(value)) } }; return result }",
     "func TokenRankingMetadata() TokenRankingSnapshotMetadata { coverage := make([]TokenRankingCoverage, len(tokenRankingsCoverage)); copy(coverage, tokenRankingsCoverage); for index := range coverage { if coverage[index].ObservedAt != nil { coverage[index].ObservedAt = tokenRankingString(*coverage[index].ObservedAt) } }; sourceIDs := make([]string, len(tokenRankingsSourceIDs)); copy(sourceIDs, tokenRankingsSourceIDs); var metric *string; if tokenRankingsMetricValue != nil { metric = tokenRankingString(*tokenRankingsMetricValue) }; var asOf *string; if tokenRankingsAsOfValue != nil { asOf = tokenRankingString(*tokenRankingsAsOfValue) }; return TokenRankingSnapshotMetadata{SchemaVersion: 1, Metric: metric, AsOf: asOf, ContentDigest: TokenRankingsContentDigest, Status: TokenRankingsStatus, Coverage: coverage, SourceIDs: sourceIDs} }",

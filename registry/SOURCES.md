@@ -42,6 +42,28 @@ the prior EU OSS planning decisions. It is engineering source evidence only;
 it does not add canonical records or assert a clean integration run, source
 commit, counts, digest, live workflow success, legal clearance, or CE status.
 
+## Populated local integration evidence (2026-09-16)
+
+The source checkout was then captured from commit
+`5ef97abd66f40a2db77a4f85595cf64d1032f7c8` (tree
+`0e85ceaf0ab954d5bd1b8f48088c1a5b8e25bc39`) with plain bounded RPC
+collection. The local review admitted 5 token candidates and 8 pool
+candidates, produced 11 ranking records, and retained 54 explicit unranked
+rows. The token, DEX, and ranking candidate digests are
+`5a7ed7f57a8cfaed87c46512586da8123e94fae80f1ce18ebb3861ccb95a9f70`,
+`a0268a45d2b037ab8ea35aad1c45366d2582cbc9b10681ded590b56e07b011c8`, and
+`f8ae479007fa782995aaaf6aa1c414ba1b6a10a92b7abe481b055293a91ac01c`.
+
+The factual review and hashes are in
+[`evidence/discovery-ranking-review-2026-09-16.json`](./evidence/discovery-ranking-review-2026-09-16.json),
+with raw receipts in
+[`evidence/discovery-receipts-2026-09-16.json`](./evidence/discovery-receipts-2026-09-16.json),
+[`evidence/ranking-receipts-2026-09-16.json`](./evidence/ranking-receipts-2026-09-16.json),
+and [`evidence/pool-observations-2026-09-16.json`](./evidence/pool-observations-2026-09-16.json).
+Execution origin is `local`; GitHub run IDs are absent, so this is not Actions
+promotion provenance. The source snapshot remains partial and the final
+independent/native/remote gates remain pending.
+
 ## Runtime source-check behavior
 
 The source-checkout discovery implementation is bounded and reads only the
@@ -80,7 +102,7 @@ The captured rows intentionally preserve network-specific decimals: EURCV is 18 
 
 ## Native parity receipt
 
-On 2026-09-15, the compiled TypeScript, Rust, Python, Go, and Ruby package exports were captured and checked with [`verify-token-parity.mjs`](./verify-token-parity.mjs). The final catalog digest is `62879dfe8bb49a154d2a1bff356321e5dbe78d8cef0cd3409ef2b22cfd3445a4`. Each language supplied 39 assets, 60 deployments, 60 aliases, and 338 public-API query rows; every language also passed 60 compiled alias-constant checks. The exact commands, runtime versions, artifact hashes, snapshot hashes, and `status=ok` result are persisted in [`evidence/token-catalog-2026-09-15.json`](./evidence/token-catalog-2026-09-15.json) and `/private/tmp/erpc-token-native-snapshots/PROVENANCE.md`. The snapshot runtime marker is descriptive metadata; the commands and artifact hashes document the actual runs.
+On 2026-09-15, the compiled TypeScript, Rust, Python, Go, and Ruby package exports were captured and checked with [`verify-token-parity.mjs`](./verify-token-parity.mjs). That historical catalog digest is `62879dfe8bb49a154d2a1bff356321e5dbe78d8cef0cd3409ef2b22cfd3445a4`; each language supplied 39 assets, 60 deployments, 60 aliases, and 338 public-API query rows. The populated 2026-09-16 snapshot has 44 assets, 65 deployments, and 65 aliases; the recorded five-language token, DEX, and ranking parity captures pass, while remote CI remains pending.
 
 The capture corrected `asset-0015` from `Pax Dollar (PYUSD)` to `PayPal USD (PYUSD)` using <https://www.paypal.com/uk/cshelp/article/what-is-paypal-usd-pyusd-help1005>. Existing addresses and decimals were unchanged.
 

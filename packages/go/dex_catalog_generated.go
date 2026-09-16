@@ -46,7 +46,7 @@ type DexAlias struct {
 
 const DexCatalogVersion = "1.0.0"
 const DexCatalogAsOfDate = "2026-09-15"
-const DexCatalogContentDigest = "002c05c3c2d5d3917f73a5c2e7b55af9ceb9a682fb49ae28d2421046ee2faa50"
+const DexCatalogContentDigest = "a0268a45d2b037ab8ea35aad1c45366d2582cbc9b10681ded590b56e07b011c8"
 
 func DexChainIDs() map[string]string {
 	return map[string]string{
@@ -65,6 +65,14 @@ func DexDeployments() []DexDeployment {
 }
 func PoolDefinitions() []PoolDefinition {
 	return []PoolDefinition{
+		{PoolDefinitionID: "discovered-pool-1568e761c62f7dc58207a77f2dc32153805efe03a8d9cce9366ce68efdf276c4", DexDeploymentID: "dex-deployment-0002", ChainID: "eip155:43114", Address: "0xd5a37dc5c9a396a03dd1136fc76a1a02b1c88ffa", Token0DeploymentID: "discovered-token-9f9965cc065c9becf8d2cb58071524baafea37d27fda9bf683a93ea85f2e653d", Token1DeploymentID: "deployment-0004", Adapter: PoolAdapter{Kind: "evm-constant-product-v2", FeeNumerator: dexString("3"), FeeDenominator: dexString("1000")}, Status: "active", ReplacedByPoolDefinitionID: nil},
+		{PoolDefinitionID: "discovered-pool-1b98a5f24a364e05b3d56a9702c3560fc3a71f84b2195c486cfc5f8a956cc0b7", DexDeploymentID: "dex-deployment-0001", ChainID: "eip155:1", Address: "0xc2adda861f89bbb333c90c492cb837741916a225", Token0DeploymentID: "discovered-token-b475569f6a15e97ac04e531dd813e9dcc902521c098d60d6ae4d21d53baf1395", Token1DeploymentID: "deployment-0002", Adapter: PoolAdapter{Kind: "evm-constant-product-v2", FeeNumerator: dexString("3"), FeeDenominator: dexString("1000")}, Status: "active", ReplacedByPoolDefinitionID: nil},
+		{PoolDefinitionID: "discovered-pool-3c1e38d02092d16e396d2f3a22b2bfae55246a1c566831d31f211670e45bd562", DexDeploymentID: "dex-deployment-0002", ChainID: "eip155:43114", Address: "0xed8cbd9f0ce3c6986b22002f03c6475ceb7a6256", Token0DeploymentID: "deployment-0004", Token1DeploymentID: "discovered-token-288036a90ee0fa72a2751a78a6934cc6ced9e16de91c97ae8e109e2ee6189bc5", Adapter: PoolAdapter{Kind: "evm-constant-product-v2", FeeNumerator: dexString("3"), FeeDenominator: dexString("1000")}, Status: "active", ReplacedByPoolDefinitionID: nil},
+		{PoolDefinitionID: "discovered-pool-3f840a40991e755e42d242188bd8deb85cd5b9655308269b00c220f5237710cf", DexDeploymentID: "dex-deployment-0002", ChainID: "eip155:43114", Address: "0xfe15c2695f1f920da45c30aae47d11de51007af9", Token0DeploymentID: "discovered-token-0a7f98c8752f15ee02ce0d801f25df8ff78864a1d70aff7e204f7bdb3f8a0692", Token1DeploymentID: "deployment-0004", Adapter: PoolAdapter{Kind: "evm-constant-product-v2", FeeNumerator: dexString("3"), FeeDenominator: dexString("1000")}, Status: "active", ReplacedByPoolDefinitionID: nil},
+		{PoolDefinitionID: "discovered-pool-6428a1e5da293b2ef62027ec823ba27532219a40784def3930feee56a623b809", DexDeploymentID: "dex-deployment-0001", ChainID: "eip155:1", Address: "0xa2107fa5b38d9bbd2c461d6edf11b11a50f6b974", Token0DeploymentID: "deployment-0057", Token1DeploymentID: "deployment-0002", Adapter: PoolAdapter{Kind: "evm-constant-product-v2", FeeNumerator: dexString("3"), FeeDenominator: dexString("1000")}, Status: "active", ReplacedByPoolDefinitionID: nil},
+		{PoolDefinitionID: "discovered-pool-a7f9e600a86951f40472ff779fae467db8a6bbbc6076356058f427e97d4ae429", DexDeploymentID: "dex-deployment-0001", ChainID: "eip155:1", Address: "0xa478c2975ab1ea89e8196811f51a7b7ade33eb11", Token0DeploymentID: "deployment-0019", Token1DeploymentID: "deployment-0002", Adapter: PoolAdapter{Kind: "evm-constant-product-v2", FeeNumerator: dexString("3"), FeeDenominator: dexString("1000")}, Status: "active", ReplacedByPoolDefinitionID: nil},
+		{PoolDefinitionID: "discovered-pool-e702b0cb56528418b4ce089dfc001c6241c94e92aabde72f1a340c4601541780", DexDeploymentID: "dex-deployment-0001", ChainID: "eip155:1", Address: "0xbb2b8038a1640196fbe3e38816f3e67cba72d940", Token0DeploymentID: "discovered-token-e375086901067fe3de023bcdc70f1bafca798e1719ed7e676a98f57de3350a07", Token1DeploymentID: "deployment-0002", Adapter: PoolAdapter{Kind: "evm-constant-product-v2", FeeNumerator: dexString("3"), FeeDenominator: dexString("1000")}, Status: "active", ReplacedByPoolDefinitionID: nil},
+		{PoolDefinitionID: "discovered-pool-ece9088cf38944438897ff9fb2a1abc6855a687b5a3f0d6ab98dfe06c1a6dfef", DexDeploymentID: "dex-deployment-0002", ChainID: "eip155:43114", Address: "0x454e67025631c065d3cfad6d71e6892f74487a15", Token0DeploymentID: "deployment-0059", Token1DeploymentID: "deployment-0004", Adapter: PoolAdapter{Kind: "evm-constant-product-v2", FeeNumerator: dexString("3"), FeeDenominator: dexString("1000")}, Status: "active", ReplacedByPoolDefinitionID: nil},
 		{PoolDefinitionID: "pool-0001", DexDeploymentID: "dex-deployment-0001", ChainID: "eip155:1", Address: "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc", Token0DeploymentID: "deployment-0008", Token1DeploymentID: "deployment-0002", Adapter: PoolAdapter{Kind: "evm-constant-product-v2", FeeNumerator: dexString("3"), FeeDenominator: dexString("1000")}, Status: "active", ReplacedByPoolDefinitionID: nil},
 		{PoolDefinitionID: "pool-0002", DexDeploymentID: "dex-deployment-0002", ChainID: "eip155:43114", Address: "0xf4003f4efbe8691b60249e6afbd307abe7758adb", Token0DeploymentID: "deployment-0004", Token1DeploymentID: "deployment-0009", Adapter: PoolAdapter{Kind: "evm-constant-product-v2", FeeNumerator: dexString("3"), FeeDenominator: dexString("1000")}, Status: "active", ReplacedByPoolDefinitionID: nil},
 		{PoolDefinitionID: "pool-0003", DexDeploymentID: "dex-deployment-0003", ChainID: "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp", Address: "FgH1dEvyRQoAqJjbUzzKVoM1HYdxTqPwjEF82kDH1kVe", Token0DeploymentID: "deployment-0006", Token1DeploymentID: "deployment-0013", Adapter: PoolAdapter{Kind: "solana-orca-whirlpool", FeeNumerator: nil, FeeDenominator: nil}, Status: "active", ReplacedByPoolDefinitionID: nil},
@@ -80,8 +88,16 @@ func NativeWrapDefinitions() []NativeWrapDefinition {
 }
 func DexAliases() []DexAlias {
 	return []DexAlias{
+		{Namespace: "avalancheC", Name: "DISCOVERED_POOL_1568E761C62F7DC5", DexDeploymentID: nil, PoolDefinitionID: dexString(PoolAvalancheCDISCOVERED_POOL_1568E761C62F7DC5)},
+		{Namespace: "avalancheC", Name: "DISCOVERED_POOL_3C1E38D02092D16E", DexDeploymentID: nil, PoolDefinitionID: dexString(PoolAvalancheCDISCOVERED_POOL_3C1E38D02092D16E)},
+		{Namespace: "avalancheC", Name: "DISCOVERED_POOL_3F840A40991E755E", DexDeploymentID: nil, PoolDefinitionID: dexString(PoolAvalancheCDISCOVERED_POOL_3F840A40991E755E)},
+		{Namespace: "avalancheC", Name: "DISCOVERED_POOL_ECE9088CF3894443", DexDeploymentID: nil, PoolDefinitionID: dexString(PoolAvalancheCDISCOVERED_POOL_ECE9088CF3894443)},
 		{Namespace: "avalancheC", Name: "LFJ_LEGACY", DexDeploymentID: dexString(DexAvalancheCLFJ_LEGACY), PoolDefinitionID: nil},
 		{Namespace: "avalancheC", Name: "LFJ_LEGACY_WAVAX_USDC", DexDeploymentID: nil, PoolDefinitionID: dexString(PoolAvalancheCLFJ_LEGACY_WAVAX_USDC)},
+		{Namespace: "ethereum", Name: "DISCOVERED_POOL_1B98A5F24A364E05", DexDeploymentID: nil, PoolDefinitionID: dexString(PoolEthereumDISCOVERED_POOL_1B98A5F24A364E05)},
+		{Namespace: "ethereum", Name: "DISCOVERED_POOL_6428A1E5DA293B2E", DexDeploymentID: nil, PoolDefinitionID: dexString(PoolEthereumDISCOVERED_POOL_6428A1E5DA293B2E)},
+		{Namespace: "ethereum", Name: "DISCOVERED_POOL_A7F9E600A86951F4", DexDeploymentID: nil, PoolDefinitionID: dexString(PoolEthereumDISCOVERED_POOL_A7F9E600A86951F4)},
+		{Namespace: "ethereum", Name: "DISCOVERED_POOL_E702B0CB56528418", DexDeploymentID: nil, PoolDefinitionID: dexString(PoolEthereumDISCOVERED_POOL_E702B0CB56528418)},
 		{Namespace: "ethereum", Name: "UNISWAP_V2", DexDeploymentID: dexString(DexEthereumUNISWAP_V2), PoolDefinitionID: nil},
 		{Namespace: "ethereum", Name: "UNISWAP_V2_USDC_WETH", DexDeploymentID: nil, PoolDefinitionID: dexString(PoolEthereumUNISWAP_V2_USDC_WETH)},
 		{Namespace: "solana", Name: "ORCA_WHIRLPOOLS", DexDeploymentID: dexString(DexSolanaORCA_WHIRLPOOLS), PoolDefinitionID: nil},
@@ -91,8 +107,16 @@ func DexAliases() []DexAlias {
 	}
 }
 
+const PoolAvalancheCDISCOVERED_POOL_1568E761C62F7DC5 = "discovered-pool-1568e761c62f7dc58207a77f2dc32153805efe03a8d9cce9366ce68efdf276c4"
+const PoolAvalancheCDISCOVERED_POOL_3C1E38D02092D16E = "discovered-pool-3c1e38d02092d16e396d2f3a22b2bfae55246a1c566831d31f211670e45bd562"
+const PoolAvalancheCDISCOVERED_POOL_3F840A40991E755E = "discovered-pool-3f840a40991e755e42d242188bd8deb85cd5b9655308269b00c220f5237710cf"
+const PoolAvalancheCDISCOVERED_POOL_ECE9088CF3894443 = "discovered-pool-ece9088cf38944438897ff9fb2a1abc6855a687b5a3f0d6ab98dfe06c1a6dfef"
 const DexAvalancheCLFJ_LEGACY = "dex-deployment-0002"
 const PoolAvalancheCLFJ_LEGACY_WAVAX_USDC = "pool-0002"
+const PoolEthereumDISCOVERED_POOL_1B98A5F24A364E05 = "discovered-pool-1b98a5f24a364e05b3d56a9702c3560fc3a71f84b2195c486cfc5f8a956cc0b7"
+const PoolEthereumDISCOVERED_POOL_6428A1E5DA293B2E = "discovered-pool-6428a1e5da293b2ef62027ec823ba27532219a40784def3930feee56a623b809"
+const PoolEthereumDISCOVERED_POOL_A7F9E600A86951F4 = "discovered-pool-a7f9e600a86951f40472ff779fae467db8a6bbbc6076356058f427e97d4ae429"
+const PoolEthereumDISCOVERED_POOL_E702B0CB56528418 = "discovered-pool-e702b0cb56528418b4ce089dfc001c6241c94e92aabde72f1a340c4601541780"
 const DexEthereumUNISWAP_V2 = "dex-deployment-0001"
 const PoolEthereumUNISWAP_V2_USDC_WETH = "pool-0001"
 const DexSolanaORCA_WHIRLPOOLS = "dex-deployment-0003"

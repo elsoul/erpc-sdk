@@ -1,12 +1,12 @@
 # Token, DEX, and pool roadmap
 
 Status: the source checkout contains the bounded offline token, DEX/pool, and
-ranking implementation with deterministic generation and five-SDK outputs.
-These features are planned for the unreleased `0.7.0` package. The current
-published package baseline, latest GitHub release, and package manifests
-remain `0.6.0`. This status covers source-checkout behavior and does not
-establish a populated canonical integration, live automation success, overall
-release readiness, or legal readiness.
+ranking implementation with deterministic generation and five-SDK outputs. A
+2026-09-16 local integration populated the canonical source snapshot with
+partial three-chain coverage. These features remain planned for the unreleased
+`0.7.0` package. The current published package baseline, latest GitHub release,
+and package manifests remain `0.6.0`; remote CI, native runtime parity, live
+automation, release readiness, and legal readiness remain separate gates.
 
 The maintenance implementation is installed as reviewable tooling:
 [`weekly-maintenance.md`](./weekly-maintenance.md),
@@ -31,14 +31,22 @@ controls preparation and makes no publication claim.
 | Canonical schema, deterministic digest, and history guard | Implemented; central tests pass | Registry owner; `token-catalog.schema.json`, tests, and `--previous` |
 | Five generated package outputs | Implemented; all five byte checks and package validations passed | TypeScript, Rust, Python, Go, Ruby owners |
 | DEX/pool generated outputs and lookup/quote slice | Implemented across all five SDKs; CI checks the shared native quote cases | [`DEX.md`](./DEX.md), generated outputs, and `dex-catalog.test.mjs` |
-| Three-chain discovery and bounded admission | Source-checkout implementation; fresh receipt replay, 8-token/8-pool caps, resumable cursors, and deferred revalidation are defined | [`discovery.mjs`](./discovery.mjs), [`discovery-config.json`](./discovery-config.json), [`data-promotion.mjs`](./data-promotion.mjs) |
-| Offline ranking contract | Source-checkout implementation; native total-supply × direct native-pool price uses exact rationals, with explicit partial/unranked metadata; populated canonical integration remains pending | [`token-rankings.mjs`](./token-rankings.mjs), [`token-rankings.json`](./token-rankings.json), [`ranking-config.json`](./ranking-config.json) |
-| Cross-language catalog gate | PASS: native snapshots match all records, metadata, behavior probes, and alias constants | `verify-token-parity.mjs`; final digest and receipts in evidence |
+| Three-chain discovery and bounded admission | Local review PASS (partial): 5 tokens and 8 pools admitted with 8-token/8-pool caps, resumable cursors, and deferred revalidation | [`discovery.mjs`](./discovery.mjs), [`discovery-config.json`](./discovery-config.json), [`data-promotion.mjs`](./data-promotion.mjs), [`evidence/discovery-ranking-review-2026-09-16.json`](./evidence/discovery-ranking-review-2026-09-16.json) |
+| Offline ranking contract | Local review PASS (partial): 11 records and 54 explicit unranked rows; native total-supply × direct native-pool price uses exact rationals | [`token-rankings.mjs`](./token-rankings.mjs), [`token-rankings.json`](./token-rankings.json), [`ranking-config.json`](./ranking-config.json), [`evidence/discovery-ranking-review-2026-09-16.json`](./evidence/discovery-ranking-review-2026-09-16.json) |
+| Cross-language catalog gate | PASS for the populated 2026-09-16 token, DEX, and ranking snapshots; remote CI remains pending | `verify-token-parity.mjs`, `verify-dex-parity.mjs`, `verify-ranking-parity.mjs`; dated captures in evidence |
 | Independent SDK code/package gate | PASS | Steiner |
 | Cross-domain catalog review gate | PASS (bounded catalog scope) | Cyan; final review 2026-09-15 |
 | EU OSS planning packet | Applicability, role, classification, support, compliance, and data rights undetermined | [`evidence/weekly-maintenance-eu-oss-2026-09-15.json`](./evidence/weekly-maintenance-eu-oss-2026-09-15.json); human legal owner still to be assigned |
 
 ## Near-term maintenance
+
+The current source snapshot contains 44 assets, 65 token deployments, 65
+aliases, 12 pools, and 16 DEX aliases. Candidate digests are token
+`5a7ed7f57a8cfaed87c46512586da8123e94fae80f1ce18ebb3861ccb95a9f70`, DEX
+`a0268a45d2b037ab8ea35aad1c45366d2582cbc9b10681ded590b56e07b011c8`, and
+ranking `f8ae479007fa782995aaaf6aa1c414ba1b6a10a92b7abe481b055293a91ac01c`.
+The local review is partial and does not substitute for native parity or remote
+CI.
 
 - Keep asset IDs, deployment IDs, normalized bindings, and aliases immutable.
 - Keep newly discovered token candidates unclassified with address-only names
@@ -97,8 +105,10 @@ as exact rational native atomic units; it is explicitly not circulating market
 capitalization. Coverage is explicit, including partial coverage and unranked
 reasons. The optional global USD market-cap metric is rights-gated and disabled
 by default. Ranking lookups read bundled data only and do not call a vendor API,
-RPC endpoint, or current clock. Populated canonical ranking integration and
-fresh evidence remain pending review.
+RPC endpoint, or current clock. The populated local ranking integration and
+fresh raw evidence are recorded in
+[`evidence/discovery-ranking-review-2026-09-16.json`](./evidence/discovery-ranking-review-2026-09-16.json);
+remote CI and native runtime parity remain pending review.
 
 ### Routes and transaction execution
 

@@ -298,9 +298,18 @@ function admissionCursorState(factoryEntries) {
   return state;
 }
 
-function discoveryObservationWithReceipts(observation, receipts) {
+function discoveryObservationWithReceipts(observation, receipts, observedAt = "2026-09-16T00:00:00.000Z") {
   const discovery = structuredClone(observation.rawArtifacts[DATA_ARTIFACT_FILENAMES.discovery].json);
   discovery.receipts = receipts;
+  if (observedAt !== null && (!Array.isArray(discovery.rpcTranscript) || discovery.rpcTranscript.length === 0)) {
+    discovery.rpcTranscript = [{
+      network: "ethereum",
+      endpointId: discoveryConfig.rpc.ethereum.endpointId,
+      observedAt,
+      request: { jsonrpc: "2.0", id: 1, method: "eth_chainId", params: [] },
+      response: { jsonrpc: "2.0", id: 1, result: "0x1" },
+    }];
+  }
   return discovery;
 }
 
@@ -419,7 +428,7 @@ test("rejects a discovery raw envelope beyond the finite bound", () => {
 });
 
 test("collector returns the envelope and reuses explicit raw artifacts", async () => {
-  const sourceSha = "50b56e0d4ec84fc5754d44bc4e887f5499f5fe1d";
+  const sourceSha = SOURCE_SHA;
   const outputDir = mkdtempSync(join(tmpdir(), "erpc-data-collector-output-"));
   const discovery = emptyDiscovery();
   discovery.sourceSha = sourceSha;
@@ -497,6 +506,8 @@ test("admission keeps only a configured native pair above the hard liquidity flo
   assert.equal(candidate.tokenCandidates.length, 0);
   assert.equal(candidate.poolCandidates.length, 1);
   assert.equal(candidate.poolCandidates[0].quoteEligible, false);
+  assert.equal(candidate.poolCandidates[0].pool.asOfDate, "2026-09-16");
+  assert.equal(candidate.dexCatalog.poolDefinitions.find((entry) => entry.poolDefinitionId === candidate.poolCandidates[0].pool.poolDefinitionId).asOfDate, "2026-09-16");
   assert.equal(candidate.deferredCandidates.length, 0);
   assert.equal(candidate.discoveryState.tokenCatalogDigest, candidate.candidateDigests.tokenCatalogDigest);
   assert.equal(candidate.discoveryState.dexCatalogDigest, candidate.candidateDigests.dexCatalogDigest);

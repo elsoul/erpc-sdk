@@ -51,6 +51,17 @@ reported 55 matching observations, two Avalanche symbol differences, three
 RPC errors, and 35 of 41 sources usable. Its result was partial and had no
 eligible source-baseline bootstrap.
 
+The latest source-checkout review on 2026-09-16 used frozen commit
+`5ef97abd66f40a2db77a4f85595cf64d1032f7c8` and local execution provenance. It
+admitted 5 tokens and 8 pools, produced 11 ranking records, and retained 54
+explicit unranked rows. The candidate digests are token
+`5a7ed7f57a8cfaed87c46512586da8123e94fae80f1ce18ebb3861ccb95a9f70`, DEX
+`a0268a45d2b037ab8ea35aad1c45366d2582cbc9b10681ded590b56e07b011c8`, and
+ranking `f8ae479007fa782995aaaf6aa1c414ba1b6a10a92b7abe481b055293a91ac01c`.
+See the [local integration review](./evidence/discovery-ranking-review-2026-09-16.json)
+and its [raw evidence](./evidence/discovery-receipts-2026-09-16.json). This
+capture has no GitHub run provenance and is not a promotion approval.
+
 Root and Rydia own the catalog observation. Bahamut owns the workflow details.
 Sephiroth owns release preparation. A human legal owner is still to be
 assigned; engineering review is due before acceptance of a release candidate.
@@ -87,7 +98,9 @@ capitalization. Partial coverage and unranked reasons remain in ranking
 metadata. The optional global USD market-cap metric is rights-gated and
 disabled by default; no vendor market-cap redistribution is implied. Offline
 catalog and ranking list APIs read bundled data only and do not call an
-external vendor API, RPC endpoint, or current clock.
+external vendor API, RPC endpoint, or current clock. The current bundled
+snapshot is partial; its observed ranking metadata and digest are recorded in
+[`token-rankings.json`](./token-rankings.json) and the local integration review.
 
 ## Stage 1: inspect the source and baseline
 

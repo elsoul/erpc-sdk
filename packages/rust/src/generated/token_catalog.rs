@@ -65,7 +65,7 @@ pub struct TokenAlias {
 pub const TOKEN_CATALOG_VERSION: &str = "1.0.0";
 pub const TOKEN_CATALOG_AS_OF_DATE: &str = "2026-09-15";
 pub const TOKEN_CATALOG_CONTENT_DIGEST: &str =
-    "62879dfe8bb49a154d2a1bff356321e5dbe78d8cef0cd3409ef2b22cfd3445a4";
+    "5a7ed7f57a8cfaed87c46512586da8123e94fae80f1ce18ebb3861ccb95a9f70";
 
 pub mod token_chain_ids {
     pub const ETHEREUM_MAINNET: super::TokenChainId = "eip155:1";
@@ -77,6 +77,12 @@ pub mod tokens {
     pub mod avalanche_c {
         pub const AUSD: &str = "deployment-0035";
         pub const AVAX: &str = "deployment-0003";
+        pub const DISCOVERED_0A7F98C8752F15EE: &str =
+            "discovered-token-0a7f98c8752f15ee02ce0d801f25df8ff78864a1d70aff7e204f7bdb3f8a0692";
+        pub const DISCOVERED_288036A90EE0FA72: &str =
+            "discovered-token-288036a90ee0fa72a2751a78a6934cc6ced9e16de91c97ae8e109e2ee6189bc5";
+        pub const DISCOVERED_9F9965CC065C9BEC: &str =
+            "discovered-token-9f9965cc065c9becf8d2cb58071524baafea37d27fda9bf683a93ea85f2e653d";
         pub const EURC: &str = "deployment-0012";
         pub const EUROP: &str = "deployment-0045";
         pub const GHO: &str = "deployment-0030";
@@ -92,6 +98,10 @@ pub mod tokens {
         pub const AAVE: &str = "deployment-0056";
         pub const AUSD: &str = "deployment-0034";
         pub const DAI: &str = "deployment-0019";
+        pub const DISCOVERED_B475569F6A15E97A: &str =
+            "discovered-token-b475569f6a15e97ac04e531dd813e9dcc902521c098d60d6ae4d21d53baf1395";
+        pub const DISCOVERED_E375086901067FE3: &str =
+            "discovered-token-e375086901067fe3de023bcdc70f1bafca798e1719ed7e676a98f57de3350a07";
         pub const ETH: &str = "deployment-0001";
         pub const EURA: &str = "deployment-0051";
         pub const EURAU: &str = "deployment-0042";
@@ -457,6 +467,46 @@ pub static TOKEN_ASSETS: &[TokenAsset] = &[
         asset_id: "asset-0039",
         name: "Jupiter",
         representation_kind: TokenRepresentationKind::Issued,
+        stable_currency: None,
+        underlying_asset_id: None,
+        economic_reference_asset_id: None,
+    },
+    TokenAsset {
+        asset_id: "discovered-token-0a7f98c8752f15ee02ce0d801f25df8ff78864a1d70aff7e204f7bdb3f8a0692",
+        name: "Unclassified token at 0x49d5c2bdffac6ce2bfdb6640f4f80f226bc10bab",
+        representation_kind: TokenRepresentationKind::Unclassified,
+        stable_currency: None,
+        underlying_asset_id: None,
+        economic_reference_asset_id: None,
+    },
+    TokenAsset {
+        asset_id: "discovered-token-288036a90ee0fa72a2751a78a6934cc6ced9e16de91c97ae8e109e2ee6189bc5",
+        name: "Unclassified token at 0xc7198437980c041c805a1edcba50c1ce5db95118",
+        representation_kind: TokenRepresentationKind::Unclassified,
+        stable_currency: None,
+        underlying_asset_id: None,
+        economic_reference_asset_id: None,
+    },
+    TokenAsset {
+        asset_id: "discovered-token-9f9965cc065c9becf8d2cb58071524baafea37d27fda9bf683a93ea85f2e653d",
+        name: "Unclassified token at 0x50b7545627a5162f82a992c33b87adc75187b218",
+        representation_kind: TokenRepresentationKind::Unclassified,
+        stable_currency: None,
+        underlying_asset_id: None,
+        economic_reference_asset_id: None,
+    },
+    TokenAsset {
+        asset_id: "discovered-token-b475569f6a15e97ac04e531dd813e9dcc902521c098d60d6ae4d21d53baf1395",
+        name: "Unclassified token at 0x9f8f72aa9304c8b593d555f12ef6589cc3a579a2",
+        representation_kind: TokenRepresentationKind::Unclassified,
+        stable_currency: None,
+        underlying_asset_id: None,
+        economic_reference_asset_id: None,
+    },
+    TokenAsset {
+        asset_id: "discovered-token-e375086901067fe3de023bcdc70f1bafca798e1719ed7e676a98f57de3350a07",
+        name: "Unclassified token at 0x2260fac5e5542a773aa44fbcfedf7c193bc2c599",
+        representation_kind: TokenRepresentationKind::Unclassified,
         stable_currency: None,
         underlying_asset_id: None,
         economic_reference_asset_id: None,
@@ -1424,6 +1474,86 @@ pub static TOKEN_DEPLOYMENTS: &[TokenDeployment] = &[
         status: TokenStatus::Active,
         replaced_by_deployment_id: None,
     },
+    TokenDeployment {
+        deployment_id: "discovered-token-0a7f98c8752f15ee02ce0d801f25df8ff78864a1d70aff7e204f7bdb3f8a0692",
+        asset_id: "discovered-token-0a7f98c8752f15ee02ce0d801f25df8ff78864a1d70aff7e204f7bdb3f8a0692",
+        name: "Unclassified token at 0x49d5c2bdffac6ce2bfdb6640f4f80f226bc10bab",
+        representation_kind: TokenRepresentationKind::Unclassified,
+        stable_currency: None,
+        underlying_asset_id: None,
+        economic_reference_asset_id: None,
+        chain_id: "eip155:43114",
+        symbol: "0x49d5c2bdffac6ce2bfdb6640f4f80f226bc10bab",
+        decimals: 18,
+        standard: TokenStandard::Erc20,
+        address: Some("0x49d5c2bdffac6ce2bfdb6640f4f80f226bc10bab"),
+        status: TokenStatus::Active,
+        replaced_by_deployment_id: None,
+    },
+    TokenDeployment {
+        deployment_id: "discovered-token-288036a90ee0fa72a2751a78a6934cc6ced9e16de91c97ae8e109e2ee6189bc5",
+        asset_id: "discovered-token-288036a90ee0fa72a2751a78a6934cc6ced9e16de91c97ae8e109e2ee6189bc5",
+        name: "Unclassified token at 0xc7198437980c041c805a1edcba50c1ce5db95118",
+        representation_kind: TokenRepresentationKind::Unclassified,
+        stable_currency: None,
+        underlying_asset_id: None,
+        economic_reference_asset_id: None,
+        chain_id: "eip155:43114",
+        symbol: "0xc7198437980c041c805a1edcba50c1ce5db95118",
+        decimals: 6,
+        standard: TokenStandard::Erc20,
+        address: Some("0xc7198437980c041c805a1edcba50c1ce5db95118"),
+        status: TokenStatus::Active,
+        replaced_by_deployment_id: None,
+    },
+    TokenDeployment {
+        deployment_id: "discovered-token-9f9965cc065c9becf8d2cb58071524baafea37d27fda9bf683a93ea85f2e653d",
+        asset_id: "discovered-token-9f9965cc065c9becf8d2cb58071524baafea37d27fda9bf683a93ea85f2e653d",
+        name: "Unclassified token at 0x50b7545627a5162f82a992c33b87adc75187b218",
+        representation_kind: TokenRepresentationKind::Unclassified,
+        stable_currency: None,
+        underlying_asset_id: None,
+        economic_reference_asset_id: None,
+        chain_id: "eip155:43114",
+        symbol: "0x50b7545627a5162f82a992c33b87adc75187b218",
+        decimals: 8,
+        standard: TokenStandard::Erc20,
+        address: Some("0x50b7545627a5162f82a992c33b87adc75187b218"),
+        status: TokenStatus::Active,
+        replaced_by_deployment_id: None,
+    },
+    TokenDeployment {
+        deployment_id: "discovered-token-b475569f6a15e97ac04e531dd813e9dcc902521c098d60d6ae4d21d53baf1395",
+        asset_id: "discovered-token-b475569f6a15e97ac04e531dd813e9dcc902521c098d60d6ae4d21d53baf1395",
+        name: "Unclassified token at 0x9f8f72aa9304c8b593d555f12ef6589cc3a579a2",
+        representation_kind: TokenRepresentationKind::Unclassified,
+        stable_currency: None,
+        underlying_asset_id: None,
+        economic_reference_asset_id: None,
+        chain_id: "eip155:1",
+        symbol: "0x9f8f72aa9304c8b593d555f12ef6589cc3a579a2",
+        decimals: 18,
+        standard: TokenStandard::Erc20,
+        address: Some("0x9f8f72aa9304c8b593d555f12ef6589cc3a579a2"),
+        status: TokenStatus::Active,
+        replaced_by_deployment_id: None,
+    },
+    TokenDeployment {
+        deployment_id: "discovered-token-e375086901067fe3de023bcdc70f1bafca798e1719ed7e676a98f57de3350a07",
+        asset_id: "discovered-token-e375086901067fe3de023bcdc70f1bafca798e1719ed7e676a98f57de3350a07",
+        name: "Unclassified token at 0x2260fac5e5542a773aa44fbcfedf7c193bc2c599",
+        representation_kind: TokenRepresentationKind::Unclassified,
+        stable_currency: None,
+        underlying_asset_id: None,
+        economic_reference_asset_id: None,
+        chain_id: "eip155:1",
+        symbol: "0x2260fac5e5542a773aa44fbcfedf7c193bc2c599",
+        decimals: 8,
+        standard: TokenStandard::Erc20,
+        address: Some("0x2260fac5e5542a773aa44fbcfedf7c193bc2c599"),
+        status: TokenStatus::Active,
+        replaced_by_deployment_id: None,
+    },
 ];
 
 pub static TOKEN_ALIASES: &[TokenAlias] = &[
@@ -1436,6 +1566,21 @@ pub static TOKEN_ALIASES: &[TokenAlias] = &[
         namespace: "avalancheC",
         name: "AVAX",
         deployment_id: tokens::avalanche_c::AVAX,
+    },
+    TokenAlias {
+        namespace: "avalancheC",
+        name: "DISCOVERED_0A7F98C8752F15EE",
+        deployment_id: tokens::avalanche_c::DISCOVERED_0A7F98C8752F15EE,
+    },
+    TokenAlias {
+        namespace: "avalancheC",
+        name: "DISCOVERED_288036A90EE0FA72",
+        deployment_id: tokens::avalanche_c::DISCOVERED_288036A90EE0FA72,
+    },
+    TokenAlias {
+        namespace: "avalancheC",
+        name: "DISCOVERED_9F9965CC065C9BEC",
+        deployment_id: tokens::avalanche_c::DISCOVERED_9F9965CC065C9BEC,
     },
     TokenAlias {
         namespace: "avalancheC",
@@ -1501,6 +1646,16 @@ pub static TOKEN_ALIASES: &[TokenAlias] = &[
         namespace: "ethereum",
         name: "DAI",
         deployment_id: tokens::ethereum::DAI,
+    },
+    TokenAlias {
+        namespace: "ethereum",
+        name: "DISCOVERED_B475569F6A15E97A",
+        deployment_id: tokens::ethereum::DISCOVERED_B475569F6A15E97A,
+    },
+    TokenAlias {
+        namespace: "ethereum",
+        name: "DISCOVERED_E375086901067FE3",
+        deployment_id: tokens::ethereum::DISCOVERED_E375086901067FE3,
     },
     TokenAlias {
         namespace: "ethereum",

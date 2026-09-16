@@ -190,8 +190,10 @@ rights-gated and disabled by default.
 
 Ranking lookups use exact chain IDs and read no network, vendor API, current
 time, or client configuration. Generated records and metadata are immutable in
-each SDK. The current source snapshot may be unconfigured; its metadata is the
-source of truth for metric, observation time, status, coverage, and digest.
+each SDK. The current source snapshot is partial, with 11 ranking records and
+54 explicit unranked rows; its metadata is the source of truth for metric,
+observation time, status, coverage, and digest. The current ranking digest is
+`f8ae479007fa782995aaaf6aa1c414ba1b6a10a92b7abe481b055293a91ac01c`.
 See [`registry/token-rankings.json`](registry/token-rankings.json),
 [`registry/token-rankings.mjs`](registry/token-rankings.mjs), and the package
 entry-point documentation for the language-specific `list` API.
@@ -207,8 +209,10 @@ observed tokens use unclassified address-only names and symbols, with
 `stableCurrency`, `underlyingAssetId`, and `economicReferenceAssetId` set to
 `null` until reviewed.
 
-Admission is capped at 8 tokens and 8 pools per run. Direct reviewed native
-pools use WETH, WAVAX, or classic WSOL and native liquidity floors of 10 ETH,
+Admission is capped at 8 tokens and 8 pools per run. The 2026-09-16 local
+source snapshot contains 44 assets, 65 token deployments, and 12 pools; the
+local review admitted 5 tokens and 8 pools with partial three-chain coverage.
+Direct reviewed native pools use WETH, WAVAX, or classic WSOL and native liquidity floors of 10 ETH,
 100 AVAX, or 100 SOL in chain-native atomic units. Discovery state is bounded
 and resumable; cap- or dependency-deferred candidates are revalidated from
 fresh verified receipts before they can be reconsidered. IDs and aliases are
@@ -225,7 +229,8 @@ paired root and Go tags in the release workflow, followed by an explicit
 publisher dispatch when the opt-in policies and protections are enabled.
 Source, schema, adapter, and API changes, including the initial `0.7.0`
 feature release, require manual review. These schedules prepare reviewable
-work; they do not establish that a live scheduled run has succeeded.
+work; the local integration evidence is not Actions promotion provenance, and
+these schedules do not establish that a live scheduled run has succeeded.
 
 ## Quick starts
 

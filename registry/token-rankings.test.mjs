@@ -450,6 +450,24 @@ test("all five ranking renderers are deterministic and carry immutable nested re
   }
 });
 
+test("Python ranking renderer wraps the permitted 256-digit value and round-trips it", async () => {
+  const numerator = `1${"0".repeat(255)}`;
+  const artifact = replayTokenRankings({ candidates: [{ chainId: "eip155:1", deploymentId: "deployment-0008", valueNumerator: numerator, valueDenominator: "1", observedAt: "2026-09-15T12:00:00Z", sourceId: "large-render-test" }] }, { chainId: "eip155:1" });
+  const source = renderLanguage("python", artifact);
+  assert.ok(source.split("\n").every((line) => line.length <= 100));
+  const directory = await mkdtemp(path.join(tmpdir(), "erpc-ranking-python-render-"));
+  const modulePath = path.join(directory, "ranking_data.py");
+  try {
+    await writeFile(modulePath, source, "utf8");
+    const script = "import importlib.util, sys\nspec = importlib.util.spec_from_file_location('ranking_data', sys.argv[1])\nmodule = importlib.util.module_from_spec(spec)\nspec.loader.exec_module(module)\nassert module.TOKEN_RANKINGS[0].value_numerator == '1' + '0' * 255\n";
+    const python = process.env.PYTHON ?? "python3";
+    const result = spawnSync(python, ["-c", script, modulePath], { encoding: "utf8" });
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test("ranking generator is import safe and accepts only one language writes", () => {
   const script = path.join(ROOT, "generate-token-rankings.mjs");
   const imported = spawnSync(process.execPath, ["--input-type=module", "-e", "await import(" + JSON.stringify(script) + ")"], { encoding: "utf8" });

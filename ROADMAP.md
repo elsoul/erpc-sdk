@@ -62,10 +62,12 @@
 ## 0.7 — Token, DEX, pool, and ranking catalogs (UNRELEASED)
 
 The source checkout contains the bounded token, DEX, pool, and ranking
-implementation planned for `0.7.0`. The current published package baseline,
-latest GitHub release, and package manifests remain `0.6.0`, so these new
-catalog and quote exports are not available from the currently published
-packages.
+implementation planned for `0.7.0`. A 2026-09-16 local integration populated
+the source snapshot with partial three-chain coverage: 44 assets, 65 token
+deployments, 12 pools, and 11 ranking records. The current published package
+baseline, latest GitHub release, and package manifests remain `0.6.0`, so
+these new catalog and quote exports are not available from the currently
+published packages.
 
 - Keep token records source-backed and bounded across Ethereum, Solana, and
   Avalanche C-Chain in all five SDKs.
@@ -88,6 +90,11 @@ packages.
   explicitly separate from circulating market cap. Partial coverage and
   unranked reasons stay visible; global USD market cap is rights-gated and
   disabled by default.
+- Keep the populated local snapshot reviewable: token digest
+  `5a7ed7f57a8cfaed87c46512586da8123e94fae80f1ce18ebb3861ccb95a9f70`, DEX
+  digest `a0268a45d2b037ab8ea35aad1c45366d2582cbc9b10681ded590b56e07b011c8`,
+  and ranking digest
+  `f8ae479007fa782995aaaf6aa1c414ba1b6a10a92b7abe481b055293a91ac01c`.
 - Run the installed daily 03:17 UTC discovery/ranking PR, hourly minute-13
   read-only pool monitor with a persisted batch of 32, and Thursday 03:47 UTC
   release-preparation PR workflow. They create or update reviewable work and
@@ -103,8 +110,9 @@ packages.
 
 Initial `0.7.0` feature release work and source, schema, adapter, or API
 changes require manual review. The ranking and discovery descriptions above
-document source-checkout behavior; they do not assert a populated canonical
-integration or current live evidence.
+document source-checkout behavior and the dated local integration; they do not
+assert Actions promotion, native runtime parity, or current live automation
+success.
 
 ## Next phase — routes and transaction execution
 

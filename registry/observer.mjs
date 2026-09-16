@@ -82,6 +82,7 @@ const NETWORKS = Object.freeze(["ethereum", "avalancheC", "solana"]);
 const RETRYABLE_HTTP_STATUS = new Set([429, 500, 502, 503, 504]);
 const ACTIONABLE_SOURCE_STATUS = new Set([404, 410]);
 const REDIRECT_STATUS = new Set([301, 302, 303, 307, 308]);
+const REVIEWED_RPC_PROOF_ENDPOINT_BY_URL = Object.freeze(Object.fromEntries(Object.values(DEFAULT_RPC_ENDPOINTS).map((endpoint) => [endpoint.url, endpoint])));
 const HEX_RE = /^0x[0-9a-f]*$/iu;
 const DIGEST_RE = /^[0-9a-f]{64}$/u;
 const SOURCE_SHA_RE = /^[0-9a-f]{40}$/u;
@@ -266,10 +267,25 @@ export function computeConfigDigest(config) {
   return createHash("sha256").update(stableStringify(config)).digest("hex");
 }
 
+function reviewedRpcProofEndpoint(url) {
+  return REVIEWED_RPC_PROOF_ENDPOINT_BY_URL[url] ?? null;
+}
+
+function isReviewedRpcProofForAsset(catalog, asset, url) {
+  const endpoint = reviewedRpcProofEndpoint(url);
+  return endpoint !== null && asset.representationKind === "unclassified" && catalog.deployments.some((entry) => entry.assetId === asset.assetId && entry.chainId === endpoint.chainId);
+}
+
+function isReviewedRpcProofForDeployment(catalog, deployment, url) {
+  const endpoint = reviewedRpcProofEndpoint(url);
+  const asset = catalog.assets.find((entry) => entry.assetId === deployment.assetId);
+  return endpoint !== null && asset?.representationKind === "unclassified" && deployment.chainId === endpoint.chainId;
+}
+
 function sourceUrlsFromCatalog(catalog) {
   const urls = new Set();
-  for (const asset of catalog.assets) for (const url of asset.evidence) urls.add(url);
-  for (const deployment of catalog.deployments) for (const url of deployment.evidence) urls.add(url);
+  for (const asset of catalog.assets) for (const url of asset.evidence) if (!isReviewedRpcProofForAsset(catalog, asset, url)) urls.add(url);
+  for (const deployment of catalog.deployments) for (const url of deployment.evidence) if (!isReviewedRpcProofForDeployment(catalog, deployment, url)) urls.add(url);
   return urls;
 }
 
@@ -1682,6 +1698,35 @@ function validateDeploymentReceipts(receipts, catalog, networkByName) {
   if (seen.size !== expected.size) fail("deployment receipts are incomplete", "ARTIFACT_INVALID");
 }
 
+function validateReviewedRpcProofReceipts(catalog, deployments, networks) {
+  const deploymentById = new Map(deployments.map((receipt) => [receipt.deploymentId, receipt]));
+  const networkByName = new Map(networks.map((receipt) => [receipt.network, receipt]));
+  const receiptProvesSameChain = (deployment, endpoint) => {
+    const receipt = deploymentById.get(deployment.deploymentId);
+    const network = NETWORKS.find((name) => DEFAULT_RPC_ENDPOINTS[name].chainId === endpoint.chainId);
+    const networkReceiptValue = networkByName.get(network);
+    const expectedVerification = network === "solana" ? "rpc-account-info" : "rpc";
+    return receipt && receipt.chainId === endpoint.chainId && receipt.verification === expectedVerification && networkReceiptValue && networkReceiptValue.chainId === endpoint.chainId;
+  };
+  for (const deployment of catalog.deployments) {
+    const asset = catalog.assets.find((entry) => entry.assetId === deployment.assetId);
+    if (asset?.representationKind !== "unclassified") continue;
+    for (const url of deployment.evidence) {
+      const endpoint = reviewedRpcProofEndpoint(url);
+      if (!endpoint || deployment.chainId !== endpoint.chainId) continue;
+      if (!receiptProvesSameChain(deployment, endpoint)) fail(`unclassified RPC proof for ${deployment.deploymentId} is not backed by a same-chain token RPC receipt`, "ARTIFACT_INVALID");
+    }
+  }
+  for (const asset of catalog.assets.filter((entry) => entry.representationKind === "unclassified")) {
+    for (const url of asset.evidence) {
+      const endpoint = reviewedRpcProofEndpoint(url);
+      if (!endpoint) continue;
+      const candidates = catalog.deployments.filter((entry) => entry.assetId === asset.assetId && entry.chainId === endpoint.chainId);
+      if (candidates.length > 0 && !candidates.some((deployment) => receiptProvesSameChain(deployment, endpoint))) fail(`unclassified RPC proof for ${asset.assetId} is not backed by a same-chain token RPC receipt`, "ARTIFACT_INVALID");
+    }
+  }
+}
+
 function validateSourceReceipts(receipts, config) {
   asArray(receipts, "receipts.sources");
   if (receipts.length !== config.sources.length) fail("receipts must cover every source", "ARTIFACT_INVALID");
@@ -1729,6 +1774,7 @@ export function validateObservationArtifacts(artifacts, context = {}) {
   validateNetworkReceipts(receipts.networks, config);
   const networkByName = new Map(receipts.networks.map((network) => [network.network, network]));
   validateDeploymentReceipts(receipts.deployments, catalog, networkByName);
+  validateReviewedRpcProofReceipts(catalog, receipts.deployments, receipts.networks);
   validateSourceReceipts(receipts.sources, config);
   const deploymentIds = new Set(catalog.deployments.map((deployment) => deployment.deploymentId));
   const sourceIds = new Set(config.sources.map((source) => source.sourceId));

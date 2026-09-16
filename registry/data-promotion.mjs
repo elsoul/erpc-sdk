@@ -95,6 +95,7 @@ export const PUBLISHED_PAIRED_PEEL = "d77169fbf9e927d51113af7a2ee51a5c9b10f3fc";
 const SHA_RE = /^[0-9a-f]{40}$/u;
 const DIGEST_RE = /^[0-9a-f]{64}$/u;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/u;
+const RFC3339_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/u;
 const EVM_ADDRESS_RE = /^0x[0-9a-f]{40}$/u;
 const BASE58_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/u;
 const SAFE_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/u;
@@ -610,9 +611,22 @@ function ensureMaps(tokenCatalog, dexCatalog) {
   return maps;
 }
 
-function candidateDate(observation, tokenCatalog, dexCatalog) {
-  const value = observation.asOfDate ?? observation.observedAt ?? observation.date ?? tokenCatalog.manualAsOf ?? dexCatalog.manualAsOf;
-  return requireDate(value, "candidate asOfDate");
+function discoveryCaptureDate(discoveryRaw) {
+  let latestMillis = null;
+  for (const entry of Array.isArray(discoveryRaw?.rpcTranscript) ? discoveryRaw.rpcTranscript : []) {
+    const value = entry?.observedAt;
+    if (typeof value !== "string" || !RFC3339_RE.test(value)) continue;
+    const millis = Date.parse(value);
+    if (Number.isFinite(millis) && (latestMillis === null || millis > latestMillis)) latestMillis = millis;
+  }
+  return latestMillis === null ? null : new Date(latestMillis).toISOString().slice(0, 10);
+}
+
+function candidateDate(discoveryRaw, tokenCatalog, dexCatalog, hasNewCandidates) {
+  const captured = discoveryCaptureDate(discoveryRaw);
+  if (captured !== null) return requireDate(captured, "candidate asOfDate");
+  if (hasNewCandidates) fail("new catalog records require a bound discovery capture timestamp", "ARTIFACT_INVALID");
+  return requireDate(tokenCatalog.manualAsOf ?? dexCatalog.manualAsOf, "candidate asOfDate");
 }
 
 function configForObservation(observation, options) {
@@ -891,10 +905,10 @@ function selectAdmissionCandidates({ discoveryProposals, poolProposals, discover
   return { tokens: selectedTokens, pools: selectedPoolProposals, deferred };
 }
 
-function appendCatalogData({ baseTokenCatalog, baseDexCatalog, discoveryProposals, poolProposals, observation, config, options }) {
+function appendCatalogData({ baseTokenCatalog, baseDexCatalog, discoveryProposals, poolProposals, discoveryRaw, config, options }) {
   const tokenCatalog = clone(baseTokenCatalog, "token catalog");
   const dexCatalog = clone(baseDexCatalog, "DEX catalog");
-  const asOfDate = candidateDate(observation, tokenCatalog, dexCatalog);
+  const asOfDate = candidateDate(discoveryRaw, tokenCatalog, dexCatalog, discoveryProposals.length > 0 || poolProposals.length > 0);
   const maps = ensureMaps(tokenCatalog, dexCatalog);
   const tokenCandidates = [];
   const tokenSeen = new Set();
@@ -1215,7 +1229,7 @@ export function replayMaintenanceObservation(observation, options = {}) {
     baseDexCatalog: state.dexCatalog,
     discoveryProposals: initialAdmission.tokens,
     poolProposals: initialAdmission.pools,
-    observation: envelope,
+    discoveryRaw: raw.discovery.value,
     config,
     options,
   });
@@ -1290,14 +1304,13 @@ export async function collectMaintenanceObservation(options = {}) {
     discovery = await discoveryCollector({ ...options, root, sourceSha, config: discoveryConfig, tokenCatalog: state.tokenCatalog, dexCatalog: state.dexCatalog, state: state.priorState, outputDir: undefined });
   }
   const discoveryRaw = discovery?.artifactKind === "discovery-receipts" ? discovery : discovery?.receipts ?? discovery;
-  const provisionalObservation = observationEnvelope({ sourceSha, sourceTreeSha, baseSha, tokenCatalog: state.tokenCatalog, dexCatalog: state.dexCatalog, ranking: state.ranking, baselineRanking: state.ranking, discoveryConfig, rankingConfig, discovery: discoveryRaw, pool: options.poolReceipts ?? { schemaVersion: 1, artifactKind: "pool-observations", observations: [] }, execution: options.execution ?? { origin: options.origin ?? "local" } });
   const injectedReplay = options.testOnly === true;
   const discoveryReplayResult = replayDiscoveryCandidates(discoveryRaw, { sourceSha, config: discoveryConfig, tokenCatalog: state.tokenCatalog, dexCatalog: state.dexCatalog, priorState: state.priorState }, injectedReplay ? options.replayDiscovery : undefined);
   const discoveryProposals = discoveryReplayResult.proposals;
   const verifiedDiscoveryState = discoveryReplayResult.replayed?.state;
   if (!isRecord(verifiedDiscoveryState)) fail("discovery replay did not return a verified cursor state", "DISCOVERY_STATE_INVALID");
   const initialAdmission = selectAdmissionCandidates({ discoveryProposals, poolProposals: [], discoveryRaw, poolRaw: { receipts: [] }, tokenCatalog: state.tokenCatalog, dexCatalog: state.dexCatalog, config: discoveryConfig, rankingConfig });
-  const provisional = appendCatalogData({ baseTokenCatalog: state.tokenCatalog, baseDexCatalog: state.dexCatalog, discoveryProposals: initialAdmission.tokens, poolProposals: initialAdmission.pools, observation: provisionalObservation, config: discoveryConfig, options });
+  const provisional = appendCatalogData({ baseTokenCatalog: state.tokenCatalog, baseDexCatalog: state.dexCatalog, discoveryProposals: initialAdmission.tokens, poolProposals: initialAdmission.pools, discoveryRaw, config: discoveryConfig, options });
   const poolCollector = options.testOnly === true && options.poolCollector ? options.poolCollector : poolObserver.collectPoolReceipts ?? poolObserver.observePools;
   const poolRaw = options.poolReceipts !== undefined
     ? options.poolReceipts

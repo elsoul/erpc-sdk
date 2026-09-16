@@ -20,11 +20,21 @@ third-party token database. It does not claim to list every token, rank every
 asset, or provide a complete top-N list.
 
 The token, DEX, pool, quote, and ranking slices are implemented in the source
-checkout and planned for the unreleased `0.7.0` package. The current published
-package baseline, latest GitHub release, and package manifests remain `0.6.0`;
-current package installs do not include these source-checkout exports yet.
+checkout. A bounded local integration on 2026-09-16 populated the source
+snapshot; shipping remains planned for the unreleased `0.7.0` package. The
+current published package baseline, latest GitHub release, and package
+manifests remain `0.6.0`; current package installs do not include these
+source-checkout exports yet.
 
 `token-catalog.json` is the canonical source. Its asset and deployment records retain `evidence` and `asOfDate` for source review. Generated SDK records contain the runtime fields below and omit per-record provenance; only the catalog-wide `asOfDate` and `contentDigest` are emitted as metadata.
+
+The current local candidate contains 44 assets, 65 token deployments, 65
+aliases, 12 pool definitions, and 16 DEX aliases. Its token digest is
+`5a7ed7f57a8cfaed87c46512586da8123e94fae80f1ce18ebb3861ccb95a9f70` and its
+DEX digest is
+`a0268a45d2b037ab8ea35aad1c45366d2582cbc9b10681ded590b56e07b011c8`. The
+integration remains partial and local; the review packet is
+[`evidence/discovery-ranking-review-2026-09-16.json`](./evidence/discovery-ranking-review-2026-09-16.json).
 
 ### Discovery and admission
 
@@ -53,8 +63,10 @@ its rows use reduced non-negative integer rationals in native atomic units, so
 ranking never depends on floating-point arithmetic. `listTokenRankings(chainId)`
 is offline and returns an immutable empty list for an unknown or empty chain.
 The source snapshot's `status`, `metric`, `asOf`, `coverage`, and digest are the
-authority for what has actually been configured; a populated snapshot requires
-fresh bounded collection and review.
+authority for what has actually been configured. The current snapshot is
+`partial`, observed on 2026-09-16, contains 11 ranked records and 54 explicit
+unranked records, and has digest
+`f8ae479007fa782995aaaf6aa1c414ba1b6a10a92b7abe481b055293a91ac01c`.
 
 The approved native metric is
 `onchain-total-supply-value-native`: total supply multiplied by the direct
@@ -172,7 +184,7 @@ The generated paths are fixed by the model:
 
 ## Native parity
 
-Renderer byte equality checks that one source renderer produced the expected text. The recorded cross-language catalog gate has a passing native capture: all five compiled packages supplied 39 assets, 60 deployments, 60 aliases, 338 public-API query rows, and 60 compiled alias-constant checks per language. Steiner and Cyan both recorded PASS for this bounded catalog on 2026-09-15. The dated commands, artifact hashes, and snapshot hashes are in [`evidence/token-catalog-2026-09-15.json`](./evidence/token-catalog-2026-09-15.json) and `/private/tmp/erpc-token-native-snapshots/PROVENANCE.md`.
+Renderer byte equality checks that one source renderer produced the expected text. The 2026-09-15 cross-language catalog capture remains historical evidence for 39 assets, 60 deployments, and 60 aliases; its commands and hashes are in [`evidence/token-catalog-2026-09-15.json`](./evidence/token-catalog-2026-09-15.json). The populated 2026-09-16 snapshot has 44 assets, 65 deployments, and 65 aliases, and its recorded five-language token, DEX, and ranking parity captures pass. Remote CI and the final independent gate remain pending.
 
 The verifier requires an explicit snapshot envelope containing all five languages. Each language snapshot includes:
 

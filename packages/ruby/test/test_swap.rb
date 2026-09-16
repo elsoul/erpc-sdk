@@ -20,7 +20,7 @@ class SwapTest < Minitest::Test
     entry = FIXTURE.fetch("validCases").find { |value| value.fetch("caseId") == "ethereum-weth-usdc-forward" }
     outcome, trace = run_fixture_case(entry)
 
-    assert_equal entry.fetch("outcome"), outcome
+    assert_equal expected_fixture_outcome(entry), outcome
     assert_equal entry.fetch("rpcTrace"), trace
     assert_equal "2393866186", outcome.fetch("value").fetch("amountOut")
     assert_equal({
@@ -182,7 +182,7 @@ class SwapTest < Minitest::Test
   def test_replays_all_shared_fixture_cases
     SHARED_CASES.each do |entry|
       outcome, trace = run_fixture_case(entry)
-      assert_equal entry.fetch("outcome"), outcome, entry.fetch("caseId")
+      assert_equal expected_fixture_outcome(entry), outcome, entry.fetch("caseId")
       assert_equal entry.fetch("rpcTrace"), trace, entry.fetch("caseId")
     end
   end
@@ -228,6 +228,18 @@ class SwapTest < Minitest::Test
 
   def set_fixture_clock(client, seconds)
     client.swap.instance_variable_set(:@clock, -> { seconds })
+  end
+
+  def expected_fixture_outcome(entry)
+    expected = entry.fetch("outcome")
+    return expected unless expected.fetch("kind") == "success" && expected.fetch("value").is_a?(Hash)
+
+    expected.merge(
+      "value" => expected.fetch("value").merge(
+        "tokenCatalogDigest" => ERPC::TokenCatalog::TOKEN_CATALOG_CONTENT_DIGEST,
+        "dexCatalogDigest" => ERPC::DexCatalog::DEX_CATALOG_CONTENT_DIGEST
+      )
+    )
   end
 
   def fixture_adapter(entry, trace)

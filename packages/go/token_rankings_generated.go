@@ -34,16 +34,28 @@ type TokenRankingSnapshotMetadata struct {
 }
 
 const TokenRankingsSchemaVersion = 1
-const TokenRankingsMetric = ""
-const TokenRankingsAsOf = ""
-const TokenRankingsContentDigest = "c22413bfd591ce9c0ab7cb76da1eaff4b21250a2ec13e9d46d4499c210f6fbe1"
-const TokenRankingsStatus = "unconfigured"
+const TokenRankingsMetric = "onchain-total-supply-value-native"
+const TokenRankingsAsOf = "2026-09-16T12:25:59Z"
+const TokenRankingsContentDigest = "f8ae479007fa782995aaaf6aa1c414ba1b6a10a92b7abe481b055293a91ac01c"
+const TokenRankingsStatus = "partial"
 
-var tokenRankingsMetricValue = (*string)(nil)
-var tokenRankingsAsOfValue = (*string)(nil)
-var tokenRankingsCoverage = []TokenRankingCoverage{}
-var tokenRankingsSourceIDs = []string{}
-var tokenRankings = []TokenRanking{}
+var tokenRankingsMetricValue = tokenRankingString("onchain-total-supply-value-native")
+var tokenRankingsAsOfValue = tokenRankingString("2026-09-16T12:25:59Z")
+var tokenRankingsCoverage = []TokenRankingCoverage{{ChainID: "eip155:1", TotalDeployments: 31, RankedDeployments: 5, UnrankedDeployments: 26, ObservedAt: tokenRankingString("2026-09-16T12:25:59Z")}, {ChainID: "eip155:43114", TotalDeployments: 15, RankedDeployments: 5, UnrankedDeployments: 10, ObservedAt: tokenRankingString("2026-09-16T12:39:02Z")}, {ChainID: "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp", TotalDeployments: 19, RankedDeployments: 1, UnrankedDeployments: 18, ObservedAt: tokenRankingString("2026-09-16T12:39:03Z")}}
+var tokenRankingsSourceIDs = []string{"rpc-avalanche-c-mainnet", "rpc-ethereum-mainnet", "rpc-solana-mainnet"}
+var tokenRankings = []TokenRanking{
+	{Rank: 1, ChainID: "eip155:1", DeploymentIDs: []string{"deployment-0008"}, Metric: "onchain-total-supply-value-native", ValueNumerator: "34373245032229408721651654710155088650", ValueDenominator: "1657978438349", QuoteCurrency: "native", QuoteDeploymentID: tokenRankingString("deployment-0001"), ObservedAt: "2026-09-16T12:25:59Z", SourceID: "rpc-ethereum-mainnet", SourceAssetID: nil},
+	{Rank: 2, ChainID: "eip155:1", DeploymentIDs: []string{"deployment-0057"}, Metric: "onchain-total-supply-value-native", ValueNumerator: "54336438024037754961200000000000000000000000000", ValueDenominator: "12093785044989151738213", QuoteCurrency: "native", QuoteDeploymentID: tokenRankingString("deployment-0001"), ObservedAt: "2026-09-16T12:25:59Z", SourceID: "rpc-ethereum-mainnet", SourceAssetID: nil},
+	{Rank: 3, ChainID: "eip155:1", DeploymentIDs: []string{"discovered-token-e375086901067fe3de023bcdc70f1bafca798e1719ed7e676a98f57de3350a07"}, Metric: "onchain-total-supply-value-native", ValueNumerator: "2525492264471059700120305715079443", ValueDenominator: "690721860", QuoteCurrency: "native", QuoteDeploymentID: tokenRankingString("deployment-0001"), ObservedAt: "2026-09-16T12:25:59Z", SourceID: "rpc-ethereum-mainnet", SourceAssetID: nil},
+	{Rank: 4, ChainID: "eip155:1", DeploymentIDs: []string{"deployment-0019"}, Metric: "onchain-total-supply-value-native", ValueNumerator: "4271975517785766848482230266881712378883437942700", ValueDenominator: "2250944125254280650689437", QuoteCurrency: "native", QuoteDeploymentID: tokenRankingString("deployment-0001"), ObservedAt: "2026-09-16T12:25:59Z", SourceID: "rpc-ethereum-mainnet", SourceAssetID: nil},
+	{Rank: 5, ChainID: "eip155:1", DeploymentIDs: []string{"discovered-token-b475569f6a15e97ac04e531dd813e9dcc902521c098d60d6ae4d21d53baf1395"}, Metric: "onchain-total-supply-value-native", ValueNumerator: "22264092209365459726347397030325357789188546", ValueDenominator: "463401486313414379563", QuoteCurrency: "native", QuoteDeploymentID: tokenRankingString("deployment-0001"), ObservedAt: "2026-09-16T12:25:59Z", SourceID: "rpc-ethereum-mainnet", SourceAssetID: nil},
+	{Rank: 1, ChainID: "eip155:43114", DeploymentIDs: []string{"deployment-0009"}, Metric: "onchain-total-supply-value-native", ValueNumerator: "9684631050574263013023455615271609374", ValueDenominator: "183990182613", QuoteCurrency: "native", QuoteDeploymentID: tokenRankingString("deployment-0003"), ObservedAt: "2026-09-16T12:39:02Z", SourceID: "rpc-avalanche-c-mainnet", SourceAssetID: nil},
+	{Rank: 2, ChainID: "eip155:43114", DeploymentIDs: []string{"discovered-token-0a7f98c8752f15ee02ce0d801f25df8ff78864a1d70aff7e204f7bdb3f8a0692"}, Metric: "onchain-total-supply-value-native", ValueNumerator: "428651134757131518760822944334320496876130957", ValueDenominator: "93798888275984202944", QuoteCurrency: "native", QuoteDeploymentID: tokenRankingString("deployment-0003"), ObservedAt: "2026-09-16T12:39:02Z", SourceID: "rpc-avalanche-c-mainnet", SourceAssetID: nil},
+	{Rank: 3, ChainID: "eip155:43114", DeploymentIDs: []string{"discovered-token-9f9965cc065c9becf8d2cb58071524baafea37d27fda9bf683a93ea85f2e653d"}, Metric: "onchain-total-supply-value-native", ValueNumerator: "329258804280404232921362005032486", ValueDenominator: "100376095", QuoteCurrency: "native", QuoteDeploymentID: tokenRankingString("deployment-0003"), ObservedAt: "2026-09-16T12:39:02Z", SourceID: "rpc-avalanche-c-mainnet", SourceAssetID: nil},
+	{Rank: 4, ChainID: "eip155:43114", DeploymentIDs: []string{"discovered-token-288036a90ee0fa72a2751a78a6934cc6ced9e16de91c97ae8e109e2ee6189bc5"}, Metric: "onchain-total-supply-value-native", ValueNumerator: "302284726917740251597736368354585016", ValueDenominator: "125254007881", QuoteCurrency: "native", QuoteDeploymentID: tokenRankingString("deployment-0003"), ObservedAt: "2026-09-16T12:39:02Z", SourceID: "rpc-avalanche-c-mainnet", SourceAssetID: nil},
+	{Rank: 5, ChainID: "eip155:43114", DeploymentIDs: []string{"deployment-0059"}, Metric: "onchain-total-supply-value-native", ValueNumerator: "3838261717079276751398078819449631846084885051330", ValueDenominator: "2049893838364317689421037", QuoteCurrency: "native", QuoteDeploymentID: tokenRankingString("deployment-0003"), ObservedAt: "2026-09-16T12:39:02Z", SourceID: "rpc-avalanche-c-mainnet", SourceAssetID: nil},
+	{Rank: 1, ChainID: "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp", DeploymentIDs: []string{"deployment-0013"}, Metric: "onchain-total-supply-value-native", ValueNumerator: "8934052693080353874049310737201297316074749264134144", ValueDenominator: "7196706185369858455291085779022658721", QuoteCurrency: "native", QuoteDeploymentID: tokenRankingString("deployment-0005"), ObservedAt: "2026-09-16T12:39:03Z", SourceID: "rpc-solana-mainnet", SourceAssetID: nil},
+}
 
 func cloneTokenRanking(value TokenRanking) TokenRanking {
 	value.DeploymentIDs = append([]string(nil), value.DeploymentIDs...)

@@ -34,6 +34,12 @@ function withDigest(value) {
   return value;
 }
 
+function seedEthereumEthAlias(catalog) {
+  const alias = catalog.aliases.find((entry) => entry.namespace === "ethereum" && entry.name === "ETH");
+  if (!alias) throw new Error("seed Ethereum ETH alias is missing");
+  return alias;
+}
+
 function isEvm(chainId) {
   return chainId === "eip155:1" || chainId === "eip155:43114";
 }
@@ -77,15 +83,15 @@ function mutate(catalog, operation) {
     return withDigest(next);
   }
   if (operation === "setInvalidAliasName") {
-    next.aliases[0].name = "not-portable";
+    seedEthereumEthAlias(next).name = "not-portable";
     return withDigest(next);
   }
   if (operation === "setUnknownAliasNamespace") {
-    next.aliases[0].namespace = "polygon";
+    seedEthereumEthAlias(next).namespace = "polygon";
     return withDigest(next);
   }
   if (operation === "setWrongAliasChain") {
-    next.aliases[0].deploymentId = next.deployments.find((entry) => entry.chainId === "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp").deploymentId;
+    seedEthereumEthAlias(next).deploymentId = next.deployments.find((entry) => entry.chainId === "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp").deploymentId;
     return withDigest(next);
   }
   if (operation === "setUnknownAssetReference") {
@@ -208,6 +214,34 @@ test("Go renderer emits gofmt-idempotent source", (t) => {
     return;
   }
   assert.equal(diff, "");
+});
+
+test("Rust and Python renderers wrap long alias declarations without changing alias values", () => {
+  const grown = clone(CATALOG);
+  const alias = grown.aliases.find((entry) => entry.name.startsWith("DISCOVERED_"));
+  assert.ok(alias);
+  alias.name = `DISCOVERED_${"A".repeat(64)}`;
+  grown.contentDigest = computeDigest(grown);
+  assert.equal(validateCatalog(grown), true);
+
+  const rustSource = renderLanguage("rust", grown);
+  assert.match(rustSource, new RegExp(`pub const ${alias.name}:\\n\\s+&str =\\n`));
+  assert.match(rustSource, new RegExp(alias.deploymentId));
+  const rustfmt = process.env.RUSTFMT ?? "rustfmt";
+  try {
+    const formatted = execFileSync(rustfmt, ["--emit", "stdout", "--edition", "2024"], { input: rustSource, encoding: "utf8" });
+    assert.equal(formatted, rustSource);
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+  }
+
+  const pythonSource = renderLanguage("python", grown);
+  const aliasStart = pythonSource.indexOf(`    TokenAlias(\n        ${JSON.stringify(alias.namespace)},`);
+  assert.notEqual(aliasStart, -1);
+  const aliasEnd = pythonSource.indexOf("    ),", aliasStart) + "    ),".length;
+  for (const line of pythonSource.slice(aliasStart, aliasEnd).split("\n")) assert.ok(line.length <= 100, `Python alias line exceeds 100 columns: ${line}`);
+  assert.match(pythonSource, new RegExp(alias.name));
+  assert.match(pythonSource, new RegExp(alias.deploymentId));
 });
 
 test("deployment identity is the asset, chain, standard, and normalized address tuple", () => {

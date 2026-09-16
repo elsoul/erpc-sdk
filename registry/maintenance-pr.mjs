@@ -800,7 +800,7 @@ function archiveListing(zipPath) {
   if (detailsResult.error || detailsResult.status !== 0) fail("maintenance CI artifact listing could not be verified", "GITHUB_API_FAILED");
   const sizes = new Map();
   for (const line of String(detailsResult.stdout ?? "").split(/\r?\n/u)) {
-    const match = line.match(/^\s*(\d+)\s+\d{2}-\d{2}-\d{4}\s+\d{2}:\d{2}\s+(.+?)\s*$/u);
+    const match = line.match(/^\s*(\d+)\s+(?:\d{2}-\d{2}-\d{4}|\d{4}-\d{2}-\d{2})\s+\d{2}:\d{2}\s+(.+?)\s*$/u);
     if (!match) continue;
     const size = Number(match[1]);
     if (!Number.isSafeInteger(size) || size < 0 || size > MAX_CI_ENTRY_BYTES) fail("maintenance CI artifact entry exceeds its uncompressed bound", "ARTIFACT_TOO_LARGE");

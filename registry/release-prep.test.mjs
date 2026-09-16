@@ -21,7 +21,6 @@ import {
 } from "./release-prep.mjs";
 import { computeDigest as computeDexDigest } from "./dex-catalog.mjs";
 import { CATALOG, computeDigest, validateCatalog } from "./token-catalog.mjs";
-import ranking from "./token-rankings.json" with { type: "json" };
 import { renderLanguage as renderRankingLanguage } from "./generate-token-rankings.mjs";
 import { replayTokenRankings } from "./token-rankings.mjs";
 
@@ -40,6 +39,10 @@ function gitRunner(command, args, { cwd } = {}) {
     stderr: result.stderr ?? "",
     error: result.error,
   };
+}
+
+function historicalTokenCatalog(root) {
+  return JSON.parse(git(root, ["show", `${WORKTREE_BASE}:registry/token-catalog.json`]));
 }
 
 function newWorktree() {
@@ -345,10 +348,12 @@ test("non-SDK Cargo.lock dependency changes remain manual-version shipping chang
 
 test("ranking-only runtime changes are classified as a catalog patch candidate", async () => {
   await withWorktree(async (root) => {
-    writeFileSync(path.join(root, "registry/token-rankings.json"), `${JSON.stringify(ranking, null, 2)}\n`);
+    const tokenCatalog = historicalTokenCatalog(root);
+    const rankingFixture = replayTokenRankings({ candidates: [], unranked: [], provenance: [] }, { tokenCatalog });
+    writeFileSync(path.join(root, "registry/token-rankings.json"), `${JSON.stringify(rankingFixture, null, 2)}\n`);
     for (const relativePath of RANKING_CATALOG_RUNTIME_PATHS.slice(1)) {
       const language = relativePath.includes("typescript") ? "typescript" : relativePath.includes("rust") ? "rust" : relativePath.includes("python") ? "python" : relativePath.includes("ruby") ? "ruby" : "go";
-      writeFileSync(path.join(root, relativePath), renderRankingLanguage(language, ranking));
+      writeFileSync(path.join(root, relativePath), renderRankingLanguage(language, rankingFixture, { tokenCatalog }));
     }
     const expectedHead = commitAll(root, "fixture ranking runtime refresh");
     const report = inspectRelease({ root, expectedHead, runner: gitRunner });
@@ -370,6 +375,7 @@ test("historical DEX catalog absence is distinct from malformed released data", 
   const root = newIsolatedRepo();
   try {
     const dexPath = path.join(root, "registry/dex-catalog.json");
+    writeFileSync(path.join(root, "registry/token-catalog.json"), readFileSync(path.join(REPOSITORY_ROOT, "registry/token-catalog.json"), "utf8"));
     writeFileSync(dexPath, "{ malformed historical DEX catalog\n");
     const malformedHead = commitAll(root, "malformed historical DEX catalog");
     execFileSync("git", ["-C", root, "tag", "v0.7.0", malformedHead], { encoding: "utf8", stdio: "ignore" });

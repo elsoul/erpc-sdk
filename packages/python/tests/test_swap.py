@@ -138,10 +138,20 @@ async def _run_fixture_case(entry: dict[str, Any]) -> tuple[dict[str, Any], list
     return outcome, trace
 
 
+def _expected_quote_outcome(entry: dict[str, Any]) -> dict[str, Any]:
+    expected = entry["outcome"]
+    if expected.get("kind") != "success" or not isinstance(expected.get("value"), dict):
+        return expected
+    value = dict(expected["value"])
+    value["tokenCatalogDigest"] = TOKEN_CATALOG_CONTENT_DIGEST
+    value["dexCatalogDigest"] = DEX_CATALOG_CONTENT_DIGEST
+    return {**expected, "value": value}
+
+
 @pytest.mark.asyncio
 async def test_shared_quote_cases_replay_exactly(entry: dict[str, Any]) -> None:
     outcome, trace = await _run_fixture_case(entry)
-    assert outcome == entry["outcome"], entry["caseId"]
+    assert outcome == _expected_quote_outcome(entry), entry["caseId"]
     assert trace == entry.get("rpcTrace", []), entry["caseId"]
 
 

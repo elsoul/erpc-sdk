@@ -149,9 +149,13 @@ test("fresh manual 0.7.1 preparation is canonicalized and rejects an extra packa
     cpSync("registry/release-prep.mjs", join(previewRoot, "registry/release-prep.mjs"));
     cpSync("registry/release-plan.json", join(previewRoot, "registry/release-plan.json"));
     cpSync("registry/observer-config.json", join(previewRoot, "registry/observer-config.json"));
+    // The observer capture below uses the populated checkout's catalog. Keep
+    // the frozen release fixture bound to the same catalog before preparing
+    // its manual release, even when the source catalog is still uncommitted.
+    cpSync("registry/token-catalog.json", join(previewRoot, "registry/token-catalog.json"));
     const changelogPath = join(previewRoot, "CHANGELOG.md");
     writeFileSync(changelogPath, readFileSync(changelogPath, "utf8").replace("## Unreleased\n", "## Unreleased\n\n- Exercise a manual patch candidate.\n"));
-    execFileSync("git", ["add", "registry/release-prep.mjs", "registry/release-plan.json", "registry/observer-config.json", "CHANGELOG.md"], { cwd: previewRoot, stdio: "pipe" });
+    execFileSync("git", ["add", "registry/release-prep.mjs", "registry/release-plan.json", "registry/observer-config.json", "registry/token-catalog.json", "CHANGELOG.md"], { cwd: previewRoot, stdio: "pipe" });
     execFileSync("git", ["-c", "user.name=Maintenance Test", "-c", "user.email=maintenance@example.invalid", "commit", "--quiet", "-m", "Add release preparation helpers"], { cwd: previewRoot, stdio: "pipe" });
     const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: previewRoot, encoding: "utf8" }).trim();
     const report = prepareRelease({ root: previewRoot, expectedHead: head, version: "0.7.1", releaseDate: "2026-09-15" });
@@ -438,7 +442,7 @@ test("real gh adapter binds workflow_run_id, head, ref, and requested base", asy
   }
 });
 
-test("real gh adapter fetches only the exact bounded CI observation artifact", async () => {
+test("real gh adapter fetches only the exact bounded CI observation artifact with portable unzip dates", { concurrency: false }, async () => {
   const directory = mkdtempSync(join(tmpdir(), "erpc-maintenance-gh-artifact-"));
   const badDirectory = mkdtempSync(join(tmpdir(), "erpc-maintenance-gh-artifact-bad-"));
   try {
@@ -485,15 +489,45 @@ else if (path.includes("/actions/runs/" + runId + "/jobs")) process.stdout.write
 else if (path.includes("/actions/runs/" + runId + "/artifacts")) process.stdout.write(JSON.stringify({ artifacts: [{ id: 123, name: expectedName, expired: false, workflow_run: { id: runId } }] }));
 else if (path.includes("/actions/artifacts/123/zip")) process.stdout.write(readFileSync(process.env.FAKE_ZIP));
 else process.stdout.write(JSON.stringify({}));
-`);
+    `);
     chmodSync(scriptPath, 0o755);
+    const realUnzip = execFileSync("which", ["unzip"], { encoding: "utf8" }).trim();
+    const unzipPath = join(directory, "unzip");
+    const unzipMarker = join(directory, "unzip-invocations");
+    writeFileSync(unzipMarker, "");
+    writeFileSync(unzipPath, `#!/usr/bin/env node
+const { appendFileSync, writeSync } = require("node:fs");
+const { spawnSync } = require("node:child_process");
+const real = ${JSON.stringify(realUnzip)};
+const marker = ${JSON.stringify(unzipMarker)};
+const args = process.argv.slice(2);
+appendFileSync(marker, args[0] + "\\n");
+const result = spawnSync(real, args, { encoding: null, maxBuffer: 16 * 1024 * 1024 + 1 });
+if (result.status === 0 && args[0] === "-l") {
+  const listing = Buffer.from(result.stdout ?? "").toString("utf8").replace(/\\b\\d{2}-\\d{2}-\\d{4}\\b/gu, "2026-09-16");
+  writeSync(1, listing);
+} else {
+  if (result.stdout?.length) writeSync(1, result.stdout);
+}
+if (result.stderr?.length) writeSync(2, result.stderr);
+process.exit(result.status ?? 1);
+`);
+    chmodSync(unzipPath, 0o755);
     const env = { ...process.env, PATH: `${directory}:${process.env.PATH}`, FAKE_ZIP: zipPath };
     const adapter = createGhAdapter({ repo: "owner/repo", root: directory, env });
-    const result = await adapter.getMaintenanceObservation(runId, runAttempt, { expectedHead: headSha, expectedBase: baseSha });
-    assert.deepEqual(result.observation, observation);
-    assert.equal(result.provenance.observationByteLength, observationBytes.byteLength);
-    env.FAKE_ZIP = badZipPath;
-    await assert.rejects(() => adapter.getMaintenanceObservation(runId, runAttempt, { expectedHead: headSha, expectedBase: baseSha }), { code: "CI_PROVENANCE_INVALID" });
+    const previousPath = process.env.PATH;
+    process.env.PATH = `${directory}:${previousPath ?? ""}`;
+    try {
+      const result = await adapter.getMaintenanceObservation(runId, runAttempt, { expectedHead: headSha, expectedBase: baseSha });
+      assert.deepEqual(result.observation, observation);
+      assert.equal(result.provenance.observationByteLength, observationBytes.byteLength);
+      assert.match(readFileSync(unzipMarker, "utf8"), /-l\n/u, "portable date wrapper was not invoked for the detailed listing");
+      env.FAKE_ZIP = badZipPath;
+      await assert.rejects(() => adapter.getMaintenanceObservation(runId, runAttempt, { expectedHead: headSha, expectedBase: baseSha }), { code: "CI_PROVENANCE_INVALID" });
+    } finally {
+      if (previousPath === undefined) delete process.env.PATH;
+      else process.env.PATH = previousPath;
+    }
   } finally {
     rmSync(directory, { recursive: true, force: true });
     rmSync(badDirectory, { recursive: true, force: true });

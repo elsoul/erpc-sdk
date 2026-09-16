@@ -11,7 +11,7 @@ import {
   resolveCatalogBaseline,
   validateBaselineBinding,
 } from "./ci-catalog-baseline.mjs";
-import { CATALOG, computeDigest } from "./token-catalog.mjs";
+import { computeDigest } from "./token-catalog.mjs";
 
 const SOURCE_COMMIT = "1eed9b24790dfe8267173a06ffdf3155e7c14057";
 const TAG_COMMIT = "d77169fbf9e927d51113af7a2ee51a5c9b10f3fc";
@@ -40,7 +40,8 @@ test("baseline resolves from the validated PR base and verifies ancestry", () =>
     const result = resolveCatalogBaseline({ root, baseSha: SOURCE_COMMIT, pushBeforeSha: SOURCE_COMMIT, dispatchBaseSha: SOURCE_COMMIT, headSha: head });
     assert.equal(result.baseSha, SOURCE_COMMIT);
     assert.equal(result.headSha, head);
-    assert.equal(result.catalogDigest, computeDigest(CATALOG));
+    const baselineCatalog = JSON.parse(git(root, ["show", `${SOURCE_COMMIT}:${CATALOG_PATH}`]));
+    assert.equal(result.catalogDigest, computeDigest(baselineCatalog));
     assert.equal(result.baselinePath, CATALOG_PATH);
   } finally { removeFixture(root); }
 });

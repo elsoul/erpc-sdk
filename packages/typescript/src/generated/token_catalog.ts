@@ -47,7 +47,7 @@ const deepFreeze = <T>(value: T): Readonly<T> => {
 
 export const TOKEN_CATALOG_VERSION = "1.0.0" as const;
 export const TOKEN_CATALOG_AS_OF_DATE = "2026-09-15" as const;
-export const TOKEN_CATALOG_CONTENT_DIGEST = "62879dfe8bb49a154d2a1bff356321e5dbe78d8cef0cd3409ef2b22cfd3445a4" as const;
+export const TOKEN_CATALOG_CONTENT_DIGEST = "5a7ed7f57a8cfaed87c46512586da8123e94fae80f1ce18ebb3861ccb95a9f70" as const;
 export const TOKEN_CHAIN_IDS = deepFreeze({
   "ethereumMainnet": "eip155:1",
   "solanaMainnet": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
@@ -63,6 +63,9 @@ export const tokens = deepFreeze({
   "avalancheC": {
     "AUSD": "deployment-0035",
     "AVAX": "deployment-0003",
+    "DISCOVERED_0A7F98C8752F15EE": "discovered-token-0a7f98c8752f15ee02ce0d801f25df8ff78864a1d70aff7e204f7bdb3f8a0692",
+    "DISCOVERED_288036A90EE0FA72": "discovered-token-288036a90ee0fa72a2751a78a6934cc6ced9e16de91c97ae8e109e2ee6189bc5",
+    "DISCOVERED_9F9965CC065C9BEC": "discovered-token-9f9965cc065c9becf8d2cb58071524baafea37d27fda9bf683a93ea85f2e653d",
     "EURC": "deployment-0012",
     "EUROP": "deployment-0045",
     "GHO": "deployment-0030",
@@ -78,6 +81,8 @@ export const tokens = deepFreeze({
     "AAVE": "deployment-0056",
     "AUSD": "deployment-0034",
     "DAI": "deployment-0019",
+    "DISCOVERED_B475569F6A15E97A": "discovered-token-b475569f6a15e97ac04e531dd813e9dcc902521c098d60d6ae4d21d53baf1395",
+    "DISCOVERED_E375086901067FE3": "discovered-token-e375086901067fe3de023bcdc70f1bafca798e1719ed7e676a98f57de3350a07",
     "ETH": "deployment-0001",
     "EURA": "deployment-0051",
     "EURAU": "deployment-0042",
@@ -436,6 +441,46 @@ export const TOKEN_ASSETS: readonly TokenAsset[] = deepFreeze([
     "assetId": "asset-0039",
     "name": "Jupiter",
     "representationKind": "issued",
+    "stableCurrency": null,
+    "underlyingAssetId": null,
+    "economicReferenceAssetId": null
+  },
+  {
+    "assetId": "discovered-token-0a7f98c8752f15ee02ce0d801f25df8ff78864a1d70aff7e204f7bdb3f8a0692",
+    "name": "Unclassified token at 0x49d5c2bdffac6ce2bfdb6640f4f80f226bc10bab",
+    "representationKind": "unclassified",
+    "stableCurrency": null,
+    "underlyingAssetId": null,
+    "economicReferenceAssetId": null
+  },
+  {
+    "assetId": "discovered-token-288036a90ee0fa72a2751a78a6934cc6ced9e16de91c97ae8e109e2ee6189bc5",
+    "name": "Unclassified token at 0xc7198437980c041c805a1edcba50c1ce5db95118",
+    "representationKind": "unclassified",
+    "stableCurrency": null,
+    "underlyingAssetId": null,
+    "economicReferenceAssetId": null
+  },
+  {
+    "assetId": "discovered-token-9f9965cc065c9becf8d2cb58071524baafea37d27fda9bf683a93ea85f2e653d",
+    "name": "Unclassified token at 0x50b7545627a5162f82a992c33b87adc75187b218",
+    "representationKind": "unclassified",
+    "stableCurrency": null,
+    "underlyingAssetId": null,
+    "economicReferenceAssetId": null
+  },
+  {
+    "assetId": "discovered-token-b475569f6a15e97ac04e531dd813e9dcc902521c098d60d6ae4d21d53baf1395",
+    "name": "Unclassified token at 0x9f8f72aa9304c8b593d555f12ef6589cc3a579a2",
+    "representationKind": "unclassified",
+    "stableCurrency": null,
+    "underlyingAssetId": null,
+    "economicReferenceAssetId": null
+  },
+  {
+    "assetId": "discovered-token-e375086901067fe3de023bcdc70f1bafca798e1719ed7e676a98f57de3350a07",
+    "name": "Unclassified token at 0x2260fac5e5542a773aa44fbcfedf7c193bc2c599",
+    "representationKind": "unclassified",
     "stableCurrency": null,
     "underlyingAssetId": null,
     "economicReferenceAssetId": null
@@ -1401,11 +1446,94 @@ export const TOKEN_DEPLOYMENTS: readonly TokenDeployment[] = deepFreeze([
     "address": "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN",
     "status": "active",
     "replacedByDeploymentId": null
+  },
+  {
+    "deploymentId": "discovered-token-0a7f98c8752f15ee02ce0d801f25df8ff78864a1d70aff7e204f7bdb3f8a0692",
+    "assetId": "discovered-token-0a7f98c8752f15ee02ce0d801f25df8ff78864a1d70aff7e204f7bdb3f8a0692",
+    "name": "Unclassified token at 0x49d5c2bdffac6ce2bfdb6640f4f80f226bc10bab",
+    "representationKind": "unclassified",
+    "stableCurrency": null,
+    "underlyingAssetId": null,
+    "economicReferenceAssetId": null,
+    "chainId": "eip155:43114",
+    "symbol": "0x49d5c2bdffac6ce2bfdb6640f4f80f226bc10bab",
+    "decimals": 18,
+    "standard": "erc20",
+    "address": "0x49d5c2bdffac6ce2bfdb6640f4f80f226bc10bab",
+    "status": "active",
+    "replacedByDeploymentId": null
+  },
+  {
+    "deploymentId": "discovered-token-288036a90ee0fa72a2751a78a6934cc6ced9e16de91c97ae8e109e2ee6189bc5",
+    "assetId": "discovered-token-288036a90ee0fa72a2751a78a6934cc6ced9e16de91c97ae8e109e2ee6189bc5",
+    "name": "Unclassified token at 0xc7198437980c041c805a1edcba50c1ce5db95118",
+    "representationKind": "unclassified",
+    "stableCurrency": null,
+    "underlyingAssetId": null,
+    "economicReferenceAssetId": null,
+    "chainId": "eip155:43114",
+    "symbol": "0xc7198437980c041c805a1edcba50c1ce5db95118",
+    "decimals": 6,
+    "standard": "erc20",
+    "address": "0xc7198437980c041c805a1edcba50c1ce5db95118",
+    "status": "active",
+    "replacedByDeploymentId": null
+  },
+  {
+    "deploymentId": "discovered-token-9f9965cc065c9becf8d2cb58071524baafea37d27fda9bf683a93ea85f2e653d",
+    "assetId": "discovered-token-9f9965cc065c9becf8d2cb58071524baafea37d27fda9bf683a93ea85f2e653d",
+    "name": "Unclassified token at 0x50b7545627a5162f82a992c33b87adc75187b218",
+    "representationKind": "unclassified",
+    "stableCurrency": null,
+    "underlyingAssetId": null,
+    "economicReferenceAssetId": null,
+    "chainId": "eip155:43114",
+    "symbol": "0x50b7545627a5162f82a992c33b87adc75187b218",
+    "decimals": 8,
+    "standard": "erc20",
+    "address": "0x50b7545627a5162f82a992c33b87adc75187b218",
+    "status": "active",
+    "replacedByDeploymentId": null
+  },
+  {
+    "deploymentId": "discovered-token-b475569f6a15e97ac04e531dd813e9dcc902521c098d60d6ae4d21d53baf1395",
+    "assetId": "discovered-token-b475569f6a15e97ac04e531dd813e9dcc902521c098d60d6ae4d21d53baf1395",
+    "name": "Unclassified token at 0x9f8f72aa9304c8b593d555f12ef6589cc3a579a2",
+    "representationKind": "unclassified",
+    "stableCurrency": null,
+    "underlyingAssetId": null,
+    "economicReferenceAssetId": null,
+    "chainId": "eip155:1",
+    "symbol": "0x9f8f72aa9304c8b593d555f12ef6589cc3a579a2",
+    "decimals": 18,
+    "standard": "erc20",
+    "address": "0x9f8f72aa9304c8b593d555f12ef6589cc3a579a2",
+    "status": "active",
+    "replacedByDeploymentId": null
+  },
+  {
+    "deploymentId": "discovered-token-e375086901067fe3de023bcdc70f1bafca798e1719ed7e676a98f57de3350a07",
+    "assetId": "discovered-token-e375086901067fe3de023bcdc70f1bafca798e1719ed7e676a98f57de3350a07",
+    "name": "Unclassified token at 0x2260fac5e5542a773aa44fbcfedf7c193bc2c599",
+    "representationKind": "unclassified",
+    "stableCurrency": null,
+    "underlyingAssetId": null,
+    "economicReferenceAssetId": null,
+    "chainId": "eip155:1",
+    "symbol": "0x2260fac5e5542a773aa44fbcfedf7c193bc2c599",
+    "decimals": 8,
+    "standard": "erc20",
+    "address": "0x2260fac5e5542a773aa44fbcfedf7c193bc2c599",
+    "status": "active",
+    "replacedByDeploymentId": null
   }
 ]) as readonly TokenDeployment[];
 export const TOKEN_ALIASES: readonly TokenAlias[] = deepFreeze([
   { namespace: "avalancheC", name: "AUSD", deploymentId: tokens.avalancheC.AUSD },
   { namespace: "avalancheC", name: "AVAX", deploymentId: tokens.avalancheC.AVAX },
+  { namespace: "avalancheC", name: "DISCOVERED_0A7F98C8752F15EE", deploymentId: tokens.avalancheC.DISCOVERED_0A7F98C8752F15EE },
+  { namespace: "avalancheC", name: "DISCOVERED_288036A90EE0FA72", deploymentId: tokens.avalancheC.DISCOVERED_288036A90EE0FA72 },
+  { namespace: "avalancheC", name: "DISCOVERED_9F9965CC065C9BEC", deploymentId: tokens.avalancheC.DISCOVERED_9F9965CC065C9BEC },
   { namespace: "avalancheC", name: "EURC", deploymentId: tokens.avalancheC.EURC },
   { namespace: "avalancheC", name: "EUROP", deploymentId: tokens.avalancheC.EUROP },
   { namespace: "avalancheC", name: "GHO", deploymentId: tokens.avalancheC.GHO },
@@ -1419,6 +1547,8 @@ export const TOKEN_ALIASES: readonly TokenAlias[] = deepFreeze([
   { namespace: "ethereum", name: "AAVE", deploymentId: tokens.ethereum.AAVE },
   { namespace: "ethereum", name: "AUSD", deploymentId: tokens.ethereum.AUSD },
   { namespace: "ethereum", name: "DAI", deploymentId: tokens.ethereum.DAI },
+  { namespace: "ethereum", name: "DISCOVERED_B475569F6A15E97A", deploymentId: tokens.ethereum.DISCOVERED_B475569F6A15E97A },
+  { namespace: "ethereum", name: "DISCOVERED_E375086901067FE3", deploymentId: tokens.ethereum.DISCOVERED_E375086901067FE3 },
   { namespace: "ethereum", name: "ETH", deploymentId: tokens.ethereum.ETH },
   { namespace: "ethereum", name: "EURA", deploymentId: tokens.ethereum.EURA },
   { namespace: "ethereum", name: "EURAU", deploymentId: tokens.ethereum.EURAU },

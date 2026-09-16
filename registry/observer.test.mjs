@@ -190,7 +190,7 @@ test("trusted recomputation permits only prior findings carried across transient
   assert.throws(() => validateObservationArtifacts(rpcArtifacts, { sourceSha: "a".repeat(40), catalog: CATALOG, config }), /derived|artifact/u);
 });
 
-test("successful observation covers all 60 deployments, uses pinned EVM blocks, and is bootstrap-eligible", async () => {
+test("successful observation covers all current deployments, uses pinned EVM blocks, and is bootstrap-eligible", async () => {
   const rpcTransport = makeRpcTransport();
   const artifacts = await observeTokenCatalog(baseOptions({ rpcTransport }));
   assert.equal(artifacts.receipts.status, "complete");
@@ -209,6 +209,48 @@ test("successful observation covers all 60 deployments, uses pinned EVM blocks, 
   assert.equal(new Set(evmBlocks.filter((value) => value === "0x18c7852")).size, 1);
   assert.equal(new Set(evmBlocks.filter((value) => value === "0x5aee016")).size, 1);
   assert.equal(rpcTransport.calls.filter((call) => call.method === "eth_blockNumber").length, 2);
+});
+
+test("current unclassified RPC evidence is excluded from web sources and proven by same-chain RPC receipts", async () => {
+  const rpcSourceUrls = new Set(Object.values(DEFAULT_RPC_ENDPOINTS).map((endpoint) => endpoint.url));
+  assert.ok(CATALOG.assets.some((asset) => asset.representationKind === "unclassified" && asset.evidence.some((url) => rpcSourceUrls.has(url))));
+  const sourceTransport = makeSourceTransport();
+  const artifacts = await observeTokenCatalog(baseOptions({ sourceTransport }));
+  assert.equal(artifacts.receipts.sources.length, 41);
+  assert.equal(sourceTransport.calls.some((request) => rpcSourceUrls.has(request.url)), false);
+  for (const deployment of CATALOG.deployments.filter((entry) => CATALOG.assets.find((asset) => asset.assetId === entry.assetId)?.representationKind === "unclassified" && entry.evidence.some((url) => rpcSourceUrls.has(url)))) {
+    const receipt = artifacts.receipts.deployments.find((entry) => entry.deploymentId === deployment.deploymentId);
+    assert.equal(receipt.chainId, deployment.chainId);
+    assert.equal(receipt.verification, deployment.chainId === TOKEN_CHAIN_IDS.solana ? "rpc-account-info" : "rpc");
+  }
+});
+
+test("future unclassified Solana RPC evidence requires an exact same-chain token receipt", async () => {
+  const catalog = structuredClone(CATALOG);
+  const address = "5R6nWQf8R7p3dJ1eQ4zX6mY2wV9kC8bT5sH4gF3dE2a1";
+  const assetId = "asset-appended-solana-rpc-proof";
+  const deploymentId = "deployment-appended-solana-rpc-proof";
+  catalog.assets.push({ assetId, name: `Unclassified token at ${address}`, representationKind: "unclassified", stableCurrency: null, underlyingAssetId: null, economicReferenceAssetId: null, evidence: [DEFAULT_RPC_ENDPOINTS.solana.url], asOfDate: CATALOG.manualAsOf });
+  catalog.deployments.push({ deploymentId, assetId, chainId: TOKEN_CHAIN_IDS.solana, symbol: address, decimals: 9, standard: "spl-token", address, status: "active", replacedByDeploymentId: null, evidence: [DEFAULT_RPC_ENDPOINTS.solana.url], asOfDate: CATALOG.manualAsOf });
+  catalog.aliases.push({ namespace: "solana", name: "DISCOVERED_SOLANA_RPC_PROOF", deploymentId });
+  catalog.contentDigest = computeTokenDigest(catalog);
+  const artifacts = await observeTokenCatalog(baseOptions({ catalog, rpcTransport: makeRpcTransport({ catalog }) }));
+  const receipt = artifacts.receipts.deployments.find((entry) => entry.deploymentId === deploymentId);
+  assert.equal(receipt.status, "success");
+  assert.equal(receipt.verification, "rpc-account-info");
+  assert.equal(artifacts.receipts.sources.length, 41);
+  const wrongChain = structuredClone(catalog);
+  const wrongDeployment = wrongChain.deployments.find((entry) => entry.deploymentId === deploymentId);
+  const wrongAsset = wrongChain.assets.find((entry) => entry.assetId === assetId);
+  wrongDeployment.evidence = [DEFAULT_RPC_ENDPOINTS.ethereum.url];
+  wrongAsset.evidence = [DEFAULT_RPC_ENDPOINTS.ethereum.url];
+  wrongChain.contentDigest = computeTokenDigest(wrongChain);
+  assert.throws(() => validateObserverConfig(config, wrongChain), (error) => error.code === "CONFIG_URL_SET_MISMATCH");
+  const malicious = structuredClone(catalog);
+  malicious.deployments.find((entry) => entry.deploymentId === deploymentId).evidence = ["https://evil.example/rpc"];
+  malicious.assets.find((entry) => entry.assetId === assetId).evidence = ["https://evil.example/rpc"];
+  malicious.contentDigest = computeTokenDigest(malicious);
+  assert.throws(() => validateObserverConfig(config, malicious), (error) => error.code === "CONFIG_URL_SET_MISMATCH");
 });
 
 test("artifact validator rejects contradictory success details and recomputation drift", async () => {

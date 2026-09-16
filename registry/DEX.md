@@ -6,6 +6,13 @@ native/wrapped relationships, and aliases used by the five SDKs. The source is
 provenance and are removed from generated package data. Runtime records retain
 the catalog version, global as-of date, and SHA-256 content digest.
 
+The 2026-09-16 local integration contains 12 pool definitions and 16 DEX
+aliases. The candidate DEX digest is
+`a0268a45d2b037ab8ea35aad1c45366d2582cbc9b10681ded590b56e07b011c8`; raw
+pool observations and the local review are linked from
+[`evidence/pool-observations-2026-09-16.json`](./evidence/pool-observations-2026-09-16.json)
+and [`evidence/discovery-ranking-review-2026-09-16.json`](./evidence/discovery-ranking-review-2026-09-16.json).
+
 The catalog begins with immutable DEX deployment and pool IDs:
 
 | ID | Chain | Protocol | Pool or program | Runtime capability |
