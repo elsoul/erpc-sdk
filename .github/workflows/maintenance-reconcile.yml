@@ -1,0 +1,94 @@
+name: Reconcile maintenance controllers
+
+run-name: maintenance-reconcile-${{ github.run_id }}-${{ github.run_attempt }}
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+    inputs:
+      dispatch:
+        description: Dispatch at most one eligible maintenance controller
+        required: false
+        default: false
+        type: boolean
+  workflow_run:
+    workflows:
+      - Daily registry data maintenance
+      - Weekly release preparation
+    types: [completed]
+    branches:
+      - main
+
+permissions:
+  contents: read
+  actions: write
+  pull-requests: read
+
+concurrency:
+  group: erpc-maintenance-reconcile
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    name: Inspect and reconcile maintenance controllers
+    if: >-
+      (github.event_name == 'schedule' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_run' &&
+      (github.event.workflow_run.name == 'Daily registry data maintenance' || github.event.workflow_run.name == 'Weekly release preparation') &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      github.event.workflow_run.repository.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: write
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 1
+          ref: ${{ github.sha }}
+          clean: true
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+      - name: Verify immutable trusted-main checkout
+        env:
+          EXPECTED_MAIN_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_MAIN_SHA"
+          test "$(git rev-parse --abbrev-ref HEAD)" = HEAD
+          test -z "$(git status --porcelain)"
+      - name: Inspect and optionally dispatch one maintenance controller
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          EXPECTED_MAIN_SHA: ${{ github.sha }}
+          ERPC_ENABLE_AUTOMATIC_DATA_MERGE: ${{ vars.ERPC_ENABLE_AUTOMATIC_DATA_MERGE }}
+          ERPC_ENABLE_AUTOMATIC_RELEASE: ${{ vars.ERPC_ENABLE_AUTOMATIC_RELEASE }}
+          RECONCILE_EVENT: ${{ github.event_name }}
+          RECONCILE_DISPATCH: ${{ inputs.dispatch }}
+          REPORT_FILE: ${{ runner.temp }}/maintenance-reconcile/reconciliation-report.json
+        run: |
+          set -euo pipefail
+          rm -rf "$(dirname "$REPORT_FILE")"
+          mkdir -p "$(dirname "$REPORT_FILE")"
+          args=(registry/reconcile-maintenance.mjs --repo "$GITHUB_REPOSITORY" --report "$REPORT_FILE")
+          if [ "$RECONCILE_EVENT" = schedule ] || [ "$RECONCILE_EVENT" = workflow_run ] || [ "$RECONCILE_DISPATCH" = true ]; then
+            args+=(--dispatch)
+          fi
+          node "${args[@]}"
+      - name: Upload bounded reconciliation report
+        if: always()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: maintenance-reconcile-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/maintenance-reconcile/reconciliation-report.json
+          if-no-files-found: warn
+          retention-days: 14

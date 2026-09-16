@@ -426,6 +426,12 @@ function releaseSemantic(report, files) {
 }
 
 function payloadFiles({ observation, state, release }) {
+  if (release) {
+    const files = { ...release.files };
+    if (Object.keys(files).sort().join("\0") !== [...RELEASE_VERSION_PATHS].sort().join("\0")) fail("release output file set is not exactly the seven-file preparation allowlist", "RELEASE_INVALID");
+    for (const pathValue of Object.keys(files)) if (!RELEASE_VERSION_PATHS.has(pathValue)) fail(`release output is outside the exact preparation allowlist: ${pathValue}`, "RELEASE_INVALID");
+    return { files, baseline: null };
+  }
   const candidate = observation.reviewCandidate;
   const baseline = baselineFromReceipts(observation.receipts, candidate, state.config);
   const files = {

@@ -30,7 +30,7 @@ import {
   writeMaintenancePr,
   readTrustedState,
 } from "./maintenance-pr.mjs";
-import { prepareRelease } from "./release-prep.mjs";
+import { PACKAGE_VERSION_PATHS, prepareRelease } from "./release-prep.mjs";
 
 const config = JSON.parse(readFileSync(new URL("./observer-config.json", import.meta.url), "utf8"));
 const SOURCE_SHA = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
@@ -163,7 +163,12 @@ test("fresh manual 0.7.1 preparation is canonicalized and rejects an extra packa
     const trustedState = readTrustedState(previewRoot);
     const payload = buildMaintenancePayload({ observation: artifacts, releaseReport: report, baseSha: head, expectedSourceSha: head, catalogDigest: artifacts.receipts.catalogDigest, configDigest: artifacts.receipts.configDigest, trustedState });
     assert.equal(payload.branch, RELEASE_BRANCH);
-    assert.equal(payload.outputPaths.filter((pathValue) => pathValue === "CHANGELOG.md" || pathValue.startsWith("packages/") || pathValue === "Cargo.lock").length, 7);
+    assert.deepEqual(payload.outputPaths, ["CHANGELOG.md", ...PACKAGE_VERSION_PATHS].sort());
+    assert.equal(payload.outputPaths.length, 7);
+    assert.equal(payload.baseline, null);
+    assert.ok(payload.observation.receipts && payload.observation.findings && payload.observation.reviewCandidate);
+    assert.equal(Object.hasOwn(payload.files, "registry/maintenance-findings.json"), false);
+    assert.equal(Object.hasOwn(payload.files, "registry/evidence/maintenance-review.json"), false);
     const packagePath = join(previewRoot, "packages/typescript/package.json");
     const packageJson = JSON.parse(readFileSync(packagePath, "utf8"));
     packageJson.description = "untrusted extra edit";

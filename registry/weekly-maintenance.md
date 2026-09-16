@@ -14,6 +14,7 @@ The workflows are installed on `main` with these UTC schedules:
 | [`registry-maintenance.yml`](../.github/workflows/registry-maintenance.yml) | Daily 03:17 UTC | Discovery/ranking findings on `codex/registry-maintenance` | Reads configured RPC endpoints and reviewed HTTP sources online; catalog/runtime checks are local |
 | [`pool-monitor.yml`](../.github/workflows/pool-monitor.yml) | Hourly at minute 13 | Read-only pool observation artifact | Reads a persisted rotating batch of 32 configured pools; never mutates canonical data |
 | [`release-preparation.yml`](../.github/workflows/release-preparation.yml) | Thursday 03:47 UTC | Release preparation on `codex/release-preparation` | Reads configured RPC endpoints and reviewed HTTP sources online; release inspection and catalog reads are local |
+| [`maintenance-reconcile.yml`](../.github/workflows/maintenance-reconcile.yml) | Every 15 minutes | No PR; bounded reconciliation report | Independently polls completed daily/release workflows and may dispatch at most one controller; no source write |
 
 The daily collector performs bounded three-chain factory/program discovery and
 ranking collection for review. The hourly pool monitor is read-only and uses a
@@ -37,6 +38,26 @@ explicit publisher dispatch is still required. An unprotected publishing
 environment is never an approval, and this runbook does not claim that a live
 scheduled run has succeeded. This documentation does not perform settings,
 tag, merge, or publication actions.
+
+The independent reconciliation poller is a fallback for missed workflow
+completion callbacks. It uses the repository token's existing `actions:write`
+and `contents:read`/pull-request read permissions, requires no extra
+credentials, and does not wait for a bot CI event or a receiver workflow. A
+scheduled run and a successful daily or weekly completion may dispatch at most
+one eligible controller; a manual poll has `dispatch=false` by default. The
+automatic data-merge and release variables remain OFF, so reconciliation
+normally verifies exact provenance without merging, tagging, publishing, or
+changing source data.
+
+For a manual release reconciliation, dispatch
+[`release-preparation.yml`](../.github/workflows/release-preparation.yml) with
+`mode=reconcile` and the exact PR number, CI run ID and attempt, tested head,
+and frozen base tuple. Its read-only binding job validates the CI source
+binding, run, required check, and managed PR before any apply request is
+considered. `apply=false` is the default and only a matching automatic-release
+policy variable plus the explicit apply request can reach the existing
+protected-main, paired-baseline, semver, and publication gates. The initial
+0.7 feature publication remains a manual operation.
 
 The first successful workflow and its idempotent rerun were manual dispatches:
 [`run 35006595913`](https://github.com/elsoul/erpc-sdk/actions/runs/35006595913)
