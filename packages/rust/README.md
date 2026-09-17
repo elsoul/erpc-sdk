@@ -7,12 +7,43 @@ and scoped Cloud reads.
 
 ```toml
 [dependencies]
-erpc-sdk = "0.4"
+erpc-sdk = "0.8"
 serde_json = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
 
 The minimum supported Rust version is 1.85.
+
+For a fresh consumer on Rust 1.85, use Edition 2024, set
+`rust-version = "1.85"`, and configure Cargo resolver 3 in the root workspace
+so dependency selection is MSRV-aware. See the [Edition 2024 resolver
+guide](https://doc.rust-lang.org/edition-guide/rust-2024/cargo-resolver.html),
+the [resolver reference](https://doc.rust-lang.org/cargo/reference/resolver.html#rust-version),
+and the [`str` implementation source](https://doc.rust-lang.org/src/core/str/mod.rs.html).
+
+For example, a fresh consumer root can declare:
+
+```toml
+[package]
+edition = "2024"
+rust-version = "1.85"
+
+[workspace]
+resolver = "3"
+```
+
+Compatibility note (2026-09-17): upstream `yoke-derive 0.8.3` has no
+`rust-version` and uses `str::from_utf8`, which stabilized in Rust 1.87, so the
+resolver cannot filter it. If a Rust 1.85 fresh resolution selects it, apply
+the consumer-lock-only workaround
+`cargo +1.85.0 update -p yoke-derive@0.8.3 --precise 0.8.2`, keep the
+application's `Cargo.lock`, and verify with `--locked` (for example,
+`cargo +1.85.0 check --locked`). The tested pair is `yoke 0.8.3` with
+`yoke-derive 0.8.2`; the published `erpc-sdk 0.8.0` crate was verified on Rust
+1.85 with this consumer lock. This guidance changes consumer
+dependency selection only; an untouched fresh lock compiles on stable Rust
+1.93. Do not copy the SDK lock, broadly downgrade
+unrelated crates, or edit SDK dependencies.
 
 ## Quick start
 

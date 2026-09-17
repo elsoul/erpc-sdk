@@ -252,17 +252,18 @@ endpoints separately when needed:
 bridge = ERPC::MayanSwiftV2BridgeClient.new(
   builder_endpoint: "https://tx-builder.mayan.finance",
   explorer_endpoint: "https://explorer-api.mayan.finance/v3",
-  builder_api_key: ENV.fetch("MAYAN_BUILDER_API_KEY"),
   http_adapter: ERPC::NetHttpAdapter.new
 )
 
 quotes = bridge.quote_exact_input(
-  "sourceChainId" => ERPC::TokenChainIDs::ETHEREUM_MAINNET,
-  "destinationChainId" => ERPC::TokenChainIDs::SOLANA_MAINNET,
-  "sourceTokenDeploymentId" => "deployment-0011",
-  "destinationTokenDeploymentId" => "deployment-0013",
-  "amountIn" => "100000000",
-  "slippageBps" => 50
+  {
+    "sourceChainId" => ERPC::TokenChainIDs::ETHEREUM_MAINNET,
+    "destinationChainId" => ERPC::TokenChainIDs::SOLANA_MAINNET,
+    "sourceTokenDeploymentId" => "deployment-0011",
+    "destinationTokenDeploymentId" => "deployment-0013",
+    "amountIn" => "100000000",
+    "slippageBps" => 50
+  }
 )
 ```
 
@@ -275,8 +276,10 @@ source orders), so this optional adapter is separate from the SDK's configured
 RPC-only swap helpers. The defaults are `https://tx-builder.mayan.finance` for
 quote/build and `https://explorer-api.mayan.finance/v3` for indexed status; set
 `builder_endpoint` and `explorer_endpoint` to customize them. The
-`builder_api_key` is a separate Mayan build-only key and is never an eRPC
-credential. `BridgeError#code` provides stable secret-free errors.
+`builder_api_key` is optional for quote and status calls, and is a separate
+Mayan build-only key required for builds unless the caller explicitly enables a
+compatible no-auth builder; it is never an eRPC credential.
+`BridgeError#code` provides stable secret-free errors.
 
 ## Namespaces
 
