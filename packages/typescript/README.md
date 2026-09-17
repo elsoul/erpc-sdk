@@ -90,6 +90,30 @@ chains and ERPC REST, native, and index services fail locally. The
 `RpcEndpointConfig.headers` field applies to direct HTTP requests only; those
 headers are never sent on WSS connections.
 
+## Wallets, signing, and broadcast
+
+`ErpcClient` has no wallet, private-key, or signer configuration. Swap
+preparation and Mayan `buildUnsigned` return unsigned transaction envelopes;
+the caller owns account selection, allowance changes, nonce and fee policy,
+transaction review, key custody, signing, broadcast, and confirmation. The
+`from`, `sender`, `swapperAddress`, and `feePayer` fields are public identity
+checks, not signing authority. A pending RPC request's `.send()` performs the
+network request and does not sign bytes.
+
+| Concern | Owner |
+| --- | --- |
+| Key or hardware-wallet custody | Caller application or wallet provider |
+| Transaction and allowance review | Caller application and user |
+| Cryptographic signing | External wallet or signer |
+| Signed-byte broadcast | Caller-selected ERPC RPC method |
+| Confirmation and settlement interpretation | Caller application |
+
+See the [shared wallet and signing model](https://github.com/elsoul/erpc-sdk/blob/main/README.md#wallets-and-signing)
+and the [TypeScript signing and broadcast guide](https://github.com/elsoul/erpc-sdk/blob/main/packages/typescript/docs/signing-and-broadcast.md)
+for initialized ethers 6 and `@solana/web3.js` 1.x examples. The guide keeps
+the selected RPC URL identical for network checks and sends signed bytes only
+through ERPC.
+
 ## Offline token catalog
 
 The token catalog is bundled with the package, so lookups do not need an
@@ -225,14 +249,9 @@ const simulation = await erpc.swap.simulateExactInputSwap(request)
 Preparation performs a fresh quote, validates the reviewed router and wrapped
 native deployment, and returns an immutable chain-bound unsigned transaction
 envelope. It does not create approval calldata, sign, send, or fill wallet
-fields. When a wallet API needs a raw transaction object, explicitly convert
-the envelope, for example:
-
-```ts
-const { chainId: _chainId, kind: _kind, ...walletTransaction } =
-  prepared.transaction
-await wallet.sendTransaction(walletTransaction)
-```
+fields. Review `prepared.transaction`, then pass the typed envelope to an
+external signer and the ERPC-only broadcast helper in the
+[TypeScript signing and broadcast guide](https://github.com/elsoul/erpc-sdk/blob/main/packages/typescript/docs/signing-and-broadcast.md).
 
 Use the `simulation` result to inspect the canonical allowance and router
 amounts before asking the caller's wallet to manage allowance, signing, or
@@ -256,7 +275,6 @@ import {
 const mayan = createMayanSwiftV2BridgeClient({
   builderEndpoint: 'https://tx-builder.mayan.finance',
   explorerEndpoint: 'https://explorer-api.mayan.finance/v3',
-  builderApiKey: 'provider-key',
 })
 const quotes = await mayan.quoteExactInput({
   sourceChainId: TOKEN_CHAIN_IDS.ethereumMainnet,
@@ -268,25 +286,19 @@ const quotes = await mayan.quoteExactInput({
 })
 ```
 
+This keyless quote example reflects the provider's documented optional-key
+policy. `buildUnsigned` has a separate SDK guard: supply a caller-managed
+`builderApiKey` in a build client, or explicitly set
+`allowUnauthenticatedBuild: true` to permit a keyless attempt. The opt-in does
+not override provider authentication.
+
 The adapter posts the exact route request to Mayan's `/quote`, preserves the
 provider-signed quote text, and can build a structurally checked unsigned
 source transaction with `buildUnsigned`. It does not verify the provider
 signature locally or prove settlement, and it does not sign, approve, submit,
-refund, or broadcast transactions. For an EVM build, convert the returned
-chain-bound envelope before passing fields to a wallet API:
-
-```ts
-const built = await mayan.buildUnsigned({
-  quote: quotes[0],
-  swapperAddress: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-  destinationAddress: '11111111111111111111111111111111',
-})
-if (built.transaction.kind === 'evm-unsigned-transaction') {
-  const { chainId: _chainId, kind: _kind, ...walletTransaction } =
-    built.transaction
-  await wallet.sendTransaction(walletTransaction)
-}
-```
+refund, or broadcast transactions. Pass its typed unsigned envelope to an
+external signer only after review; the signing and ERPC-only broadcast flow is
+shown in the [TypeScript signing and broadcast guide](https://github.com/elsoul/erpc-sdk/blob/main/packages/typescript/docs/signing-and-broadcast.md).
 
 `builderEndpoint` and `explorerEndpoint` default to
 `https://tx-builder.mayan.finance` and `https://explorer-api.mayan.finance/v3`;
@@ -295,6 +307,18 @@ set them to caller-approved base URLs to customize the provider endpoints.
 as unverified local settlement state. `builderApiKey` is a separate Mayan
 build-only key sent only to `/build`; quote and status calls do not receive it,
 and no eRPC credential is forwarded.
+
+Mayan authentication has three separate layers:
+
+| Layer | Behavior |
+| --- | --- |
+| Mayan documentation | The quote and transaction-builder documents describe the service key as optional. |
+| SDK policy | `buildUnsigned` requires `builderApiKey` by default; `allowUnauthenticatedBuild: true` only permits the caller's keyless HTTP attempt. |
+| Dated hosted observation | On 2026-09-17, four EURC/USDC quotes returned HTTP 200 without keys; default builds made no request, while explicit keyless `/build` attempts returned HTTP 401. This is bounded evidence, not a permanent provider requirement. |
+
+The published `0.8.0` package supports the reviewed issued EURC directions.
+Native USDC direct routes are a source-tree addition and remain unreleased;
+they are not part of the published `0.8.0` package.
 
 The source tree also contains an unreleased native USDC addition for the same
 Ethereum/Solana directions. It uses Mayan's direct SWIFT route and does not add

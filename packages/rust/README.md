@@ -72,6 +72,34 @@ RPC helpers return an inert `PendingRpcRequest`. Network I/O starts when
 or vector; named indexed-asset methods accept serializable structs or JSON
 objects. The wire method names remain unchanged.
 
+## Wallets and signing
+
+`ErpcClient` and `MayanSwiftV2BridgeClient` do not load wallet keys or sign
+locally. Their configuration has no wallet, private-key, or signer field.
+`sender`, `from`, `swapper_address`, and `fee_payer` are public addresses and
+do not grant signing authority. ERPC API keys, direct-RPC headers, and the
+Mayan `builder_api_key` authenticate services; they are separate from wallet
+private keys.
+
+`prepare_exact_input_swap` and `build_unsigned` return unsigned transaction
+data. The caller reviews the chain, target, amount, allowance, and expiry,
+then selects the wallet or hardware signer, nonce and fee policy, and fresh
+Solana blockhash as applicable. The external signer signs the reviewed bytes;
+the caller can broadcast the serialized result through
+`erpc.ethereum.rpc.eth_send_raw_transaction(...).send()` or
+`erpc.solana.rpc.send_transaction(...).send()`. `.send()` performs the RPC
+request and does not perform cryptographic signing. An `eth_sign_transaction`
+call, when available, is an upstream RPC operation and does not prove that the
+node manages a wallet. Confirmation and settlement remain separate caller
+responsibilities.
+
+See the [shared wallets and signing guidance](https://github.com/elsoul/erpc-sdk/blob/main/README.md#wallets-and-signing)
+and the [TypeScript example](https://github.com/elsoul/erpc-sdk/blob/main/packages/typescript/docs/signing-and-broadcast.md)
+for an initialized external-signer flow. Browser and hardware-wallet
+integrations keep keys inside the signer; the optional TypeScript `ethers` and
+`@solana/web3.js` examples are consumer integrations, not Rust SDK
+dependencies.
+
 ## Direct RPC endpoints
 
 Use `RpcEndpointConfig` when a chain should send JSON-RPC calls to a caller-owned
@@ -393,10 +421,19 @@ validity margin, timeout, and unauthenticated-build opt-in; the defaults are
 customizable. The builder key is a separate Mayan build-only credential; quote
 and status requests never receive it or an eRPC credential. The default SDK
 policy requires a builder key for builds; `with_allow_unauthenticated_build`
-is an explicit caller opt-in for a configured test or provider endpoint. Mayan
-documentation describes the key as optional, while current hosted observations
-return `401 UNAUTHORIZED` without one. The client does not accept arbitrary
-headers or a prebuilt HTTP client.
+is an explicit caller opt-in that permits a keyless HTTP attempt at any
+configured endpoint, including the default endpoint; it does not guarantee
+that the server will authorize the request. Official [Mayan quote API key
+documentation](https://docs.mayan.finance/integration/quote-api#api-key) and
+the pinned [transaction-builder authentication
+section](https://github.com/mayan-finance/tx-builder/blob/e966f16a155cd9091b02ef5d9b91c3f837c228ad/README.md#authentication)
+describe the provider key as optional for quote/build. A host recheck at
+`2026-09-17T11:27:34.223Z` returned HTTP 200 for four EURC/USDC quotes without
+keys; default builds made zero network requests, while explicit anonymous
+builds reached `/build` and returned HTTP 401 `UNAUTHORIZED`. The deployed
+provider revision is unknown, and no authenticated build or settlement
+evidence was captured. The client does not accept arbitrary headers or a
+prebuilt HTTP client.
 
 ```rust,no_run
 # use erpc_sdk::{

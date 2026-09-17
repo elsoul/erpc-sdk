@@ -279,9 +279,11 @@ RPC-only swap helpers. Native USDC Ethereum builds use the reviewed
 `0xe4269fc4` selector. The defaults are `https://tx-builder.mayan.finance` for
 quote/build and `https://explorer-api.mayan.finance/v3` for indexed status; set
 `builder_endpoint` and `explorer_endpoint` to customize them. The
-`builder_api_key` is optional for quote and status calls, and is a separate
-Mayan build-only key required for builds unless the caller explicitly enables a
-compatible no-auth builder; it is never an eRPC credential.
+`builder_api_key` is build-only and is never sent to quote or Explorer. The
+local default guard can be bypassed with `allow_unauthenticated_build: true` at
+any configured endpoint, including the default endpoint; this only permits a
+request and does not change provider authentication. It is never an eRPC
+credential.
 `BridgeError#code` provides stable secret-free errors.
 
 Select native USDC with its exact deployment IDs:
@@ -301,6 +303,38 @@ quotes = bridge.quote_exact_input(
 
 The published `0.8.0` gem supports the EURC bridge only. Native USDC support is
 currently source-only and has not been published.
+
+## Wallets, signing, and Mayan authentication
+
+The Ruby SDK does not load wallet or private-key material and does not sign
+transactions. `sender`, `from`, `swapperAddress`, and `feePayer` are public
+addresses; ERPC API keys, direct-RPC headers, and Mayan service keys authenticate
+services and are not signer keys. Swap preparation and Mayan builds return
+unsigned data. After an application-owned wallet signs it, submit the
+serialized bytes through the selected ERPC RPC method; the SDK performs that
+RPC request and does not perform cryptographic signing. Approval policy, fees,
+nonces or blockhashes, review, and confirmation remain in the caller's wallet
+flow.
+
+See the [common wallet and signing responsibilities](https://github.com/elsoul/erpc-sdk/blob/main/README.md#wallets-and-signing)
+and the [TypeScript examples for signing and broadcast](https://github.com/elsoul/erpc-sdk/blob/main/packages/typescript/docs/signing-and-broadcast.md)
+for worked external-wallet flows. The TypeScript examples are consumer
+integrations and do not add runtime dependencies to this Ruby gem.
+
+Mayan's [official quote API documentation](https://docs.mayan.finance/integration/quote-api#api-key)
+and the [pinned transaction-builder authentication guidance](https://github.com/mayan-finance/tx-builder/blob/e966f16a155cd9091b02ef5d9b91c3f837c228ad/README.md#authentication)
+describe the provider key as optional. Ruby applies a local safety guard:
+`build_unsigned` requires a separate `builder_api_key` unless the caller
+explicitly sets `allow_unauthenticated_build: true`. That option permits a
+keyless request to the configured or default builder endpoint; it grants no
+permission at the provider. The builder key is sent only to `/build`, never to
+`/quote` or Explorer, and is never reused as an ERPC credential.
+
+In the anonymous recheck at 2026-09-17 11:27 UTC, four EURC/USDC quotes returned
+HTTP 200 and four hosted builder requests returned HTTP 401. This dated
+observation records the current provider discrepancy and does not establish a
+universal or permanent key requirement; the deployed provider revision is
+unknown, and no authenticated build or funds evidence was collected.
 
 ## Namespaces
 

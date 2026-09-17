@@ -339,6 +339,23 @@ change that allowance, then controls signing and sending. This capability is
 limited to the two reviewed EVM pools; it does not provide hosted Jupiter or
 0x routing, native wrapping, bridging, wallet custody, or live-funds effects.
 
+## Wallets and signing
+
+The Go SDK has no wallet, private-key loading, or local signing API. It returns
+unsigned swap and bridge data; the caller reviews it, uses an external browser,
+hardware, or application signer, and supplies the resulting signed serialized
+bytes to `client.Ethereum.RPC.SendRawTransaction(ctx, signedBytes)` or
+`client.Solana.RPC.SendTransaction(ctx, signedBase64, map[string]any{"encoding": "base64"})`.
+`PendingRequest.Send(ctx)` and these typed send methods only make the configured
+RPC request; they do not perform cryptographic signing. Public `sender`, `from`,
+`swapperAddress`, and `feePayer` values, eRPC API keys or direct-RPC headers,
+and `BuilderAPIKey` are addresses or service credentials, not wallet signing
+authority. The `BuilderAPIKey` is sent only to Mayan `/build`.
+
+See the [common wallets and signing boundary](https://github.com/elsoul/erpc-sdk/blob/main/README.md#wallets-and-signing)
+and the [TypeScript signing and broadcast guide](https://github.com/elsoul/erpc-sdk/blob/main/packages/typescript/docs/signing-and-broadcast.md)
+for the shared transaction handoff and initialized external-signer examples.
+
 ## Optional Mayan Swift v2 bridge (EURC in 0.8.0; USDC source addition unreleased)
 
 The `0.8.0` API's `NewMayanSwiftV2BridgeClient` creates a standalone, explicit opt-in adapter for
@@ -356,12 +373,26 @@ that are still live without an additional margin. The defaults are
 a separate Mayan build-only credential; quote and status requests never receive
 it or an ERPC credential.
 
+Mayan's [official quote API key documentation](https://docs.mayan.finance/integration/quote-api#api-key)
+and the [pinned transaction-builder authentication documentation](https://github.com/mayan-finance/tx-builder/blob/e966f16a155cd9091b02ef5d9b91c3f837c228ad/README.md#authentication)
+describe the provider key as optional. The Go SDK's local policy requires a
+builder key by default; `AllowUnauthenticatedBuild: true` explicitly permits a
+keyless HTTP attempt, including against the default endpoint, while leaving
+provider authentication policy unchanged. The flag does not grant server
+permission; it only bypasses this local preflight guard. A dated 2026-09-17 11:27Z hosted
+recheck observed quote responses with HTTP 200 and `/build` responses with HTTP
+401 without a key. That observation does not establish a universal or
+permanent provider requirement.
+
+The quote-only example below intentionally supplies no builder key. For a build,
+provide `BuilderAPIKey` when the provider requires it, or explicitly opt into a
+keyless attempt with `AllowUnauthenticatedBuild: true` and handle the provider's
+response.
+
 ```go
 bridge, err := erpc.NewMayanSwiftV2BridgeClient(erpc.MayanSwiftV2BridgeConfig{
 	BuilderEndpoint:           "https://tx-builder.mayan.finance",
 	ExplorerEndpoint:          "https://explorer-api.mayan.finance/v3",
-	BuilderAPIKey:             os.Getenv("MAYAN_BUILDER_API_KEY"),
-	AllowUnauthenticatedBuild: false,
 })
 if err != nil {
 	panic(err)
