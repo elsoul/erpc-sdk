@@ -181,7 +181,7 @@ module ERPC
     private
 
     def fail_bridge(code)
-      raise BridgeError, code
+      raise BridgeError.new(code), cause: nil
     end
 
     def normalize_api_key(value)
@@ -190,7 +190,7 @@ module ERPC
       fail_bridge(BridgeErrorCode::INVALID_ARGUMENT) unless value.ascii_only?
       fail_bridge(BridgeErrorCode::INVALID_ARGUMENT) if value.each_byte.any? { |byte| byte < 0x20 || byte == 0x7f }
 
-      value.empty? ? nil : value.freeze
+      value.empty? ? nil : value.dup.freeze
     end
 
     def normalize_endpoint(value)
@@ -221,7 +221,7 @@ module ERPC
       uri.fragment = nil
       uri.to_s.freeze
     rescue URI::InvalidURIError, ArgumentError
-      raise BridgeError, BridgeErrorCode::INVALID_ARGUMENT
+      fail_bridge(BridgeErrorCode::INVALID_ARGUMENT)
     end
   end
 
@@ -308,8 +308,8 @@ module ERPC
       skip_whitespace
       invalid unless @index == @source.length
       result
-    rescue BridgeError
-      raise
+    rescue BridgeError => error
+      raise error, cause: nil
     rescue StandardError
       invalid
     end
@@ -460,7 +460,7 @@ module ERPC
     end
 
     def invalid
-      raise BridgeError, BridgeErrorCode::PROVIDER_INVALID_RESPONSE
+      raise BridgeError.new(BridgeErrorCode::PROVIDER_INVALID_RESPONSE), cause: nil
     end
   end
 
@@ -544,7 +544,7 @@ module ERPC
     end
 
     def quote_exact_input(request, options = nil, **keyword_options)
-      route = validate_route(request)
+      route = validate_route(deep_dup(request))
       check_aborted(options || keyword_options)
       body = quote_request_body(route)
       response_text = provider_request(
@@ -683,7 +683,7 @@ module ERPC
     end
 
     def fail_bridge(code, status = nil)
-      raise BridgeError.new(code, status)
+      raise BridgeError.new(code, status), cause: nil
     end
 
     def require_record(value, code)
@@ -850,8 +850,8 @@ module ERPC
     def parse_provider_response(text)
       fail_bridge(BridgeErrorCode::PROVIDER_INVALID_RESPONSE) unless text.is_a?(String)
       StrictJsonParser.new(text).parse
-    rescue BridgeError
-      raise
+    rescue BridgeError => error
+      raise error, cause: nil
     rescue StandardError
       fail_bridge(BridgeErrorCode::PROVIDER_INVALID_RESPONSE)
     end
@@ -1028,7 +1028,7 @@ module ERPC
     end
 
     def build_request_snapshot(value)
-      request = require_record(value, BridgeErrorCode::INVALID_ARGUMENT)
+      request = require_record(deep_dup(value), BridgeErrorCode::INVALID_ARGUMENT)
       exact_keys(request, %w[quote swapperAddress destinationAddress refundAddress].select { |key| request.key?(key) }, BridgeErrorCode::INVALID_ARGUMENT) if request.keys.any? { |key| !%w[quote swapperAddress destinationAddress refundAddress].include?(key) }
       fail_bridge(BridgeErrorCode::INVALID_ARGUMENT) unless request.key?("quote") && request.key?("swapperAddress") && request.key?("destinationAddress")
       quote = deep_dup(request.fetch("quote"))
@@ -1076,7 +1076,7 @@ module ERPC
       )
       [route, normalized]
     rescue BridgeError => error
-      raise error
+      raise error, cause: nil
     rescue StandardError
       fail_bridge(BridgeErrorCode::QUOTE_MISMATCH)
     end
@@ -1139,8 +1139,8 @@ module ERPC
         "dependencies" => dependencies,
         "quoteVerification" => "provider-signed-not-locally-verified", "rawSignedQuoteJson" => raw
       }
-    rescue BridgeError
-      raise
+    rescue BridgeError => error
+      raise error, cause: nil
     rescue StandardError
       fail_bridge(code)
     end
@@ -1152,13 +1152,13 @@ module ERPC
       rebuilt = begin
         validate_provider_quote(root, raw, route.request, route.facts)
       rescue BridgeError => error
-        raise error if error.code == BridgeErrorCode::QUOTE_EXPIRED
+        raise error, cause: nil if error.code == BridgeErrorCode::QUOTE_EXPIRED
         fail_bridge(BridgeErrorCode::QUOTE_MISMATCH)
       end
       fail_bridge(BridgeErrorCode::QUOTE_MISMATCH) unless strict_equal?(rebuilt, quote)
       deep_dup(quote)
     rescue BridgeError => error
-      raise error if error.code == BridgeErrorCode::QUOTE_MISMATCH || error.code == BridgeErrorCode::QUOTE_EXPIRED
+      raise error, cause: nil if error.code == BridgeErrorCode::QUOTE_MISMATCH || error.code == BridgeErrorCode::QUOTE_EXPIRED
       fail_bridge(BridgeErrorCode::QUOTE_MISMATCH)
     rescue StandardError
       fail_bridge(BridgeErrorCode::QUOTE_MISMATCH)
@@ -1322,7 +1322,7 @@ module ERPC
       transaction = begin
         facts.source_chain_id == ETHEREUM_CHAIN_ID ? validate_evm_build_result(wrapper, swapper_address) : validate_solana_build_result(wrapper, swapper_address)
       rescue BridgeError => error
-        raise error if error.code == BridgeErrorCode::BUILD_INVALID
+        raise error, cause: nil if error.code == BridgeErrorCode::BUILD_INVALID
         fail_bridge(BridgeErrorCode::BUILD_INVALID)
       end
       {
@@ -1342,7 +1342,7 @@ module ERPC
     end
 
     def normalize_status_request(value)
-      request = require_record(value, BridgeErrorCode::INVALID_ARGUMENT)
+      request = require_record(deep_dup(value), BridgeErrorCode::INVALID_ARGUMENT)
       exact_keys(request, %w[sourceChainId sourceTransactionHash], BridgeErrorCode::INVALID_ARGUMENT)
       chain_id = require_string(request["sourceChainId"], BridgeErrorCode::INVALID_ARGUMENT)
       tx_hash = require_string(request["sourceTransactionHash"], BridgeErrorCode::INVALID_ARGUMENT)
@@ -1391,8 +1391,8 @@ module ERPC
       headers["x-api-key"] = @config.builder_api_key if include_builder_key && @config.builder_api_key
       begin
         response = @http_adapter.request(method: method, url: url, headers: headers, body: body, timeout: @config.timeout)
-      rescue BridgeError
-        raise
+      rescue BridgeError => error
+        raise error, cause: nil
       rescue MayanBridgeBodyTooLarge
         fail_bridge(BridgeErrorCode::PROVIDER_INVALID_RESPONSE)
       rescue TimeoutError, Timeout::Error
@@ -1455,9 +1455,11 @@ module ERPC
     def deep_dup(value)
       case value
       when Hash
-        value.each_with_object({}) { |(key, child), copy| copy[key] = deep_dup(child) }
+        value.each_with_object({}) { |(key, child), copy| copy[deep_dup(key)] = deep_dup(child) }
       when Array
         value.map { |child| deep_dup(child) }
+      when String
+        value.dup
       else
         value
       end

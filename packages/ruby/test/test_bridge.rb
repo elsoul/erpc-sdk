@@ -42,6 +42,22 @@ class BridgeFixtureAdapter
   end
 end
 
+class BridgeMutationAdapter
+  attr_reader :requests
+
+  def initialize(body, &mutation)
+    @body = body
+    @mutation = mutation
+    @requests = []
+  end
+
+  def request(**request)
+    @requests << request
+    @mutation&.call(request)
+    ERPC::HttpResponse.new(status: 200, body: @body)
+  end
+end
+
 class BridgeTest < Minitest::Test
   ROOT = File.expand_path("../../..", __dir__)
   FIXTURE_PATH = File.join(ROOT, "registry", "fixtures", "mayan-swift-v2-cases.json")
@@ -82,6 +98,115 @@ class BridgeTest < Minitest::Test
     refute_includes config.inspect, "bridge-secret"
     error = ERPC::BridgeError.new(ERPC::BridgeErrorCode::PROVIDER_HTTP, 429)
     refute_includes error.message, "bridge-secret"
+  end
+
+  def test_public_methods_snapshot_strings_without_freezing_callers
+    quote_case = FIXTURE.fetch("cases").find { |entry| entry.fetch("caseId") == "quote-eth-sol-synthetic" }
+    quote_body = quote_case.fetch("providerBody")
+    original_amount = "100000000".dup
+    quote_request = quote_case.fetch("request").merge("amountIn" => original_amount)
+    quote_adapter = BridgeMutationAdapter.new(quote_body) { original_amount.replace("999999999") }
+    quote_client = ERPC::MayanSwiftV2BridgeClient.new(http_adapter: quote_adapter)
+    quote_client.instance_variable_set(:@clock, -> { quote_case.fetch("nowSeconds") })
+    begin
+      quote = quote_client.quote_exact_input(quote_request).first
+      assert_equal "100000000", quote.fetch("amountIn")
+      assert_equal "999999999", original_amount
+      refute original_amount.frozen?
+      assert_includes quote_adapter.requests.fetch(0).fetch(:body), '"amountIn64":"100000000"'
+    ensure
+      quote_client.close
+    end
+
+    changed_body = quote_body.sub('"effectiveAmountIn64":"100000000"', '"effectiveAmountIn64":"999999999"')
+    changed_amount = "100000000".dup
+    changed_request = quote_case.fetch("request").merge("amountIn" => changed_amount)
+    changed_adapter = BridgeMutationAdapter.new(changed_body) { changed_amount.replace("888888888") }
+    changed_client = ERPC::MayanSwiftV2BridgeClient.new(http_adapter: changed_adapter)
+    changed_client.instance_variable_set(:@clock, -> { quote_case.fetch("nowSeconds") })
+    begin
+      error = assert_raises(ERPC::BridgeError) { changed_client.quote_exact_input(changed_request) }
+      assert_equal ERPC::BridgeErrorCode::PROVIDER_INVALID_RESPONSE, error.code
+      assert_equal "888888888", changed_amount
+      refute changed_amount.frozen?
+    ensure
+      changed_client.close
+    end
+
+    build_case = FIXTURE.fetch("cases").find { |entry| entry.fetch("caseId") == "build-eth-sol-synthetic" }
+    swapper = "0x2222222222222222222222222222222222222222".dup
+    destination = "So11111111111111111111111111111111111111112".dup
+    build_request = build_case.fetch("request").merge(
+      "swapperAddress" => swapper,
+      "destinationAddress" => destination,
+      "quote" => quote
+    )
+    build_adapter = BridgeMutationAdapter.new(build_case.fetch("providerBody")) do
+      swapper.replace("0x3333333333333333333333333333333333333333")
+      destination.replace("So11111111111111111111111111111111111111112")
+    end
+    build_client = ERPC::MayanSwiftV2BridgeClient.new(
+      allow_unauthenticated_build: true,
+      http_adapter: build_adapter
+    )
+    build_client.instance_variable_set(:@clock, -> { build_case.fetch("nowSeconds") })
+    begin
+      build = build_client.build_unsigned(build_request)
+      assert_equal "0x2222222222222222222222222222222222222222", build.fetch("transaction").fetch("from")
+      assert_includes build_adapter.requests.fetch(0).fetch(:body), '"swapperAddress":"0x2222222222222222222222222222222222222222"'
+      assert_equal "0x3333333333333333333333333333333333333333", swapper
+      refute swapper.frozen?
+      refute destination.frozen?
+    ensure
+      build_client.close
+    end
+
+    status_case = FIXTURE.fetch("cases").find { |entry| entry.fetch("caseId") == "status-eth-inprogress-synthetic" }
+    source_hash = status_case.fetch("request").fetch("sourceTransactionHash").dup
+    status_request = status_case.fetch("request").merge("sourceTransactionHash" => source_hash)
+    status_adapter = BridgeMutationAdapter.new(status_case.fetch("providerBody")) { source_hash.replace("0x#{'b' * 64}") }
+    status_client = ERPC::MayanSwiftV2BridgeClient.new(http_adapter: status_adapter)
+    status_client.instance_variable_set(:@clock, -> { status_case.fetch("nowSeconds") })
+    begin
+      status = status_client.get_status(status_request)
+      assert_equal status_case.fetch("request").fetch("sourceTransactionHash"), status.fetch("sourceTransactionHash")
+      assert_includes status_adapter.requests.fetch(0).fetch(:url), status_case.fetch("request").fetch("sourceTransactionHash")
+      assert_equal "0x#{'b' * 64}", source_hash
+      refute source_hash.frozen?
+    ensure
+      status_client.close
+    end
+  end
+
+  def test_public_bridge_errors_drop_native_causes
+    request = FIXTURE.fetch("cases").first.fetch("request")
+    transport_sentinel = "bridge-transport-cause-sentinel"
+    transport_adapter = Object.new
+    transport_adapter.define_singleton_method(:request) do |**|
+      raise RuntimeError, transport_sentinel
+    end
+    transport_client = ERPC::MayanSwiftV2BridgeClient.new(http_adapter: transport_adapter)
+    transport_error = assert_raises(ERPC::BridgeError) { transport_client.quote_exact_input(request) }
+    assert_safe_bridge_error(transport_error, ERPC::BridgeErrorCode::PROVIDER_TRANSPORT, transport_sentinel)
+
+    timeout_sentinel = "bridge-timeout-cause-sentinel"
+    timeout_adapter = Object.new
+    timeout_adapter.define_singleton_method(:request) do |**|
+      native = ERPC::TimeoutError.new(0.001)
+      raise native, cause: RuntimeError.new(timeout_sentinel)
+    end
+    timeout_client = ERPC::MayanSwiftV2BridgeClient.new(http_adapter: timeout_adapter)
+    timeout_error = assert_raises(ERPC::BridgeError) { timeout_client.quote_exact_input(request) }
+    assert_safe_bridge_error(timeout_error, ERPC::BridgeErrorCode::TIMEOUT, timeout_sentinel)
+
+    url_sentinel = "bridge-url-cause-sentinel"
+    url_error = assert_raises(ERPC::BridgeError) do
+      ERPC::MayanSwiftV2BridgeClient.new(builder_endpoint: "https://[#{url_sentinel}")
+    end
+    assert_safe_bridge_error(url_error, ERPC::BridgeErrorCode::INVALID_ARGUMENT, url_sentinel)
+  ensure
+    transport_client&.close
+    timeout_client&.close
   end
 
   def test_writes_actual_native_capture_only_when_requested
@@ -161,5 +286,13 @@ class BridgeTest < Minitest::Test
         "body" => request.fetch(:body, nil)
       }
     end
+  end
+
+  def assert_safe_bridge_error(error, code, sentinel)
+    assert_equal code, error.code
+    assert_nil error.cause
+    refute_includes error.message, sentinel
+    refute_includes error.inspect, sentinel
+    refute_includes error.full_message, sentinel
   end
 end
