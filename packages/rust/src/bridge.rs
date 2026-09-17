@@ -1,4 +1,4 @@
-//! Optional Mayan Swift v2 EURC bridge integration.
+//! Optional Mayan Swift v2 EURC and USDC bridge integration.
 //!
 //! This module is deliberately standalone from [`crate::ErpcClient`]. It
 //! talks only to the explicitly configured Mayan builder and explorer
@@ -55,12 +55,22 @@ const ETHEREUM_SWIFT_CONTRACT: &str = "0x40ffe85a28dc9993541449464d7529a92214296
 const SOLANA_SWIFT_PROGRAM: &str = "mayan34VedncxdK2XobtvWFDXQASUTBXhUVzt2kKgny";
 const ETHEREUM_FORWARDER: &str = "0x337685fdab40d39bd02028545a4ffa7d287cc3e2";
 const SOLANA_JUPITER_V6: &str = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4";
-const ETHEREUM_FORWARDER_SELECTOR: &str = "0x30dedc57";
+const ETHEREUM_EURC_FORWARDER_SELECTOR: &str = "0x30dedc57";
+const ETHEREUM_USDC_FORWARDER_SELECTOR: &str = "0xe4269fc4";
+const MAYAN_USDC_MINT: &str = "A9mUU4qviSctJVPJdBJWkb28deg915LYJKrzQ19ji3FM";
 
 const DEPENDENCIES: &[&str] = &[
     "mayan-hosted-quote-api",
     "mayan-hosted-transaction-builder",
     "mayan-hosted-source-swap-builder",
+    "swift-auction-solvers",
+    "relayers",
+    "wormhole-guardian-messaging",
+    "mayan-explorer-indexer",
+];
+const DIRECT_USDC_DEPENDENCIES: &[&str] = &[
+    "mayan-hosted-quote-api",
+    "mayan-hosted-transaction-builder",
     "swift-auction-solvers",
     "relayers",
     "wormhole-guardian-messaging",
@@ -319,7 +329,7 @@ impl fmt::Debug for MayanSwiftV2BridgeConfig {
     }
 }
 
-/// Exact native EURC bridge quote request.
+/// Exact native EURC or USDC bridge quote request.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct MayanSwiftV2QuoteRequest {
@@ -327,11 +337,11 @@ pub struct MayanSwiftV2QuoteRequest {
     pub source_chain_id: String,
     /// Destination CAIP-2 chain identifier.
     pub destination_chain_id: String,
-    /// Source EURC deployment identifier.
+    /// Source token deployment identifier.
     pub source_token_deployment_id: String,
-    /// Destination EURC deployment identifier.
+    /// Destination token deployment identifier.
     pub destination_token_deployment_id: String,
-    /// Positive canonical decimal EURC amount in atomic units.
+    /// Positive canonical decimal token amount in atomic units.
     pub amount_in: String,
     /// Slippage tolerance in basis points, from 0 through 500.
     pub slippage_bps: u64,
@@ -355,10 +365,10 @@ pub struct MayanSwiftV2SourceSwap {
     pub intermediate_token_decimals: u8,
     /// Unchanged provider number lexeme for the middle amount.
     pub provider_minimum_amount: String,
-    /// Provider-selected router kind.
-    pub router_kind: String,
-    /// Provider-selected router or Jupiter address.
-    pub router_address: String,
+    /// Provider-selected router kind, or `None` for a direct USDC route.
+    pub router_kind: Option<String>,
+    /// Provider-selected router or Jupiter address, or `None` for a direct USDC route.
+    pub router_address: Option<String>,
 }
 
 /// Normalized provider-signed Mayan Swift v2 quote.
@@ -373,9 +383,9 @@ pub struct MayanSwiftV2Quote {
     pub source_chain_id: String,
     /// Destination CAIP-2 chain identifier.
     pub destination_chain_id: String,
-    /// Source EURC deployment identifier.
+    /// Source token deployment identifier.
     pub source_token_deployment_id: String,
-    /// Destination EURC deployment identifier.
+    /// Destination token deployment identifier.
     pub destination_token_deployment_id: String,
     /// Canonical decimal input amount.
     pub amount_in: String,
@@ -487,9 +497,9 @@ pub struct MayanSwiftV2Build {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct MayanSwiftV2Allowance {
-    /// EURC deployment identifier.
+    /// Source token deployment identifier.
     pub token_deployment_id: String,
-    /// Lowercase EURC token address.
+    /// Lowercase source token address.
     pub token_address: String,
     /// Lowercase swapper address.
     pub owner: String,
@@ -909,8 +919,15 @@ struct BridgeCapability {
     status: String,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum BridgeAsset {
+    Eurc,
+    Usdc,
+}
+
 #[derive(Clone, Debug)]
 struct DirectionFacts {
+    asset: BridgeAsset,
     bridge_capability_id: &'static str,
     source_chain_id: &'static str,
     destination_chain_id: &'static str,
@@ -930,21 +947,72 @@ struct DirectionFacts {
     source_usdc_address: &'static str,
     source_usdc_standard: &'static str,
     swift_contract: &'static str,
+    source_token_name: &'static str,
+    destination_token_name: &'static str,
+    source_token_mint: &'static str,
+    destination_token_mint: &'static str,
+    source_swap_required: bool,
 }
 
+#[allow(clippy::too_many_lines)]
 fn direction_facts(
     source_chain_id: &str,
     destination_chain_id: &str,
+    source_token_deployment_id: &str,
+    destination_token_deployment_id: &str,
 ) -> BridgeResult<DirectionFacts> {
     if source_chain_id == ETHEREUM_CHAIN_ID && destination_chain_id == SOLANA_CHAIN_ID {
+        let asset = match (source_token_deployment_id, destination_token_deployment_id) {
+            (ETHEREUM_EURC_DEPLOYMENT_ID, SOLANA_EURC_DEPLOYMENT_ID) => BridgeAsset::Eurc,
+            (ETHEREUM_USDC_DEPLOYMENT_ID, SOLANA_USDC_DEPLOYMENT_ID) => BridgeAsset::Usdc,
+            _ => return Err(bridge_error(BridgeErrorCode::UnsupportedRoute)),
+        };
+        let (
+            source_token_address,
+            destination_token_address,
+            source_token_name,
+            destination_token_name,
+            source_token_mint,
+            destination_token_mint,
+            source_swap_required,
+        ) = match asset {
+            BridgeAsset::Eurc => (
+                ETHEREUM_EURC_ADDRESS,
+                SOLANA_EURC_ADDRESS,
+                "EuroC",
+                "EuroC",
+                "",
+                SOLANA_EURC_ADDRESS,
+                true,
+            ),
+            BridgeAsset::Usdc => (
+                ETHEREUM_USDC_ADDRESS,
+                SOLANA_USDC_ADDRESS,
+                "USD Coin",
+                "USD Coin",
+                MAYAN_USDC_MINT,
+                SOLANA_USDC_ADDRESS,
+                false,
+            ),
+        };
         return Ok(DirectionFacts {
-            bridge_capability_id: "bridge-mayan-swift-v2-eurc-eth-sol",
+            asset,
+            bridge_capability_id: match asset {
+                BridgeAsset::Eurc => "bridge-mayan-swift-v2-eurc-eth-sol",
+                BridgeAsset::Usdc => "bridge-mayan-swift-v2-usdc-eth-sol",
+            },
             source_chain_id: ETHEREUM_CHAIN_ID,
             destination_chain_id: SOLANA_CHAIN_ID,
-            source_token_deployment_id: ETHEREUM_EURC_DEPLOYMENT_ID,
-            destination_token_deployment_id: SOLANA_EURC_DEPLOYMENT_ID,
-            source_token_address: ETHEREUM_EURC_ADDRESS,
-            destination_token_address: SOLANA_EURC_ADDRESS,
+            source_token_deployment_id: match asset {
+                BridgeAsset::Eurc => ETHEREUM_EURC_DEPLOYMENT_ID,
+                BridgeAsset::Usdc => ETHEREUM_USDC_DEPLOYMENT_ID,
+            },
+            destination_token_deployment_id: match asset {
+                BridgeAsset::Eurc => SOLANA_EURC_DEPLOYMENT_ID,
+                BridgeAsset::Usdc => SOLANA_USDC_DEPLOYMENT_ID,
+            },
+            source_token_address,
+            destination_token_address,
             source_token_standard: "erc20",
             destination_token_standard: "spl-token",
             source_provider_chain_name: ETHEREUM_NAME,
@@ -957,17 +1025,65 @@ fn direction_facts(
             source_usdc_address: ETHEREUM_USDC_ADDRESS,
             source_usdc_standard: "erc20",
             swift_contract: ETHEREUM_SWIFT_CONTRACT,
+            source_token_name,
+            destination_token_name,
+            source_token_mint,
+            destination_token_mint,
+            source_swap_required,
         });
     }
     if source_chain_id == SOLANA_CHAIN_ID && destination_chain_id == ETHEREUM_CHAIN_ID {
+        let asset = match (source_token_deployment_id, destination_token_deployment_id) {
+            (SOLANA_EURC_DEPLOYMENT_ID, ETHEREUM_EURC_DEPLOYMENT_ID) => BridgeAsset::Eurc,
+            (SOLANA_USDC_DEPLOYMENT_ID, ETHEREUM_USDC_DEPLOYMENT_ID) => BridgeAsset::Usdc,
+            _ => return Err(bridge_error(BridgeErrorCode::UnsupportedRoute)),
+        };
+        let (
+            source_token_address,
+            destination_token_address,
+            source_token_name,
+            destination_token_name,
+            source_token_mint,
+            destination_token_mint,
+            source_swap_required,
+        ) = match asset {
+            BridgeAsset::Eurc => (
+                SOLANA_EURC_ADDRESS,
+                ETHEREUM_EURC_ADDRESS,
+                "EuroC",
+                "EuroC",
+                SOLANA_EURC_ADDRESS,
+                "",
+                true,
+            ),
+            BridgeAsset::Usdc => (
+                SOLANA_USDC_ADDRESS,
+                ETHEREUM_USDC_ADDRESS,
+                "USD Coin",
+                "USD Coin",
+                SOLANA_USDC_ADDRESS,
+                MAYAN_USDC_MINT,
+                false,
+            ),
+        };
         return Ok(DirectionFacts {
-            bridge_capability_id: "bridge-mayan-swift-v2-eurc-sol-eth",
+            asset,
+            bridge_capability_id: match asset {
+                BridgeAsset::Eurc => "bridge-mayan-swift-v2-eurc-sol-eth",
+                BridgeAsset::Usdc => "bridge-mayan-swift-v2-usdc-sol-eth",
+            },
             source_chain_id: SOLANA_CHAIN_ID,
             destination_chain_id: ETHEREUM_CHAIN_ID,
-            source_token_deployment_id: SOLANA_EURC_DEPLOYMENT_ID,
-            destination_token_deployment_id: ETHEREUM_EURC_DEPLOYMENT_ID,
-            source_token_address: SOLANA_EURC_ADDRESS,
-            destination_token_address: ETHEREUM_EURC_ADDRESS,
+            source_token_deployment_id: match asset {
+                BridgeAsset::Eurc => SOLANA_EURC_DEPLOYMENT_ID,
+                BridgeAsset::Usdc => SOLANA_USDC_DEPLOYMENT_ID,
+            },
+            destination_token_deployment_id: match asset {
+                BridgeAsset::Eurc => ETHEREUM_EURC_DEPLOYMENT_ID,
+                BridgeAsset::Usdc => ETHEREUM_USDC_DEPLOYMENT_ID,
+            },
+            source_token_address,
+            destination_token_address,
             source_token_standard: "spl-token",
             destination_token_standard: "erc20",
             source_provider_chain_name: SOLANA_NAME,
@@ -980,6 +1096,11 @@ fn direction_facts(
             source_usdc_address: SOLANA_USDC_ADDRESS,
             source_usdc_standard: "spl-token",
             swift_contract: SOLANA_SWIFT_PROGRAM,
+            source_token_name,
+            destination_token_name,
+            source_token_mint,
+            destination_token_mint,
+            source_swap_required,
         });
     }
     Err(bridge_error(BridgeErrorCode::UnsupportedRoute))
@@ -1033,15 +1154,27 @@ fn validate_catalog_direction(facts: &DirectionFacts) -> BridgeResult<()> {
     Ok(())
 }
 
-fn expected_dependencies(source_chain_id: &str) -> Vec<String> {
-    let mut dependencies = DEPENDENCIES
-        .iter()
-        .map(|value| (*value).to_owned())
-        .collect::<Vec<_>>();
-    if source_chain_id == SOLANA_CHAIN_ID {
+fn expected_dependencies(facts: &DirectionFacts) -> Vec<String> {
+    let mut dependencies = if facts.asset == BridgeAsset::Usdc {
+        DIRECT_USDC_DEPENDENCIES
+    } else {
+        DEPENDENCIES
+    }
+    .iter()
+    .map(|value| (*value).to_owned())
+    .collect::<Vec<_>>();
+    if facts.asset == BridgeAsset::Eurc && facts.source_chain_id == SOLANA_CHAIN_ID {
         dependencies.push("jupiter-v6-source-swap".to_owned());
     }
     dependencies
+}
+
+fn expected_forwarder_selector(facts: &DirectionFacts) -> Option<&'static str> {
+    (facts.source_chain_id == ETHEREUM_CHAIN_ID).then_some(if facts.asset == BridgeAsset::Usdc {
+        ETHEREUM_USDC_FORWARDER_SELECTOR
+    } else {
+        ETHEREUM_EURC_FORWARDER_SELECTOR
+    })
 }
 
 fn find_capability(facts: &DirectionFacts) -> BridgeResult<BridgeCapability> {
@@ -1062,8 +1195,9 @@ fn find_capability(facts: &DirectionFacts) -> BridgeResult<BridgeCapability> {
     };
     let eth_source = facts.source_chain_id == ETHEREUM_CHAIN_ID;
     let expected_forwarder = eth_source.then(|| ETHEREUM_FORWARDER.to_owned());
-    let expected_forwarder_selector = eth_source.then(|| ETHEREUM_FORWARDER_SELECTOR.to_owned());
-    let expected_jupiter = (!eth_source).then(|| SOLANA_JUPITER_V6.to_owned());
+    let expected_forwarder_selector = expected_forwarder_selector(facts).map(str::to_owned);
+    let expected_jupiter =
+        (facts.asset == BridgeAsset::Eurc && !eth_source).then(|| SOLANA_JUPITER_V6.to_owned());
     let matches = capability.provider_id == "mayan-swift-v2"
         && capability.capability_kind == "external-provider-dynamic"
         && capability
@@ -1096,7 +1230,7 @@ fn find_capability(facts: &DirectionFacts) -> BridgeResult<BridgeCapability> {
         && capability.jupiter_program_address == expected_jupiter
         && capability.builder_endpoint == DEFAULT_BUILDER_ENDPOINT
         && capability.explorer_endpoint == DEFAULT_EXPLORER_ENDPOINT
-        && capability.dependencies == expected_dependencies(facts.source_chain_id)
+        && capability.dependencies == expected_dependencies(facts)
         && capability.status == "active";
     if !matches {
         return Err(bridge_error(BridgeErrorCode::UnsupportedRoute));
@@ -1220,7 +1354,7 @@ impl MayanSwiftV2BridgeClient {
         self.config.explorer_endpoint.to_string()
     }
 
-    /// Quotes native issued EURC in one of the two reviewed directions.
+    /// Quotes native issued EURC or USDC in one of the four reviewed directions.
     pub async fn quote_exact_input<R>(&self, request: R) -> BridgeResult<Vec<MayanSwiftV2Quote>>
     where
         R: Borrow<MayanSwiftV2QuoteRequest>,
@@ -1228,7 +1362,7 @@ impl MayanSwiftV2BridgeClient {
         self.quote_exact_input_with(request.borrow(), None).await
     }
 
-    /// Quotes native issued EURC with optional cancellation.
+    /// Quotes native issued EURC or USDC with optional cancellation.
     pub async fn quote_exact_input_with<R>(
         &self,
         request: R,
@@ -1585,12 +1719,12 @@ fn normalize_quote_request(
     let (amount_in, _) =
         normalize_positive_uint64(&request.amount_in, BridgeErrorCode::InvalidArgument)?;
     let slippage_bps = normalize_slippage(request.slippage_bps, BridgeErrorCode::InvalidArgument)?;
-    let facts = direction_facts(&request.source_chain_id, &request.destination_chain_id)?;
-    if request.source_token_deployment_id != facts.source_token_deployment_id
-        || request.destination_token_deployment_id != facts.destination_token_deployment_id
-    {
-        return Err(bridge_error(BridgeErrorCode::UnsupportedRoute));
-    }
+    let facts = direction_facts(
+        &request.source_chain_id,
+        &request.destination_chain_id,
+        &request.source_token_deployment_id,
+        &request.destination_token_deployment_id,
+    )?;
     validate_catalog_direction(&facts)?;
     let capability = find_capability(&facts)?;
     Ok((
@@ -2087,6 +2221,7 @@ fn provider_token(
     expected_chain_id: i64,
     expected_wormhole_chain_id: i64,
     expected_mint: &str,
+    expected_name: &str,
 ) -> BridgeResult<()> {
     if !matches!(node.value, Value::Object(_)) {
         return provider_invalid();
@@ -2097,7 +2232,7 @@ fn provider_token(
         return provider_invalid();
     }
     provider_address(node, "realOriginContractAddress", expected_address)?;
-    if provider_string(node, "name", false)? != "EuroC" {
+    if provider_string(node, "name", false)? != expected_name {
         return provider_invalid();
     }
     if provider_string(node, "standard", false)? != expected_standard {
@@ -2202,11 +2337,8 @@ fn validate_provider_quote(
         },
         i64::from(facts.source_provider_chain_id),
         i64::from(facts.source_wormhole_chain_id),
-        if facts.source_chain_id == ETHEREUM_CHAIN_ID {
-            ""
-        } else {
-            SOLANA_EURC_ADDRESS
-        },
+        facts.source_token_mint,
+        facts.source_token_name,
     )?;
     provider_token(
         destination_token,
@@ -2218,11 +2350,8 @@ fn validate_provider_quote(
         },
         i64::from(facts.destination_provider_chain_id),
         i64::from(facts.destination_wormhole_chain_id),
-        if facts.destination_chain_id == ETHEREUM_CHAIN_ID {
-            ""
-        } else {
-            SOLANA_EURC_ADDRESS
-        },
+        facts.destination_token_mint,
+        facts.destination_token_name,
     )?;
 
     let provider_standard = quote_provider_standard(facts);
@@ -2249,13 +2378,20 @@ fn validate_provider_quote(
         .clone()
         .ok_or_else(|| bridge_error(BridgeErrorCode::ProviderInvalidResponse))?;
 
-    let (router_kind, router_address) = if facts.source_chain_id == ETHEREUM_CHAIN_ID {
+    let (router_kind, router_address) = if !facts.source_swap_required {
+        if let Some(value) = object_value(node, "evmSwapRouterAddress") {
+            if !value.is_null() {
+                return provider_invalid();
+            }
+        }
+        (None, None)
+    } else if facts.source_chain_id == ETHEREUM_CHAIN_ID {
         (
-            "provider-selected-evm".to_owned(),
-            normalize_evm_address(
+            Some("provider-selected-evm".to_owned()),
+            Some(normalize_evm_address(
                 &provider_string(node, "evmSwapRouterAddress", false)?,
                 BridgeErrorCode::ProviderInvalidResponse,
-            )?,
+            )?),
         )
     } else {
         if let Some(value) = object_value(node, "evmSwapRouterAddress") {
@@ -2263,7 +2399,10 @@ fn validate_provider_quote(
                 return provider_invalid();
             }
         }
-        ("jupiter-v6".to_owned(), SOLANA_JUPITER_V6.to_owned())
+        (
+            Some("jupiter-v6".to_owned()),
+            Some(SOLANA_JUPITER_V6.to_owned()),
+        )
     };
     let quote_id = provider_string(node, "quoteId", false)?;
     if !is_hex_text(&quote_id, 32) {
@@ -2290,8 +2429,12 @@ fn validate_provider_quote(
             quote_id: quote_id.to_ascii_lowercase(),
             provider_signature: signature.to_ascii_lowercase(),
             source_swap: MayanSwiftV2SourceSwap {
-                required: true,
-                input_token_deployment_id: facts.source_token_deployment_id.to_owned(),
+                required: facts.source_swap_required,
+                input_token_deployment_id: if facts.source_swap_required {
+                    facts.source_token_deployment_id.to_owned()
+                } else {
+                    facts.source_usdc_deployment_id.to_owned()
+                },
                 intermediate_token_deployment_id: facts.source_usdc_deployment_id.to_owned(),
                 intermediate_token_address: facts.source_usdc_address.to_owned(),
                 intermediate_token_standard: provider_standard.to_owned(),
@@ -2300,7 +2443,7 @@ fn validate_provider_quote(
                 router_kind,
                 router_address,
             },
-            dependencies: expected_dependencies(facts.source_chain_id),
+            dependencies: expected_dependencies(facts),
             quote_verification: "provider-signed-not-locally-verified".to_owned(),
             raw_signed_quote_json: raw.to_owned(),
         },
@@ -2353,6 +2496,7 @@ fn quote_from_response(
     Ok(selected)
 }
 
+#[allow(clippy::too_many_lines)]
 fn validate_normalized_quote_shape(
     quote: &MayanSwiftV2Quote,
 ) -> BridgeResult<(MayanSwiftV2Quote, DirectionFacts)> {
@@ -2362,13 +2506,13 @@ fn validate_normalized_quote_shape(
     {
         return Err(bridge_error(BridgeErrorCode::QuoteMismatch));
     }
-    let facts = direction_facts(&quote.source_chain_id, &quote.destination_chain_id)
-        .map_err(|_| bridge_error(BridgeErrorCode::QuoteMismatch))?;
-    if quote.source_token_deployment_id != facts.source_token_deployment_id
-        || quote.destination_token_deployment_id != facts.destination_token_deployment_id
-    {
-        return Err(bridge_error(BridgeErrorCode::QuoteMismatch));
-    }
+    let facts = direction_facts(
+        &quote.source_chain_id,
+        &quote.destination_chain_id,
+        &quote.source_token_deployment_id,
+        &quote.destination_token_deployment_id,
+    )
+    .map_err(|_| bridge_error(BridgeErrorCode::QuoteMismatch))?;
     let (amount_in, _) =
         normalize_positive_uint64(&quote.amount_in, BridgeErrorCode::QuoteMismatch)?;
     let (expected_amount_out, expected_amount_out_value) =
@@ -2388,8 +2532,13 @@ fn validate_normalized_quote_shape(
         return Err(bridge_error(BridgeErrorCode::QuoteMismatch));
     }
     let source_swap = &quote.source_swap;
-    if !source_swap.required
-        || source_swap.input_token_deployment_id != facts.source_token_deployment_id
+    if source_swap.required != facts.source_swap_required
+        || source_swap.input_token_deployment_id
+            != if facts.source_swap_required {
+                facts.source_token_deployment_id
+            } else {
+                facts.source_usdc_deployment_id
+            }
         || source_swap.intermediate_token_deployment_id != facts.source_usdc_deployment_id
         || source_swap.intermediate_token_address != facts.source_usdc_address
         || source_swap.intermediate_token_standard != quote_provider_standard(&facts)
@@ -2398,23 +2547,34 @@ fn validate_normalized_quote_shape(
     {
         return Err(bridge_error(BridgeErrorCode::QuoteMismatch));
     }
-    let (router_kind, router_address) = if facts.source_chain_id == ETHEREUM_CHAIN_ID {
-        if source_swap.router_kind != "provider-selected-evm" {
+    let (router_kind, router_address) = if !facts.source_swap_required {
+        if source_swap.router_kind.is_some() || source_swap.router_address.is_some() {
+            return Err(bridge_error(BridgeErrorCode::QuoteMismatch));
+        }
+        (None, None)
+    } else if facts.source_chain_id == ETHEREUM_CHAIN_ID {
+        if source_swap.router_kind.as_deref() != Some("provider-selected-evm") {
             return Err(bridge_error(BridgeErrorCode::QuoteMismatch));
         }
         (
-            "provider-selected-evm".to_owned(),
-            normalize_evm_address(&source_swap.router_address, BridgeErrorCode::QuoteMismatch)?,
+            Some("provider-selected-evm".to_owned()),
+            Some(normalize_evm_address(
+                source_swap.router_address.as_deref().unwrap_or_default(),
+                BridgeErrorCode::QuoteMismatch,
+            )?),
         )
     } else {
-        if source_swap.router_kind != "jupiter-v6"
-            || source_swap.router_address != SOLANA_JUPITER_V6
+        if source_swap.router_kind.as_deref() != Some("jupiter-v6")
+            || source_swap.router_address.as_deref() != Some(SOLANA_JUPITER_V6)
         {
             return Err(bridge_error(BridgeErrorCode::QuoteMismatch));
         }
-        ("jupiter-v6".to_owned(), SOLANA_JUPITER_V6.to_owned())
+        (
+            Some("jupiter-v6".to_owned()),
+            Some(SOLANA_JUPITER_V6.to_owned()),
+        )
     };
-    if quote.dependencies != expected_dependencies(facts.source_chain_id) {
+    if quote.dependencies != expected_dependencies(&facts) {
         return Err(bridge_error(BridgeErrorCode::QuoteMismatch));
     }
     if quote.raw_signed_quote_json.is_empty()
@@ -2438,8 +2598,12 @@ fn validate_normalized_quote_shape(
         quote_id: quote.quote_id.to_ascii_lowercase(),
         provider_signature: quote.provider_signature.to_ascii_lowercase(),
         source_swap: MayanSwiftV2SourceSwap {
-            required: true,
-            input_token_deployment_id: facts.source_token_deployment_id.to_owned(),
+            required: facts.source_swap_required,
+            input_token_deployment_id: if facts.source_swap_required {
+                facts.source_token_deployment_id.to_owned()
+            } else {
+                facts.source_usdc_deployment_id.to_owned()
+            },
             intermediate_token_deployment_id: facts.source_usdc_deployment_id.to_owned(),
             intermediate_token_address: facts.source_usdc_address.to_owned(),
             intermediate_token_standard: quote_provider_standard(&facts).to_owned(),
@@ -2448,7 +2612,7 @@ fn validate_normalized_quote_shape(
             router_kind,
             router_address,
         },
-        dependencies: expected_dependencies(facts.source_chain_id),
+        dependencies: expected_dependencies(&facts),
         quote_verification: "provider-signed-not-locally-verified".to_owned(),
         raw_signed_quote_json: quote.raw_signed_quote_json.clone(),
     };
@@ -2512,6 +2676,7 @@ fn hex_bytes(value: &str) -> bool {
 fn validate_evm_build_result(
     wrapper: &JsonNode,
     swapper_address: &str,
+    facts: &DirectionFacts,
 ) -> BridgeResult<MayanSwiftV2UnsignedTransaction> {
     if provider_string(wrapper, "chainCategory", false)? != "evm"
         || provider_string(wrapper, "quoteType", false)? != "SWIFT"
@@ -2531,10 +2696,14 @@ fn validate_evm_build_result(
         return Err(bridge_error(BridgeErrorCode::BuildInvalid));
     }
     let data = provider_string(transaction, "data", false)?.to_ascii_lowercase();
-    if !hex_bytes(&data)
-        || !data.starts_with(ETHEREUM_FORWARDER_SELECTOR)
-        || data.len() < 2 + 8 + 13 * 64
-    {
+    let selector = expected_forwarder_selector(facts)
+        .ok_or_else(|| bridge_error(BridgeErrorCode::BuildInvalid))?;
+    let minimum_words = if facts.asset == BridgeAsset::Usdc {
+        10
+    } else {
+        13
+    };
+    if !hex_bytes(&data) || !data.starts_with(selector) || data.len() < 2 + 8 + minimum_words * 64 {
         return Err(bridge_error(BridgeErrorCode::BuildInvalid));
     }
     Ok(MayanSwiftV2UnsignedTransaction::Evm(
@@ -2599,14 +2768,14 @@ fn validate_build_response(
         }
     }
     let transaction = if facts.source_chain_id == ETHEREUM_CHAIN_ID {
-        validate_evm_build_result(wrapper, swapper_address)?
+        validate_evm_build_result(wrapper, swapper_address, facts)?
     } else {
         validate_solana_build_result(wrapper, swapper_address)?
     };
     let allowance = if facts.source_chain_id == ETHEREUM_CHAIN_ID {
         Some(MayanSwiftV2Allowance {
-            token_deployment_id: ETHEREUM_EURC_DEPLOYMENT_ID.to_owned(),
-            token_address: ETHEREUM_EURC_ADDRESS.to_owned(),
+            token_deployment_id: facts.source_token_deployment_id.to_owned(),
+            token_address: facts.source_token_address.to_owned(),
             owner: swapper_address.to_owned(),
             spender: ETHEREUM_FORWARDER.to_owned(),
             required_amount: quote.amount_in.clone(),
@@ -2681,6 +2850,44 @@ mod tests {
 
     const FIXTURE: &str = include_str!("../../../registry/fixtures/mayan-swift-v2-cases.json");
     const FIXED_CLOCK: u64 = 1_789_600_000;
+    const FROZEN_LEGACY_FIXTURE_CASE_IDS: &[&str] = &[
+        "quote-eth-sol-synthetic",
+        "quote-sol-eth-synthetic",
+        "build-eth-sol-synthetic",
+        "build-sol-eth-synthetic",
+        "status-eth-inprogress-synthetic",
+        "status-eth-completed-synthetic",
+        "status-sol-refunded-synthetic",
+        "status-sol-unknown-synthetic",
+        "status-eth-not-found-synthetic",
+        "quote-duplicate-key",
+        "quote-malformed-json",
+        "quote-expired",
+        "quote-mismatched-amount",
+        "quote-bad-signature-shape",
+        "quote-json-depth-limit",
+        "quote-body-size-limit",
+        "quote-unsupported-route",
+        "build-auth-required-local",
+        "build-quote-mismatch",
+        "build-evm-forwarder-violation",
+        "build-evm-selector-violation",
+        "build-evm-value-violation",
+        "build-solana-framing-violation",
+        "build-solana-fee-payer-violation",
+        "build-solana-extra-signer-violation",
+        "build-solana-swap-message-violation",
+        "build-http-auth-401",
+        "build-http-rate-limit-429",
+        "quote-redirect-rejected",
+        "quote-timeout",
+        "quote-aborted",
+        "status-invalid-evm-hash",
+        "status-invalid-provider-fields",
+        "build-eth-sol-wrong-evm-destination",
+        "build-sol-eth-wrong-solana-destination",
+        "quote-eth-sol-zero-validity-margin",
+    ];
 
     fn fixture_value() -> Value {
         serde_json::from_str(FIXTURE).expect("bridge fixture is valid JSON")
@@ -2697,6 +2904,201 @@ mod tests {
 
     fn fixed_clock() -> u64 {
         FIXED_CLOCK
+    }
+
+    #[allow(
+        clippy::format_collect,
+        clippy::many_single_char_names,
+        clippy::unreadable_literal
+    )]
+    fn sha256_hex(input: &[u8]) -> String {
+        const K: [u32; 64] = [
+            0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4,
+            0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe,
+            0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f,
+            0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7,
+            0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc,
+            0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b,
+            0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070, 0x19a4c116,
+            0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+            0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7,
+            0xc67178f2,
+        ];
+        let mut message = input.to_vec();
+        let bit_length = u64::try_from(message.len())
+            .expect("fixture length fits u64")
+            .saturating_mul(8);
+        message.push(0x80);
+        while message.len() % 64 != 56 {
+            message.push(0);
+        }
+        message.extend_from_slice(&bit_length.to_be_bytes());
+
+        let mut hash = [
+            0x6a09e667_u32,
+            0xbb67ae85,
+            0x3c6ef372,
+            0xa54ff53a,
+            0x510e527f,
+            0x9b05688c,
+            0x1f83d9ab,
+            0x5be0cd19,
+        ];
+        for chunk in message.chunks_exact(64) {
+            let mut schedule = [0_u32; 64];
+            for (index, word) in schedule[..16].iter_mut().enumerate() {
+                let offset = index * 4;
+                *word = u32::from_be_bytes([
+                    chunk[offset],
+                    chunk[offset + 1],
+                    chunk[offset + 2],
+                    chunk[offset + 3],
+                ]);
+            }
+            for index in 16..64 {
+                let s0 = schedule[index - 15].rotate_right(7)
+                    ^ schedule[index - 15].rotate_right(18)
+                    ^ (schedule[index - 15] >> 3);
+                let s1 = schedule[index - 2].rotate_right(17)
+                    ^ schedule[index - 2].rotate_right(19)
+                    ^ (schedule[index - 2] >> 10);
+                schedule[index] = schedule[index - 16]
+                    .wrapping_add(s0)
+                    .wrapping_add(schedule[index - 7])
+                    .wrapping_add(s1);
+            }
+            let [mut a, mut b, mut c, mut d, mut e, mut f, mut g, mut h] = hash;
+            for index in 0..64 {
+                let s1 = e.rotate_right(6) ^ e.rotate_right(11) ^ e.rotate_right(25);
+                let choice = (e & f) ^ ((!e) & g);
+                let temp1 = h
+                    .wrapping_add(s1)
+                    .wrapping_add(choice)
+                    .wrapping_add(K[index])
+                    .wrapping_add(schedule[index]);
+                let s0 = a.rotate_right(2) ^ a.rotate_right(13) ^ a.rotate_right(22);
+                let majority = (a & b) ^ (a & c) ^ (b & c);
+                let temp2 = s0.wrapping_add(majority);
+                h = g;
+                g = f;
+                f = e;
+                e = d.wrapping_add(temp1);
+                d = c;
+                c = b;
+                b = a;
+                a = temp1.wrapping_add(temp2);
+            }
+            for (value, addend) in hash.iter_mut().zip([a, b, c, d, e, f, g, h]) {
+                *value = value.wrapping_add(addend);
+            }
+        }
+        hash.iter().map(|word| format!("{word:08x}")).collect()
+    }
+
+    fn compact_json(source: &str) -> Vec<u8> {
+        let mut compact = Vec::with_capacity(source.len());
+        let mut in_string = false;
+        let mut escaped = false;
+        for byte in source.bytes() {
+            if in_string {
+                compact.push(byte);
+                if escaped {
+                    escaped = false;
+                } else if byte == b'\\' {
+                    escaped = true;
+                } else if byte == b'"' {
+                    in_string = false;
+                }
+            } else if byte == b'"' {
+                in_string = true;
+                compact.push(byte);
+            } else if !matches!(byte, b' ' | b'\n' | b'\r' | b'\t') {
+                compact.push(byte);
+            }
+        }
+        compact
+    }
+
+    fn frozen_cases_json() -> Vec<u8> {
+        let root = StrictJsonParser::new(FIXTURE)
+            .parse()
+            .expect("frozen bridge fixture parses");
+        let cases = object_entry(&root, "cases")
+            .and_then(|node| node.array_items.as_ref())
+            .expect("frozen bridge fixture cases");
+        let mut selected = Vec::new();
+        selected.push(b'[');
+        for (index, case_id) in FROZEN_LEGACY_FIXTURE_CASE_IDS.iter().enumerate() {
+            let case = cases
+                .iter()
+                .find(|case| object_value(case, "caseId").and_then(Value::as_str) == Some(*case_id))
+                .expect("frozen bridge fixture case");
+            if index > 0 {
+                selected.push(b',');
+            }
+            selected.extend(compact_json(&FIXTURE[case.start..case.end]));
+        }
+        selected.push(b']');
+        selected
+    }
+
+    fn apply_quote_mutation(
+        mut quote: MayanSwiftV2Quote,
+        mutation: Option<&Value>,
+    ) -> MayanSwiftV2Quote {
+        let Some(mutation) = mutation else {
+            return quote;
+        };
+        let Some(mutation) = mutation.as_object() else {
+            panic!("unsupported bridge quote mutation");
+        };
+        let kind = mutation
+            .get("kind")
+            .and_then(Value::as_str)
+            .expect("quote mutation kind");
+        match kind {
+            "normalized-set" => {
+                let mut keys = mutation.keys().cloned().collect::<Vec<_>>();
+                keys.sort();
+                assert_eq!(keys, vec!["kind", "path", "value"]);
+                match mutation.get("path").and_then(Value::as_str) {
+                    Some("sourceSwap.required") => {
+                        assert_eq!(mutation.get("value"), Some(&Value::Bool(true)));
+                        quote.source_swap.required = true;
+                    }
+                    Some("sourceTokenDeploymentId") => {
+                        let value = mutation
+                            .get("value")
+                            .and_then(Value::as_str)
+                            .expect("source token deployment mutation value");
+                        assert!(matches!(value, "deployment-0008" | "deployment-0011"));
+                        quote.source_token_deployment_id = value.to_owned();
+                    }
+                    _ => panic!("unsupported normalized quote mutation"),
+                }
+            }
+            "raw-replace" => {
+                let mut keys = mutation.keys().cloned().collect::<Vec<_>>();
+                keys.sort();
+                assert_eq!(keys, vec!["from", "kind", "path", "to"]);
+                assert_eq!(
+                    mutation.get("path").and_then(Value::as_str),
+                    Some("rawSignedQuoteJson")
+                );
+                let from = mutation
+                    .get("from")
+                    .and_then(Value::as_str)
+                    .expect("raw quote mutation source");
+                let to = mutation
+                    .get("to")
+                    .and_then(Value::as_str)
+                    .expect("raw quote mutation replacement");
+                assert!(quote.raw_signed_quote_json.contains(from));
+                quote.raw_signed_quote_json = quote.raw_signed_quote_json.replacen(from, to, 1);
+            }
+            _ => panic!("unsupported bridge quote mutation"),
+        }
+        quote
     }
 
     async fn read_http_request(
@@ -2967,6 +3369,9 @@ mod tests {
                     case["quoteCaseId"].as_str().expect("build quote case")
                 };
                 let mut quote = capture_quote_for_build(fixture, quote_case_id).await;
+                if let Some(mutation) = case.get("quoteMutation") {
+                    quote = apply_quote_mutation(quote, Some(mutation));
+                }
                 if case_id == "build-quote-mismatch" {
                     quote.amount_in = "100000001".to_owned();
                 }
@@ -3123,8 +3528,18 @@ mod tests {
             ("build".to_owned(), Value::Array(Vec::new())),
             ("status".to_owned(), Value::Array(Vec::new())),
         ]);
+        assert_eq!(
+            sha256_hex(&frozen_cases_json()),
+            "dce10a654672921bc4b26d4d14312abe81c0b93ac1de3fce48be3bd5beb7e5ee"
+        );
         for case in fixture["cases"].as_array().expect("fixture cases") {
             let case_id = case["caseId"].as_str().expect("case ID");
+            if FROZEN_LEGACY_FIXTURE_CASE_IDS.contains(&case_id) {
+                assert!(
+                    case.get("quoteMutation").is_none(),
+                    "legacy case gained mutation descriptor"
+                );
+            }
             let method = case["method"].as_str().expect("method");
             let (outcome, trace) = execute_fixture_case(case, &fixture).await;
             assert_eq!(

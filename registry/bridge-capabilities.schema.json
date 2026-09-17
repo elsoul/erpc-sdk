@@ -10,8 +10,8 @@
     "asOfDate": { "$ref": "#/$defs/date" },
     "capabilities": {
       "type": "array",
-      "minItems": 2,
-      "maxItems": 2,
+      "minItems": 4,
+      "maxItems": 4,
       "items": { "$ref": "#/$defs/capability" }
     }
   },
@@ -104,7 +104,9 @@
         "bridgeCapabilityId": {
           "enum": [
             "bridge-mayan-swift-v2-eurc-eth-sol",
-            "bridge-mayan-swift-v2-eurc-sol-eth"
+            "bridge-mayan-swift-v2-eurc-sol-eth",
+            "bridge-mayan-swift-v2-usdc-eth-sol",
+            "bridge-mayan-swift-v2-usdc-sol-eth"
           ]
         },
         "providerId": { "const": "mayan-swift-v2" },
@@ -146,7 +148,7 @@
         "explorerEndpoint": { "$ref": "#/$defs/endpoint" },
         "dependencies": {
           "type": "array",
-          "minItems": 7,
+          "minItems": 6,
           "maxItems": 8,
           "uniqueItems": true,
           "items": { "$ref": "#/$defs/dependency" }

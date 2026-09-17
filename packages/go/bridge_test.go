@@ -1,7 +1,10 @@
 package erpc
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -25,18 +28,27 @@ type goBridgeFixture struct {
 }
 
 type goBridgeFixtureCase struct {
-	CaseID         string           `json:"caseId"`
-	Method         string           `json:"method"`
-	Source         string           `json:"source"`
-	CapabilityID   string           `json:"capabilityId"`
-	Request        map[string]any   `json:"request"`
-	NowSeconds     int64            `json:"nowSeconds"`
-	ProviderStatus *int             `json:"providerStatus"`
-	ProviderBody   *string          `json:"providerBody"`
-	Expected       map[string]any   `json:"expected"`
-	HTTPTrace      []map[string]any `json:"httpTrace"`
-	Config         map[string]any   `json:"config"`
-	QuoteCaseID    *string          `json:"quoteCaseId"`
+	CaseID         string                 `json:"caseId"`
+	Method         string                 `json:"method"`
+	Source         string                 `json:"source"`
+	CapabilityID   string                 `json:"capabilityId"`
+	Request        map[string]any         `json:"request"`
+	NowSeconds     int64                  `json:"nowSeconds"`
+	ProviderStatus *int                   `json:"providerStatus"`
+	ProviderBody   *string                `json:"providerBody"`
+	Expected       map[string]any         `json:"expected"`
+	HTTPTrace      []map[string]any       `json:"httpTrace"`
+	Config         map[string]any         `json:"config"`
+	QuoteCaseID    *string                `json:"quoteCaseId"`
+	QuoteMutation  *goBridgeQuoteMutation `json:"quoteMutation,omitempty"`
+}
+
+type goBridgeQuoteMutation struct {
+	Kind  string          `json:"kind"`
+	Path  string          `json:"path"`
+	Value json.RawMessage `json:"value"`
+	From  string          `json:"from"`
+	To    string          `json:"to"`
 }
 
 type goBridgeCapturedRequest struct {
@@ -124,6 +136,41 @@ func goBridgeQuoteFromJSON(t *testing.T, raw map[string]any) MayanSwiftV2Quote {
 		t.Fatalf("decode bridge quote fixture: %v", err)
 	}
 	return quote
+}
+
+func goBridgeApplyQuoteMutation(t *testing.T, quote MayanSwiftV2Quote, mutation *goBridgeQuoteMutation) MayanSwiftV2Quote {
+	t.Helper()
+	if mutation == nil {
+		return quote
+	}
+	switch mutation.Kind {
+	case "normalized-set":
+		switch mutation.Path {
+		case "sourceSwap.required":
+			if string(mutation.Value) != "true" {
+				t.Fatalf("unsupported normalized quote mutation: %#v", mutation)
+			}
+			quote.SourceSwap.Required = true
+		case "sourceTokenDeploymentId":
+			var value string
+			if err := json.Unmarshal(mutation.Value, &value); err != nil || (value != "deployment-0008" && value != "deployment-0011") {
+				t.Fatalf("unsupported normalized quote mutation: %#v", mutation)
+			}
+			quote.SourceTokenDeploymentID = value
+		default:
+			t.Fatalf("unsupported normalized quote mutation: %#v", mutation)
+		}
+		return quote
+	case "raw-replace":
+		if mutation.Path != "rawSignedQuoteJson" || mutation.From == "" || !strings.Contains(quote.RawSignedQuoteJSON, mutation.From) {
+			t.Fatalf("unsupported raw quote mutation: %#v", mutation)
+		}
+		quote.RawSignedQuoteJSON = strings.Replace(quote.RawSignedQuoteJSON, mutation.From, mutation.To, 1)
+		return quote
+	default:
+		t.Fatalf("unsupported quote mutation: %#v", mutation)
+		return quote
+	}
 }
 
 func goBridgeResponse(body string, status int) string {
@@ -290,6 +337,88 @@ func goBridgeCaptureBaseQuotes(t *testing.T, fixture goBridgeFixture) map[string
 	return quotes
 }
 
+var frozenLegacyBridgeFixtureCaseIDs = []string{
+	"quote-eth-sol-synthetic",
+	"quote-sol-eth-synthetic",
+	"build-eth-sol-synthetic",
+	"build-sol-eth-synthetic",
+	"status-eth-inprogress-synthetic",
+	"status-eth-completed-synthetic",
+	"status-sol-refunded-synthetic",
+	"status-sol-unknown-synthetic",
+	"status-eth-not-found-synthetic",
+	"quote-duplicate-key",
+	"quote-malformed-json",
+	"quote-expired",
+	"quote-mismatched-amount",
+	"quote-bad-signature-shape",
+	"quote-json-depth-limit",
+	"quote-body-size-limit",
+	"quote-unsupported-route",
+	"build-auth-required-local",
+	"build-quote-mismatch",
+	"build-evm-forwarder-violation",
+	"build-evm-selector-violation",
+	"build-evm-value-violation",
+	"build-solana-framing-violation",
+	"build-solana-fee-payer-violation",
+	"build-solana-extra-signer-violation",
+	"build-solana-swap-message-violation",
+	"build-http-auth-401",
+	"build-http-rate-limit-429",
+	"quote-redirect-rejected",
+	"quote-timeout",
+	"quote-aborted",
+	"status-invalid-evm-hash",
+	"status-invalid-provider-fields",
+	"build-eth-sol-wrong-evm-destination",
+	"build-sol-eth-wrong-solana-destination",
+	"quote-eth-sol-zero-validity-margin",
+}
+
+func frozenLegacyBridgeFixtureDigest(t *testing.T) string {
+	t.Helper()
+	data, err := os.ReadFile(goBridgeFixturePath())
+	if err != nil {
+		t.Fatalf("read bridge fixture for legacy digest: %v", err)
+	}
+	var envelope struct {
+		Cases []json.RawMessage `json:"cases"`
+	}
+	if err := json.Unmarshal(data, &envelope); err != nil {
+		t.Fatalf("decode bridge fixture for legacy digest: %v", err)
+	}
+	byID := make(map[string]json.RawMessage, len(envelope.Cases))
+	for _, raw := range envelope.Cases {
+		var header struct {
+			CaseID string `json:"caseId"`
+		}
+		if err := json.Unmarshal(raw, &header); err != nil {
+			t.Fatalf("decode bridge fixture case for legacy digest: %v", err)
+		}
+		byID[header.CaseID] = raw
+	}
+	var selected bytes.Buffer
+	selected.WriteByte('[')
+	for index, caseID := range frozenLegacyBridgeFixtureCaseIDs {
+		if index > 0 {
+			selected.WriteByte(',')
+		}
+		raw, ok := byID[caseID]
+		if !ok {
+			t.Fatalf("missing frozen bridge fixture case %s", caseID)
+		}
+		var compact bytes.Buffer
+		if err := json.Compact(&compact, raw); err != nil {
+			t.Fatalf("compact bridge fixture case %s: %v", caseID, err)
+		}
+		selected.Write(compact.Bytes())
+	}
+	selected.WriteByte(']')
+	digest := sha256.Sum256(selected.Bytes())
+	return hex.EncodeToString(digest[:])
+}
+
 func TestMayanSwiftV2BridgeFixtures(t *testing.T) {
 	fixture := loadGoBridgeFixture(t)
 	if fixture.CapabilityAsOf != bridgeCapabilitiesAsOfDate || fixture.CapabilityDigest != bridgeCapabilitiesContentDigest {
@@ -335,6 +464,7 @@ func TestMayanSwiftV2BridgeFixtures(t *testing.T) {
 				if fixtureCase.CaseID == "build-quote-mismatch" {
 					quote.AmountIn = "100000001"
 				}
+				quote = goBridgeApplyQuoteMutation(t, quote, fixtureCase.QuoteMutation)
 				request := MayanSwiftV2BuildRequest{Quote: quote, SwapperAddress: goBridgeString(t, fixtureCase.Request["swapperAddress"], "swapperAddress"), DestinationAddress: goBridgeString(t, fixtureCase.Request["destinationAddress"], "destinationAddress")}
 				value, callErr = client.BuildUnsigned(callContext, request)
 			case "status":
@@ -347,6 +477,12 @@ func TestMayanSwiftV2BridgeFixtures(t *testing.T) {
 			mustSameJSON(t, goBridgeOutcome(value, callErr), fixtureCase.Expected)
 			mustSameJSON(t, goBridgeTrace(captured), fixtureCase.HTTPTrace)
 		})
+	}
+}
+
+func TestMayanSwiftV2BridgePreservesFrozenLegacyFixtureCases(t *testing.T) {
+	if digest := frozenLegacyBridgeFixtureDigest(t); digest != "dce10a654672921bc4b26d4d14312abe81c0b93ac1de3fce48be3bd5beb7e5ee" {
+		t.Fatalf("frozen legacy bridge fixture digest = %s", digest)
 	}
 }
 
@@ -377,6 +513,93 @@ func TestMayanSwiftV2BridgeConstructsWithoutIOAndCloseIsSafe(t *testing.T) {
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) { return f(request) }
+
+func TestMayanSwiftV2BridgeDeepCopiesRouterPointersAcrossBuild(t *testing.T) {
+	fixture := loadGoBridgeFixture(t)
+	var quoteCase, buildCase *goBridgeFixtureCase
+	for index := range fixture.Cases {
+		candidate := &fixture.Cases[index]
+		switch candidate.CaseID {
+		case "quote-eth-sol-synthetic":
+			quoteCase = candidate
+		case "build-eth-sol-synthetic":
+			buildCase = candidate
+		}
+	}
+	if quoteCase == nil || buildCase == nil || quoteCase.ProviderBody == nil || buildCase.ProviderBody == nil {
+		t.Fatal("missing EURC quote/build fixture bodies")
+	}
+
+	var callerQuote MayanSwiftV2Quote
+	quoteCalls, buildCalls := 0, 0
+	transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		var body string
+		switch request.URL.Path {
+		case "/quote":
+			quoteCalls++
+			body = *quoteCase.ProviderBody
+		case "/build":
+			buildCalls++
+			if callerQuote.SourceSwap.RouterKind == nil || callerQuote.SourceSwap.RouterAddress == nil {
+				return nil, errors.New("fixture quote router pointers are nil")
+			}
+			*callerQuote.SourceSwap.RouterKind = "tampered-during-build"
+			*callerQuote.SourceSwap.RouterAddress = "0x9999999999999999999999999999999999999999"
+			body = *buildCase.ProviderBody
+		default:
+			return nil, errors.New("unexpected bridge endpoint: " + request.URL.Path)
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(body)),
+			Request:    request,
+		}, nil
+	})
+	client, err := NewMayanSwiftV2BridgeClient(MayanSwiftV2BridgeConfig{
+		AllowUnauthenticatedBuild: true,
+		HTTPClient:                &http.Client{Transport: transport},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	client.clock = func() int64 { return quoteCase.NowSeconds }
+	quotes, err := client.QuoteExactInput(context.Background(), goBridgeQuoteRequest(t, quoteCase.Request))
+	if err != nil || len(quotes) != 1 {
+		t.Fatalf("quote: %v", err)
+	}
+	callerQuote = quotes[0]
+	if callerQuote.SourceSwap.RouterKind == nil || callerQuote.SourceSwap.RouterAddress == nil {
+		t.Fatal("EURC quote router pointers are nil")
+	}
+	wantKind := *callerQuote.SourceSwap.RouterKind
+	wantAddress := *callerQuote.SourceSwap.RouterAddress
+
+	build, err := client.BuildUnsigned(context.Background(), MayanSwiftV2BuildRequest{
+		Quote:              callerQuote,
+		SwapperAddress:     goBridgeString(t, buildCase.Request["swapperAddress"], "swapperAddress"),
+		DestinationAddress: goBridgeString(t, buildCase.Request["destinationAddress"], "destinationAddress"),
+	})
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	if quoteCalls != 1 || buildCalls != 1 {
+		t.Fatalf("provider calls = quote %d, build %d; want one each", quoteCalls, buildCalls)
+	}
+	if build.Quote.SourceSwap.RouterKind == callerQuote.SourceSwap.RouterKind || build.Quote.SourceSwap.RouterAddress == callerQuote.SourceSwap.RouterAddress {
+		t.Fatal("returned build quote shares router pointers with caller quote")
+	}
+	if *build.Quote.SourceSwap.RouterKind != wantKind || *build.Quote.SourceSwap.RouterAddress != wantAddress {
+		t.Fatalf("in-flight caller mutation changed returned quote: kind=%q address=%q", *build.Quote.SourceSwap.RouterKind, *build.Quote.SourceSwap.RouterAddress)
+	}
+
+	*callerQuote.SourceSwap.RouterKind = "tampered-after-return"
+	*callerQuote.SourceSwap.RouterAddress = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	if *build.Quote.SourceSwap.RouterKind != wantKind || *build.Quote.SourceSwap.RouterAddress != wantAddress {
+		t.Fatalf("post-return caller mutation changed returned quote: kind=%q address=%q", *build.Quote.SourceSwap.RouterKind, *build.Quote.SourceSwap.RouterAddress)
+	}
+}
 
 func TestMayanSwiftV2BridgeWritesNativeParityCapture(t *testing.T) {
 	outputPath := os.Getenv("ERPC_SDK_BRIDGE_PARITY_OUTPUT")
@@ -420,6 +643,7 @@ func TestMayanSwiftV2BridgeWritesNativeParityCapture(t *testing.T) {
 			if fixtureCase.CaseID == "build-quote-mismatch" {
 				quote.AmountIn = "100000001"
 			}
+			quote = goBridgeApplyQuoteMutation(t, quote, fixtureCase.QuoteMutation)
 			value, callErr = client.BuildUnsigned(callContext, MayanSwiftV2BuildRequest{Quote: quote, SwapperAddress: goBridgeString(t, fixtureCase.Request["swapperAddress"], "swapperAddress"), DestinationAddress: goBridgeString(t, fixtureCase.Request["destinationAddress"], "destinationAddress")})
 		case "status":
 			value, callErr = client.GetStatus(callContext, MayanSwiftV2StatusRequest{SourceChainID: goBridgeString(t, fixtureCase.Request["sourceChainId"], "sourceChainId"), SourceTransactionHash: goBridgeString(t, fixtureCase.Request["sourceTransactionHash"], "sourceTransactionHash")})

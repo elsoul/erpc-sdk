@@ -49,6 +49,8 @@ export const BRIDGE_RUNTIME_KEYS = BRIDGE_CAPABILITY_RUNTIME_KEYS;
 export const BRIDGE_CAPABILITY_IDS = Object.freeze([
   "bridge-mayan-swift-v2-eurc-eth-sol",
   "bridge-mayan-swift-v2-eurc-sol-eth",
+  "bridge-mayan-swift-v2-usdc-eth-sol",
+  "bridge-mayan-swift-v2-usdc-sol-eth",
 ]);
 
 export const BRIDGE_DEFAULT_BUILDER_ENDPOINT = "https://tx-builder.mayan.finance";
@@ -76,6 +78,14 @@ export const BRIDGE_DEPENDENCIES = Object.freeze([
   "mayan-hosted-quote-api",
   "mayan-hosted-transaction-builder",
   "mayan-hosted-source-swap-builder",
+  "swift-auction-solvers",
+  "relayers",
+  "wormhole-guardian-messaging",
+  "mayan-explorer-indexer",
+]);
+export const BRIDGE_DIRECT_DEPENDENCIES = Object.freeze([
+  "mayan-hosted-quote-api",
+  "mayan-hosted-transaction-builder",
   "swift-auction-solvers",
   "relayers",
   "wormhole-guardian-messaging",
@@ -196,6 +206,72 @@ const REVIEWED_FACTS = Object.freeze({
     dependencies: [...BRIDGE_DEPENDENCIES, BRIDGE_JUPITER_DEPENDENCY],
     status: "active",
   }),
+  "bridge-mayan-swift-v2-usdc-eth-sol": Object.freeze({
+    bridgeCapabilityId: "bridge-mayan-swift-v2-usdc-eth-sol",
+    providerId: BRIDGE_PROVIDER_ID,
+    capabilityKind: BRIDGE_CAPABILITY_KIND,
+    sourceChainId: ETHEREUM_CHAIN_ID,
+    destinationChainId: SOLANA_CHAIN_ID,
+    sourceTokenDeploymentId: ETHEREUM_USDC.deploymentId,
+    destinationTokenDeploymentId: SOLANA_USDC.deploymentId,
+    sourceTokenAddress: ETHEREUM_USDC.address,
+    destinationTokenAddress: SOLANA_USDC.address,
+    sourceTokenStandard: ETHEREUM_USDC.standard,
+    destinationTokenStandard: SOLANA_USDC.standard,
+    sourceTokenDecimals: 6,
+    destinationTokenDecimals: 6,
+    sourceProviderChainName: "ethereum",
+    destinationProviderChainName: "solana",
+    sourceProviderChainId: 1,
+    destinationProviderChainId: 0,
+    sourceWormholeChainId: 2,
+    destinationWormholeChainId: 1,
+    sourceUsdcDeploymentId: ETHEREUM_USDC.deploymentId,
+    sourceUsdcAddress: ETHEREUM_USDC.address,
+    sourceUsdcStandard: ETHEREUM_USDC.standard,
+    sourceUsdcDecimals: 6,
+    swiftContract: "0x40ffe85a28dc9993541449464d7529a922142960",
+    forwarderAddress: "0x337685fdab40d39bd02028545a4ffa7d287cc3e2",
+    forwarderFunctionSelector: "0xe4269fc4",
+    jupiterProgramAddress: null,
+    builderEndpoint: BRIDGE_DEFAULT_BUILDER_ENDPOINT,
+    explorerEndpoint: BRIDGE_DEFAULT_EXPLORER_ENDPOINT,
+    dependencies: [...BRIDGE_DIRECT_DEPENDENCIES],
+    status: "active",
+  }),
+  "bridge-mayan-swift-v2-usdc-sol-eth": Object.freeze({
+    bridgeCapabilityId: "bridge-mayan-swift-v2-usdc-sol-eth",
+    providerId: BRIDGE_PROVIDER_ID,
+    capabilityKind: BRIDGE_CAPABILITY_KIND,
+    sourceChainId: SOLANA_CHAIN_ID,
+    destinationChainId: ETHEREUM_CHAIN_ID,
+    sourceTokenDeploymentId: SOLANA_USDC.deploymentId,
+    destinationTokenDeploymentId: ETHEREUM_USDC.deploymentId,
+    sourceTokenAddress: SOLANA_USDC.address,
+    destinationTokenAddress: ETHEREUM_USDC.address,
+    sourceTokenStandard: SOLANA_USDC.standard,
+    destinationTokenStandard: ETHEREUM_USDC.standard,
+    sourceTokenDecimals: 6,
+    destinationTokenDecimals: 6,
+    sourceProviderChainName: "solana",
+    destinationProviderChainName: "ethereum",
+    sourceProviderChainId: 0,
+    destinationProviderChainId: 1,
+    sourceWormholeChainId: 1,
+    destinationWormholeChainId: 2,
+    sourceUsdcDeploymentId: SOLANA_USDC.deploymentId,
+    sourceUsdcAddress: SOLANA_USDC.address,
+    sourceUsdcStandard: SOLANA_USDC.standard,
+    sourceUsdcDecimals: 6,
+    swiftContract: "mayan34VedncxdK2XobtvWFDXQASUTBXhUVzt2kKgny",
+    forwarderAddress: null,
+    forwarderFunctionSelector: null,
+    jupiterProgramAddress: null,
+    builderEndpoint: BRIDGE_DEFAULT_BUILDER_ENDPOINT,
+    explorerEndpoint: BRIDGE_DEFAULT_EXPLORER_ENDPOINT,
+    dependencies: [...BRIDGE_DIRECT_DEPENDENCIES],
+    status: "active",
+  }),
 });
 
 export class BridgeCapabilityValidationError extends Error {
@@ -314,6 +390,23 @@ function compareCatalogToken(tokens, expected, label) {
   if (!addressMatches) fail(`${label} address differs from the canonical token catalog`);
 }
 
+const TOKEN_FACTS = Object.freeze({
+  [ETHEREUM_CHAIN_ID]: Object.freeze({
+    [ETHEREUM_EURC.deploymentId]: ETHEREUM_EURC,
+    [ETHEREUM_USDC.deploymentId]: ETHEREUM_USDC,
+  }),
+  [SOLANA_CHAIN_ID]: Object.freeze({
+    [SOLANA_EURC.deploymentId]: SOLANA_EURC,
+    [SOLANA_USDC.deploymentId]: SOLANA_USDC,
+  }),
+});
+
+function tokenFactFor(chainId, deploymentId, label) {
+  const token = TOKEN_FACTS[chainId]?.[deploymentId];
+  if (!token) fail(`${label} has no reviewed token binding`);
+  return token;
+}
+
 function validateRegistryShape(registry) {
   exactKeys(registry, ["schemaVersion", "asOfDate", "capabilities"], "registry");
   if (registry.schemaVersion !== BRIDGE_CAPABILITIES_SCHEMA_VERSION) fail(`registry.schemaVersion must be ${BRIDGE_CAPABILITIES_SCHEMA_VERSION}`);
@@ -383,9 +476,9 @@ function validateRow(row, index, registry, tokens) {
   evidenceList(row.evidence, `${label}.evidence`);
   dateString(row.asOfDate, `${label}.asOfDate`);
 
-  const sourceToken = row.sourceChainId === ETHEREUM_CHAIN_ID ? ETHEREUM_EURC : SOLANA_EURC;
-  const destinationToken = row.destinationChainId === ETHEREUM_CHAIN_ID ? ETHEREUM_EURC : SOLANA_EURC;
-  const sourceUsdc = row.sourceChainId === ETHEREUM_CHAIN_ID ? ETHEREUM_USDC : SOLANA_USDC;
+  const sourceToken = tokenFactFor(row.sourceChainId, row.sourceTokenDeploymentId, `${label}.sourceTokenDeploymentId`);
+  const destinationToken = tokenFactFor(row.destinationChainId, row.destinationTokenDeploymentId, `${label}.destinationTokenDeploymentId`);
+  const sourceUsdc = tokenFactFor(row.sourceChainId, row.sourceUsdcDeploymentId, `${label}.sourceUsdcDeploymentId`);
   compareCatalogToken(tokens, sourceToken, `${label}.sourceTokenDeploymentId`);
   compareCatalogToken(tokens, destinationToken, `${label}.destinationTokenDeploymentId`);
   compareCatalogToken(tokens, sourceUsdc, `${label}.sourceUsdcDeploymentId`);
@@ -449,9 +542,17 @@ export function getBridgeCapability(bridgeCapabilityId) {
   return BRIDGE_RUNTIME_CAPABILITIES.find((entry) => entry.bridgeCapabilityId === bridgeCapabilityId) ?? null;
 }
 
-export function getBridgeCapabilityForRoute(sourceChainId, destinationChainId) {
+export function getBridgeCapabilityForRoute(sourceChainId, destinationChainId, sourceTokenDeploymentId, destinationTokenDeploymentId) {
   if (typeof sourceChainId !== "string" || typeof destinationChainId !== "string") return null;
-  return BRIDGE_RUNTIME_CAPABILITIES.find((entry) => entry.sourceChainId === sourceChainId && entry.destinationChainId === destinationChainId) ?? null;
+  const matches = BRIDGE_RUNTIME_CAPABILITIES.filter((entry) => entry.sourceChainId === sourceChainId && entry.destinationChainId === destinationChainId);
+  if (sourceTokenDeploymentId === undefined && destinationTokenDeploymentId === undefined) return matches.length === 1 ? matches[0] : null;
+  if (typeof sourceTokenDeploymentId !== "string" || typeof destinationTokenDeploymentId !== "string") return null;
+  return matches.find((entry) => entry.sourceTokenDeploymentId === sourceTokenDeploymentId && entry.destinationTokenDeploymentId === destinationTokenDeploymentId) ?? null;
+}
+
+/** Legacy chain-pair lookup; ambiguous EURC/USDC pairs intentionally return null. */
+export function getBridgeCapabilityForChainPair(sourceChainId, destinationChainId) {
+  return getBridgeCapabilityForRoute(sourceChainId, destinationChainId);
 }
 
 export function isCanonicalEvmAddress(value) {

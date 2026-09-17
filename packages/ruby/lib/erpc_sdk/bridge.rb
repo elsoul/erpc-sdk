@@ -304,15 +304,17 @@ module ERPC
   JsonNode = Struct.new(:value, :start, :end, :object_entries, :array_items, :raw_number,
                         keyword_init: true)
   DirectionFacts = Struct.new(
-    :bridge_capability_id, :source_chain_id, :destination_chain_id,
+    :asset, :bridge_capability_id, :source_chain_id, :destination_chain_id,
     :source_token_deployment_id, :destination_token_deployment_id,
     :source_token_address, :destination_token_address,
     :source_token_standard, :destination_token_standard,
     :source_provider_chain_id, :destination_provider_chain_id,
     :source_wormhole_chain_id, :destination_wormhole_chain_id,
-    :source_name, :destination_name, :source_eurc_mint, :destination_eurc_mint,
+    :source_name, :destination_name, :source_token_name, :destination_token_name,
+    :source_token_mint, :destination_token_mint,
     :source_usdc_deployment_id, :source_usdc_address, :source_usdc_standard,
-    :swift_contract, keyword_init: true
+    :swift_contract, :forwarder_function_selector, :jupiter_program_address,
+    :dependencies, :source_swap_required, keyword_init: true
   )
   NormalizedRoute = Struct.new(:request, :facts, :capability, keyword_init: true)
 
@@ -508,7 +510,10 @@ module ERPC
     SOLANA_SWIFT_PROGRAM = "mayan34VedncxdK2XobtvWFDXQASUTBXhUVzt2kKgny"
     ETHEREUM_FORWARDER = "0x337685fdab40d39bd02028545a4ffa7d287cc3e2"
     SOLANA_JUPITER_V6 = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4"
-    ETHEREUM_FORWARDER_SELECTOR = "0x30dedc57"
+    ETHEREUM_EURC_FORWARDER_SELECTOR = "0x30dedc57"
+    ETHEREUM_USDC_FORWARDER_SELECTOR = "0xe4269fc4"
+    ETHEREUM_FORWARDER_SELECTOR = ETHEREUM_EURC_FORWARDER_SELECTOR
+    MAYAN_USDC_MINT = "A9mUU4qviSctJVPJdBJWkb28deg915LYJKrzQ19ji3FM"
     DEFAULT_BUILDER_ENDPOINT = MayanSwiftV2BridgeConfig::DEFAULT_BUILDER_ENDPOINT
     DEFAULT_EXPLORER_ENDPOINT = MayanSwiftV2BridgeConfig::DEFAULT_EXPLORER_ENDPOINT
     DEFAULT_TIMEOUT = MayanSwiftV2BridgeConfig::DEFAULT_TIMEOUT
@@ -523,6 +528,14 @@ module ERPC
       "mayan-hosted-quote-api",
       "mayan-hosted-transaction-builder",
       "mayan-hosted-source-swap-builder",
+      "swift-auction-solvers",
+      "relayers",
+      "wormhole-guardian-messaging",
+      "mayan-explorer-indexer"
+    ].freeze
+    DIRECT_USDC_DEPENDENCIES = [
+      "mayan-hosted-quote-api",
+      "mayan-hosted-transaction-builder",
       "swift-auction-solvers",
       "relayers",
       "wormhole-guardian-messaging",
@@ -754,39 +767,63 @@ module ERPC
       value
     end
 
-    def direction_facts(source_chain_id, destination_chain_id)
+    def direction_facts(source_chain_id, destination_chain_id, source_token_id, destination_token_id)
       if source_chain_id == ETHEREUM_CHAIN_ID && destination_chain_id == SOLANA_CHAIN_ID
+        is_eurc = source_token_id == ETHEREUM_EURC_DEPLOYMENT_ID && destination_token_id == SOLANA_EURC_DEPLOYMENT_ID
+        is_usdc = source_token_id == ETHEREUM_USDC_DEPLOYMENT_ID && destination_token_id == SOLANA_USDC_DEPLOYMENT_ID
+        fail_bridge(BridgeErrorCode::UNSUPPORTED_ROUTE) unless is_eurc || is_usdc
+        asset = is_eurc ? "eurc" : "usdc"
         return DirectionFacts.new(
-          bridge_capability_id: "bridge-mayan-swift-v2-eurc-eth-sol",
+          asset: asset,
+          bridge_capability_id: is_eurc ? "bridge-mayan-swift-v2-eurc-eth-sol" : "bridge-mayan-swift-v2-usdc-eth-sol",
           source_chain_id: source_chain_id, destination_chain_id: destination_chain_id,
-          source_token_deployment_id: ETHEREUM_EURC_DEPLOYMENT_ID,
-          destination_token_deployment_id: SOLANA_EURC_DEPLOYMENT_ID,
-          source_token_address: ETHEREUM_EURC_ADDRESS, destination_token_address: SOLANA_EURC_ADDRESS,
+          source_token_deployment_id: source_token_id, destination_token_deployment_id: destination_token_id,
+          source_token_address: is_eurc ? ETHEREUM_EURC_ADDRESS : ETHEREUM_USDC_ADDRESS,
+          destination_token_address: is_eurc ? SOLANA_EURC_ADDRESS : SOLANA_USDC_ADDRESS,
           source_token_standard: "erc20", destination_token_standard: "spl-token",
           source_provider_chain_id: ETHEREUM_PROVIDER_CHAIN_ID, destination_provider_chain_id: SOLANA_PROVIDER_CHAIN_ID,
           source_wormhole_chain_id: ETHEREUM_WORMHOLE_CHAIN_ID, destination_wormhole_chain_id: SOLANA_WORMHOLE_CHAIN_ID,
           source_name: ETHEREUM_NAME, destination_name: SOLANA_NAME,
-          source_eurc_mint: "", destination_eurc_mint: SOLANA_EURC_ADDRESS,
+          source_token_name: is_eurc ? "EuroC" : "USD Coin",
+          destination_token_name: is_eurc ? "EuroC" : "USD Coin",
+          source_token_mint: is_eurc ? "" : MAYAN_USDC_MINT,
+          destination_token_mint: is_eurc ? SOLANA_EURC_ADDRESS : SOLANA_USDC_ADDRESS,
           source_usdc_deployment_id: ETHEREUM_USDC_DEPLOYMENT_ID,
           source_usdc_address: ETHEREUM_USDC_ADDRESS, source_usdc_standard: "erc20",
-          swift_contract: ETHEREUM_SWIFT_CONTRACT
+          swift_contract: ETHEREUM_SWIFT_CONTRACT,
+          forwarder_function_selector: is_eurc ? ETHEREUM_EURC_FORWARDER_SELECTOR : ETHEREUM_USDC_FORWARDER_SELECTOR,
+          jupiter_program_address: nil,
+          dependencies: is_eurc ? BASE_DEPENDENCIES : DIRECT_USDC_DEPENDENCIES,
+          source_swap_required: is_eurc
         )
       end
       if source_chain_id == SOLANA_CHAIN_ID && destination_chain_id == ETHEREUM_CHAIN_ID
+        is_eurc = source_token_id == SOLANA_EURC_DEPLOYMENT_ID && destination_token_id == ETHEREUM_EURC_DEPLOYMENT_ID
+        is_usdc = source_token_id == SOLANA_USDC_DEPLOYMENT_ID && destination_token_id == ETHEREUM_USDC_DEPLOYMENT_ID
+        fail_bridge(BridgeErrorCode::UNSUPPORTED_ROUTE) unless is_eurc || is_usdc
+        asset = is_eurc ? "eurc" : "usdc"
         return DirectionFacts.new(
-          bridge_capability_id: "bridge-mayan-swift-v2-eurc-sol-eth",
+          asset: asset,
+          bridge_capability_id: is_eurc ? "bridge-mayan-swift-v2-eurc-sol-eth" : "bridge-mayan-swift-v2-usdc-sol-eth",
           source_chain_id: source_chain_id, destination_chain_id: destination_chain_id,
-          source_token_deployment_id: SOLANA_EURC_DEPLOYMENT_ID,
-          destination_token_deployment_id: ETHEREUM_EURC_DEPLOYMENT_ID,
-          source_token_address: SOLANA_EURC_ADDRESS, destination_token_address: ETHEREUM_EURC_ADDRESS,
+          source_token_deployment_id: source_token_id, destination_token_deployment_id: destination_token_id,
+          source_token_address: is_eurc ? SOLANA_EURC_ADDRESS : SOLANA_USDC_ADDRESS,
+          destination_token_address: is_eurc ? ETHEREUM_EURC_ADDRESS : ETHEREUM_USDC_ADDRESS,
           source_token_standard: "spl-token", destination_token_standard: "erc20",
           source_provider_chain_id: SOLANA_PROVIDER_CHAIN_ID, destination_provider_chain_id: ETHEREUM_PROVIDER_CHAIN_ID,
           source_wormhole_chain_id: SOLANA_WORMHOLE_CHAIN_ID, destination_wormhole_chain_id: ETHEREUM_WORMHOLE_CHAIN_ID,
           source_name: SOLANA_NAME, destination_name: ETHEREUM_NAME,
-          source_eurc_mint: SOLANA_EURC_ADDRESS, destination_eurc_mint: "",
+          source_token_name: is_eurc ? "EuroC" : "USD Coin",
+          destination_token_name: is_eurc ? "EuroC" : "USD Coin",
+          source_token_mint: is_eurc ? SOLANA_EURC_ADDRESS : SOLANA_USDC_ADDRESS,
+          destination_token_mint: is_eurc ? "" : MAYAN_USDC_MINT,
           source_usdc_deployment_id: SOLANA_USDC_DEPLOYMENT_ID,
           source_usdc_address: SOLANA_USDC_ADDRESS, source_usdc_standard: "spl-token",
-          swift_contract: SOLANA_SWIFT_PROGRAM
+          swift_contract: SOLANA_SWIFT_PROGRAM,
+          forwarder_function_selector: nil,
+          jupiter_program_address: is_eurc ? SOLANA_JUPITER_V6 : nil,
+          dependencies: is_eurc ? BASE_DEPENDENCIES + ["jupiter-v6-source-swap"] : DIRECT_USDC_DEPENDENCIES,
+          source_swap_required: is_eurc
         )
       end
       fail_bridge(BridgeErrorCode::UNSUPPORTED_ROUTE)
@@ -834,10 +871,10 @@ module ERPC
         "sourceUsdcAddress" => facts.source_usdc_address, "sourceUsdcStandard" => facts.source_usdc_standard,
         "sourceUsdcDecimals" => 6, "swiftContract" => facts.swift_contract,
         "forwarderAddress" => facts.source_chain_id == ETHEREUM_CHAIN_ID ? ETHEREUM_FORWARDER : nil,
-        "forwarderFunctionSelector" => facts.source_chain_id == ETHEREUM_CHAIN_ID ? ETHEREUM_FORWARDER_SELECTOR : nil,
-        "jupiterProgramAddress" => facts.source_chain_id == SOLANA_CHAIN_ID ? SOLANA_JUPITER_V6 : nil,
+        "forwarderFunctionSelector" => facts.forwarder_function_selector,
+        "jupiterProgramAddress" => facts.jupiter_program_address,
         "builderEndpoint" => DEFAULT_BUILDER_ENDPOINT, "explorerEndpoint" => DEFAULT_EXPLORER_ENDPOINT,
-        "dependencies" => facts.source_chain_id == SOLANA_CHAIN_ID ? BASE_DEPENDENCIES + ["jupiter-v6-source-swap"] : BASE_DEPENDENCIES,
+        "dependencies" => facts.dependencies,
         "status" => "active"
       }
       fail_bridge(BridgeErrorCode::UNSUPPORTED_ROUTE) unless strict_equal?(capability, expected)
@@ -853,8 +890,7 @@ module ERPC
       destination_token_id = require_string(request["destinationTokenDeploymentId"], BridgeErrorCode::INVALID_ARGUMENT)
       amount = normalize_positive_uint64(request["amountIn"], BridgeErrorCode::INVALID_ARGUMENT).first
       slippage = normalize_slippage(request["slippageBps"], BridgeErrorCode::INVALID_ARGUMENT)
-      facts = direction_facts(source_chain_id, destination_chain_id)
-      fail_bridge(BridgeErrorCode::UNSUPPORTED_ROUTE) unless source_token_id == facts.source_token_deployment_id && destination_token_id == facts.destination_token_deployment_id
+      facts = direction_facts(source_chain_id, destination_chain_id, source_token_id, destination_token_id)
       unless catalog_token_matches?(facts.source_token_deployment_id, facts.source_chain_id, facts.source_token_address, facts.source_token_standard) &&
              catalog_token_matches?(facts.destination_token_deployment_id, facts.destination_chain_id, facts.destination_token_address, facts.destination_token_standard) &&
              catalog_token_matches?(facts.source_usdc_deployment_id, facts.source_chain_id, facts.source_usdc_address, facts.source_usdc_standard)
@@ -934,12 +970,12 @@ module ERPC
       EVM_ADDRESS.match?(value) ? value.downcase : value
     end
 
-    def provider_token(node, address:, standard:, chain_id:, wormhole_chain_id:, mint:)
+    def provider_token(node, address:, standard:, chain_id:, wormhole_chain_id:, mint:, name:)
       fail_bridge(BridgeErrorCode::PROVIDER_INVALID_RESPONSE) unless node.object_entries && node.value.is_a?(Hash)
       fail_bridge(BridgeErrorCode::PROVIDER_INVALID_RESPONSE) unless provider_address_equals?(provider_string(node, "contract"), address)
       fail_bridge(BridgeErrorCode::PROVIDER_INVALID_RESPONSE) unless provider_string(node, "mint", allow_empty: true) == mint
       fail_bridge(BridgeErrorCode::PROVIDER_INVALID_RESPONSE) unless provider_address_equals?(provider_string(node, "realOriginContractAddress"), address)
-      fail_bridge(BridgeErrorCode::PROVIDER_INVALID_RESPONSE) unless provider_string(node, "name") == "EuroC"
+      fail_bridge(BridgeErrorCode::PROVIDER_INVALID_RESPONSE) unless provider_string(node, "name") == name
       fail_bridge(BridgeErrorCode::PROVIDER_INVALID_RESPONSE) unless provider_string(node, "standard") == standard
       fail_bridge(BridgeErrorCode::PROVIDER_INVALID_RESPONSE) unless provider_integer(node, "chainId") == chain_id
       fail_bridge(BridgeErrorCode::PROVIDER_INVALID_RESPONSE) unless provider_integer(node, "wChainId") == wormhole_chain_id
@@ -972,8 +1008,8 @@ module ERPC
       deadline = provider_uint64(node, "deadline64", positive: true)
       ensure_quote_deadline(deadline.last)
 
-      provider_token(required_node(node, "fromToken"), address: facts.source_token_address, standard: facts.source_chain_id == ETHEREUM_CHAIN_ID ? "erc20" : "spl", chain_id: facts.source_provider_chain_id, wormhole_chain_id: facts.source_wormhole_chain_id, mint: facts.source_eurc_mint)
-      provider_token(required_node(node, "toToken"), address: facts.destination_token_address, standard: facts.destination_chain_id == ETHEREUM_CHAIN_ID ? "erc20" : "spl", chain_id: facts.destination_provider_chain_id, wormhole_chain_id: facts.destination_wormhole_chain_id, mint: facts.destination_eurc_mint)
+      provider_token(required_node(node, "fromToken"), address: facts.source_token_address, standard: facts.source_chain_id == ETHEREUM_CHAIN_ID ? "erc20" : "spl", chain_id: facts.source_provider_chain_id, wormhole_chain_id: facts.source_wormhole_chain_id, mint: facts.source_token_mint, name: facts.source_token_name)
+      provider_token(required_node(node, "toToken"), address: facts.destination_token_address, standard: facts.destination_chain_id == ETHEREUM_CHAIN_ID ? "erc20" : "spl", chain_id: facts.destination_provider_chain_id, wormhole_chain_id: facts.destination_wormhole_chain_id, mint: facts.destination_token_mint, name: facts.destination_token_name)
       provider_standard = facts.source_chain_id == ETHEREUM_CHAIN_ID ? "erc20" : "spl"
       fail_bridge(BridgeErrorCode::PROVIDER_INVALID_RESPONSE) unless provider_address(node, "swiftInputContract", facts.source_usdc_address) == facts.source_usdc_address
       fail_bridge(BridgeErrorCode::PROVIDER_INVALID_RESPONSE) unless provider_string(node, "swiftInputContractStandard") == provider_standard
@@ -982,20 +1018,24 @@ module ERPC
 
       middle = required_node(node, "minMiddleAmount")
       fail_bridge(BridgeErrorCode::PROVIDER_INVALID_RESPONSE) unless middle.raw_number && middle.value.is_a?(Numeric) && middle.value.finite? && middle.value.positive?
-      if facts.source_chain_id == ETHEREUM_CHAIN_ID
+      evm_router = object_value(node, "evmSwapRouterAddress")
+      if facts.source_swap_required && facts.source_chain_id == ETHEREUM_CHAIN_ID
         router_address = normalize_evm_address(provider_string(node, "evmSwapRouterAddress"), BridgeErrorCode::PROVIDER_INVALID_RESPONSE)
         router_kind = "provider-selected-evm"
-      else
+      elsif facts.source_swap_required
         router_address = SOLANA_JUPITER_V6
         router_kind = "jupiter-v6"
-        evm_router = object_value(node, "evmSwapRouterAddress")
         fail_bridge(BridgeErrorCode::PROVIDER_INVALID_RESPONSE) unless evm_router == :__bridge_missing__ || evm_router.nil?
+      else
+        fail_bridge(BridgeErrorCode::PROVIDER_INVALID_RESPONSE) unless evm_router == :__bridge_missing__ || evm_router.nil?
+        router_address = nil
+        router_kind = nil
       end
       quote_id = provider_string(node, "quoteId")
       signature = provider_string(node, "signature")
       fail_bridge(BridgeErrorCode::PROVIDER_INVALID_RESPONSE) unless QUOTE_ID.match?(quote_id) && EVM_SIGNATURE.match?(signature)
 
-      dependencies = facts.source_chain_id == SOLANA_CHAIN_ID ? BASE_DEPENDENCIES + ["jupiter-v6-source-swap"] : BASE_DEPENDENCIES
+      dependencies = facts.dependencies
       {
         "quoteKind" => "mayan-swift-v2", "providerId" => "mayan-swift-v2",
         "sourceChainId" => request.fetch("sourceChainId"), "destinationChainId" => request.fetch("destinationChainId"),
@@ -1006,7 +1046,8 @@ module ERPC
         "deadline" => deadline.first, "slippageBps" => request.fetch("slippageBps"),
         "quoteId" => quote_id.downcase, "providerSignature" => signature.downcase,
         "sourceSwap" => {
-          "required" => true, "inputTokenDeploymentId" => facts.source_token_deployment_id,
+          "required" => facts.source_swap_required,
+          "inputTokenDeploymentId" => facts.source_swap_required ? facts.source_token_deployment_id : facts.source_usdc_deployment_id,
           "intermediateTokenDeploymentId" => facts.source_usdc_deployment_id,
           "intermediateTokenAddress" => facts.source_usdc_address,
           "intermediateTokenStandard" => provider_standard, "intermediateTokenDecimals" => 6,
@@ -1110,8 +1151,14 @@ module ERPC
       fail_bridge(code) unless quote["quoteKind"] == "mayan-swift-v2" && quote["providerId"] == "mayan-swift-v2"
       source_chain = require_string(quote["sourceChainId"], code)
       destination_chain = require_string(quote["destinationChainId"], code)
-      facts = direction_facts(source_chain, destination_chain)
-      fail_bridge(code) unless quote["sourceTokenDeploymentId"] == facts.source_token_deployment_id && quote["destinationTokenDeploymentId"] == facts.destination_token_deployment_id
+      source_token_id = require_string(quote["sourceTokenDeploymentId"], code)
+      destination_token_id = require_string(quote["destinationTokenDeploymentId"], code)
+      facts = begin
+        direction_facts(source_chain, destination_chain, source_token_id, destination_token_id)
+      rescue BridgeError => error
+        fail_bridge(code) if error.code == BridgeErrorCode::UNSUPPORTED_ROUTE
+        ERPC.raise_safe_bridge_error(error)
+      end
       amount = normalize_positive_uint64(quote["amountIn"], code)
       expected_amount = normalize_positive_uint64(quote["expectedAmountOut"], code)
       minimum_amount = normalize_positive_uint64(quote["minimumAmountOut"], code)
@@ -1126,9 +1173,13 @@ module ERPC
       source_swap = require_record(quote["sourceSwap"], code)
       exact_keys(source_swap, SOURCE_SWAP_KEYS, code)
       provider_standard = facts.source_chain_id == ETHEREUM_CHAIN_ID ? "erc20" : "spl"
-      fail_bridge(code) unless source_swap["required"] == true && source_swap["inputTokenDeploymentId"] == facts.source_token_deployment_id && source_swap["intermediateTokenDeploymentId"] == facts.source_usdc_deployment_id && source_swap["intermediateTokenAddress"] == facts.source_usdc_address && source_swap["intermediateTokenStandard"] == provider_standard && source_swap["intermediateTokenDecimals"] == 6
+      fail_bridge(code) unless source_swap["required"] == facts.source_swap_required && source_swap["inputTokenDeploymentId"] == (facts.source_swap_required ? facts.source_token_deployment_id : facts.source_usdc_deployment_id) && source_swap["intermediateTokenDeploymentId"] == facts.source_usdc_deployment_id && source_swap["intermediateTokenAddress"] == facts.source_usdc_address && source_swap["intermediateTokenStandard"] == provider_standard && source_swap["intermediateTokenDecimals"] == 6
       provider_minimum = require_string(source_swap["providerMinimumAmount"], code)
-      if facts.source_chain_id == ETHEREUM_CHAIN_ID
+      if !facts.source_swap_required
+        fail_bridge(code) unless source_swap["routerKind"].nil? && source_swap["routerAddress"].nil?
+        normalized_router = nil
+        router_kind = nil
+      elsif facts.source_chain_id == ETHEREUM_CHAIN_ID
         router = source_swap["routerAddress"]
         fail_bridge(code) unless source_swap["routerKind"] == "provider-selected-evm" && router.is_a?(String) && EVM_ADDRESS.match?(router) && router.downcase != "0x#{'0' * 40}"
         normalized_router = router.downcase
@@ -1138,7 +1189,7 @@ module ERPC
         normalized_router = SOLANA_JUPITER_V6
         router_kind = "jupiter-v6"
       end
-      dependencies = facts.source_chain_id == SOLANA_CHAIN_ID ? BASE_DEPENDENCIES + ["jupiter-v6-source-swap"] : BASE_DEPENDENCIES
+      dependencies = facts.dependencies
       fail_bridge(code) unless source_swap.is_a?(Hash) && quote["dependencies"].is_a?(Array) && strict_equal?(quote["dependencies"], dependencies)
       raw = require_string(quote["rawSignedQuoteJson"], code)
       fail_bridge(code) if raw.bytesize > MAX_RAW_QUOTE_BYTES
@@ -1152,7 +1203,8 @@ module ERPC
         "deadline" => deadline.first, "slippageBps" => slippage,
         "quoteId" => quote_id.downcase, "providerSignature" => signature.downcase,
         "sourceSwap" => {
-          "required" => true, "inputTokenDeploymentId" => facts.source_token_deployment_id,
+          "required" => facts.source_swap_required,
+          "inputTokenDeploymentId" => facts.source_swap_required ? facts.source_token_deployment_id : facts.source_usdc_deployment_id,
           "intermediateTokenDeploymentId" => facts.source_usdc_deployment_id,
           "intermediateTokenAddress" => facts.source_usdc_address,
           "intermediateTokenStandard" => provider_standard, "intermediateTokenDecimals" => 6,
@@ -1193,7 +1245,7 @@ module ERPC
       value.is_a?(String) && (value == "0" || value.match?(/\A0x0+\z/i))
     end
 
-    def validate_evm_build_result(wrapper, swapper_address)
+    def validate_evm_build_result(wrapper, swapper_address, facts)
       fail_bridge(BridgeErrorCode::PROVIDER_INVALID_RESPONSE) unless provider_string(wrapper, "chainCategory") == "evm" && provider_string(wrapper, "quoteType") == "SWIFT"
       fail_bridge(BridgeErrorCode::PROVIDER_INVALID_RESPONSE) if provider_boolean(wrapper, "gasless")
       transaction = required_node(wrapper, "transaction")
@@ -1203,7 +1255,12 @@ module ERPC
       fail_bridge(BridgeErrorCode::PROVIDER_INVALID_RESPONSE) unless provider_integer(transaction, "chainId") == 1
       fail_bridge(BridgeErrorCode::PROVIDER_INVALID_RESPONSE) unless numeric_zero?(object_value(transaction, "value"))
       data = provider_string(transaction, "data").downcase
-      fail_bridge(BridgeErrorCode::PROVIDER_INVALID_RESPONSE) unless HEX_BYTES.match?(data) && data.length.even? && data.start_with?(ETHEREUM_FORWARDER_SELECTOR) && data.length >= 2 + 8 + 13 * 64
+      selector = facts.forwarder_function_selector
+      # EURC's swap-and-forward call has the provider's fixed 13-word
+      # envelope. Direct USDC forwarding has nine static words plus the
+      # dynamic bytes length word.
+      minimum_words = facts.asset == "usdc" ? 10 : 13
+      fail_bridge(BridgeErrorCode::PROVIDER_INVALID_RESPONSE) unless selector.is_a?(String) && HEX_BYTES.match?(data) && data.length.even? && data.start_with?(selector) && data.length >= 2 + 8 + minimum_words * 64
       {
         "kind" => "evm-unsigned-transaction", "chainId" => ETHEREUM_CHAIN_ID,
         "from" => swapper_address, "to" => ETHEREUM_FORWARDER, "data" => data, "value" => "0"
@@ -1343,7 +1400,7 @@ module ERPC
       swap_message = object_value(wrapper, "swapMessageV0Params")
       fail_bridge(BridgeErrorCode::BUILD_INVALID) unless swap_message == :__bridge_missing__ || swap_message.nil?
       transaction = begin
-        facts.source_chain_id == ETHEREUM_CHAIN_ID ? validate_evm_build_result(wrapper, swapper_address) : validate_solana_build_result(wrapper, swapper_address)
+        facts.source_chain_id == ETHEREUM_CHAIN_ID ? validate_evm_build_result(wrapper, swapper_address, facts) : validate_solana_build_result(wrapper, swapper_address)
       rescue BridgeError => error
         ERPC.raise_safe_bridge_error(error) if error.code == BridgeErrorCode::BUILD_INVALID
         fail_bridge(BridgeErrorCode::BUILD_INVALID)
@@ -1353,7 +1410,7 @@ module ERPC
         "quote" => deep_dup(quote), "sourceChainId" => quote.fetch("sourceChainId"),
         "destinationChainId" => quote.fetch("destinationChainId"), "transaction" => transaction,
         "allowance" => facts.source_chain_id == ETHEREUM_CHAIN_ID ? {
-          "tokenDeploymentId" => ETHEREUM_EURC_DEPLOYMENT_ID, "tokenAddress" => ETHEREUM_EURC_ADDRESS,
+          "tokenDeploymentId" => facts.source_token_deployment_id, "tokenAddress" => facts.source_token_address,
           "owner" => swapper_address, "spender" => ETHEREUM_FORWARDER, "requiredAmount" => quote.fetch("amountIn")
         } : nil,
         "validation" => {

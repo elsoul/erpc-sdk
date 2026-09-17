@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "fixtureKind": "mayan-swift-v2-fixtures",
-  "capabilityAsOfDate": "2026-09-16",
-  "capabilityDigest": "fe698f99218057f8cb40b3e24421d1d78e4e2cd7508cf6e3eb2457b329e5141b",
+  "capabilityAsOfDate": "2026-09-17",
+  "capabilityDigest": "691a77498c5ff876dadc437a8265d8288ec51cbc1d44f8beacb746626bf5b98d",
   "cases": [
     {
       "caseId": "quote-eth-sol-synthetic",
@@ -1414,6 +1414,676 @@
         "minimumQuoteValiditySeconds": 0
       },
       "quoteCaseId": null
+    },
+    {
+      "caseId": "quote-usdc-eth-sol-synthetic",
+      "method": "quote",
+      "source": "synthetic",
+      "capabilityId": "bridge-mayan-swift-v2-usdc-eth-sol",
+      "request": {
+        "sourceChainId": "eip155:1",
+        "destinationChainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+        "sourceTokenDeploymentId": "deployment-0008",
+        "destinationTokenDeploymentId": "deployment-0010",
+        "amountIn": "100000000",
+        "slippageBps": 50
+      },
+      "nowSeconds": 1789600000,
+      "providerStatus": 200,
+      "providerBody": "{\"success\":true,\"quotes\":[{\"type\":\"SWIFT\",\"gasless\":false,\"swiftVersion\":\"V2\",\"swiftAuctionMode\":2,\"slippageBps\":50,\"effectiveAmountIn64\":\"100000000\",\"swiftInputDecimals\":6,\"onlyBridging\":false,\"expectedAmountOutBaseUnits\":\"99557029\",\"minAmountOutBaseUnits\":\"99059244\",\"minReceivedBaseUnits\":\"99059244\",\"deadline64\":\"1893456000\",\"quoteId\":\"0x11111111111111111111111111111111\",\"signature\":\"0x1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111\",\"minMiddleAmount\":100.0000,\"unknownSignedField\":\"keep-me\",\"fromChain\":\"ethereum\",\"toChain\":\"solana\",\"fromToken\":{\"name\":\"USD Coin\",\"standard\":\"erc20\",\"mint\":\"A9mUU4qviSctJVPJdBJWkb28deg915LYJKrzQ19ji3FM\",\"contract\":\"0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48\",\"chainId\":1,\"wChainId\":2,\"decimals\":6,\"realOriginContractAddress\":\"0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48\",\"realOriginChainId\":2},\"toToken\":{\"name\":\"USD Coin\",\"standard\":\"spl\",\"mint\":\"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\",\"contract\":\"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\",\"chainId\":0,\"wChainId\":1,\"decimals\":6,\"realOriginContractAddress\":\"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\",\"realOriginChainId\":1},\"swiftInputContract\":\"0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48\",\"swiftInputContractStandard\":\"erc20\",\"swiftMayanContract\":\"0x40ffe85a28dc9993541449464d7529a922142960\",\"evmSwapRouterAddress\":null}]}",
+      "expected": {
+        "kind": "success",
+        "value": [
+          {
+            "quoteKind": "mayan-swift-v2",
+            "providerId": "mayan-swift-v2",
+            "sourceChainId": "eip155:1",
+            "destinationChainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+            "sourceTokenDeploymentId": "deployment-0008",
+            "destinationTokenDeploymentId": "deployment-0010",
+            "amountIn": "100000000",
+            "expectedAmountOut": "99557029",
+            "minimumAmountOut": "99059244",
+            "minimumReceived": "99059244",
+            "deadline": "1893456000",
+            "slippageBps": 50,
+            "quoteId": "0x11111111111111111111111111111111",
+            "providerSignature": "0x1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111",
+            "sourceSwap": {
+              "required": false,
+              "inputTokenDeploymentId": "deployment-0008",
+              "intermediateTokenDeploymentId": "deployment-0008",
+              "intermediateTokenAddress": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+              "intermediateTokenStandard": "erc20",
+              "intermediateTokenDecimals": 6,
+              "providerMinimumAmount": "100.0000",
+              "routerKind": null,
+              "routerAddress": null
+            },
+            "dependencies": [
+              "mayan-hosted-quote-api",
+              "mayan-hosted-transaction-builder",
+              "swift-auction-solvers",
+              "relayers",
+              "wormhole-guardian-messaging",
+              "mayan-explorer-indexer"
+            ],
+            "quoteVerification": "provider-signed-not-locally-verified",
+            "rawSignedQuoteJson": "{\"type\":\"SWIFT\",\"gasless\":false,\"swiftVersion\":\"V2\",\"swiftAuctionMode\":2,\"slippageBps\":50,\"effectiveAmountIn64\":\"100000000\",\"swiftInputDecimals\":6,\"onlyBridging\":false,\"expectedAmountOutBaseUnits\":\"99557029\",\"minAmountOutBaseUnits\":\"99059244\",\"minReceivedBaseUnits\":\"99059244\",\"deadline64\":\"1893456000\",\"quoteId\":\"0x11111111111111111111111111111111\",\"signature\":\"0x1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111\",\"minMiddleAmount\":100.0000,\"unknownSignedField\":\"keep-me\",\"fromChain\":\"ethereum\",\"toChain\":\"solana\",\"fromToken\":{\"name\":\"USD Coin\",\"standard\":\"erc20\",\"mint\":\"A9mUU4qviSctJVPJdBJWkb28deg915LYJKrzQ19ji3FM\",\"contract\":\"0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48\",\"chainId\":1,\"wChainId\":2,\"decimals\":6,\"realOriginContractAddress\":\"0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48\",\"realOriginChainId\":2},\"toToken\":{\"name\":\"USD Coin\",\"standard\":\"spl\",\"mint\":\"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\",\"contract\":\"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\",\"chainId\":0,\"wChainId\":1,\"decimals\":6,\"realOriginContractAddress\":\"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\",\"realOriginChainId\":1},\"swiftInputContract\":\"0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48\",\"swiftInputContractStandard\":\"erc20\",\"swiftMayanContract\":\"0x40ffe85a28dc9993541449464d7529a922142960\",\"evmSwapRouterAddress\":null}"
+          }
+        ]
+      },
+      "httpTrace": [
+        {
+          "method": "POST",
+          "url": "https://tx-builder.mayan.finance/quote",
+          "headers": {
+            "accept": "application/json",
+            "content-type": "application/json"
+          },
+          "body": "{\"fromToken\":\"0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48\",\"fromChain\":\"ethereum\",\"toToken\":\"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\",\"toChain\":\"solana\",\"amountIn64\":\"100000000\",\"slippageBps\":50,\"swift\":true,\"mctp\":false,\"fastMctp\":false,\"wormhole\":false,\"monoChain\":false,\"gasless\":false,\"fullList\":true,\"guaranteedOutput\":true,\"gasDrop\":0}"
+        }
+      ],
+      "config": null,
+      "quoteCaseId": null
+    },
+    {
+      "caseId": "quote-usdc-sol-eth-synthetic",
+      "method": "quote",
+      "source": "synthetic",
+      "capabilityId": "bridge-mayan-swift-v2-usdc-sol-eth",
+      "request": {
+        "sourceChainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+        "destinationChainId": "eip155:1",
+        "sourceTokenDeploymentId": "deployment-0010",
+        "destinationTokenDeploymentId": "deployment-0008",
+        "amountIn": "100000000",
+        "slippageBps": 50
+      },
+      "nowSeconds": 1789600000,
+      "providerStatus": 200,
+      "providerBody": "{\"success\":true,\"quotes\":[{\"type\":\"SWIFT\",\"gasless\":false,\"swiftVersion\":\"V2\",\"swiftAuctionMode\":2,\"slippageBps\":50,\"effectiveAmountIn64\":\"100000000\",\"swiftInputDecimals\":6,\"onlyBridging\":false,\"expectedAmountOutBaseUnits\":\"99557029\",\"minAmountOutBaseUnits\":\"99059244\",\"minReceivedBaseUnits\":\"99059244\",\"deadline64\":\"1893456000\",\"quoteId\":\"0x11111111111111111111111111111111\",\"signature\":\"0x1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111\",\"minMiddleAmount\":100.0000,\"unknownSignedField\":\"keep-me\",\"fromChain\":\"solana\",\"toChain\":\"ethereum\",\"fromToken\":{\"name\":\"USD Coin\",\"standard\":\"spl\",\"mint\":\"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\",\"contract\":\"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\",\"chainId\":0,\"wChainId\":1,\"decimals\":6,\"realOriginContractAddress\":\"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\",\"realOriginChainId\":1},\"toToken\":{\"name\":\"USD Coin\",\"standard\":\"erc20\",\"mint\":\"A9mUU4qviSctJVPJdBJWkb28deg915LYJKrzQ19ji3FM\",\"contract\":\"0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48\",\"chainId\":1,\"wChainId\":2,\"decimals\":6,\"realOriginContractAddress\":\"0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48\",\"realOriginChainId\":2},\"swiftInputContract\":\"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\",\"swiftInputContractStandard\":\"spl\",\"swiftMayanContract\":\"mayan34VedncxdK2XobtvWFDXQASUTBXhUVzt2kKgny\",\"evmSwapRouterAddress\":null}]}",
+      "expected": {
+        "kind": "success",
+        "value": [
+          {
+            "quoteKind": "mayan-swift-v2",
+            "providerId": "mayan-swift-v2",
+            "sourceChainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+            "destinationChainId": "eip155:1",
+            "sourceTokenDeploymentId": "deployment-0010",
+            "destinationTokenDeploymentId": "deployment-0008",
+            "amountIn": "100000000",
+            "expectedAmountOut": "99557029",
+            "minimumAmountOut": "99059244",
+            "minimumReceived": "99059244",
+            "deadline": "1893456000",
+            "slippageBps": 50,
+            "quoteId": "0x11111111111111111111111111111111",
+            "providerSignature": "0x1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111",
+            "sourceSwap": {
+              "required": false,
+              "inputTokenDeploymentId": "deployment-0010",
+              "intermediateTokenDeploymentId": "deployment-0010",
+              "intermediateTokenAddress": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+              "intermediateTokenStandard": "spl",
+              "intermediateTokenDecimals": 6,
+              "providerMinimumAmount": "100.0000",
+              "routerKind": null,
+              "routerAddress": null
+            },
+            "dependencies": [
+              "mayan-hosted-quote-api",
+              "mayan-hosted-transaction-builder",
+              "swift-auction-solvers",
+              "relayers",
+              "wormhole-guardian-messaging",
+              "mayan-explorer-indexer"
+            ],
+            "quoteVerification": "provider-signed-not-locally-verified",
+            "rawSignedQuoteJson": "{\"type\":\"SWIFT\",\"gasless\":false,\"swiftVersion\":\"V2\",\"swiftAuctionMode\":2,\"slippageBps\":50,\"effectiveAmountIn64\":\"100000000\",\"swiftInputDecimals\":6,\"onlyBridging\":false,\"expectedAmountOutBaseUnits\":\"99557029\",\"minAmountOutBaseUnits\":\"99059244\",\"minReceivedBaseUnits\":\"99059244\",\"deadline64\":\"1893456000\",\"quoteId\":\"0x11111111111111111111111111111111\",\"signature\":\"0x1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111\",\"minMiddleAmount\":100.0000,\"unknownSignedField\":\"keep-me\",\"fromChain\":\"solana\",\"toChain\":\"ethereum\",\"fromToken\":{\"name\":\"USD Coin\",\"standard\":\"spl\",\"mint\":\"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\",\"contract\":\"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\",\"chainId\":0,\"wChainId\":1,\"decimals\":6,\"realOriginContractAddress\":\"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\",\"realOriginChainId\":1},\"toToken\":{\"name\":\"USD Coin\",\"standard\":\"erc20\",\"mint\":\"A9mUU4qviSctJVPJdBJWkb28deg915LYJKrzQ19ji3FM\",\"contract\":\"0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48\",\"chainId\":1,\"wChainId\":2,\"decimals\":6,\"realOriginContractAddress\":\"0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48\",\"realOriginChainId\":2},\"swiftInputContract\":\"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\",\"swiftInputContractStandard\":\"spl\",\"swiftMayanContract\":\"mayan34VedncxdK2XobtvWFDXQASUTBXhUVzt2kKgny\",\"evmSwapRouterAddress\":null}"
+          }
+        ]
+      },
+      "httpTrace": [
+        {
+          "method": "POST",
+          "url": "https://tx-builder.mayan.finance/quote",
+          "headers": {
+            "accept": "application/json",
+            "content-type": "application/json"
+          },
+          "body": "{\"fromToken\":\"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\",\"fromChain\":\"solana\",\"toToken\":\"0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48\",\"toChain\":\"ethereum\",\"amountIn64\":\"100000000\",\"slippageBps\":50,\"swift\":true,\"mctp\":false,\"fastMctp\":false,\"wormhole\":false,\"monoChain\":false,\"gasless\":false,\"fullList\":true,\"guaranteedOutput\":true,\"gasDrop\":0}"
+        }
+      ],
+      "config": null,
+      "quoteCaseId": null
+    },
+    {
+      "caseId": "build-usdc-eth-sol-synthetic",
+      "method": "build",
+      "source": "synthetic",
+      "capabilityId": "bridge-mayan-swift-v2-usdc-eth-sol",
+      "request": {
+        "swapperAddress": "0x2222222222222222222222222222222222222222",
+        "destinationAddress": "So11111111111111111111111111111111111111112"
+      },
+      "nowSeconds": 1789600000,
+      "providerStatus": 200,
+      "providerBody": "{\"success\":true,\"transaction\":{\"chainCategory\":\"evm\",\"quoteType\":\"SWIFT\",\"gasless\":false,\"transaction\":{\"chainId\":1,\"to\":\"0x337685fdab40d39bd02028545a4ffa7d287cc3e2\",\"value\":\"0\",\"data\":\"0xe4269fc40000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"}}}",
+      "expected": {
+        "kind": "success",
+        "value": {
+          "buildKind": "mayan-swift-v2-unsigned",
+          "providerId": "mayan-swift-v2",
+          "quote": {
+            "quoteKind": "mayan-swift-v2",
+            "providerId": "mayan-swift-v2",
+            "sourceChainId": "eip155:1",
+            "destinationChainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+            "sourceTokenDeploymentId": "deployment-0008",
+            "destinationTokenDeploymentId": "deployment-0010",
+            "amountIn": "100000000",
+            "expectedAmountOut": "99557029",
+            "minimumAmountOut": "99059244",
+            "minimumReceived": "99059244",
+            "deadline": "1893456000",
+            "slippageBps": 50,
+            "quoteId": "0x11111111111111111111111111111111",
+            "providerSignature": "0x1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111",
+            "sourceSwap": {
+              "required": false,
+              "inputTokenDeploymentId": "deployment-0008",
+              "intermediateTokenDeploymentId": "deployment-0008",
+              "intermediateTokenAddress": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+              "intermediateTokenStandard": "erc20",
+              "intermediateTokenDecimals": 6,
+              "providerMinimumAmount": "100.0000",
+              "routerKind": null,
+              "routerAddress": null
+            },
+            "dependencies": [
+              "mayan-hosted-quote-api",
+              "mayan-hosted-transaction-builder",
+              "swift-auction-solvers",
+              "relayers",
+              "wormhole-guardian-messaging",
+              "mayan-explorer-indexer"
+            ],
+            "quoteVerification": "provider-signed-not-locally-verified",
+            "rawSignedQuoteJson": "{\"type\":\"SWIFT\",\"gasless\":false,\"swiftVersion\":\"V2\",\"swiftAuctionMode\":2,\"slippageBps\":50,\"effectiveAmountIn64\":\"100000000\",\"swiftInputDecimals\":6,\"onlyBridging\":false,\"expectedAmountOutBaseUnits\":\"99557029\",\"minAmountOutBaseUnits\":\"99059244\",\"minReceivedBaseUnits\":\"99059244\",\"deadline64\":\"1893456000\",\"quoteId\":\"0x11111111111111111111111111111111\",\"signature\":\"0x1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111\",\"minMiddleAmount\":100.0000,\"unknownSignedField\":\"keep-me\",\"fromChain\":\"ethereum\",\"toChain\":\"solana\",\"fromToken\":{\"name\":\"USD Coin\",\"standard\":\"erc20\",\"mint\":\"A9mUU4qviSctJVPJdBJWkb28deg915LYJKrzQ19ji3FM\",\"contract\":\"0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48\",\"chainId\":1,\"wChainId\":2,\"decimals\":6,\"realOriginContractAddress\":\"0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48\",\"realOriginChainId\":2},\"toToken\":{\"name\":\"USD Coin\",\"standard\":\"spl\",\"mint\":\"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\",\"contract\":\"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\",\"chainId\":0,\"wChainId\":1,\"decimals\":6,\"realOriginContractAddress\":\"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\",\"realOriginChainId\":1},\"swiftInputContract\":\"0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48\",\"swiftInputContractStandard\":\"erc20\",\"swiftMayanContract\":\"0x40ffe85a28dc9993541449464d7529a922142960\",\"evmSwapRouterAddress\":null}"
+          },
+          "sourceChainId": "eip155:1",
+          "destinationChainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+          "transaction": {
+            "kind": "evm-unsigned-transaction",
+            "chainId": "eip155:1",
+            "from": "0x2222222222222222222222222222222222222222",
+            "to": "0x337685fdab40d39bd02028545a4ffa7d287cc3e2",
+            "data": "0xe4269fc40000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+            "value": "0"
+          },
+          "allowance": {
+            "tokenDeploymentId": "deployment-0008",
+            "tokenAddress": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+            "owner": "0x2222222222222222222222222222222222222222",
+            "spender": "0x337685fdab40d39bd02028545a4ffa7d287cc3e2",
+            "requiredAmount": "100000000"
+          },
+          "validation": {
+            "level": "structural",
+            "quoteSignatureLocallyVerified": false,
+            "transactionSemanticsLocallyVerified": false,
+            "settlementLocallyVerified": false
+          },
+          "rawProviderBuildJson": "{\"success\":true,\"transaction\":{\"chainCategory\":\"evm\",\"quoteType\":\"SWIFT\",\"gasless\":false,\"transaction\":{\"chainId\":1,\"to\":\"0x337685fdab40d39bd02028545a4ffa7d287cc3e2\",\"value\":\"0\",\"data\":\"0xe4269fc40000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"}}}"
+        }
+      },
+      "httpTrace": [
+        {
+          "method": "POST",
+          "url": "https://tx-builder.mayan.finance/build",
+          "headers": {
+            "accept": "application/json",
+            "content-type": "application/json"
+          },
+          "body": "{\"quote\":{\"type\":\"SWIFT\",\"gasless\":false,\"swiftVersion\":\"V2\",\"swiftAuctionMode\":2,\"slippageBps\":50,\"effectiveAmountIn64\":\"100000000\",\"swiftInputDecimals\":6,\"onlyBridging\":false,\"expectedAmountOutBaseUnits\":\"99557029\",\"minAmountOutBaseUnits\":\"99059244\",\"minReceivedBaseUnits\":\"99059244\",\"deadline64\":\"1893456000\",\"quoteId\":\"0x11111111111111111111111111111111\",\"signature\":\"0x1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111\",\"minMiddleAmount\":100.0000,\"unknownSignedField\":\"keep-me\",\"fromChain\":\"ethereum\",\"toChain\":\"solana\",\"fromToken\":{\"name\":\"USD Coin\",\"standard\":\"erc20\",\"mint\":\"A9mUU4qviSctJVPJdBJWkb28deg915LYJKrzQ19ji3FM\",\"contract\":\"0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48\",\"chainId\":1,\"wChainId\":2,\"decimals\":6,\"realOriginContractAddress\":\"0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48\",\"realOriginChainId\":2},\"toToken\":{\"name\":\"USD Coin\",\"standard\":\"spl\",\"mint\":\"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\",\"contract\":\"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\",\"chainId\":0,\"wChainId\":1,\"decimals\":6,\"realOriginContractAddress\":\"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\",\"realOriginChainId\":1},\"swiftInputContract\":\"0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48\",\"swiftInputContractStandard\":\"erc20\",\"swiftMayanContract\":\"0x40ffe85a28dc9993541449464d7529a922142960\",\"evmSwapRouterAddress\":null},\"params\":{\"swapperAddress\":\"0x2222222222222222222222222222222222222222\",\"destinationAddress\":\"So11111111111111111111111111111111111111112\",\"signerChainId\":1}}"
+        }
+      ],
+      "config": {
+        "allowUnauthenticatedBuild": true
+      },
+      "quoteCaseId": "quote-usdc-eth-sol-synthetic"
+    },
+    {
+      "caseId": "build-usdc-sol-eth-synthetic",
+      "method": "build",
+      "source": "synthetic",
+      "capabilityId": "bridge-mayan-swift-v2-usdc-sol-eth",
+      "request": {
+        "swapperAddress": "So11111111111111111111111111111111111111112",
+        "destinationAddress": "0x3333333333333333333333333333333333333333"
+      },
+      "nowSeconds": 1789600000,
+      "providerStatus": 200,
+      "providerBody": "{\"success\":true,\"transaction\":{\"chainCategory\":\"svm\",\"quoteType\":\"SWIFT\",\"gasless\":false,\"signers\":[],\"swapMessageV0Params\":null,\"transaction\":\"AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAQAAAQabiFf+q4GE+2h/Y0YYwDXaxDncGus7VZig8AAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==\"}}",
+      "expected": {
+        "kind": "success",
+        "value": {
+          "buildKind": "mayan-swift-v2-unsigned",
+          "providerId": "mayan-swift-v2",
+          "quote": {
+            "quoteKind": "mayan-swift-v2",
+            "providerId": "mayan-swift-v2",
+            "sourceChainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+            "destinationChainId": "eip155:1",
+            "sourceTokenDeploymentId": "deployment-0010",
+            "destinationTokenDeploymentId": "deployment-0008",
+            "amountIn": "100000000",
+            "expectedAmountOut": "99557029",
+            "minimumAmountOut": "99059244",
+            "minimumReceived": "99059244",
+            "deadline": "1893456000",
+            "slippageBps": 50,
+            "quoteId": "0x11111111111111111111111111111111",
+            "providerSignature": "0x1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111",
+            "sourceSwap": {
+              "required": false,
+              "inputTokenDeploymentId": "deployment-0010",
+              "intermediateTokenDeploymentId": "deployment-0010",
+              "intermediateTokenAddress": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+              "intermediateTokenStandard": "spl",
+              "intermediateTokenDecimals": 6,
+              "providerMinimumAmount": "100.0000",
+              "routerKind": null,
+              "routerAddress": null
+            },
+            "dependencies": [
+              "mayan-hosted-quote-api",
+              "mayan-hosted-transaction-builder",
+              "swift-auction-solvers",
+              "relayers",
+              "wormhole-guardian-messaging",
+              "mayan-explorer-indexer"
+            ],
+            "quoteVerification": "provider-signed-not-locally-verified",
+            "rawSignedQuoteJson": "{\"type\":\"SWIFT\",\"gasless\":false,\"swiftVersion\":\"V2\",\"swiftAuctionMode\":2,\"slippageBps\":50,\"effectiveAmountIn64\":\"100000000\",\"swiftInputDecimals\":6,\"onlyBridging\":false,\"expectedAmountOutBaseUnits\":\"99557029\",\"minAmountOutBaseUnits\":\"99059244\",\"minReceivedBaseUnits\":\"99059244\",\"deadline64\":\"1893456000\",\"quoteId\":\"0x11111111111111111111111111111111\",\"signature\":\"0x1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111\",\"minMiddleAmount\":100.0000,\"unknownSignedField\":\"keep-me\",\"fromChain\":\"solana\",\"toChain\":\"ethereum\",\"fromToken\":{\"name\":\"USD Coin\",\"standard\":\"spl\",\"mint\":\"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\",\"contract\":\"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\",\"chainId\":0,\"wChainId\":1,\"decimals\":6,\"realOriginContractAddress\":\"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\",\"realOriginChainId\":1},\"toToken\":{\"name\":\"USD Coin\",\"standard\":\"erc20\",\"mint\":\"A9mUU4qviSctJVPJdBJWkb28deg915LYJKrzQ19ji3FM\",\"contract\":\"0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48\",\"chainId\":1,\"wChainId\":2,\"decimals\":6,\"realOriginContractAddress\":\"0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48\",\"realOriginChainId\":2},\"swiftInputContract\":\"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\",\"swiftInputContractStandard\":\"spl\",\"swiftMayanContract\":\"mayan34VedncxdK2XobtvWFDXQASUTBXhUVzt2kKgny\",\"evmSwapRouterAddress\":null}"
+          },
+          "sourceChainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+          "destinationChainId": "eip155:1",
+          "transaction": {
+            "kind": "solana-v0-unsigned-transaction",
+            "chainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+            "feePayer": "So11111111111111111111111111111111111111112",
+            "transactionBase64": "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAQAAAQabiFf+q4GE+2h/Y0YYwDXaxDncGus7VZig8AAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+          },
+          "allowance": null,
+          "validation": {
+            "level": "structural",
+            "quoteSignatureLocallyVerified": false,
+            "transactionSemanticsLocallyVerified": false,
+            "settlementLocallyVerified": false
+          },
+          "rawProviderBuildJson": "{\"success\":true,\"transaction\":{\"chainCategory\":\"svm\",\"quoteType\":\"SWIFT\",\"gasless\":false,\"signers\":[],\"swapMessageV0Params\":null,\"transaction\":\"AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAQAAAQabiFf+q4GE+2h/Y0YYwDXaxDncGus7VZig8AAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==\"}}"
+        }
+      },
+      "httpTrace": [
+        {
+          "method": "POST",
+          "url": "https://tx-builder.mayan.finance/build",
+          "headers": {
+            "accept": "application/json",
+            "content-type": "application/json"
+          },
+          "body": "{\"quote\":{\"type\":\"SWIFT\",\"gasless\":false,\"swiftVersion\":\"V2\",\"swiftAuctionMode\":2,\"slippageBps\":50,\"effectiveAmountIn64\":\"100000000\",\"swiftInputDecimals\":6,\"onlyBridging\":false,\"expectedAmountOutBaseUnits\":\"99557029\",\"minAmountOutBaseUnits\":\"99059244\",\"minReceivedBaseUnits\":\"99059244\",\"deadline64\":\"1893456000\",\"quoteId\":\"0x11111111111111111111111111111111\",\"signature\":\"0x1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111\",\"minMiddleAmount\":100.0000,\"unknownSignedField\":\"keep-me\",\"fromChain\":\"solana\",\"toChain\":\"ethereum\",\"fromToken\":{\"name\":\"USD Coin\",\"standard\":\"spl\",\"mint\":\"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\",\"contract\":\"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\",\"chainId\":0,\"wChainId\":1,\"decimals\":6,\"realOriginContractAddress\":\"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\",\"realOriginChainId\":1},\"toToken\":{\"name\":\"USD Coin\",\"standard\":\"erc20\",\"mint\":\"A9mUU4qviSctJVPJdBJWkb28deg915LYJKrzQ19ji3FM\",\"contract\":\"0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48\",\"chainId\":1,\"wChainId\":2,\"decimals\":6,\"realOriginContractAddress\":\"0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48\",\"realOriginChainId\":2},\"swiftInputContract\":\"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\",\"swiftInputContractStandard\":\"spl\",\"swiftMayanContract\":\"mayan34VedncxdK2XobtvWFDXQASUTBXhUVzt2kKgny\",\"evmSwapRouterAddress\":null},\"params\":{\"swapperAddress\":\"So11111111111111111111111111111111111111112\",\"destinationAddress\":\"0x3333333333333333333333333333333333333333\"}}"
+        }
+      ],
+      "config": {
+        "allowUnauthenticatedBuild": true
+      },
+      "quoteCaseId": "quote-usdc-sol-eth-synthetic"
+    },
+    {
+      "caseId": "quote-usdc-hybrid-tuple",
+      "method": "quote",
+      "source": "synthetic",
+      "capabilityId": "bridge-mayan-swift-v2-usdc-eth-sol",
+      "request": {
+        "sourceChainId": "eip155:1",
+        "destinationChainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+        "sourceTokenDeploymentId": "deployment-0008",
+        "destinationTokenDeploymentId": "deployment-0013",
+        "amountIn": "100000000",
+        "slippageBps": 50
+      },
+      "nowSeconds": 1789600000,
+      "providerStatus": null,
+      "providerBody": null,
+      "expected": {
+        "kind": "sdk-error",
+        "code": "BRIDGE_UNSUPPORTED_ROUTE",
+        "message": "Bridge route is unsupported"
+      },
+      "httpTrace": [],
+      "config": null,
+      "quoteCaseId": null
+    },
+    {
+      "caseId": "quote-usdc-wrong-swift-input-contract",
+      "method": "quote",
+      "source": "synthetic",
+      "capabilityId": "bridge-mayan-swift-v2-usdc-eth-sol",
+      "request": {
+        "sourceChainId": "eip155:1",
+        "destinationChainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+        "sourceTokenDeploymentId": "deployment-0008",
+        "destinationTokenDeploymentId": "deployment-0010",
+        "amountIn": "100000000",
+        "slippageBps": 50
+      },
+      "nowSeconds": 1789600000,
+      "providerStatus": 200,
+      "providerBody": "{\"success\":true,\"quotes\":[{\"type\":\"SWIFT\",\"gasless\":false,\"swiftVersion\":\"V2\",\"swiftAuctionMode\":2,\"slippageBps\":50,\"effectiveAmountIn64\":\"100000000\",\"swiftInputDecimals\":6,\"onlyBridging\":false,\"expectedAmountOutBaseUnits\":\"99557029\",\"minAmountOutBaseUnits\":\"99059244\",\"minReceivedBaseUnits\":\"99059244\",\"deadline64\":\"1893456000\",\"quoteId\":\"0x11111111111111111111111111111111\",\"signature\":\"0x1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111\",\"minMiddleAmount\":100.0000,\"unknownSignedField\":\"keep-me\",\"fromChain\":\"ethereum\",\"toChain\":\"solana\",\"fromToken\":{\"name\":\"USD Coin\",\"standard\":\"erc20\",\"mint\":\"A9mUU4qviSctJVPJdBJWkb28deg915LYJKrzQ19ji3FM\",\"contract\":\"0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48\",\"chainId\":1,\"wChainId\":2,\"decimals\":6,\"realOriginContractAddress\":\"0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48\",\"realOriginChainId\":2},\"toToken\":{\"name\":\"USD Coin\",\"standard\":\"spl\",\"mint\":\"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\",\"contract\":\"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\",\"chainId\":0,\"wChainId\":1,\"decimals\":6,\"realOriginContractAddress\":\"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\",\"realOriginChainId\":1},\"swiftInputContract\":\"0x1abaea1f7c830bd89acc67ec4af516284b1bc33c\",\"swiftInputContractStandard\":\"erc20\",\"swiftMayanContract\":\"0x40ffe85a28dc9993541449464d7529a922142960\",\"evmSwapRouterAddress\":null}]}",
+      "expected": {
+        "kind": "sdk-error",
+        "code": "BRIDGE_PROVIDER_INVALID_RESPONSE",
+        "message": "Bridge provider response is invalid"
+      },
+      "httpTrace": [
+        {
+          "method": "POST",
+          "url": "https://tx-builder.mayan.finance/quote",
+          "headers": {
+            "accept": "application/json",
+            "content-type": "application/json"
+          },
+          "body": "{\"fromToken\":\"0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48\",\"fromChain\":\"ethereum\",\"toToken\":\"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\",\"toChain\":\"solana\",\"amountIn64\":\"100000000\",\"slippageBps\":50,\"swift\":true,\"mctp\":false,\"fastMctp\":false,\"wormhole\":false,\"monoChain\":false,\"gasless\":false,\"fullList\":true,\"guaranteedOutput\":true,\"gasDrop\":0}"
+        }
+      ],
+      "config": null,
+      "quoteCaseId": null
+    },
+    {
+      "caseId": "quote-usdc-wrong-native-from-token",
+      "method": "quote",
+      "source": "synthetic",
+      "capabilityId": "bridge-mayan-swift-v2-usdc-eth-sol",
+      "request": {
+        "sourceChainId": "eip155:1",
+        "destinationChainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+        "sourceTokenDeploymentId": "deployment-0008",
+        "destinationTokenDeploymentId": "deployment-0010",
+        "amountIn": "100000000",
+        "slippageBps": 50
+      },
+      "nowSeconds": 1789600000,
+      "providerStatus": 200,
+      "providerBody": "{\"success\":true,\"quotes\":[{\"type\":\"SWIFT\",\"gasless\":false,\"swiftVersion\":\"V2\",\"swiftAuctionMode\":2,\"slippageBps\":50,\"effectiveAmountIn64\":\"100000000\",\"swiftInputDecimals\":6,\"onlyBridging\":false,\"expectedAmountOutBaseUnits\":\"99557029\",\"minAmountOutBaseUnits\":\"99059244\",\"minReceivedBaseUnits\":\"99059244\",\"deadline64\":\"1893456000\",\"quoteId\":\"0x11111111111111111111111111111111\",\"signature\":\"0x1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111\",\"minMiddleAmount\":100.0000,\"unknownSignedField\":\"keep-me\",\"fromChain\":\"ethereum\",\"toChain\":\"solana\",\"fromToken\":{\"name\":\"Ether\",\"standard\":\"native\",\"mint\":\"\",\"contract\":\"0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\",\"chainId\":1,\"wChainId\":2,\"decimals\":18,\"realOriginContractAddress\":\"0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\",\"realOriginChainId\":2},\"toToken\":{\"name\":\"USD Coin\",\"standard\":\"spl\",\"mint\":\"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\",\"contract\":\"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\",\"chainId\":0,\"wChainId\":1,\"decimals\":6,\"realOriginContractAddress\":\"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\",\"realOriginChainId\":1},\"swiftInputContract\":\"0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48\",\"swiftInputContractStandard\":\"erc20\",\"swiftMayanContract\":\"0x40ffe85a28dc9993541449464d7529a922142960\",\"evmSwapRouterAddress\":null}]}",
+      "expected": {
+        "kind": "sdk-error",
+        "code": "BRIDGE_PROVIDER_INVALID_RESPONSE",
+        "message": "Bridge provider response is invalid"
+      },
+      "httpTrace": [
+        {
+          "method": "POST",
+          "url": "https://tx-builder.mayan.finance/quote",
+          "headers": {
+            "accept": "application/json",
+            "content-type": "application/json"
+          },
+          "body": "{\"fromToken\":\"0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48\",\"fromChain\":\"ethereum\",\"toToken\":\"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\",\"toChain\":\"solana\",\"amountIn64\":\"100000000\",\"slippageBps\":50,\"swift\":true,\"mctp\":false,\"fastMctp\":false,\"wormhole\":false,\"monoChain\":false,\"gasless\":false,\"fullList\":true,\"guaranteedOutput\":true,\"gasDrop\":0}"
+        }
+      ],
+      "config": null,
+      "quoteCaseId": null
+    },
+    {
+      "caseId": "quote-usdc-nonnull-direct-router",
+      "method": "quote",
+      "source": "synthetic",
+      "capabilityId": "bridge-mayan-swift-v2-usdc-eth-sol",
+      "request": {
+        "sourceChainId": "eip155:1",
+        "destinationChainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+        "sourceTokenDeploymentId": "deployment-0008",
+        "destinationTokenDeploymentId": "deployment-0010",
+        "amountIn": "100000000",
+        "slippageBps": 50
+      },
+      "nowSeconds": 1789600000,
+      "providerStatus": 200,
+      "providerBody": "{\"success\":true,\"quotes\":[{\"type\":\"SWIFT\",\"gasless\":false,\"swiftVersion\":\"V2\",\"swiftAuctionMode\":2,\"slippageBps\":50,\"effectiveAmountIn64\":\"100000000\",\"swiftInputDecimals\":6,\"onlyBridging\":false,\"expectedAmountOutBaseUnits\":\"99557029\",\"minAmountOutBaseUnits\":\"99059244\",\"minReceivedBaseUnits\":\"99059244\",\"deadline64\":\"1893456000\",\"quoteId\":\"0x11111111111111111111111111111111\",\"signature\":\"0x1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111\",\"minMiddleAmount\":100.0000,\"unknownSignedField\":\"keep-me\",\"fromChain\":\"ethereum\",\"toChain\":\"solana\",\"fromToken\":{\"name\":\"USD Coin\",\"standard\":\"erc20\",\"mint\":\"A9mUU4qviSctJVPJdBJWkb28deg915LYJKrzQ19ji3FM\",\"contract\":\"0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48\",\"chainId\":1,\"wChainId\":2,\"decimals\":6,\"realOriginContractAddress\":\"0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48\",\"realOriginChainId\":2},\"toToken\":{\"name\":\"USD Coin\",\"standard\":\"spl\",\"mint\":\"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\",\"contract\":\"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\",\"chainId\":0,\"wChainId\":1,\"decimals\":6,\"realOriginContractAddress\":\"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\",\"realOriginChainId\":1},\"swiftInputContract\":\"0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48\",\"swiftInputContractStandard\":\"erc20\",\"swiftMayanContract\":\"0x40ffe85a28dc9993541449464d7529a922142960\",\"evmSwapRouterAddress\":\"0xa929c559E5e6537359680F39CB4E3708E1a14dd1\"}]}",
+      "expected": {
+        "kind": "sdk-error",
+        "code": "BRIDGE_PROVIDER_INVALID_RESPONSE",
+        "message": "Bridge provider response is invalid"
+      },
+      "httpTrace": [
+        {
+          "method": "POST",
+          "url": "https://tx-builder.mayan.finance/quote",
+          "headers": {
+            "accept": "application/json",
+            "content-type": "application/json"
+          },
+          "body": "{\"fromToken\":\"0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48\",\"fromChain\":\"ethereum\",\"toToken\":\"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\",\"toChain\":\"solana\",\"amountIn64\":\"100000000\",\"slippageBps\":50,\"swift\":true,\"mctp\":false,\"fastMctp\":false,\"wormhole\":false,\"monoChain\":false,\"gasless\":false,\"fullList\":true,\"guaranteedOutput\":true,\"gasDrop\":0}"
+        }
+      ],
+      "config": null,
+      "quoteCaseId": null
+    },
+    {
+      "caseId": "build-usdc-normalized-required-tamper",
+      "method": "build",
+      "source": "synthetic",
+      "capabilityId": "bridge-mayan-swift-v2-usdc-eth-sol",
+      "request": {
+        "swapperAddress": "0x2222222222222222222222222222222222222222",
+        "destinationAddress": "So11111111111111111111111111111111111111112"
+      },
+      "nowSeconds": 1789600000,
+      "providerStatus": null,
+      "providerBody": null,
+      "expected": {
+        "kind": "sdk-error",
+        "code": "BRIDGE_QUOTE_MISMATCH",
+        "message": "Bridge quote does not match the request"
+      },
+      "httpTrace": [],
+      "config": {
+        "allowUnauthenticatedBuild": true
+      },
+      "quoteCaseId": "quote-usdc-eth-sol-synthetic",
+      "quoteMutation": {
+        "kind": "normalized-set",
+        "path": "sourceSwap.required",
+        "value": true
+      }
+    },
+    {
+      "caseId": "build-usdc-normalized-raw-eurc-substitution",
+      "method": "build",
+      "source": "synthetic",
+      "capabilityId": "bridge-mayan-swift-v2-usdc-eth-sol",
+      "request": {
+        "swapperAddress": "0x2222222222222222222222222222222222222222",
+        "destinationAddress": "So11111111111111111111111111111111111111112"
+      },
+      "nowSeconds": 1789600000,
+      "providerStatus": null,
+      "providerBody": null,
+      "expected": {
+        "kind": "sdk-error",
+        "code": "BRIDGE_QUOTE_MISMATCH",
+        "message": "Bridge quote does not match the request"
+      },
+      "httpTrace": [],
+      "config": {
+        "allowUnauthenticatedBuild": true
+      },
+      "quoteCaseId": "quote-usdc-eth-sol-synthetic",
+      "quoteMutation": {
+        "kind": "raw-replace",
+        "path": "rawSignedQuoteJson",
+        "from": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+        "to": "0x1abaea1f7c830bd89acc67ec4af516284b1bc33c"
+      }
+    },
+    {
+      "caseId": "build-usdc-old-eurc-selector",
+      "method": "build",
+      "source": "synthetic",
+      "capabilityId": "bridge-mayan-swift-v2-usdc-eth-sol",
+      "request": {
+        "swapperAddress": "0x2222222222222222222222222222222222222222",
+        "destinationAddress": "So11111111111111111111111111111111111111112"
+      },
+      "nowSeconds": 1789600000,
+      "providerStatus": 200,
+      "providerBody": "{\"success\":true,\"transaction\":{\"chainCategory\":\"evm\",\"quoteType\":\"SWIFT\",\"gasless\":false,\"transaction\":{\"chainId\":1,\"to\":\"0x337685fdab40d39bd02028545a4ffa7d287cc3e2\",\"value\":\"0\",\"data\":\"0x30dedc570000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"}}}",
+      "expected": {
+        "kind": "sdk-error",
+        "code": "BRIDGE_BUILD_INVALID",
+        "message": "Bridge provider build is invalid"
+      },
+      "httpTrace": [
+        {
+          "method": "POST",
+          "url": "https://tx-builder.mayan.finance/build",
+          "headers": {
+            "accept": "application/json",
+            "content-type": "application/json"
+          },
+          "body": "{\"quote\":{\"type\":\"SWIFT\",\"gasless\":false,\"swiftVersion\":\"V2\",\"swiftAuctionMode\":2,\"slippageBps\":50,\"effectiveAmountIn64\":\"100000000\",\"swiftInputDecimals\":6,\"onlyBridging\":false,\"expectedAmountOutBaseUnits\":\"99557029\",\"minAmountOutBaseUnits\":\"99059244\",\"minReceivedBaseUnits\":\"99059244\",\"deadline64\":\"1893456000\",\"quoteId\":\"0x11111111111111111111111111111111\",\"signature\":\"0x1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111\",\"minMiddleAmount\":100.0000,\"unknownSignedField\":\"keep-me\",\"fromChain\":\"ethereum\",\"toChain\":\"solana\",\"fromToken\":{\"name\":\"USD Coin\",\"standard\":\"erc20\",\"mint\":\"A9mUU4qviSctJVPJdBJWkb28deg915LYJKrzQ19ji3FM\",\"contract\":\"0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48\",\"chainId\":1,\"wChainId\":2,\"decimals\":6,\"realOriginContractAddress\":\"0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48\",\"realOriginChainId\":2},\"toToken\":{\"name\":\"USD Coin\",\"standard\":\"spl\",\"mint\":\"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\",\"contract\":\"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\",\"chainId\":0,\"wChainId\":1,\"decimals\":6,\"realOriginContractAddress\":\"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\",\"realOriginChainId\":1},\"swiftInputContract\":\"0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48\",\"swiftInputContractStandard\":\"erc20\",\"swiftMayanContract\":\"0x40ffe85a28dc9993541449464d7529a922142960\",\"evmSwapRouterAddress\":null},\"params\":{\"swapperAddress\":\"0x2222222222222222222222222222222222222222\",\"destinationAddress\":\"So11111111111111111111111111111111111111112\",\"signerChainId\":1}}"
+        }
+      ],
+      "config": {
+        "allowUnauthenticatedBuild": true
+      },
+      "quoteCaseId": "quote-usdc-eth-sol-synthetic"
+    },
+    {
+      "caseId": "build-usdc-solana-supplemental-signer",
+      "method": "build",
+      "source": "synthetic",
+      "capabilityId": "bridge-mayan-swift-v2-usdc-sol-eth",
+      "request": {
+        "swapperAddress": "So11111111111111111111111111111111111111112",
+        "destinationAddress": "0x3333333333333333333333333333333333333333"
+      },
+      "nowSeconds": 1789600000,
+      "providerStatus": 200,
+      "providerBody": "{\"success\":true,\"transaction\":{\"chainCategory\":\"svm\",\"quoteType\":\"SWIFT\",\"gasless\":false,\"signers\":[\"synthetic-signer\"],\"swapMessageV0Params\":null,\"transaction\":\"AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAQAAAQabiFf+q4GE+2h/Y0YYwDXaxDncGus7VZig8AAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==\"}}",
+      "expected": {
+        "kind": "sdk-error",
+        "code": "BRIDGE_BUILD_INVALID",
+        "message": "Bridge provider build is invalid"
+      },
+      "httpTrace": [
+        {
+          "method": "POST",
+          "url": "https://tx-builder.mayan.finance/build",
+          "headers": {
+            "accept": "application/json",
+            "content-type": "application/json"
+          },
+          "body": "{\"quote\":{\"type\":\"SWIFT\",\"gasless\":false,\"swiftVersion\":\"V2\",\"swiftAuctionMode\":2,\"slippageBps\":50,\"effectiveAmountIn64\":\"100000000\",\"swiftInputDecimals\":6,\"onlyBridging\":false,\"expectedAmountOutBaseUnits\":\"99557029\",\"minAmountOutBaseUnits\":\"99059244\",\"minReceivedBaseUnits\":\"99059244\",\"deadline64\":\"1893456000\",\"quoteId\":\"0x11111111111111111111111111111111\",\"signature\":\"0x1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111\",\"minMiddleAmount\":100.0000,\"unknownSignedField\":\"keep-me\",\"fromChain\":\"solana\",\"toChain\":\"ethereum\",\"fromToken\":{\"name\":\"USD Coin\",\"standard\":\"spl\",\"mint\":\"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\",\"contract\":\"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\",\"chainId\":0,\"wChainId\":1,\"decimals\":6,\"realOriginContractAddress\":\"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\",\"realOriginChainId\":1},\"toToken\":{\"name\":\"USD Coin\",\"standard\":\"erc20\",\"mint\":\"A9mUU4qviSctJVPJdBJWkb28deg915LYJKrzQ19ji3FM\",\"contract\":\"0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48\",\"chainId\":1,\"wChainId\":2,\"decimals\":6,\"realOriginContractAddress\":\"0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48\",\"realOriginChainId\":2},\"swiftInputContract\":\"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\",\"swiftInputContractStandard\":\"spl\",\"swiftMayanContract\":\"mayan34VedncxdK2XobtvWFDXQASUTBXhUVzt2kKgny\",\"evmSwapRouterAddress\":null},\"params\":{\"swapperAddress\":\"So11111111111111111111111111111111111111112\",\"destinationAddress\":\"0x3333333333333333333333333333333333333333\"}}"
+        }
+      ],
+      "config": {
+        "allowUnauthenticatedBuild": true
+      },
+      "quoteCaseId": "quote-usdc-sol-eth-synthetic"
+    },
+    {
+      "caseId": "build-usdc-solana-supplemental-swap-message",
+      "method": "build",
+      "source": "synthetic",
+      "capabilityId": "bridge-mayan-swift-v2-usdc-sol-eth",
+      "request": {
+        "swapperAddress": "So11111111111111111111111111111111111111112",
+        "destinationAddress": "0x3333333333333333333333333333333333333333"
+      },
+      "nowSeconds": 1789600000,
+      "providerStatus": 200,
+      "providerBody": "{\"success\":true,\"transaction\":{\"chainCategory\":\"svm\",\"quoteType\":\"SWIFT\",\"gasless\":false,\"signers\":[],\"swapMessageV0Params\":{},\"transaction\":\"AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAQAAAQabiFf+q4GE+2h/Y0YYwDXaxDncGus7VZig8AAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==\"}}",
+      "expected": {
+        "kind": "sdk-error",
+        "code": "BRIDGE_BUILD_INVALID",
+        "message": "Bridge provider build is invalid"
+      },
+      "httpTrace": [
+        {
+          "method": "POST",
+          "url": "https://tx-builder.mayan.finance/build",
+          "headers": {
+            "accept": "application/json",
+            "content-type": "application/json"
+          },
+          "body": "{\"quote\":{\"type\":\"SWIFT\",\"gasless\":false,\"swiftVersion\":\"V2\",\"swiftAuctionMode\":2,\"slippageBps\":50,\"effectiveAmountIn64\":\"100000000\",\"swiftInputDecimals\":6,\"onlyBridging\":false,\"expectedAmountOutBaseUnits\":\"99557029\",\"minAmountOutBaseUnits\":\"99059244\",\"minReceivedBaseUnits\":\"99059244\",\"deadline64\":\"1893456000\",\"quoteId\":\"0x11111111111111111111111111111111\",\"signature\":\"0x1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111\",\"minMiddleAmount\":100.0000,\"unknownSignedField\":\"keep-me\",\"fromChain\":\"solana\",\"toChain\":\"ethereum\",\"fromToken\":{\"name\":\"USD Coin\",\"standard\":\"spl\",\"mint\":\"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\",\"contract\":\"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\",\"chainId\":0,\"wChainId\":1,\"decimals\":6,\"realOriginContractAddress\":\"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\",\"realOriginChainId\":1},\"toToken\":{\"name\":\"USD Coin\",\"standard\":\"erc20\",\"mint\":\"A9mUU4qviSctJVPJdBJWkb28deg915LYJKrzQ19ji3FM\",\"contract\":\"0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48\",\"chainId\":1,\"wChainId\":2,\"decimals\":6,\"realOriginContractAddress\":\"0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48\",\"realOriginChainId\":2},\"swiftInputContract\":\"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\",\"swiftInputContractStandard\":\"spl\",\"swiftMayanContract\":\"mayan34VedncxdK2XobtvWFDXQASUTBXhUVzt2kKgny\",\"evmSwapRouterAddress\":null},\"params\":{\"swapperAddress\":\"So11111111111111111111111111111111111111112\",\"destinationAddress\":\"0x3333333333333333333333333333333333333333\"}}"
+        }
+      ],
+      "config": {
+        "allowUnauthenticatedBuild": true
+      },
+      "quoteCaseId": "quote-usdc-sol-eth-synthetic"
+    },
+    {
+      "caseId": "build-eurc-normalized-source-token-usdc-tamper",
+      "method": "build",
+      "source": "synthetic",
+      "capabilityId": "bridge-mayan-swift-v2-eurc-eth-sol",
+      "request": {
+        "swapperAddress": "0x2222222222222222222222222222222222222222",
+        "destinationAddress": "So11111111111111111111111111111111111111112"
+      },
+      "nowSeconds": 1789600000,
+      "providerStatus": null,
+      "providerBody": null,
+      "expected": {
+        "kind": "sdk-error",
+        "code": "BRIDGE_QUOTE_MISMATCH",
+        "message": "Bridge quote does not match the request"
+      },
+      "httpTrace": [],
+      "config": {
+        "allowUnauthenticatedBuild": true
+      },
+      "quoteCaseId": "quote-eth-sol-synthetic",
+      "quoteMutation": {
+        "kind": "normalized-set",
+        "path": "sourceTokenDeploymentId",
+        "value": "deployment-0008"
+      }
+    },
+    {
+      "caseId": "build-usdc-normalized-source-token-eurc-tamper",
+      "method": "build",
+      "source": "synthetic",
+      "capabilityId": "bridge-mayan-swift-v2-usdc-eth-sol",
+      "request": {
+        "swapperAddress": "0x2222222222222222222222222222222222222222",
+        "destinationAddress": "So11111111111111111111111111111111111111112"
+      },
+      "nowSeconds": 1789600000,
+      "providerStatus": null,
+      "providerBody": null,
+      "expected": {
+        "kind": "sdk-error",
+        "code": "BRIDGE_QUOTE_MISMATCH",
+        "message": "Bridge quote does not match the request"
+      },
+      "httpTrace": [],
+      "config": {
+        "allowUnauthenticatedBuild": true
+      },
+      "quoteCaseId": "quote-usdc-eth-sol-synthetic",
+      "quoteMutation": {
+        "kind": "normalized-set",
+        "path": "sourceTokenDeploymentId",
+        "value": "deployment-0011"
+      }
     }
   ]
 }

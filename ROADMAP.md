@@ -156,11 +156,21 @@ work without that key; builds require it unless the caller explicitly opts into
 a compatible no-auth builder. The ERPC key is never used as the provider key.
 
 Mayan, solvers, relayers, Wormhole, Explorer, and the Solana-origin Jupiter v6
-source swap remain visible external dependencies. The adapter reports
+source swap remain visible external dependencies for the applicable EURC
+routes. Direct USDC rows exclude the EURC source-swap builder and Jupiter. The adapter reports
 structural checks and does not locally verify provider signatures, transaction
 semantics, or settlement. Returned transactions remain unsigned and wallet
-policy stays with the caller. This `0.8.0` bridge slice is documented in
+policy stays with the caller. This published `0.8.0` bridge slice is documented in
 [`registry/BRIDGE.md`](registry/BRIDGE.md) and its evidence packet.
+
+The canonical source now includes two direct native-USDC directions:
+`bridge-mayan-swift-v2-usdc-eth-sol` (`deployment-0008` to `deployment-0010`)
+and `bridge-mayan-swift-v2-usdc-sol-eth` (the reverse). These rows use
+`required: false` self-referential source-USDC fields, null router fields, six
+direct dependencies without the EURC source-swap builder or Jupiter, and the
+Ethereum selector `0xe4269fc4`. The addition remains unreleased; current
+published `0.8.0` packages are EURC-only until a future version is explicitly
+published.
 
 The shared bridge fixtures and parity verifier define the cross-language
 behavior contract. Root's public read-only EURC quote observations are
@@ -187,7 +197,7 @@ note](https://solana.com/upgrades/larger-transaction-sizes).
 - Add Solana concentrated-liquidity quote math only after its state, freshness,
   and execution boundaries are reviewed.
 - Keep hosted Jupiter and 0x dependencies out of normal SDK swap helpers.
-- Treat bridges beyond the reviewed Mayan EURC directions as separate research
+- Treat bridges beyond the reviewed Mayan EURC and USDC directions as separate research
   requiring exact source and destination chains, native versus wrapped
   addresses, proof or attestation rules, and relayer dependencies.
 

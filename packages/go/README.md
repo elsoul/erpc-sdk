@@ -339,7 +339,7 @@ change that allowance, then controls signing and sending. This capability is
 limited to the two reviewed EVM pools; it does not provide hosted Jupiter or
 0x routing, native wrapping, bridging, wallet custody, or live-funds effects.
 
-## Optional Mayan Swift v2 EURC bridge (introduced in 0.8.0)
+## Optional Mayan Swift v2 bridge (EURC in 0.8.0; USDC source addition unreleased)
 
 The `0.8.0` API's `NewMayanSwiftV2BridgeClient` creates a standalone, explicit opt-in adapter for
 native issued EURC between Ethereum and Solana. It calls the configured Mayan
@@ -382,14 +382,30 @@ if err != nil {
 _ = quotes
 ```
 
-The adapter binds both reviewed directions to the issued EURC catalog records,
-while disclosing Mayan's internal source USDC conversion. Solana source quotes
-also disclose the provider's Jupiter v6 source-swap dependency; this is
-provider output, not a hosted Jupiter route in the normal swap helpers. The
-returned `MayanSwiftV2Build` is unsigned and structurally checked. Ethereum
-builds expose the caller-owned EURC allowance requirement; the caller controls
-approval policy and signing. `GetStatus` reports the provider-indexed state
-and does not prove on-chain settlement.
+The published `0.8.0` package binds both reviewed directions to the issued
+EURC catalog records and discloses Mayan's internal source USDC conversion.
+Solana source EURC quotes also disclose the provider's Jupiter v6 source-swap
+dependency; this is provider output, not a hosted Jupiter route in the normal
+swap helpers. The returned `MayanSwiftV2Build` is unsigned and structurally
+checked. Ethereum builds expose the caller-owned EURC allowance requirement;
+the caller controls approval policy and signing. `GetStatus` reports the
+provider-indexed state and does not prove on-chain settlement.
+
+The current source tree also contains an unreleased native USDC addition for
+Ethereum mainnet (`deployment-0008`) and Solana mainnet (`deployment-0010`).
+Use the exact four-field route tuple to select it. Direct USDC quotes set
+`sourceSwap.required` to `false`, identify the native source USDC in the input
+and intermediate fields, and emit `routerKind` and `routerAddress` as JSON
+`null`. They use the direct Swift dependency set without Jupiter or hosted 0x
+source-swap dependencies; Ethereum builds use selector `0xe4269fc4` and expose
+an allowance for the matched USDC deployment. This addition is not included
+in the published `0.8.0` package until a release explicitly includes it.
+
+Because direct USDC router fields are nullable, Go represents
+`MayanSwiftV2SourceSwap.RouterKind` and `.RouterAddress` as `*string`. The JSON
+keys remain present with `null` for direct routes; existing EURC values remain
+non-null. Consumers using the previous non-null source type must handle nil
+pointers before using this unreleased addition.
 
 ## License
 

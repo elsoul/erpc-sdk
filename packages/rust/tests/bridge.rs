@@ -2,7 +2,7 @@
 
 use erpc_sdk::{
     BridgeErrorCode, MayanSwiftV2BridgeClient, MayanSwiftV2BridgeConfig, MayanSwiftV2BuildRequest,
-    MayanSwiftV2QuoteRequest, MayanSwiftV2StatusRequest,
+    MayanSwiftV2QuoteRequest, MayanSwiftV2StatusRequest, MayanSwiftV2UnsignedTransaction,
 };
 use serde_json::Value;
 use wiremock::{
@@ -75,6 +75,170 @@ async fn quote_preserves_signed_object_and_provider_number_lexeme() {
             .raw_signed_quote_json
             .contains("\"minMiddleAmount\":114.5000")
     );
+}
+
+#[tokio::test]
+async fn usdc_quote_uses_direct_source_and_nullable_router_fields() {
+    let server = MockServer::start().await;
+    let case = fixture_case("quote-usdc-eth-sol-synthetic");
+    Mock::given(method("POST"))
+        .respond_with(rpc_response(
+            case["providerBody"].as_str().expect("provider body"),
+        ))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let quote = client(&server)
+        .quote_exact_input(quote_request("quote-usdc-eth-sol-synthetic"))
+        .await
+        .expect("USDC quote")
+        .pop()
+        .expect("one quote");
+    assert!(!quote.source_swap.required);
+    assert_eq!(
+        quote.source_swap.input_token_deployment_id,
+        "deployment-0008"
+    );
+    assert_eq!(
+        quote.source_swap.intermediate_token_address,
+        "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
+    );
+    assert_eq!(quote.source_swap.provider_minimum_amount, "100.0000");
+    assert!(quote.source_swap.router_kind.is_none());
+    assert!(quote.source_swap.router_address.is_none());
+    assert!(
+        !quote
+            .dependencies
+            .iter()
+            .any(|dependency| dependency == "mayan-hosted-source-swap-builder")
+    );
+    assert!(
+        quote
+            .raw_signed_quote_json
+            .contains("A9mUU4qviSctJVPJdBJWkb28deg915LYJKrzQ19ji3FM")
+    );
+}
+
+#[tokio::test]
+async fn usdc_evm_build_uses_direct_selector_and_source_allowance() {
+    let quote_server = MockServer::start().await;
+    let quote_case = fixture_case("quote-usdc-eth-sol-synthetic");
+    Mock::given(method("POST"))
+        .respond_with(rpc_response(
+            quote_case["providerBody"].as_str().expect("quote body"),
+        ))
+        .expect(1)
+        .mount(&quote_server)
+        .await;
+    let quote = client(&quote_server)
+        .quote_exact_input(quote_request("quote-usdc-eth-sol-synthetic"))
+        .await
+        .expect("USDC quote")
+        .pop()
+        .expect("one quote");
+
+    let build_server = MockServer::start().await;
+    let build_case = fixture_case("build-usdc-eth-sol-synthetic");
+    Mock::given(method("POST"))
+        .respond_with(rpc_response(
+            build_case["providerBody"].as_str().expect("build body"),
+        ))
+        .expect(1)
+        .mount(&build_server)
+        .await;
+    let build = MayanSwiftV2BridgeClient::new(
+        MayanSwiftV2BridgeConfig::new()
+            .with_builder_endpoint(build_server.uri())
+            .with_explorer_endpoint(build_server.uri())
+            .with_allow_unauthenticated_build(true),
+    )
+    .expect("bridge build client")
+    .build_unsigned(MayanSwiftV2BuildRequest {
+        quote,
+        swapper_address: "0x2222222222222222222222222222222222222222".to_owned(),
+        destination_address: SOLANA_DESTINATION.to_owned(),
+        refund_address: None,
+    })
+    .await
+    .expect("USDC build");
+    let MayanSwiftV2UnsignedTransaction::Evm(transaction) = build.transaction else {
+        panic!("USDC Ethereum build must return an EVM transaction");
+    };
+    assert!(transaction.data.starts_with("0xe4269fc4"));
+    let allowance = build.allowance.expect("Ethereum allowance");
+    assert_eq!(allowance.token_deployment_id, "deployment-0008");
+    assert_eq!(
+        allowance.token_address,
+        "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
+    );
+    assert_eq!(allowance.required_amount, "100000000");
+}
+
+#[tokio::test]
+async fn normalized_source_token_mutations_are_closed_and_rejected_locally() {
+    for (case_id, expected_value) in [
+        (
+            "build-eurc-normalized-source-token-usdc-tamper",
+            "deployment-0008",
+        ),
+        (
+            "build-usdc-normalized-source-token-eurc-tamper",
+            "deployment-0011",
+        ),
+    ] {
+        let case = fixture_case(case_id);
+        let mutation = case["quoteMutation"]
+            .as_object()
+            .expect("source token mutation descriptor");
+        let mut keys = mutation.keys().cloned().collect::<Vec<_>>();
+        keys.sort();
+        assert_eq!(keys, vec!["kind", "path", "value"]);
+        assert_eq!(mutation["kind"], "normalized-set");
+        assert_eq!(mutation["path"], "sourceTokenDeploymentId");
+        assert_eq!(mutation["value"], expected_value);
+
+        let quote_case_id = case["quoteCaseId"].as_str().expect("quote case ID");
+        let quote_case = fixture_case(quote_case_id);
+        let quote_server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(rpc_response(
+                quote_case["providerBody"].as_str().expect("quote body"),
+            ))
+            .expect(1)
+            .mount(&quote_server)
+            .await;
+        let mut quote = client(&quote_server)
+            .quote_exact_input(quote_request(quote_case_id))
+            .await
+            .expect("base quote")
+            .pop()
+            .expect("one quote");
+        quote.source_token_deployment_id = expected_value.to_owned();
+
+        let error = MayanSwiftV2BridgeClient::new(
+            MayanSwiftV2BridgeConfig::new()
+                .with_builder_endpoint("http://127.0.0.1:1")
+                .with_explorer_endpoint("http://127.0.0.1:1")
+                .with_allow_unauthenticated_build(true),
+        )
+        .expect("bridge client")
+        .build_unsigned(MayanSwiftV2BuildRequest {
+            quote,
+            swapper_address: case["request"]["swapperAddress"]
+                .as_str()
+                .expect("swapper address")
+                .to_owned(),
+            destination_address: case["request"]["destinationAddress"]
+                .as_str()
+                .expect("destination address")
+                .to_owned(),
+            refund_address: None,
+        })
+        .await
+        .expect_err("cross-asset normalized quote mutation must fail locally");
+        assert_eq!(error.code(), BridgeErrorCode::QuoteMismatch);
+    }
 }
 
 #[tokio::test]

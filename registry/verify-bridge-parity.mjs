@@ -13,8 +13,6 @@ import {
   BRIDGE_CAPABILITY_IDS,
   BRIDGE_CAPABILITY_KEYS,
   BRIDGE_ERROR_MESSAGES,
-  BRIDGE_DEPENDENCIES,
-  BRIDGE_JUPITER_DEPENDENCY,
   BRIDGE_RUNTIME_KEYS,
   computeDigest,
   getBridgeCapabilityForRoute,
@@ -64,6 +62,46 @@ const FIXTURE_CASE_KEYS = Object.freeze([
   "httpTrace",
   "config",
   "quoteCaseId",
+]);
+const QUOTE_MUTATION_KINDS = Object.freeze(["normalized-set", "raw-replace"]);
+const QUOTE_MUTATION_NORMALIZED_PATHS = Object.freeze(["sourceSwap.required", "sourceTokenDeploymentId"]);
+const FROZEN_LEGACY_FIXTURE_CASE_IDS = Object.freeze([
+  "quote-eth-sol-synthetic",
+  "quote-sol-eth-synthetic",
+  "build-eth-sol-synthetic",
+  "build-sol-eth-synthetic",
+  "status-eth-inprogress-synthetic",
+  "status-eth-completed-synthetic",
+  "status-sol-refunded-synthetic",
+  "status-sol-unknown-synthetic",
+  "status-eth-not-found-synthetic",
+  "quote-duplicate-key",
+  "quote-malformed-json",
+  "quote-expired",
+  "quote-mismatched-amount",
+  "quote-bad-signature-shape",
+  "quote-json-depth-limit",
+  "quote-body-size-limit",
+  "quote-unsupported-route",
+  "build-auth-required-local",
+  "build-quote-mismatch",
+  "build-evm-forwarder-violation",
+  "build-evm-selector-violation",
+  "build-evm-value-violation",
+  "build-solana-framing-violation",
+  "build-solana-fee-payer-violation",
+  "build-solana-extra-signer-violation",
+  "build-solana-swap-message-violation",
+  "build-http-auth-401",
+  "build-http-rate-limit-429",
+  "quote-redirect-rejected",
+  "quote-timeout",
+  "quote-aborted",
+  "status-invalid-evm-hash",
+  "status-invalid-provider-fields",
+  "build-eth-sol-wrong-evm-destination",
+  "build-sol-eth-wrong-solana-destination",
+  "quote-eth-sol-zero-validity-margin",
 ]);
 const QUOTE_KEYS = Object.freeze([
   "quoteKind",
@@ -218,26 +256,46 @@ function validateTrace(trace, label) {
   }
 }
 
+function validateQuoteMutation(value, label) {
+  if (!isRecord(value)) fail(`${label} must be an object`);
+  if (typeof value.kind !== "string" || !QUOTE_MUTATION_KINDS.includes(value.kind)) fail(`${label}.kind is invalid`);
+  if (value.kind === "normalized-set") {
+    exactKeys(value, ["kind", "path", "value"], label);
+    if (!QUOTE_MUTATION_NORMALIZED_PATHS.includes(value.path)) fail(`${label} normalized mutation is invalid`);
+    if (value.path === "sourceSwap.required" && value.value === true) return;
+    if (value.path === "sourceTokenDeploymentId" && ["deployment-0008", "deployment-0011"].includes(value.value)) return;
+    fail(`${label} normalized mutation is invalid`);
+  }
+  exactKeys(value, ["kind", "path", "from", "to"], label);
+  if (value.path !== "rawSignedQuoteJson" || typeof value.from !== "string" || value.from.length === 0 || typeof value.to !== "string" || value.to.length === 0 || value.from === value.to) fail(`${label} raw mutation is invalid`);
+}
+
 function validateQuote(value, label) {
   exactKeys(value, QUOTE_KEYS, label);
   if (value.quoteKind !== "mayan-swift-v2" || value.providerId !== "mayan-swift-v2") fail(`${label} identity is invalid`);
-  const capability = getBridgeCapabilityForRoute(value.sourceChainId, value.destinationChainId);
+  const capability = getBridgeCapabilityForRoute(value.sourceChainId, value.destinationChainId, value.sourceTokenDeploymentId, value.destinationTokenDeploymentId);
   if (!capability || value.sourceTokenDeploymentId !== capability.sourceTokenDeploymentId || value.destinationTokenDeploymentId !== capability.destinationTokenDeploymentId) fail(`${label} route is invalid`);
   for (const field of ["amountIn", "expectedAmountOut", "minimumAmountOut", "minimumReceived", "deadline"]) canonicalUint64(value[field], `${label}.${field}`, { positive: field !== "deadline" });
   if (!Number.isSafeInteger(value.slippageBps) || value.slippageBps < 0 || value.slippageBps > 500) fail(`${label}.slippageBps is invalid`);
   if (typeof value.quoteId !== "string" || !QUOTE_ID.test(value.quoteId)) fail(`${label}.quoteId is invalid`);
   if (typeof value.providerSignature !== "string" || !PROVIDER_SIGNATURE.test(value.providerSignature)) fail(`${label}.providerSignature is invalid`);
   exactKeys(value.sourceSwap, SOURCE_SWAP_KEYS, `${label}.sourceSwap`);
-  if (value.sourceSwap.required !== true || value.sourceSwap.intermediateTokenDecimals !== 6) fail(`${label}.sourceSwap binding is invalid`);
+  const direct = capability.bridgeCapabilityId.includes("-usdc-");
+  const expectedSourceSwapRequired = !direct;
+  if (value.sourceSwap.required !== expectedSourceSwapRequired || value.sourceSwap.intermediateTokenDecimals !== 6) fail(`${label}.sourceSwap binding is invalid`);
   if (typeof value.sourceSwap.providerMinimumAmount !== "string" || !/^(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?$/u.test(value.sourceSwap.providerMinimumAmount) || !Number.isFinite(Number(value.sourceSwap.providerMinimumAmount)) || Number(value.sourceSwap.providerMinimumAmount) <= 0) fail(`${label}.sourceSwap.providerMinimumAmount is invalid`);
-  if (![
-    "provider-selected-evm",
-    "jupiter-v6",
-  ].includes(value.sourceSwap.routerKind)) fail(`${label}.sourceSwap.routerKind is invalid`);
+  const providerStandard = value.sourceChainId === SOLANA_CHAIN_ID ? "spl" : "erc20";
+  const intermediateDeploymentId = capability.sourceUsdcDeploymentId;
+  if (value.sourceSwap.inputTokenDeploymentId !== capability.sourceTokenDeploymentId || value.sourceSwap.intermediateTokenDeploymentId !== intermediateDeploymentId || value.sourceSwap.intermediateTokenAddress !== capability.sourceUsdcAddress || value.sourceSwap.intermediateTokenStandard !== providerStandard) fail(`${label}.sourceSwap token binding is invalid`);
   address(value.sourceSwap.intermediateTokenAddress, value.sourceChainId, `${label}.sourceSwap.intermediateTokenAddress`);
-  if (value.sourceSwap.routerKind === "provider-selected-evm") address(value.sourceSwap.routerAddress, ETHEREUM_CHAIN_ID, `${label}.sourceSwap.routerAddress`);
-  else address(value.sourceSwap.routerAddress, SOLANA_CHAIN_ID, `${label}.sourceSwap.routerAddress`);
-  if (!Array.isArray(value.dependencies) || value.dependencies.length < 7 || value.dependencies.some((entry) => typeof entry !== "string")) fail(`${label}.dependencies is invalid`);
+  if (direct) {
+    if (value.sourceSwap.routerKind !== null || value.sourceSwap.routerAddress !== null) fail(`${label}.sourceSwap direct router must be null`);
+  } else {
+    if (!["provider-selected-evm", "jupiter-v6"].includes(value.sourceSwap.routerKind)) fail(`${label}.sourceSwap.routerKind is invalid`);
+    if (value.sourceSwap.routerKind === "provider-selected-evm") address(value.sourceSwap.routerAddress, ETHEREUM_CHAIN_ID, `${label}.sourceSwap.routerAddress`);
+    else address(value.sourceSwap.routerAddress, SOLANA_CHAIN_ID, `${label}.sourceSwap.routerAddress`);
+  }
+  if (!Array.isArray(value.dependencies) || stableJson(value.dependencies) !== stableJson(capability.dependencies)) fail(`${label}.dependencies is invalid`);
   if (value.quoteVerification !== "provider-signed-not-locally-verified" || typeof value.rawSignedQuoteJson !== "string" || value.rawSignedQuoteJson.length === 0) fail(`${label} verification metadata is invalid`);
   try {
     const parsed = JSON.parse(value.rawSignedQuoteJson);
@@ -257,9 +315,10 @@ function validateBuild(value, label) {
   if (typeof value.rawProviderBuildJson !== "string" || value.rawProviderBuildJson.length === 0) fail(`${label}.rawProviderBuildJson is invalid`);
   if (value.sourceChainId === ETHEREUM_CHAIN_ID) {
     exactKeys(value.transaction, EVM_TRANSACTION_KEYS, `${label}.transaction`);
-    if (value.transaction.kind !== "evm-unsigned-transaction" || value.transaction.chainId !== ETHEREUM_CHAIN_ID || !EVM_ADDRESS.test(value.transaction.from) || !EVM_ADDRESS.test(value.transaction.to) || !HEX_BYTES.test(value.transaction.data) || value.transaction.value !== "0") fail(`${label}.transaction is invalid`);
+    const capability = getBridgeCapabilityForRoute(value.sourceChainId, value.destinationChainId, value.quote.sourceTokenDeploymentId, value.quote.destinationTokenDeploymentId);
+    if (value.transaction.kind !== "evm-unsigned-transaction" || value.transaction.chainId !== ETHEREUM_CHAIN_ID || !EVM_ADDRESS.test(value.transaction.from) || !EVM_ADDRESS.test(value.transaction.to) || !HEX_BYTES.test(value.transaction.data) || value.transaction.value !== "0" || !capability || capability.forwarderAddress === null || capability.forwarderFunctionSelector === null || value.transaction.to !== capability.forwarderAddress || !value.transaction.data.toLowerCase().startsWith(capability.forwarderFunctionSelector)) fail(`${label}.transaction is invalid`);
     exactKeys(value.allowance, ALLOWANCE_KEYS, `${label}.allowance`);
-    if (value.allowance.tokenDeploymentId !== "deployment-0011" || !EVM_ADDRESS.test(value.allowance.tokenAddress) || !EVM_ADDRESS.test(value.allowance.owner) || !EVM_ADDRESS.test(value.allowance.spender) || typeof value.allowance.requiredAmount !== "string") fail(`${label}.allowance is invalid`);
+    if (!capability || value.allowance.tokenDeploymentId !== capability.sourceTokenDeploymentId || value.allowance.tokenAddress !== capability.sourceTokenAddress || !EVM_ADDRESS.test(value.allowance.owner) || !EVM_ADDRESS.test(value.allowance.spender) || capability.forwarderAddress === null || value.allowance.spender !== capability.forwarderAddress || typeof value.allowance.requiredAmount !== "string") fail(`${label}.allowance is invalid`);
   } else {
     exactKeys(value.transaction, SOLANA_TRANSACTION_KEYS, `${label}.transaction`);
     if (value.transaction.kind !== "solana-v0-unsigned-transaction" || value.transaction.chainId !== SOLANA_CHAIN_ID || !SOLANA_ADDRESS.test(value.transaction.feePayer) || typeof value.transaction.transactionBase64 !== "string" || value.transaction.transactionBase64.length === 0) fail(`${label}.transaction is invalid`);
@@ -298,8 +357,13 @@ function validateOutcome(outcome, method, label) {
 
 function validateFixtureCase(entry, index, ids) {
   const label = `cases[${index}]`;
-  exactKeys(entry, FIXTURE_CASE_KEYS, label);
+  exactKeys(entry, FIXTURE_CASE_KEYS, label, { optional: ["quoteMutation"] });
   if (typeof entry.caseId !== "string" || entry.caseId.length === 0 || entry.source !== "synthetic") fail(`${label} identity is invalid`);
+  if (Object.hasOwn(entry, "quoteMutation")) {
+    if (FROZEN_LEGACY_FIXTURE_CASE_IDS.includes(entry.caseId)) fail(`${label}.quoteMutation is not allowed on a frozen legacy case`);
+    validateQuoteMutation(entry.quoteMutation, `${label}.quoteMutation`);
+    if (entry.method !== "build" || entry.quoteCaseId === null) fail(`${label}.quoteMutation is only valid for a build case with a quoteCaseId`);
+  }
   if (!["quote", "build", "status"].includes(entry.method)) fail(`${label}.method is invalid`);
   if (entry.capabilityId !== null && !ids.has(entry.capabilityId)) fail(`${label}.capabilityId is invalid`);
   if (!isRecord(entry.request)) fail(`${label}.request must be an object`);

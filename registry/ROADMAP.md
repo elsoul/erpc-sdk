@@ -42,7 +42,8 @@ controls preparation and makes no publication claim.
 | Offline ranking contract | Local review PASS (partial); exact native-unit metric, coverage, and unranked reasons remain in the canonical snapshot | [`token-rankings.mjs`](./token-rankings.mjs), [`token-rankings.json`](./token-rankings.json), [`ranking-config.json`](./ranking-config.json), [`evidence/discovery-ranking-review-2026-09-16.json`](./evidence/discovery-ranking-review-2026-09-16.json) |
 | Cross-language catalog gate | Validation is defined by the shared parity verifiers and dated captures; CI and independent review records provide gate status | `verify-token-parity.mjs`, `verify-dex-parity.mjs`, `verify-ranking-parity.mjs`; dated captures in evidence |
 | Reviewed EVM swap preparation and simulation | Introduced in `0.8.0`; shared fixtures and the parity verifier define behavior across SDKs | [`DEX.md`](./DEX.md), swap execution registry, and native parity evidence |
-| Optional Mayan Swift v2 native EURC bridge | Introduced in `0.8.0`; shared fixtures and the parity verifier define behavior across SDKs | [`BRIDGE.md`](./BRIDGE.md), `verify-bridge-parity.mjs`, bridge registry, and provider evidence |
+| Optional Mayan Swift v2 native EURC bridge | Introduced in published `0.8.0`; shared fixtures and the parity verifier define the preserved behavior | [`BRIDGE.md`](./BRIDGE.md), `verify-bridge-parity.mjs`, bridge registry, and provider evidence |
+| Native USDC Mayan Swift v2 directions | Canonical source and 51-case fixture are implemented for five-language refresh; source addition remains unreleased and current `0.8.0` packages remain EURC-only | [`BRIDGE.md`](./BRIDGE.md), [`evidence/mayan-swift-v2-usdc-2026-09-17.json`](./evidence/mayan-swift-v2-usdc-2026-09-17.json), and independent package gates |
 | Independent SDK code/package gate | Review findings and any blockers are tracked by the independent gate; this roadmap makes no final bridge claim | Steiner |
 | Cross-domain catalog review gate | Bounded catalog scope is recorded separately from final bridge review | Cyan; final review 2026-09-15 |
 | EU OSS planning packet | Applicability, role, classification, support, compliance, and data rights undetermined | [`evidence/weekly-maintenance-eu-oss-2026-09-15.json`](./evidence/weekly-maintenance-eu-oss-2026-09-15.json); human legal owner still to be assigned |
@@ -123,7 +124,7 @@ The standalone opt-in `MayanSwiftV2BridgeClient` introduced in `0.8.0` covers
 native issued EURC between Ethereum and Solana through `quoteExactInput`,
 `buildUnsigned`, and `getStatus`. The exact routes, native versus provider-wire
 standards, source USDC conversion, Jupiter v6 dependency for Solana-origin
-orders, and external Mayan services are recorded in [`BRIDGE.md`](./BRIDGE.md).
+EURC orders, and external Mayan services are recorded in [`BRIDGE.md`](./BRIDGE.md).
 The defaults are `https://tx-builder.mayan.finance` for quote/build and
 `https://explorer-api.mayan.finance/v3` for indexed status; both endpoints are
 customizable. `builderApiKey` is a separate build-only provider credential.
@@ -138,6 +139,14 @@ in
 [`evidence/mayan-swift-v2-2026-09-16.json`](./evidence/mayan-swift-v2-2026-09-16.json).
 CI and independent review records provide gate status; this feature does not
 claim live settlement or funds movement.
+
+The canonical source now also contains two direct native-USDC directions,
+`bridge-mayan-swift-v2-usdc-eth-sol` and `bridge-mayan-swift-v2-usdc-sol-eth`.
+They use self-referential USDC source-swap fields with `required: false`, null
+router fields, the `0xe4269fc4` Ethereum selector, and six direct dependencies
+without the EURC source-swap builder or Jupiter. This is an unreleased source
+addition: the current published `0.8.0` packages remain EURC-only until a future
+version is explicitly published and documented.
 
 ### Solana transaction version boundary
 
@@ -174,8 +183,8 @@ remain caller-owned operations. Solana CLMM quote math and hosted Jupiter or
 
 ### Separate bridging research
 
-Bridges beyond the reviewed Mayan EURC directions remain a separate research
-track. Any future work must identify exact source and destination chains,
+Bridges beyond the reviewed Mayan EURC and USDC directions remain a separate
+research track. Any future work must identify exact source and destination chains,
 native versus wrapped addresses, proof or attestation rules, and relayer
 dependencies. No bridge activation schedule is implied by token
 `economicReferenceAssetId` relationships.

@@ -1,0 +1,345 @@
+{
+  "evidenceVersion": 1,
+  "kind": "mayan-swift-v2-usdc-bridge-provider-evidence",
+  "recordedAsOf": "2026-09-17",
+  "scope": "Native issued USDC Ethereum mainnet <-> Solana mainnet in the reviewed Mayan Swift v2 adapter, including canonical bindings, bounded public quote observations, keyless build observations, and implementation boundaries.",
+  "boundary": "Planning and engineering evidence only. This packet does not prove provider signatures, source swaps, transaction semantics, settlement, reserves, service availability, legal compliance, CE conformity, or live-funds safety. No key, wallet signature, token approval, broadcast, submit, refund, or settlement action is authorized or recorded.",
+  "sourcePacket": {
+    "providerPacket": "Rydia final primary-source/provider packet received in the root conversation",
+    "readAsOf": "2026-09-17",
+    "providerObservationRecordedAt": "2026-09-17T09:04:00Z",
+    "scope": "Four exact EURC/USDC Mayan Swift v2 directions; public quote and hosted keyless build observations only",
+    "pinnedRefs": {
+      "swapSdkVersion": "15.2.2",
+      "swapSdkCommit": "c4c98031aaad9264d17630d7b4de0cb18688cf78",
+      "transactionBuilderCommit": "e966f16a155cd9091b02ef5d9b91c3f837c228ad",
+      "docsCommit": "c2079bc671817777fc62a5df5a2d4abb9688738a"
+    }
+  },
+  "canonicalRegistry": {
+    "path": "registry/bridge-capabilities.json",
+    "schemaPath": "registry/bridge-capabilities.schema.json",
+    "asOfDate": "2026-09-17",
+    "capabilityIds": [
+      "bridge-mayan-swift-v2-eurc-eth-sol",
+      "bridge-mayan-swift-v2-eurc-sol-eth",
+      "bridge-mayan-swift-v2-usdc-eth-sol",
+      "bridge-mayan-swift-v2-usdc-sol-eth"
+    ],
+    "capabilityDigest": "691a77498c5ff876dadc437a8265d8288ec51cbc1d44f8beacb746626bf5b98d",
+    "runtimeProjectionOmits": ["evidence", "asOfDate"]
+  },
+  "nativeTokenBindings": {
+    "ethereum": {
+      "chainId": "eip155:1",
+      "providerChainId": 1,
+      "wormholeChainId": 2,
+      "providerName": "USD Coin",
+      "usdcDeploymentId": "deployment-0008",
+      "usdcAddress": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+      "usdcStandard": "erc20",
+      "usdcDecimals": 6,
+      "providerMint": "A9mUU4qviSctJVPJdBJWkb28deg915LYJKrzQ19ji3FM",
+      "providerMintMeaning": "Provider metadata only; this value is never used as the Ethereum token address"
+    },
+    "solana": {
+      "chainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+      "providerChainId": 0,
+      "wormholeChainId": 1,
+      "providerName": "USD Coin",
+      "usdcDeploymentId": "deployment-0010",
+      "usdcAddress": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "usdcStandard": "spl-token",
+      "providerWireStandard": "spl",
+      "usdcDecimals": 6,
+      "providerMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "providerMintMeaning": "Native Solana USDC mint; provider contract, mint, and origin metadata are equal"
+    }
+  },
+  "providerContract": {
+    "builderEndpoint": "https://tx-builder.mayan.finance",
+    "explorerEndpoint": "https://explorer-api.mayan.finance/v3",
+    "quotePath": "/quote",
+    "buildPath": "/build",
+    "statusPathTemplate": "/swap/trx/{sourceTransactionHash}",
+    "quoteMethod": "POST",
+    "buildMethod": "POST",
+    "statusMethod": "GET",
+    "quoteAuthentication": "none in the bounded public observations",
+    "buildAuthentication": "Hosted keyless observations returned HTTP 401 UNAUTHORIZED; provider documentation describes an optional provider key, but no authenticated build was captured",
+    "statusAuthentication": "none",
+    "redirects": "disabled by the adapter",
+    "apiKeyForwarding": "Provider X-API-Key only to /build; never /quote or Explorer; eRPC headers and cookies never flow"
+  },
+  "liveQuoteObservations": {
+    "status": "PASS_PUBLIC_READ_ONLY_QUOTE_ONLY",
+    "observedAt": "2026-09-17T09:04:00Z",
+    "rows": [
+      {
+        "asset": "USDC",
+        "direction": "ethereum-to-solana",
+        "capabilityId": "bridge-mayan-swift-v2-usdc-eth-sol",
+        "sourceChainId": "eip155:1",
+        "destinationChainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+        "httpStatus": 200,
+        "providerSelection": "SWIFT / V2 / gasless=false",
+        "walletInputs": "public or synthetic addresses only"
+      },
+      {
+        "asset": "USDC",
+        "direction": "solana-to-ethereum",
+        "capabilityId": "bridge-mayan-swift-v2-usdc-sol-eth",
+        "sourceChainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+        "destinationChainId": "eip155:1",
+        "httpStatus": 200,
+        "providerSelection": "SWIFT / V2 / gasless=false",
+        "walletInputs": "public or synthetic addresses only"
+      },
+      {
+        "asset": "EURC",
+        "direction": "ethereum-to-solana",
+        "capabilityId": "bridge-mayan-swift-v2-eurc-eth-sol",
+        "sourceChainId": "eip155:1",
+        "destinationChainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+        "httpStatus": 200,
+        "providerSelection": "SWIFT / V2 / gasless=false",
+        "walletInputs": "public or synthetic addresses only"
+      },
+      {
+        "asset": "EURC",
+        "direction": "solana-to-ethereum",
+        "capabilityId": "bridge-mayan-swift-v2-eurc-sol-eth",
+        "sourceChainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+        "destinationChainId": "eip155:1",
+        "httpStatus": 200,
+        "providerSelection": "SWIFT / V2 / gasless=false",
+        "walletInputs": "public or synthetic addresses only"
+      }
+    ],
+    "observedFacts": [
+      "Each exact EURC or USDC direction accepted a Swift-only, V2, non-gasless quote request with HTTP 200 in the bounded public observation.",
+      "EURC quote responses expose an internal source USDC conversion; direct USDC quote responses keep native USDC as the source token with no source-swap or Jupiter dependency claim. The adapter retains raw signed quote bytes and numeric lexemes.",
+      "No authenticated build, transaction signing, token approval, broadcast, submit, cancellation, refund, or settlement proof is included."
+    ]
+  },
+  "keylessBuildObservations": {
+    "status": "HOSTED_KEYLESS_BUILD_REJECTED",
+    "observedAt": "2026-09-17T09:04:00Z",
+    "rows": [
+      { "capabilityId": "bridge-mayan-swift-v2-usdc-eth-sol", "httpStatus": 401, "providerStatus": "UNAUTHORIZED", "apiKeySupplied": false },
+      { "capabilityId": "bridge-mayan-swift-v2-usdc-sol-eth", "httpStatus": 401, "providerStatus": "UNAUTHORIZED", "apiKeySupplied": false },
+      { "capabilityId": "bridge-mayan-swift-v2-eurc-eth-sol", "httpStatus": 401, "providerStatus": "UNAUTHORIZED", "apiKeySupplied": false },
+      { "capabilityId": "bridge-mayan-swift-v2-eurc-sol-eth", "httpStatus": 401, "providerStatus": "UNAUTHORIZED", "apiKeySupplied": false }
+    ],
+    "limits": [
+      "The deployed provider revision was not identified.",
+      "Provider documentation and observed hosted behavior differ on whether a build key is optional; the observation is recorded without resolving that provider policy.",
+      "No authenticated build or live transaction result is claimed."
+    ]
+  },
+  "buildFacts": {
+    "usdcDirect": {
+      "ethereum": {
+        "swiftContract": "0x40ffe85a28dc9993541449464d7529a922142960",
+        "forwarderAddress": "0x337685fdab40d39bd02028545a4ffa7d287cc3e2",
+        "forwarderFunctionSelector": "0xe4269fc4",
+        "transactionValue": "0",
+        "sourceAllowance": "deployment-0008 / 0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48 to the Forwarder for the exact quote input; the wallet owns approval and signing policy"
+      },
+      "solana": {
+        "swiftProgram": "mayan34VedncxdK2XobtvWFDXQASUTBXhUVzt2kKgny",
+        "jupiterProgramAddress": null,
+        "dependencies": [
+          "mayan-hosted-quote-api",
+          "mayan-hosted-transaction-builder",
+          "swift-auction-solvers",
+          "relayers",
+          "wormhole-guardian-messaging",
+          "mayan-explorer-indexer"
+        ],
+        "allowance": null
+      }
+    },
+    "eurcCompatibility": {
+      "ethereumForwarderFunctionSelector": "0x30dedc57",
+      "solanaJupiterDependency": "jupiter-v6-source-swap",
+      "sourceSwap": "required=true for the existing EURC source conversion"
+    },
+    "statusVerification": "provider-indexed-not-locally-verified"
+  },
+  "dependencies": [
+    { "id": "mayan-hosted-quote-api", "status": "external service; deployed version and SLA unknown" },
+    { "id": "mayan-hosted-transaction-builder", "status": "external service; hosted keyless build returned 401 in the bounded observation" },
+    { "id": "swift-auction-solvers", "status": "external solver inventory and availability unknown" },
+    { "id": "relayers", "status": "external relayer dependency; availability and refund semantics require provider review" },
+    { "id": "wormhole-guardian-messaging", "status": "external messaging dependency; no local attestation proof" },
+    { "id": "mayan-explorer-indexer", "status": "external indexed status; no on-chain settlement proof" },
+    { "id": "mayan-hosted-source-swap-builder", "status": "EURC-only provider conversion; excluded from direct USDC capability dependencies" },
+    { "id": "jupiter-v6-source-swap", "status": "EURC Solana-origin provider conversion; excluded from direct USDC capability dependencies" }
+  ],
+  "primarySources": [
+    {
+      "title": "Circle USDC contract addresses",
+      "url": "https://developers.circle.com/stablecoins/usdc-contract-addresses",
+      "asOf": "2026-09-17",
+      "role": "native USDC Ethereum and Solana deployment facts"
+    },
+    {
+      "title": "Mayan Quote API",
+      "url": "https://docs.mayan.finance/integration/quote-api",
+      "asOf": "2026-09-17",
+      "role": "quote request and response contract"
+    },
+    {
+      "title": "Mayan Swift architecture",
+      "url": "https://docs.mayan.finance/architecture/swift",
+      "asOf": "2026-09-17",
+      "role": "Swift solver, relayer, and messaging dependency context"
+    },
+    {
+      "title": "Mayan swap SDK pinned reference",
+      "url": "https://github.com/mayan-finance/swap-sdk/tree/c4c98031aaad9264d17630d7b4de0cb18688cf78",
+      "asOf": "2026-09-17",
+      "role": "pinned public API and provider address observations; no source copied or bundled"
+    },
+    {
+      "title": "Mayan transaction builder pinned reference",
+      "url": "https://github.com/mayan-finance/tx-builder/tree/e966f16a155cd9091b02ef5d9b91c3f837c228ad",
+      "asOf": "2026-09-17",
+      "role": "pinned REST envelope and transaction selector observations; licensing remains unresolved"
+    },
+    {
+      "title": "Rydia bounded provider observation",
+      "url": "https://docs.mayan.finance/integration/quote-api",
+      "asOf": "2026-09-17",
+      "role": "four HTTP 200 quote observations and four hosted keyless HTTP 401 build observations; source packet received in the root conversation"
+    }
+  ],
+  "implementationEvidence": {
+    "registryValidator": "registry/bridge-capabilities.mjs",
+    "schema": "registry/bridge-capabilities.schema.json",
+    "generator": "registry/generate-bridge-capabilities.mjs",
+    "fixture": "registry/fixtures/mayan-swift-v2-cases.json",
+    "parityVerifier": "registry/verify-bridge-parity.mjs",
+    "fixtureCaseCount": 51,
+    "legacyFixtureCaseCount": 36,
+    "legacyFixtureSemanticSha256": "dce10a654672921bc4b26d4d14312abe81c0b93ac1de3fce48be3bd5beb7e5ee",
+    "fixtureKind": "synthetic wire fixtures; not authenticated live captures",
+    "quoteMutationDescriptor": {
+      "allowedKinds": ["normalized-set", "raw-replace"],
+      "normalizedSet": { "keys": ["kind", "path", "value"], "allowedPaths": { "sourceSwap.required": true, "sourceTokenDeploymentId": ["deployment-0008", "deployment-0011"] } },
+      "rawReplace": { "keys": ["kind", "path", "from", "to"], "path": "rawSignedQuoteJson", "fromTo": "non-empty distinct strings" },
+      "scope": "new build cases only; frozen legacy cases omit this descriptor"
+    },
+    "nativeCapture": {
+      "status": "PASS",
+      "scope": "Synthetic 51-case fixture parity against five actual native package runtime captures",
+      "snapshotVersion": 1,
+      "snapshotKind": "bridge-native-runtime",
+      "caseCount": 51,
+      "behaviorCounts": {
+        "quote": 20,
+        "build": 24,
+        "status": 7
+      },
+      "capabilityAsOfDate": "2026-09-17",
+      "capabilityDigest": "691a77498c5ff876dadc437a8265d8288ec51cbc1d44f8beacb746626bf5b98d",
+      "verifiedAt": "2026-09-17T10:43:59.598Z",
+      "parityVerifier": "registry/verify-bridge-parity.mjs",
+      "languages": [
+        {
+          "language": "typescript",
+          "runtime": "typescript-built-dist-v24.13.0",
+          "quoteCases": 20,
+          "buildCases": 24,
+          "statusCases": 7
+        },
+        {
+          "language": "rust",
+          "runtime": "Rust compiled-library unit tests (erpc-sdk 0.8.0)",
+          "quoteCases": 20,
+          "buildCases": 24,
+          "statusCases": 7
+        },
+        {
+          "language": "python",
+          "runtime": "python-3.14.7",
+          "quoteCases": 20,
+          "buildCases": 24,
+          "statusCases": 7
+        },
+        {
+          "language": "go",
+          "runtime": "go-go1.22.12",
+          "quoteCases": 20,
+          "buildCases": 24,
+          "statusCases": 7
+        },
+        {
+          "language": "ruby",
+          "runtime": "ruby-built-gem-3.4.7",
+          "quoteCases": 20,
+          "buildCases": 24,
+          "statusCases": 7
+        }
+      ],
+      "captures": {
+        "typescript": {
+          "path": "/private/tmp/erpc-mayan-usdc-work/typescript/bridge.json",
+          "sha256": "9f23d561a2ed3fb85d4301930aacf4141945378959808a71956e3263371e50d9",
+          "runtime": "typescript-built-dist-v24.13.0"
+        },
+        "rust": {
+          "path": "/private/tmp/erpc-mayan-usdc-work/rust/native-bridge-snapshot.json",
+          "sha256": "dd076eaacc49402e6d9338ac02e50b5f0e5d67f22263f21fbf81a5d76ca88c2b",
+          "runtime": "Rust compiled-library unit tests (erpc-sdk 0.8.0)"
+        },
+        "python": {
+          "path": "/private/tmp/erpc-mayan-usdc-work/python/bridge.json",
+          "sha256": "61fdb7596b7606f5792ce7a6ceea8dd88e07a62565f3a8f111fb968fadb3dae4",
+          "runtime": "python-3.14.7"
+        },
+        "go": {
+          "path": "/private/tmp/erpc-mayan-usdc-work/go/bridge.json",
+          "sha256": "9c02e76aec7d866e80e8f2b1c827723469dd1b1de97b9b569a3196d767f4c4ca",
+          "runtime": "go-go1.22.12"
+        },
+        "ruby": {
+          "path": "/private/tmp/erpc-mayan-usdc-work/ruby/bridge.json",
+          "sha256": "042bfdecb2399c8163f07e33695426aa635d8b40d894e7cb4e043d48c2e8a642",
+          "runtime": "ruby-built-gem-3.4.7"
+        }
+      },
+      "boundary": "This PASS records synthetic fixture behavior and actual native execution parity only. It does not establish live provider availability, an authenticated build, transaction signing, settlement, publication, or live-funds safety."
+    },
+    "sourceCopyBoundary": "independent REST implementation; no Mayan source, ABI bundle, SDK, or dependency is distributed"
+  },
+  "euOssPlanning": {
+    "applicability": "UNDETERMINED",
+    "companyLegalRole": "UNDETERMINED",
+    "productClassification": "UNDETERMINED",
+    "supportCommitments": "UNDETERMINED",
+    "complianceStatus": "UNDETERMINED",
+    "primarySourcesAndAsOf": [
+      { "url": "https://digital-strategy.ec.europa.eu/en/policies/cra-open-source", "asOf": "2026-07-31" },
+      { "url": "https://digital-strategy.ec.europa.eu/en/policies/cra-reporting", "asOf": "2026-09-11" },
+      { "url": "https://eur-lex.europa.eu/eli/reg/2024/2847/oj", "asOf": "2024-11-20" },
+      { "url": "https://eur-lex.europa.eu/legal-content/EN-FR/ALL/?uri=CELEX%3A01996L0009-20190606", "asOf": "2019-06-06" }
+    ],
+    "evidence": [
+      "The USDC addition is independently implemented and does not vendor Mayan source or the transaction-builder repository.",
+      "Direct USDC dependencies intentionally exclude the EURC source-swap builder and Jupiter; external provider, solver, relayer, Guardian, and Explorer terms remain unreviewed.",
+      "The canonical registry, fixture hash, and public observation limits are recorded separately from legal or release conclusions."
+    ],
+    "gaps": [
+      "CRA applicability, company role, product classification, support commitments, and compliance status require a named responsible human.",
+      "Mayan transaction-builder licensing, deployed revision, terms, SLA, security owner, and data rights remain unknown.",
+      "No authenticated build, signed transaction, settlement proof, legal certification, CE declaration, regulatory filing, or public vulnerability disclosure is established.",
+      "Provider response and dependency behavior may change; recheck the exact route, selector, dependency, and authentication facts on a material change."
+    ],
+    "owner": "Rydia (implementation); TBD — human legal owner assignment required",
+    "dueDate": "TBD — human assignment required",
+    "nextReview": "2026-10-15 or earlier on a material endpoint, dependency, security, or release event",
+    "boundary": "Planning evidence only; no self-issued legal compliance or CE certification and no standing authority for filings, disclosures, or live effects."
+  }
+}

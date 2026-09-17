@@ -44,7 +44,7 @@ test("bridge fixture is source-complete and fixes secret-free error wording", ()
   assert.ok(expected.behavior.build.length > 0);
   assert.ok(expected.behavior.status.length > 0);
   const errors = fixture.cases.filter((entry) => entry.expected.kind === "sdk-error");
-  assert.equal(errors.length, 27);
+  assert.equal(errors.length, 38);
   for (const entry of errors) assert.equal(entry.expected.message, BRIDGE_ERROR_MESSAGES[entry.expected.code], entry.caseId);
 });
 
@@ -88,4 +88,48 @@ test("parity requires exactly five native runtimes and rejects reference-only sn
   assert.throws(() => verifySnapshots(duplicateCase), /parity mismatch/u);
 
   assert.equal(stableJson(nativeSnapshots().typescript.behavior), stableJson(nativeSnapshots().ruby.behavior));
+});
+
+test("USDC allowance is route-specific and a wrong token is rejected by the verifier", () => {
+  const snapshots = nativeSnapshots();
+  const build = snapshots.typescript.behavior.build.find((entry) => entry.caseId === "build-usdc-eth-sol-synthetic");
+  assert.ok(build);
+  if (!build || build.outcome.kind !== "success") return;
+  assert.equal(build.outcome.value.allowance.tokenDeploymentId, "deployment-0008");
+  assert.equal(build.outcome.value.allowance.tokenAddress, "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48");
+  build.outcome.value.allowance.tokenDeploymentId = "deployment-0011";
+  build.outcome.value.allowance.tokenAddress = "0x1abaea1f7c830bd89acc67ec4af516284b1bc33c";
+  assert.throws(() => verifySnapshots(snapshots), BridgeParityError);
+});
+
+test("normalized source-token tampering is covered for EURC and USDC without provider I/O", () => {
+  for (const [caseId, quoteCaseId, value] of [
+    ["build-eurc-normalized-source-token-usdc-tamper", "quote-eth-sol-synthetic", "deployment-0008"],
+    ["build-usdc-normalized-source-token-eurc-tamper", "quote-usdc-eth-sol-synthetic", "deployment-0011"],
+  ]) {
+    const entry = fixture.cases.find((candidate) => candidate.caseId === caseId);
+    assert.ok(entry);
+    assert.equal(entry.method, "build");
+    assert.equal(entry.quoteCaseId, quoteCaseId);
+    assert.deepEqual(entry.request, {
+      swapperAddress: "0x2222222222222222222222222222222222222222",
+      destinationAddress: "So11111111111111111111111111111111111111112",
+    });
+    assert.deepEqual(entry.quoteMutation, { kind: "normalized-set", path: "sourceTokenDeploymentId", value });
+    assert.deepEqual(entry.httpTrace, []);
+    assert.deepEqual(entry.expected, {
+      kind: "sdk-error",
+      code: "BRIDGE_QUOTE_MISMATCH",
+      message: "Bridge quote does not match the request",
+    });
+  }
+
+  const snapshots = nativeSnapshots();
+  for (const caseId of ["build-eurc-normalized-source-token-usdc-tamper", "build-usdc-normalized-source-token-eurc-tamper"]) {
+    const expected = snapshots.typescript.behavior.build.find((entry) => entry.caseId === caseId);
+    assert.ok(expected);
+    assert.deepEqual(expected.httpTrace, []);
+    assert.deepEqual(expected.outcome, fixture.cases.find((entry) => entry.caseId === caseId).expected);
+  }
+  assert.equal(verifySnapshots(snapshots).status, "ok");
 });
