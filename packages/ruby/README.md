@@ -28,13 +28,16 @@ ensure
 end
 ```
 
-## Dedicated RPC endpoints
+## Dedicated RPC endpoints (introduced in 0.8.0)
 
 Supply a full HTTP(S) JSON-RPC URL to use a customer-owned node without an
 eRPC API key. The URL path and query are sent exactly as provided. Direct URLs
 are final HTTP request targets; the Ruby adapter does not follow redirects.
-The direct endpoint options shown here are available in this source checkout
-and are absent from the published `0.7.0` gem.
+Caller-owned direct endpoint overrides were introduced in `0.8.0` and require
+that gem version when installed from a registry. The published `0.7.0` gem does
+not include them; check the package version badge and the [latest GitHub
+release](https://github.com/elsoul/erpc-sdk/releases/latest) for live
+publication status.
 
 ```ruby
 config = ERPC::ClientConfig.new(
@@ -191,7 +194,7 @@ request = {
   sender: "0x1111111111111111111111111111111111111111",
   recipient: "0x2222222222222222222222222222222222222222",
   slippageBps: 50,
-  deadline: "1789498800"
+  deadline: (Time.now.to_i+300).to_s
 }
 
 preparation = erpc.swap.prepare_exact_input_swap(request)
@@ -236,9 +239,9 @@ base64 payload with `"encoding" => "base64"` to `send_transaction` or
 `simulate_transaction`; the SDK forwards the request and response unchanged.
 See the [Solana v1 guide](https://github.com/elsoul/erpc-sdk/blob/main/packages/typescript/docs/solana-v1.md).
 
-## Optional Mayan Swift v2 bridge
+## Optional Mayan Swift v2 bridge (introduced in 0.8.0)
 
-`MayanSwiftV2BridgeClient` is an explicit standalone adapter for the reviewed
+The `0.8.0` API's `MayanSwiftV2BridgeClient` is an explicit standalone adapter for the reviewed
 issued EURC routes between Ethereum mainnet and Solana mainnet. It does not
 attach to `ERPC::Client`, inherit eRPC credentials or headers, or make any
 request during construction. Configure the Mayan builder and Explorer
@@ -246,6 +249,8 @@ endpoints separately when needed:
 
 ```ruby
 bridge = ERPC::MayanSwiftV2BridgeClient.new(
+  builder_endpoint: "https://tx-builder.mayan.finance",
+  explorer_endpoint: "https://explorer-api.mayan.finance/v3",
   builder_api_key: ENV.fetch("MAYAN_BUILDER_API_KEY"),
   http_adapter: ERPC::NetHttpAdapter.new
 )
@@ -266,7 +271,11 @@ Ethereum allowance description; the SDK does not approve, sign, broadcast,
 submit, cancel, refund, or claim settlement verification. Provider source
 swaps use Mayan's disclosed internal USDC path (and Jupiter v6 for Solana
 source orders), so this optional adapter is separate from the SDK's configured
-RPC-only swap helpers. `BridgeError#code` provides stable secret-free errors.
+RPC-only swap helpers. The defaults are `https://tx-builder.mayan.finance` for
+quote/build and `https://explorer-api.mayan.finance/v3` for indexed status; set
+`builder_endpoint` and `explorer_endpoint` to customize them. The
+`builder_api_key` is a separate Mayan build-only key and is never an eRPC
+credential. `BridgeError#code` provides stable secret-free errors.
 
 ## Namespaces
 

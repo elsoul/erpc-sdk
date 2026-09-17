@@ -19,26 +19,27 @@
 
 With an eRPC API key, one client provides eRPC-backed access to Solana,
 Ethereum, Avalanche C/P/X-chain, price data, indexed data, leader and validator
-data, analytics, subscriptions, and account balance information. Selected direct
-RPC overrides in `main` and offline token, DEX/pool, and ranking catalog reads
-do not require an eRPC API key.
+data, analytics, subscriptions, and account balance information. Direct RPC
+overrides introduced in `0.8.0` and offline token, DEX/pool, and ranking catalog
+reads do not require an eRPC API key.
 
 ## Packages
 
-| Language | Package | Status |
+| Language | Package | Version availability |
 | --- | --- | --- |
-| TypeScript | [`@elsoul/erpc-sdk`](https://www.npmjs.com/package/@elsoul/erpc-sdk) | Published 0.7.0 |
-| Rust | [`erpc-sdk`](https://crates.io/crates/erpc-sdk) | Published 0.7.0 |
-| Python | [`erpc-sdk`](https://pypi.org/project/erpc-sdk/) | Published 0.7.0 |
-| Go | [`github.com/elsoul/erpc-sdk/packages/go`](https://pkg.go.dev/github.com/elsoul/erpc-sdk/packages/go) | Published 0.7.0 |
-| Ruby | [`erpc-sdk`](https://rubygems.org/gems/erpc-sdk) | Published 0.7.0 |
+| TypeScript | [`@elsoul/erpc-sdk`](https://www.npmjs.com/package/@elsoul/erpc-sdk) | `0.8.0` release line |
+| Rust | [`erpc-sdk`](https://crates.io/crates/erpc-sdk) | `0.8.0` release line |
+| Python | [`erpc-sdk`](https://pypi.org/project/erpc-sdk/) | `0.8.0` release line |
+| Go | [`github.com/elsoul/erpc-sdk/packages/go`](https://pkg.go.dev/github.com/elsoul/erpc-sdk/packages/go) | `0.8.0` release line |
+| Ruby | [`erpc-sdk`](https://rubygems.org/gems/erpc-sdk) | `0.8.0` release line |
 
-The current published package baseline and package manifests are `0.7.0` across
-all five SDKs. The [GitHub `v0.7.0` release](https://github.com/elsoul/erpc-sdk/releases/tag/v0.7.0)
-is the current release record.
-The bounded token, DEX, pool, ranking, and reviewed EVM RPC-only quote
-implementation is included in `0.7.0`. Direct RPC endpoint configuration is
-present in `main` but is not included in the published `0.7.0` packages.
+The package registries expose live version badges for [npm](https://img.shields.io/npm/v/%40elsoul%2Ferpc-sdk.svg), [crates.io](https://img.shields.io/crates/v/erpc-sdk.svg), [PyPI](https://img.shields.io/pypi/v/erpc-sdk.svg), [Go](https://pkg.go.dev/badge/github.com/elsoul/erpc-sdk/packages/go.svg), and [RubyGems](https://img.shields.io/gem/v/erpc-sdk.svg); the [latest GitHub release](https://github.com/elsoul/erpc-sdk/releases/latest) is the shared release record.
+
+The bounded token, DEX, pool, ranking, and reviewed EVM RPC-only quote APIs are
+the `0.7.0` history baseline. The direct RPC overrides, unsigned EVM swap
+preparation and simulation, and optional Mayan adapter are introduced in
+`0.8.0`; install those APIs only when `0.8.0` is shown by the package registry
+badge and the [latest GitHub release](https://github.com/elsoul/erpc-sdk/releases/latest).
 
 ## Install
 
@@ -69,7 +70,7 @@ python -m pip install erpc-sdk
 Go:
 
 ```bash
-go get github.com/elsoul/erpc-sdk/packages/go@v0.7.0
+go get github.com/elsoul/erpc-sdk/packages/go@v0.8.0
 ```
 
 Ruby:
@@ -85,21 +86,26 @@ versions are Rust 1.85, Python 3.11, Go 1.22, and Ruby 3.1.
 
 ## Availability
 
-| Capability | Published `0.7.0` | `main` source checkout |
+| Capability | `0.7.0` package | `0.8.0` package |
 | --- | --- | --- |
 | Offline token, DEX, and pool catalogs | Included | Included |
 | Offline token rankings | Included | Included; see canonical metadata |
 | Read-only reviewed EVM exact-input quotes (Ethereum Uniswap V2 and Avalanche LFJ legacy) | Included | Included |
-| Reviewed EVM exact-input preparation and RPC simulation | Not included | Source-only, unreleased |
-| Optional Mayan Swift v2 native EURC bridge | Not included | Source-only, unreleased; see the bridge registry and parity verifier |
-| Direct RPC overrides (`solanaRpc`, `ethereumRpc`, `avalancheCRpc`) | Not included | Main only, unreleased |
+| Caller-owned direct RPC overrides (`solanaRpc`, `ethereumRpc`, `avalancheCRpc`) | Not included | Introduced in `0.8.0`; requires `0.8.0` |
+| Reviewed EVM exact-input preparation and RPC simulation | Not included | Introduced in `0.8.0`; requires `0.8.0` |
+| Optional Mayan Swift v2 native EURC bridge | Not included | Introduced in `0.8.0`; requires `0.8.0` |
 | Solana CLMM quotes; multi-hop routing; SDK signing/sending | Future work | Future work |
+
+The `0.7.0` column records the published history baseline. The `0.8.0` column
+describes the version that introduced each API; live publication status follows
+the package registry badges and the [latest GitHub release](https://github.com/elsoul/erpc-sdk/releases/latest).
 
 ## Direct RPC endpoints
 
-The direct RPC configuration in `main` lets a caller route selected chain
-JSON-RPC traffic to a dedicated node without an eRPC API key. It is not included
-in the published `0.7.0` packages.
+The direct RPC configuration introduced in `0.8.0` lets a caller route selected
+chain JSON-RPC traffic to a dedicated node without an eRPC API key. A package
+consumer needs `0.8.0` for this API; source checkout examples remain available
+while release publication is being verified.
 
 | Config field | Direct namespace(s) |
 | --- | --- |
@@ -250,9 +256,9 @@ erpc.close()
 does not have a `.send()` step. Low-level JSON-RPC methods remain pending
 requests and still use `.send()`. The quote reads the configured EVM RPC and
 calculates locally from one block snapshot. Native-to-wrapped definitions are
-metadata only; no automatic wrapping is performed. The source checkout also
-contains reviewed unsigned preparation and RPC simulation for these two EVM
-routes; Solana CLMM quotes, multi-hop routing, SDK signing, and SDK sending
+metadata only; no automatic wrapping is performed. Reviewed unsigned
+preparation and RPC simulation for these two EVM routes are introduced in
+`0.8.0`; Solana CLMM quotes, multi-hop routing, SDK signing, and SDK sending
 remain future work. Low-level JSON-RPC methods remain available through the
 chain clients.
 
@@ -260,10 +266,10 @@ Only the reviewed seed pool/token tuples receive quote capability. Discovery
 can record new pool and token facts for review, but it does not enable new swap
 execution or bridge support.
 
-### Source-checkout swap preparation and simulation
+### Reviewed EVM swap preparation and simulation (introduced in 0.8.0)
 
-The unreleased source checkout adds `prepareExactInputSwap` and
-`simulateExactInputSwap` for both directions of the reviewed Ethereum Uniswap
+The `0.8.0` API adds `prepareExactInputSwap` and `simulateExactInputSwap` for
+both directions of the reviewed Ethereum Uniswap
 V2 WETH/USDC and Avalanche LFJ WAVAX/USDC tuples. A fresh configured-RPC quote
 drives local calldata construction, and the result is an unsigned neutral EVM
 envelope with an explicit allowance requirement. The SDK does not approve,
@@ -295,7 +301,7 @@ const preparationRequest = {
   sender: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
   recipient: '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
   slippageBps: 50,
-  deadline: '1890000000',
+  deadline: String(Math.floor(Date.now()/1000)+300),
 }
 const prepared = await executionClient.swap.prepareExactInputSwap(preparationRequest)
 const simulation = await executionClient.swap.simulateExactInputSwap(preparationRequest)
@@ -312,12 +318,14 @@ method names. The shared swap fixtures and parity verifier define the
 cross-language behavior contract; root's read-only preparation observations are
 recorded in the [swap execution evidence packet](registry/evidence/swap-execution-capabilities-2026-09-16.json).
 
-### Source-checkout Mayan Swift v2 bridge
+### Mayan Swift v2 bridge introduced in 0.8.0
 
-The unreleased source checkout also has a standalone,
-`createMayanSwiftV2BridgeClient` for native issued EURC between Ethereum and
-Solana. It exposes `quoteExactInput`, `buildUnsigned`, and `getStatus` for the
-two exact catalog directions. The adapter uses Mayan's hosted quote,
+The `0.8.0` API adds a standalone `createMayanSwiftV2BridgeClient` for native
+issued EURC between Ethereum and Solana. It exposes `quoteExactInput`,
+`buildUnsigned`, and `getStatus` for the two exact catalog directions. By
+default, quotes and builds use `https://tx-builder.mayan.finance` and indexed
+status uses `https://explorer-api.mayan.finance/v3`; set `builderEndpoint` and
+`explorerEndpoint` to customize those provider endpoints. The adapter uses Mayan's hosted quote,
 transaction-builder, source-swap, solver, relayer, Wormhole, and Explorer
 services. Its source-side USDC conversion and Solana-origin Jupiter v6
 dependency are visible in returned data. This is the explicit bridge-only
@@ -766,7 +774,7 @@ const erpc = createErpcClient({
 })
 ```
 
-`apiKey` is required for default eRPC connections. The source-only direct-node
+`apiKey` is required for default eRPC connections. The `0.8.0` direct-node
 settings above (`solanaRpc`, `ethereumRpc`, or `avalancheCRpc`) allow keyless
 selected RPC access; legacy `endpoint` and `avalancheEndpoint` remain eRPC base
 URLs, not full dedicated-node overrides. Default endpoints and timeout values

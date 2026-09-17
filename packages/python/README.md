@@ -31,10 +31,13 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-## Direct RPC endpoints
+## Direct RPC endpoints (introduced in 0.8.0)
 
-This section documents unreleased source-checkout work; direct RPC endpoint
-overrides are not included in the published 0.7.0 package.
+Caller-owned direct endpoint overrides were introduced in `0.8.0` and require
+that package when installed from a registry. The published `0.7.0` package
+does not include them; check the package version badge and the [latest GitHub
+release](https://github.com/elsoul/erpc-sdk/releases/latest) for live
+publication status.
 
 Supply a complete HTTP(S) request target for any chain. Its path and query are
 sent as provided, without adding an eRPC route or API-key parameter:
@@ -153,17 +156,21 @@ quote = await erpc.swap.quote_exact_input({
 print(quote["amountOut"])
 ```
 
-The first catalog release supports quotes for the Ethereum Uniswap V2 and
+The `0.7.0` catalog supports quotes for the Ethereum Uniswap V2 and
 Avalanche LFJ legacy constant-product pools. Solana Orca and Raydium records
 are available for lookup while their CLMM quote adapters are being added.
 Newly discovered pools remain available for lookup, monitoring, and rankings
 until a reviewed quote capability is admitted.
-The DEX catalog and swap exports are included in the published 0.7.0 package.
+The DEX catalog and swap exports are included in the published `0.7.0` package;
+unsigned EVM preparation and simulation below were introduced in `0.8.0` and
+require that package.
 
 The two reviewed EVM pools also support unsigned ERC-20 exact-input
 preparation and read-only RPC simulation:
 
 ```python
+import time
+
 request = {
     "chainId": DexChainIds.ETHEREUM_MAINNET,
     "poolDefinitionId": "pool-0001",
@@ -173,7 +180,7 @@ request = {
     "sender": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     "recipient": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
     "slippageBps": 50,
-    "deadline": "1789498800",
+    "deadline": str(int(time.time())+300),
 }
 
 prepared = await erpc.swap.prepare_exact_input_swap(request)
@@ -196,9 +203,9 @@ wallet_transaction = {
 The simulation result reports the canonical allowance and router amounts. The
 caller wallet controls allowance changes, signing, and broadcasting.
 
-## Optional Mayan Swift v2 bridge
+## Optional Mayan Swift v2 bridge (introduced in 0.8.0)
 
-The standalone bridge adapter covers the reviewed native EURC routes between
+The `0.8.0` API adds the standalone bridge adapter for the reviewed native EURC routes between
 Ethereum and Solana. It uses Mayan's configured quote, transaction-builder,
 source-swap, solver, relayer, Wormhole, and Explorer services; normal ERPC
 configuration, keys, and headers are never forwarded to those services.
@@ -207,7 +214,11 @@ configuration, keys, and headers are never forwarded to those services.
 from erpc_sdk import MayanSwiftV2BridgeConfig, create_mayan_swift_v2_bridge_client
 
 bridge = create_mayan_swift_v2_bridge_client(
-    MayanSwiftV2BridgeConfig(builder_api_key="provider-key")
+    MayanSwiftV2BridgeConfig(
+        builder_endpoint="https://tx-builder.mayan.finance",
+        explorer_endpoint="https://explorer-api.mayan.finance/v3",
+        builder_api_key="provider-key",
+    )
 )
 quote = (
     await bridge.quote_exact_input(
@@ -234,6 +245,12 @@ Builds are unsigned and structurally checked. The adapter does not sign,
 approve, broadcast, submit, cancel, refund, or locally verify provider
 signatures, transaction semantics, or settlement. Builds without a provider
 key require the explicit `allow_unauthenticated_build=True` configuration.
+The default builder endpoint is `https://tx-builder.mayan.finance` for
+quote/build and the default Explorer endpoint is
+`https://explorer-api.mayan.finance/v3` for indexed status; set
+`builder_endpoint` and `explorer_endpoint` to customize them. The
+`builder_api_key` is a separate Mayan build-only key and is never an ERPC
+credential.
 The optional adapter is an external cross-chain intent flow with a Mayan
 source-side USDC conversion, including Jupiter v6 for Solana-origin orders;
 it is separate from the RPC-only swap helpers.

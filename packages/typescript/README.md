@@ -37,10 +37,13 @@ erpc.close()
 JSON-RPC method calls return pending requests. Call `.send()` to perform the
 network request.
 
-## Direct RPC endpoints
+## Direct RPC endpoints (introduced in 0.8.0)
 
-The published `0.7.0` package predates this direct endpoint API; these examples
-describe the next unreleased source line.
+Caller-owned direct endpoint overrides were introduced in `0.8.0` and require
+that package when installed from a registry. The `0.7.0` package does not
+include this API; check the package version badge and the [latest GitHub
+release](https://github.com/elsoul/erpc-sdk/releases/latest) for live
+publication status.
 
 Use a caller-owned endpoint without an eRPC API key by supplying at least one
 chain override. The HTTP URL is the complete JSON-RPC request target, so its
@@ -151,8 +154,9 @@ chain-qualified aliases are bundled as generated data. These lookups are
 offline and use opaque IDs, so an Ethereum USDC address cannot be confused
 with an Avalanche or Solana deployment:
 
-The published package baseline is currently `0.7.0`, and it includes the
-reviewed DEX catalog and swap exports described below.
+The reviewed DEX catalog and swap exports were introduced in `0.7.0`.
+Unsigned EVM preparation and simulation below were introduced in `0.8.0` and
+require that package.
 
 ```ts
 import {
@@ -210,7 +214,7 @@ const request = {
   sender: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
   recipient: '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
   slippageBps: 50,
-  deadline: '1789498800',
+  deadline: String(Math.floor(Date.now()/1000)+300),
 }
 
 const prepared = await erpc.swap.prepareExactInputSwap(request)
@@ -235,9 +239,10 @@ amounts before asking the caller's wallet to manage allowance, signing, or
 broadcasting. The simulation call itself is read-only and uses only the
 configured RPC transport.
 
-## Optional Mayan Swift v2 bridge
+## Optional Mayan Swift v2 bridge (introduced in 0.8.0)
 
-The Mayan Swift v2 client is an explicit standalone adapter for the reviewed
+The `0.8.0` API adds the Mayan Swift v2 client as an explicit standalone adapter
+for the reviewed
 issued EURC routes between Ethereum and Solana. It is not attached to the
 default `ErpcClient`; construct it separately when the external provider and
 its solver, relayer, and explorer dependencies are acceptable:
@@ -249,6 +254,8 @@ import {
 } from '@elsoul/erpc-sdk'
 
 const mayan = createMayanSwiftV2BridgeClient({
+  builderEndpoint: 'https://tx-builder.mayan.finance',
+  explorerEndpoint: 'https://explorer-api.mayan.finance/v3',
   builderApiKey: 'provider-key',
 })
 const quotes = await mayan.quoteExactInput({
@@ -281,9 +288,13 @@ if (built.transaction.kind === 'evm-unsigned-transaction') {
 }
 ```
 
-`getStatus` reads Mayan's indexed status endpoint and reports the provider
-assertion as unverified local settlement state. `builderApiKey` is sent only
-to `/build`; quote and status calls do not receive it.
+`builderEndpoint` and `explorerEndpoint` default to
+`https://tx-builder.mayan.finance` and `https://explorer-api.mayan.finance/v3`;
+set them to caller-approved base URLs to customize the provider endpoints.
+`getStatus` reads the indexed status endpoint and reports the provider assertion
+as unverified local settlement state. `builderApiKey` is a separate Mayan
+build-only key sent only to `/build`; quote and status calls do not receive it,
+and no eRPC credential is forwarded.
 
 ## Namespaces
 

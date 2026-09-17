@@ -19,12 +19,14 @@ data source: it does not call an RPC, require an API key, or bundle a
 third-party token database. It does not claim to list every token, rank every
 asset, or provide a complete top-N list.
 
-The token, DEX, pool, quote, and ranking slices are implemented in the source
-checkout. A bounded local integration on 2026-09-16 populated the source
-snapshot; shipping remains planned for the unreleased `0.7.0` package. The
-current published package baseline, latest GitHub release, and package
-manifests remain `0.6.0`; current package installs do not include these
-source-checkout exports yet.
+The token, DEX, pool, quote, and ranking slices are recorded in the source
+artifacts. The published `0.7.0` release is the historical catalog and
+read-only quote baseline. Direct RPC overrides, unsigned EVM swap preparation
+and simulation, and the optional Mayan adapter are introduced in `0.8.0` and
+require that package when consumed from a registry. Check the package version
+badges in the [root README](../README.md) and the [latest GitHub
+release](https://github.com/elsoul/erpc-sdk/releases/latest) for live
+publication status.
 
 `token-catalog.json` is the canonical source. Its asset and deployment records retain `evidence` and `asOfDate` for source review. Generated SDK records contain the runtime fields below and omit per-record provenance; only the catalog-wide `asOfDate` and `contentDigest` are emitted as metadata.
 
