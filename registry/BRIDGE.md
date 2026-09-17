@@ -5,6 +5,8 @@ registry for native issued EURC and USDC between Ethereum mainnet and Solana
 mainnet. It is a provider integration record. It is not a CCTP burn/mint route,
 an RPC-only swap capability, a settlement guarantee, or an approval to move
 funds.
+The published `0.8.0` packages support the EURC directions; the native-USDC
+rows in this source checkout remain unreleased.
 
 The source is [`bridge-capabilities.json`](./bridge-capabilities.json), with
 strict shape rules in [`bridge-capabilities.schema.json`](./bridge-capabilities.schema.json)
@@ -92,12 +94,52 @@ explorer: https://explorer-api.mayan.finance/v3
 ```
 
 `X-API-Key` is allowed only on `POST /build`. It is never sent to `/quote` or
-the Explorer. Build without a configured provider key fails locally with
-`BRIDGE_PROVIDER_AUTH_REQUIRED` unless the caller explicitly opts into
-`allowUnauthenticatedBuild` for a custom no-auth builder. The adapter never
-reads a process environment variable, adds a query API key, retries, follows
-redirects, or forwards an eRPC authorization or cookie header. Externally
-owned HTTP clients remain open when the bridge client closes.
+the Explorer. By default, the SDK rejects a build without a configured provider
+key locally with `BRIDGE_PROVIDER_AUTH_REQUIRED`. The explicit
+`allowUnauthenticatedBuild: true` opt-in permits a keyless HTTP attempt at the
+configured endpoint, including the default endpoint; it does not change Mayan's
+provider authorization policy. The adapter never reads a process environment
+variable, adds a query API key, retries, follows redirects, or forwards an eRPC
+authorization or cookie header. Externally owned HTTP clients remain open when
+the bridge client closes.
+
+Mayan's [quote API key documentation](https://docs.mayan.finance/integration/quote-api#api-key)
+and the [pinned transaction-builder authentication section](https://github.com/mayan-finance/tx-builder/blob/e966f16a155cd9091b02ef5d9b91c3f837c228ad/README.md#authentication)
+describe the provider key as optional. A bounded recheck at
+`2026-09-17T11:27:34.223Z` observed HTTP 200 for four EURC/USDC quotes, zero
+network requests for four default builds, and one HTTP 401 `UNAUTHORIZED`
+response for each of four explicit anonymous `/build` attempts. This is a
+dated provider observation, not a universal key-required claim; no
+authenticated build or settlement evidence was captured.
+
+## Wallets, signing, and credentials
+
+The bridge client has no wallet, private-key, or signer API. It returns unsigned
+quote/build data and performs structural checks only. The application owns the
+external wallet or hardware signer, approval policy, chain selection, nonce and
+fee selection, transaction review, signing, and confirmation. Public
+`swapperAddress`, `from`, and `feePayer` values identify a transaction but do
+not grant signing authority.
+
+The responsibility boundary is:
+
+```text
+unsigned Mayan build -> external wallet/signer -> signed bytes -> configured ERPC RPC
+```
+
+For an Ethereum-source build, the caller signs the unsigned EVM envelope and
+broadcasts only the resulting serialized bytes through
+`erpc.ethereum.rpc.eth_sendRawTransaction(...).send()`. For a Solana-source
+build, the caller signs the returned v0 envelope, serializes it to base64, and
+broadcasts through the configured ERPC Solana `sendTransaction(...,
+{ encoding: "base64" }).send()` request. The RPC `.send()` call sends bytes; it
+does not sign them. An upstream `eth_signTransaction` method is likewise an
+upstream RPC operation and does not establish node-managed wallet access.
+
+`builderApiKey` is Mayan service authentication for `/build` only. It is
+separate from wallet keys and the ERPC API key, and it is never forwarded to
+quote, Explorer, or ERPC. See the [root wallets and signing guide](../README.md#wallets-and-signing)
+for the shared credential table and the initialized external-signer examples.
 
 ## Quote
 

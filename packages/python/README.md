@@ -203,6 +203,23 @@ wallet_transaction = {
 The simulation result reports the canonical allowance and router amounts. The
 caller wallet controls allowance changes, signing, and broadcasting.
 
+## Wallets and signing
+
+The Python SDK has no `wallet`, `private_key`, or `signer` configuration and
+never loads wallet keys or signs locally. `sender`, `from`, `swapperAddress`,
+and `feePayer` are public addresses; ERPC API keys, direct-RPC headers, and
+the Mayan `builder_api_key` authenticate services and are not signing keys.
+Swap preparation and `build_unsigned` return unsigned envelopes. The
+application-owned wallet or hardware signer signs them, then the caller sends
+serialized signed bytes through
+`erpc.ethereum.rpc.eth_send_raw_transaction(...).send()` or
+`erpc.solana.rpc.send_transaction(...).send()`. Approval policy, chain and
+fee selection, transaction review, and confirmation remain with the caller.
+
+See the [common wallets and signing guidance](https://github.com/elsoul/erpc-sdk/blob/main/README.md#wallets-and-signing)
+and the [TypeScript signing and broadcast guide](https://github.com/elsoul/erpc-sdk/blob/main/packages/typescript/docs/signing-and-broadcast.md)
+for initialized external-signer examples.
+
 ## Optional Mayan Swift v2 bridge (EURC in 0.8.0)
 
 The released `0.8.0` API includes the standalone bridge adapter for the reviewed
@@ -213,15 +230,14 @@ configuration, keys, and headers are never forwarded to those services.
 ```python
 from erpc_sdk import MayanSwiftV2BridgeConfig, create_mayan_swift_v2_bridge_client
 
-bridge = create_mayan_swift_v2_bridge_client(
+quote_bridge = create_mayan_swift_v2_bridge_client(
     MayanSwiftV2BridgeConfig(
         builder_endpoint="https://tx-builder.mayan.finance",
         explorer_endpoint="https://explorer-api.mayan.finance/v3",
-        builder_api_key="provider-key",
     )
 )
 quote = (
-    await bridge.quote_exact_input(
+    await quote_bridge.quote_exact_input(
         {
             "sourceChainId": "eip155:1",
             "destinationChainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
@@ -232,13 +248,23 @@ quote = (
         }
     )
 )[0]
-unsigned = await bridge.build_unsigned(
+await quote_bridge.close()
+
+build_bridge = create_mayan_swift_v2_bridge_client(
+    MayanSwiftV2BridgeConfig(
+        builder_endpoint="https://tx-builder.mayan.finance",
+        explorer_endpoint="https://explorer-api.mayan.finance/v3",
+        builder_api_key="provider-key",
+    )
+)
+unsigned = await build_bridge.build_unsigned(
     {
         "quote": quote,
         "swapperAddress": "0x2222222222222222222222222222222222222222",
         "destinationAddress": "So11111111111111111111111111111111111111112",
     }
 )
+await build_bridge.close()
 ```
 
 Builds are unsigned and structurally checked. The adapter does not sign,
@@ -250,7 +276,21 @@ quote/build and the default Explorer endpoint is
 `https://explorer-api.mayan.finance/v3` for indexed status; set
 `builder_endpoint` and `explorer_endpoint` to customize them. The
 `builder_api_key` is a separate Mayan build-only key and is never an ERPC
-credential.
+credential. Mayan's [official quote API documentation](https://docs.mayan.finance/integration/quote-api#api-key)
+and the pinned [transaction-builder authentication documentation](https://github.com/mayan-finance/tx-builder/blob/e966f16a155cd9091b02ef5d9b91c3f837c228ad/README.md#authentication)
+describe the provider key as optional. The Python SDK has a separate local
+guard: `build_unsigned` requires `builder_api_key` by default, while
+`allow_unauthenticated_build=True` explicitly permits a keyless HTTP attempt
+at the configured endpoint, including the default endpoint. That opt-in does
+not guarantee provider permission. Quote and Explorer calls do not receive
+the Mayan key or an ERPC credential.
+
+A bounded recheck at `2026-09-17T11:27:34Z` observed HTTP 200 for all four
+EURC/USDC quote directions. Default builds made no network call because the
+local guard stopped them; explicit anonymous builds reached `/build` and each
+returned HTTP 401 `UNAUTHORIZED`. The provider deployment revision was
+unknown, so this observation does not establish a universal or permanent key
+requirement. No authenticated build or settlement evidence was captured.
 
 Native USDC Ethereum mainnet and Solana mainnet directions are an unreleased
 source addition in this tree. They use direct Swift bridging with

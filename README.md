@@ -168,6 +168,71 @@ See the language-specific direct RPC guides for [TypeScript](packages/typescript
 [Rust](packages/rust/README.md), [Python](packages/python/README.md),
 [Go](packages/go/README.md), and [Ruby](packages/ruby/README.md).
 
+## Wallets and signing
+
+The ERPC client has no `wallet`, `privateKey`, or `signer` configuration. It
+does not import keys or sign locally. `sender`, `from`, `swapperAddress`, and
+`feePayer` are public transaction addresses; they do not grant signing
+authority. Browser and hardware-wallet integrations keep keys inside the
+external signer. There is no `walletSigner` API in this SDK.
+
+| Item | Owner and purpose | Where it is sent |
+| --- | --- | --- |
+| Wallet private key or signer | The application and its external wallet; signs only after the caller reviews the unsigned envelope | External wallet/signer only |
+| ERPC API key | Authentication for configured ERPC transports | ERPC only |
+| Direct-RPC headers | Headers explicitly configured for a direct RPC override | That caller-selected direct RPC endpoint only; no ERPC API key is inherited |
+| Mayan `builderApiKey` | Separate provider authentication for bridge builds | Mayan `/build` only; never quote, Explorer, or ERPC |
+| Public transaction addresses | Route and transaction metadata | The configured RPC or provider request as required |
+
+### External signing and ERPC broadcast
+
+The caller owns approval policy, chain selection, nonce and fee selection, fresh
+Solana blockhash handling, transaction review, signing, and confirmation. The
+SDK's `prepareExactInputSwap` and Mayan `buildUnsigned` operations return
+unsigned data. The handoff is:
+
+```text
+unsigned envelope -> external wallet/signer -> signed serialized bytes -> configured ERPC RPC
+```
+
+| Chain and unsigned source | Caller-supplied signed bytes | ERPC broadcast method |
+| --- | --- | --- |
+| EVM: `prepareExactInputSwap` or Mayan `buildUnsigned` | `0x`-prefixed signed transaction hex | `erpc.ethereum.rpc.eth_sendRawTransaction(signedHex).send()` |
+| Solana v0: Mayan `buildUnsigned` | Base64 serialized signed v0 transaction | `erpc.solana.rpc.sendTransaction(signedBase64, { encoding: 'base64' }).send()` |
+
+The external signer must be initialized by the application; no wallet signing
+helper is supplied by the ERPC SDK. The ERPC `.send()` call makes the RPC
+request and does not perform cryptographic signing. An
+`eth_signTransaction` call, when exposed by an upstream RPC, is also an upstream
+RPC operation and does not prove that the node manages a wallet. A sign-only
+integration is required when the caller must retain ERPC broadcast routing; a
+sign-and-send integration may use the wallet's own RPC instead.
+
+See the [TypeScript signing and broadcast guide](https://github.com/elsoul/erpc-sdk/blob/main/packages/typescript/docs/signing-and-broadcast.md)
+for fully initialized external-signer helpers and the language package guides for
+their corresponding unsigned envelopes. The optional `ethers` and
+`@solana/web3.js` examples are consumer integrations and are not ERPC runtime
+dependencies.
+
+### Mayan authentication layers
+
+Mayan authentication has three separate layers. Official Mayan quote and swap
+documentation says the provider key is optional, and the pinned transaction
+builder README also describes `x-api-key` as optional for quote/build:
+[Mayan API-key documentation](https://docs.mayan.finance/integration/quote-api#api-key)
+and [the pinned transaction-builder authentication section](https://github.com/mayan-finance/tx-builder/blob/e966f16a155cd9091b02ef5d9b91c3f837c228ad/README.md#authentication).
+
+| Layer | SDK/documented behavior | Bounded observation |
+| --- | --- | --- |
+| Official Mayan provider contract | Key optional according to the linked Mayan docs; provider policy can change | No universal key-required claim is made |
+| ERPC SDK local policy | Default `buildUnsigned` without `builderApiKey` fails locally; `allowUnauthenticatedBuild: true` permits a keyless HTTP attempt at the configured endpoint, including the default endpoint | Local default guard is separate from provider authorization |
+| Current hosted service check | Quotes remain keyless; provider build authorization is decided by Mayan | At `2026-09-17T11:27:34.223Z`, four EURC/USDC quotes returned HTTP 200, default builds made zero network requests, and explicit anonymous builds reached `/build` and returned HTTP 401 `UNAUTHORIZED`; no authenticated build or settlement evidence was captured |
+
+The published `0.8.0` bridge supports native EURC. The reviewed native-USDC
+source addition remains unreleased. `builderApiKey` is a Mayan service key and
+is separate from wallet keys and the ERPC API key; it is sent only to Mayan
+`/build`.
+
 ## Offline token catalog
 
 The published `0.7.0` packages include a bounded, source-backed token catalog
@@ -343,12 +408,11 @@ published. The runnable example below therefore uses the current EURC API.
 ```ts
 import { createMayanSwiftV2BridgeClient, TOKEN_CHAIN_IDS } from '@elsoul/erpc-sdk'
 
-const mayan = createMayanSwiftV2BridgeClient({
+const mayanQuoteClient = createMayanSwiftV2BridgeClient({
   builderEndpoint: 'https://tx-builder.mayan.finance',
   explorerEndpoint: 'https://explorer-api.mayan.finance/v3',
-  builderApiKey: mayanBuilderApiKey, // a separate Mayan build key
 })
-const quotes = await mayan.quoteExactInput({
+const quotes = await mayanQuoteClient.quoteExactInput({
   sourceChainId: TOKEN_CHAIN_IDS.ethereumMainnet,
   destinationChainId: TOKEN_CHAIN_IDS.solanaMainnet,
   sourceTokenDeploymentId: 'deployment-0011',
@@ -356,22 +420,34 @@ const quotes = await mayan.quoteExactInput({
   amountIn: '1000000',
   slippageBps: 50,
 })
-const built = await mayan.buildUnsigned({
+mayanQuoteClient.close()
+const mayanBuilderApiKey = process.env.MAYAN_BUILDER_API_KEY
+if (!mayanBuilderApiKey) throw new Error('MAYAN_BUILDER_API_KEY is required for a keyed build')
+const mayanBuildClient = createMayanSwiftV2BridgeClient({
+  builderEndpoint: 'https://tx-builder.mayan.finance',
+  explorerEndpoint: 'https://explorer-api.mayan.finance/v3',
+  builderApiKey: mayanBuilderApiKey,
+})
+const built = await mayanBuildClient.buildUnsigned({
   quote: quotes[0],
   swapperAddress: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
   destinationAddress: 'So11111111111111111111111111111111111111112',
 })
-const status = await mayan.getStatus({
+const sourceTransactionHash = process.env.MAYAN_SOURCE_TRANSACTION_HASH
+if (!sourceTransactionHash) throw new Error('MAYAN_SOURCE_TRANSACTION_HASH is required for status')
+const status = await mayanBuildClient.getStatus({
   sourceChainId: TOKEN_CHAIN_IDS.ethereumMainnet,
   sourceTransactionHash: sourceTransactionHash,
 })
 console.log({ built, status })
-mayan.close()
+mayanBuildClient.close()
 ```
 
 `builderApiKey` is sent only to `/build`; quote and status calls work without
-it and never receive an eRPC key or ambient credentials. A custom no-auth
-builder requires the explicit `allowUnauthenticatedBuild` opt-in. Provider
+it and never receive an eRPC key or ambient credentials. A keyless build
+attempt at any configured endpoint, including the default endpoint, requires
+the explicit `allowUnauthenticatedBuild` opt-in; this does not override Mayan's
+provider authorization policy. Provider
 signatures, transaction semantics, and settlement are structurally checked and
 remain locally unverified. The returned transaction is unsigned; the consumer
 wallet decides whether to approve, sign, and send. Do not vendor or self-host
