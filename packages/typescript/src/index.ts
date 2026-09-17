@@ -51,14 +51,33 @@ export {
   type ErpcSolanaClient,
 } from './client'
 export {
+  SwapExecutionError,
+  SWAP_EXECUTION_ERROR_MESSAGES,
   SwapQuoteError,
   SWAP_QUOTE_ERROR_MESSAGES,
   type ExactInputQuoteRequest,
   type ExactInputQuoteResult,
+  type ExactInputSwapRequest,
+  type ExactInputSwapPathEntry,
+  type ExactInputSwapPreparation,
+  type ExactInputSwapSimulation,
+  type PrepareExactInputSwapRequest,
+  type PrepareExactInputSwapResult,
+  type SimulateExactInputSwapResult,
+  type SwapPreparation,
+  type SwapSimulation,
   type SwapClient,
   type SwapFreshness,
+  type SwapExecutionErrorCode,
   type SwapQuoteErrorCode,
 } from './swap'
+export {
+  SWAP_EXECUTION_CAPABILITIES_AS_OF_DATE,
+  SWAP_EXECUTION_CAPABILITIES_CONTENT_DIGEST,
+  SWAP_EXECUTION_CAPABILITIES_JSON,
+  SWAP_EXECUTION_FUNCTION_SELECTOR,
+  SWAP_EXECUTION_FUNCTION_SIGNATURE,
+} from './generated/swap_execution_capabilities'
 export {
   DEX_ALIASES,
   DEX_CATALOG_AS_OF_DATE,
@@ -91,6 +110,36 @@ export {
   type ErpcCloudClientConfig,
   type ErpcCloudRequestOptions,
 } from './cloud'
+export {
+  BridgeError,
+  BRIDGE_ERROR_MESSAGES,
+  createMayanSwiftV2BridgeClient,
+  MayanSwiftV2BridgeClient,
+  type BridgeErrorCode,
+  type BridgeClient,
+  type BridgeRequestOptions,
+  type MayanEvmUnsignedTransaction,
+  type MayanSolanaUnsignedTransaction,
+  type MayanSwiftV2BridgeConfig,
+  type MayanSwiftV2Build,
+  type MayanSwiftV2BuildRequest,
+  type MayanSwiftV2BuildUnsignedRequest,
+  type MayanSwiftV2BuildResult,
+  type MayanSwiftV2BuildValidation,
+  type MayanSwiftV2Quote,
+  type MayanSwiftV2QuoteRequest,
+  type MayanSwiftV2QuoteResult,
+  type MayanSwiftV2SourceSwap,
+  type MayanSwiftV2Status,
+  type MayanSwiftV2StatusRequest,
+  type MayanSwiftV2StatusResult,
+  type MayanSwiftV2UnsignedTransaction,
+} from './bridge'
+export {
+  BRIDGE_CAPABILITIES_AS_OF_DATE,
+  BRIDGE_CAPABILITIES_CONTENT_DIGEST,
+  BRIDGE_CAPABILITIES_JSON,
+} from './generated/bridge_capabilities'
 export {
   DEFAULT_ACCOUNT_ENDPOINT,
   DEFAULT_AVALANCHE_ENDPOINT,

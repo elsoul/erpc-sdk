@@ -90,8 +90,10 @@ versions are Rust 1.85, Python 3.11, Go 1.22, and Ruby 3.1.
 | Offline token, DEX, and pool catalogs | Included | Included |
 | Offline token rankings | Included | Included; see canonical metadata |
 | Read-only reviewed EVM exact-input quotes (Ethereum Uniswap V2 and Avalanche LFJ legacy) | Included | Included |
+| Reviewed EVM exact-input preparation and RPC simulation | Not included | Source-only, unreleased |
+| Optional Mayan Swift v2 native EURC bridge | Not included | Source-only, unreleased; see the bridge registry and parity verifier |
 | Direct RPC overrides (`solanaRpc`, `ethereumRpc`, `avalancheCRpc`) | Not included | Main only, unreleased |
-| Solana CLMM quotes; high-level swap route/build/sign/send and bridge workflows | Future work | Future work |
+| Solana CLMM quotes; multi-hop routing; SDK signing/sending | Future work | Future work |
 
 ## Direct RPC endpoints
 
@@ -248,14 +250,121 @@ erpc.close()
 does not have a `.send()` step. Low-level JSON-RPC methods remain pending
 requests and still use `.send()`. The quote reads the configured EVM RPC and
 calculates locally from one block snapshot. Native-to-wrapped definitions are
-metadata only; no automatic wrapping is performed. High-level swap route
-selection, transaction building, signing, simulation, and sending, plus
-bridging and Solana CLMM quotes, remain future work. Low-level JSON-RPC methods
-remain available through the chain clients.
+metadata only; no automatic wrapping is performed. The source checkout also
+contains reviewed unsigned preparation and RPC simulation for these two EVM
+routes; Solana CLMM quotes, multi-hop routing, SDK signing, and SDK sending
+remain future work. Low-level JSON-RPC methods remain available through the
+chain clients.
 
 Only the reviewed seed pool/token tuples receive quote capability. Discovery
 can record new pool and token facts for review, but it does not enable new swap
 execution or bridge support.
+
+### Source-checkout swap preparation and simulation
+
+The unreleased source checkout adds `prepareExactInputSwap` and
+`simulateExactInputSwap` for both directions of the reviewed Ethereum Uniswap
+V2 WETH/USDC and Avalanche LFJ WAVAX/USDC tuples. A fresh configured-RPC quote
+drives local calldata construction, and the result is an unsigned neutral EVM
+envelope with an explicit allowance requirement. The SDK does not approve,
+sign, or send it; it does not wrap native assets, execute Solana CLMM routes,
+or select a multi-hop route.
+
+Use separate client instances when read and execution preparation should use
+different dedicated RPC endpoints:
+
+```ts
+const readClient = createErpcClient({
+  ethereumRpc: { httpUrl: 'https://read-node.example/rpc' },
+})
+const executionClient = createErpcClient({
+  ethereumRpc: { httpUrl: 'https://execution-node.example/rpc' },
+})
+
+const quoteRequest = {
+  chainId: DEX_CHAIN_IDS.ethereum,
+  poolDefinitionId: pools.ethereum.UNISWAP_V2_USDC_WETH,
+  inputTokenDeploymentId: tokens.ethereum.WETH,
+  outputTokenDeploymentId: tokens.ethereum.USDC,
+  amountIn: '1000000000000000000',
+}
+const quote = await readClient.swap.quoteExactInput(quoteRequest)
+
+const preparationRequest = {
+  ...quoteRequest,
+  sender: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+  recipient: '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+  slippageBps: 50,
+  deadline: '1890000000',
+}
+const prepared = await executionClient.swap.prepareExactInputSwap(preparationRequest)
+const simulation = await executionClient.swap.simulateExactInputSwap(preparationRequest)
+console.log({ quote, prepared, simulation })
+readClient.close()
+executionClient.close()
+```
+
+Simulation is read-only and can fail when the caller's wallet has no balance or
+allowance. The caller's wallet owns allowance changes, fee and nonce fields,
+signing, and broadcasting. See the [DEX and pool registry](registry/DEX.md)
+for the reviewed bindings and the five package guides for language-specific
+method names. The shared swap fixtures and parity verifier define the
+cross-language behavior contract; root's read-only preparation observations are
+recorded in the [swap execution evidence packet](registry/evidence/swap-execution-capabilities-2026-09-16.json).
+
+### Source-checkout Mayan Swift v2 bridge
+
+The unreleased source checkout also has a standalone,
+`createMayanSwiftV2BridgeClient` for native issued EURC between Ethereum and
+Solana. It exposes `quoteExactInput`, `buildUnsigned`, and `getStatus` for the
+two exact catalog directions. The adapter uses Mayan's hosted quote,
+transaction-builder, source-swap, solver, relayer, Wormhole, and Explorer
+services. Its source-side USDC conversion and Solana-origin Jupiter v6
+dependency are visible in returned data. This is the explicit bridge-only
+external-provider exception; normal SDK swaps remain configured RPC and local
+calculation.
+
+```ts
+import { createMayanSwiftV2BridgeClient, TOKEN_CHAIN_IDS } from '@elsoul/erpc-sdk'
+
+const mayan = createMayanSwiftV2BridgeClient({
+  builderEndpoint: 'https://tx-builder.mayan.finance',
+  explorerEndpoint: 'https://explorer-api.mayan.finance/v3',
+  builderApiKey: mayanBuilderApiKey, // a separate Mayan build key
+})
+const quotes = await mayan.quoteExactInput({
+  sourceChainId: TOKEN_CHAIN_IDS.ethereumMainnet,
+  destinationChainId: TOKEN_CHAIN_IDS.solanaMainnet,
+  sourceTokenDeploymentId: 'deployment-0011',
+  destinationTokenDeploymentId: 'deployment-0013',
+  amountIn: '1000000',
+  slippageBps: 50,
+})
+const built = await mayan.buildUnsigned({
+  quote: quotes[0],
+  swapperAddress: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+  destinationAddress: 'So11111111111111111111111111111111111111112',
+})
+const status = await mayan.getStatus({
+  sourceChainId: TOKEN_CHAIN_IDS.ethereumMainnet,
+  sourceTransactionHash: sourceTransactionHash,
+})
+console.log({ built, status })
+mayan.close()
+```
+
+`builderApiKey` is sent only to `/build`; quote and status calls work without
+it and never receive an eRPC key or ambient credentials. A custom no-auth
+builder requires the explicit `allowUnauthenticatedBuild` opt-in. Provider
+signatures, transaction semantics, and settlement are structurally checked and
+remain locally unverified. The returned transaction is unsigned; the consumer
+wallet decides whether to approve, sign, and send. Do not vendor or self-host
+the upstream transaction-builder repository, whose licensing is unresolved.
+See the [bridge registry](registry/BRIDGE.md) and the package guides for
+language-specific constructors and error names. Cross-language bridge behavior
+is captured by the [shared fixture registry](registry/fixtures/mayan-swift-v2-cases.json)
+and [parity verifier](registry/verify-bridge-parity.mjs); CI and independent
+review records remain the source of gate status.
 
 ## Offline token rankings
 
@@ -436,13 +545,19 @@ const programs = await erpc.solana.analytics
 
 ## Solana transaction v1
 
-For Solana transaction v1, pass `maxSupportedTransactionVersion: 1` when the
-caller supports v1, and pass a serialized payload with `encoding: 'base64'`
+Solana v1 and its 4096-byte transaction-size support were activated on the
+network on 2026-09-15; v0 and legacy transactions remain unchanged. See the
+[official larger transaction sizes note](https://solana.com/upgrades/larger-transaction-sizes).
+For generic RPC pass-through, pass `maxSupportedTransactionVersion: 1` when
+the caller supports v1, and pass a serialized payload with `encoding: 'base64'`
 when sending or simulating a larger transaction. The SDK forwards these
 options and payloads unchanged; the caller supplies the signed transaction,
 and the SDK does not build, sign, or decode it. A server JSON-RPC error such as
 `-32015` remains an `ErpcJsonRpcError` with its numeric code and optional data
-preserved. See the [Solana transaction v1 guide](packages/typescript/docs/solana-v1.md).
+preserved. The Mayan bridge adapter has a separate provider envelope contract:
+it accepts only v0 framing at or below 1232 bytes and rejects v1 until a
+provider-specific v1 contract is reviewed. See the [Solana transaction v1
+guide](packages/typescript/docs/solana-v1.md).
 
 ```ts
 const transaction = await erpc.solana.rpc
@@ -688,6 +803,7 @@ enter shell history. Never commit credentials.
 
 - [Method availability](docs/METHODS.md)
 - [DEX and pool catalog](registry/DEX.md)
+- [Bridge capability registry](registry/BRIDGE.md)
 - [Registry roadmap](registry/ROADMAP.md)
 - [Maintenance runbook](registry/weekly-maintenance.md)
 - [Solana transaction v1 guide](packages/typescript/docs/solana-v1.md)

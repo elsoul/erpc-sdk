@@ -3,6 +3,8 @@ package erpc
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"math"
 	"math/big"
 	"regexp"
 	"strings"
@@ -88,6 +90,62 @@ func SwapQuoteErrorMessage(code SwapQuoteErrorCode) string {
 	return swapQuoteMessages[code]
 }
 
+// SwapExecutionErrorCode is a stable local validation code for unsigned swap
+// preparation and RPC simulation. Existing quote, transport, timeout,
+// cancellation, and non-revert JSON-RPC errors retain their native behavior.
+type SwapExecutionErrorCode string
+
+const (
+	SwapExecutionInvalidArgument       SwapExecutionErrorCode = "SWAP_EXECUTION_INVALID_ARGUMENT"
+	SwapExecutionUnsupported           SwapExecutionErrorCode = "SWAP_UNSUPPORTED_EXECUTION"
+	SwapExecutionProgramMismatch       SwapExecutionErrorCode = "SWAP_PROGRAM_MISMATCH"
+	SwapExecutionInsufficientAllowance SwapExecutionErrorCode = "SWAP_INSUFFICIENT_ALLOWANCE"
+	SwapExecutionSimulationReverted    SwapExecutionErrorCode = "SWAP_SIMULATION_REVERTED"
+	SwapExecutionInvalidSimulation     SwapExecutionErrorCode = "SWAP_INVALID_SIMULATION"
+	SwapExecutionUnsupportedExecution  SwapExecutionErrorCode = SwapExecutionUnsupported
+
+	// The prefixed spellings are convenient when code shares identifiers with
+	// the other SDK languages or a wire-level error map.
+	SWAP_EXECUTION_INVALID_ARGUMENT = SwapExecutionInvalidArgument
+	SWAP_UNSUPPORTED_EXECUTION      = SwapExecutionUnsupported
+	SWAP_EXECUTION_PROGRAM_MISMATCH = SwapExecutionProgramMismatch
+	SWAP_INSUFFICIENT_ALLOWANCE     = SwapExecutionInsufficientAllowance
+	SWAP_SIMULATION_REVERTED        = SwapExecutionSimulationReverted
+	SWAP_INVALID_SIMULATION         = SwapExecutionInvalidSimulation
+)
+
+var swapExecutionMessages = map[SwapExecutionErrorCode]string{
+	SwapExecutionInvalidArgument:       "Swap execution request is invalid",
+	SwapExecutionUnsupported:           "Swap execution is unsupported for the selected records",
+	SwapExecutionProgramMismatch:       "Swap program does not match the selected records",
+	SwapExecutionInsufficientAllowance: "Swap allowance is insufficient",
+	SwapExecutionSimulationReverted:    "Swap simulation reverted",
+	SwapExecutionInvalidSimulation:     "Swap simulation result is invalid",
+}
+
+// SwapExecutionError is a deterministic local error produced by execution
+// preflight or simulation validation. Quote-domain errors are returned as the
+// existing *SwapQuoteError so callers retain their source-compatible type.
+type SwapExecutionError struct {
+	Code SwapExecutionErrorCode
+}
+
+func (e *SwapExecutionError) Error() string {
+	if e == nil {
+		return "erpc: swap execution failed"
+	}
+	if message, ok := swapExecutionMessages[e.Code]; ok {
+		return message
+	}
+	return "Swap execution failed"
+}
+
+// SwapExecutionErrorMessage returns the fixed safe message for an execution
+// code.
+func SwapExecutionErrorMessage(code SwapExecutionErrorCode) string {
+	return swapExecutionMessages[code]
+}
+
 // SwapFreshness controls the age and block-distance bounds for one quote.
 // A nil field uses the SDK default. Pointers distinguish an explicit zero
 // bound from an omitted field.
@@ -106,6 +164,98 @@ type ExactInputQuoteRequest struct {
 	AmountIn                string         `json:"amountIn"`
 	Freshness               *SwapFreshness `json:"freshness,omitempty"`
 }
+
+// PrepareExactInputSwapRequest selects a reviewed ERC20-to-ERC20 execution
+// capability and its caller-owned execution scalars. SlippageBps is kept as
+// an interface so native fixture and JSON callers can be rejected at runtime
+// for boolean or fractional values; integer Go values in the 0..9999 range
+// are accepted.
+type PrepareExactInputSwapRequest struct {
+	ChainID                 string         `json:"chainId"`
+	PoolDefinitionID        string         `json:"poolDefinitionId"`
+	InputTokenDeploymentID  string         `json:"inputTokenDeploymentId"`
+	OutputTokenDeploymentID string         `json:"outputTokenDeploymentId"`
+	AmountIn                string         `json:"amountIn"`
+	Freshness               *SwapFreshness `json:"freshness,omitempty"`
+	Sender                  string         `json:"sender"`
+	Recipient               string         `json:"recipient"`
+	SlippageBps             any            `json:"slippageBps"`
+	Deadline                string         `json:"deadline"`
+}
+
+// ExactInputSwapRequest is an alias for the execution request type.
+type ExactInputSwapRequest = PrepareExactInputSwapRequest
+
+// SwapPathEntry identifies one ERC20 token in the exact-input path.
+type SwapPathEntry struct {
+	TokenDeploymentID  string                  `json:"tokenDeploymentId"`
+	Address            string                  `json:"address"`
+	Standard           string                  `json:"standard"`
+	RepresentationKind TokenRepresentationKind `json:"representationKind"`
+}
+
+// ExactInputSwapPathEntry is an alias for SwapPathEntry.
+type ExactInputSwapPathEntry = SwapPathEntry
+
+// EvmUnsignedTransaction is a chain-bound unsigned transaction envelope.
+// It is intended for caller wallet conversion; the SDK never signs or sends
+// this value.
+type EvmUnsignedTransaction struct {
+	Kind    string `json:"kind"`
+	ChainID string `json:"chainId"`
+	From    string `json:"from"`
+	To      string `json:"to"`
+	Data    string `json:"data"`
+	Value   string `json:"value"`
+}
+
+// SwapAllowance describes the allowance required by a prepared swap. The
+// caller controls any allowance transaction and policy.
+type SwapAllowance struct {
+	TokenDeploymentID string `json:"tokenDeploymentId"`
+	TokenAddress      string `json:"tokenAddress"`
+	Owner             string `json:"owner"`
+	Spender           string `json:"spender"`
+	RequiredAmount    string `json:"requiredAmount"`
+}
+
+// ExactInputSwapPreparation is an unsigned ERC20-to-ERC20 router
+// preparation built from a fresh quote and reviewed execution capability.
+type ExactInputSwapPreparation struct {
+	PreparationKind           string                    `json:"preparationKind"`
+	ExecutionCapabilityID     string                    `json:"executionCapabilityId"`
+	ExecutionCapabilityDigest string                    `json:"executionCapabilityDigest"`
+	Quote                     ExactInputQuoteResult     `json:"quote"`
+	MinimumAmountOut          string                    `json:"minimumAmountOut"`
+	SlippageBps               uint64                    `json:"slippageBps"`
+	Deadline                  string                    `json:"deadline"`
+	Recipient                 string                    `json:"recipient"`
+	Path                      []ExactInputSwapPathEntry `json:"path"`
+	Transaction               EvmUnsignedTransaction    `json:"transaction"`
+	Allowance                 SwapAllowance             `json:"allowance"`
+}
+
+// PrepareExactInputSwapResult is an alias for the preparation result.
+type PrepareExactInputSwapResult = ExactInputSwapPreparation
+
+// SwapPreparation is an alias for callers preferring a shorter result name.
+type SwapPreparation = ExactInputSwapPreparation
+
+// ExactInputSwapSimulation is the result of a successful router simulation.
+type ExactInputSwapSimulation struct {
+	SimulationKind   string                    `json:"simulationKind"`
+	Preparation      ExactInputSwapPreparation `json:"preparation"`
+	Snapshot         EvmBlockSnapshot          `json:"snapshot"`
+	CurrentAllowance string                    `json:"currentAllowance"`
+	Amounts          []string                  `json:"amounts"`
+	AmountOut        string                    `json:"amountOut"`
+}
+
+// SimulateExactInputSwapResult is an alias for the simulation result.
+type SimulateExactInputSwapResult = ExactInputSwapSimulation
+
+// SwapSimulation is an alias for callers preferring a shorter result name.
+type SwapSimulation = ExactInputSwapSimulation
 
 // SwapQuoteRequest is an alias for the exact-input request type.
 type SwapQuoteRequest = ExactInputQuoteRequest
@@ -159,6 +309,48 @@ type normalizedSwapRequest struct {
 	dex                     DexDeployment
 	input                   TokenDeployment
 	output                  TokenDeployment
+}
+
+type normalizedExecutionRequest struct {
+	normalized    normalizedSwapRequest
+	sender        string
+	recipient     string
+	slippageBps   uint64
+	deadline      string
+	deadlineValue *big.Int
+}
+
+type swapExecutionCapability struct {
+	SwapExecutionCapabilityID      string `json:"swapExecutionCapabilityId"`
+	ChainID                        string `json:"chainId"`
+	DexDeploymentID                string `json:"dexDeploymentId"`
+	PoolDefinitionID               string `json:"poolDefinitionId"`
+	FactoryAddress                 string `json:"factoryAddress"`
+	RouterAddress                  string `json:"routerAddress"`
+	RouterKind                     string `json:"routerKind"`
+	AdapterKind                    string `json:"adapterKind"`
+	Token0DeploymentID             string `json:"token0DeploymentId"`
+	Token0Address                  string `json:"token0Address"`
+	Token0Standard                 string `json:"token0Standard"`
+	Token1DeploymentID             string `json:"token1DeploymentId"`
+	Token1Address                  string `json:"token1Address"`
+	Token1Standard                 string `json:"token1Standard"`
+	WrappedNativeTokenDeploymentID string `json:"wrappedNativeTokenDeploymentId"`
+	WrappedNativeTokenAddress      string `json:"wrappedNativeTokenAddress"`
+	WrappedNativeFunctionSelector  string `json:"wrappedNativeFunctionSelector"`
+	FunctionKind                   string `json:"functionKind"`
+	FunctionSignature              string `json:"functionSignature"`
+	FunctionSelector               string `json:"functionSelector"`
+	Status                         string `json:"status"`
+}
+
+type preparedExecutionContext struct {
+	normalized  normalizedExecutionRequest
+	capability  swapExecutionCapability
+	transport   *httpRPCTransport
+	state       evmSwapState
+	quote       ExactInputQuoteResult
+	preparation ExactInputSwapPreparation
 }
 
 type swapHeader struct {
@@ -247,11 +439,14 @@ var (
 )
 
 const (
-	factoryGetPairSelector  = "0xe6a43905"
-	pairFactorySelector     = "0xc45a0155"
-	pairToken0Selector      = "0x0dfe1681"
-	pairToken1Selector      = "0xd21220a7"
-	pairGetReservesSelector = "0x0902f1ac"
+	factoryGetPairSelector      = "0xe6a43905"
+	pairFactorySelector         = "0xc45a0155"
+	pairToken0Selector          = "0x0dfe1681"
+	pairToken1Selector          = "0xd21220a7"
+	pairGetReservesSelector     = "0x0902f1ac"
+	routerFactorySelector       = "0xc45a0155"
+	routerGetAmountsOutSelector = "0xd06ca61f"
+	erc20AllowanceSelector      = "0xdd62ed3e"
 )
 
 // SwapClient provides configured RPC-backed quote methods.
@@ -881,4 +1076,722 @@ func encodeSwapAddressArgument(address string) (string, bool) {
 		return "", false
 	}
 	return strings.Repeat("0", 24) + strings.ToLower(address[2:]), true
+}
+
+// PrepareExactInputSwap prepares unsigned ERC20-to-ERC20 router calldata from
+// a fresh quote and the configured chain RPC. It never signs, broadcasts, or
+// changes allowance state.
+func (s *SwapClient) PrepareExactInputSwap(ctx context.Context, request PrepareExactInputSwapRequest) (ExactInputSwapPreparation, error) {
+	execution, err := normalizeExecutionRequest(request, s.currentClockSeconds)
+	if err != nil {
+		return ExactInputSwapPreparation{}, err
+	}
+	capability, err := executionCapabilityFor(execution)
+	if err != nil {
+		return ExactInputSwapPreparation{}, err
+	}
+	transport, err := s.executionTransportFor(execution.normalized)
+	if err != nil {
+		return ExactInputSwapPreparation{}, err
+	}
+	prepared, err := s.prepareExecutionContext(ctx, execution, capability, transport)
+	if err != nil {
+		return ExactInputSwapPreparation{}, err
+	}
+	return prepared.preparation, nil
+}
+
+// SimulateExactInputSwap prepares and simulates an unsigned ERC20-to-ERC20
+// router call through the configured chain RPC. A successful result means the
+// final RPC call returned valid ABI amounts; it does not sign or send a
+// transaction and does not imply wallet balance beyond the allowance check.
+func (s *SwapClient) SimulateExactInputSwap(ctx context.Context, request PrepareExactInputSwapRequest) (ExactInputSwapSimulation, error) {
+	execution, err := normalizeExecutionRequest(request, s.currentClockSeconds)
+	if err != nil {
+		return ExactInputSwapSimulation{}, err
+	}
+	capability, err := executionCapabilityFor(execution)
+	if err != nil {
+		return ExactInputSwapSimulation{}, err
+	}
+	transport, err := s.executionTransportFor(execution.normalized)
+	if err != nil {
+		return ExactInputSwapSimulation{}, err
+	}
+	prepared, err := s.prepareExecutionContext(ctx, execution, capability, transport)
+	if err != nil {
+		return ExactInputSwapSimulation{}, err
+	}
+
+	selector := map[string]any{"blockHash": prepared.state.initial.hash, "requireCanonical": true}
+	allowanceData := erc20AllowanceSelector
+	ownerWord, ok := encodeSwapAddressArgument(execution.sender)
+	if !ok {
+		return ExactInputSwapSimulation{}, executionDomainError(SwapExecutionInvalidArgument)
+	}
+	spenderWord, ok := encodeSwapAddressArgument(capability.RouterAddress)
+	if !ok {
+		return ExactInputSwapSimulation{}, executionDomainError(SwapExecutionInvalidSimulation)
+	}
+	allowanceData += ownerWord + spenderWord
+	allowanceRaw, err := s.rpcRaw(ctx, transport, "eth_call", []any{
+		map[string]string{"to": prepared.preparation.allowanceTokenAddress(), "data": allowanceData},
+		selector,
+	})
+	if err != nil {
+		return ExactInputSwapSimulation{}, err
+	}
+	currentAllowance, err := parseExecutionUintWord(allowanceRaw, SwapExecutionInsufficientAllowance)
+	if err != nil {
+		return ExactInputSwapSimulation{}, err
+	}
+	if currentAllowance.Cmp(execution.normalized.amountIn) < 0 {
+		return ExactInputSwapSimulation{}, executionDomainError(SwapExecutionInsufficientAllowance)
+	}
+
+	simulationRaw, err := s.rpcRaw(ctx, transport, "eth_call", []any{
+		map[string]string{
+			"from":  prepared.preparation.Transaction.From,
+			"to":    prepared.preparation.Transaction.To,
+			"data":  prepared.preparation.Transaction.Data,
+			"value": "0x0",
+		},
+		selector,
+	})
+	if err != nil {
+		if isRecognizedExecutionRevert(err) {
+			return ExactInputSwapSimulation{}, executionDomainError(SwapExecutionSimulationReverted)
+		}
+		return ExactInputSwapSimulation{}, err
+	}
+
+	latestRaw, err := s.rpcRaw(ctx, transport, "eth_getBlockByNumber", []any{"latest", false})
+	if err != nil {
+		return ExactInputSwapSimulation{}, err
+	}
+	latest, err := parseSwapHeader(latestRaw)
+	if err != nil {
+		return ExactInputSwapSimulation{}, err
+	}
+	if err := s.assertFreshness(evmSwapState{initial: prepared.state.initial, latestAfterReads: latest}, execution.normalized.freshness); err != nil {
+		return ExactInputSwapSimulation{}, err
+	}
+
+	amounts, err := parseExecutionUintArrayOfTwo(simulationRaw)
+	if err != nil {
+		return ExactInputSwapSimulation{}, err
+	}
+	quoteAmountOut, err := parseSwapDecimalQuantity(&prepared.quote.AmountOut, SwapQuoteArithmetic)
+	if err != nil {
+		return ExactInputSwapSimulation{}, err
+	}
+	minimumAmountOut, err := parseSwapDecimalQuantity(&prepared.preparation.MinimumAmountOut, SwapQuoteArithmetic)
+	if err != nil {
+		return ExactInputSwapSimulation{}, err
+	}
+	if amounts[0].Cmp(execution.normalized.amountIn) != 0 || amounts[1].Cmp(quoteAmountOut) != 0 || amounts[1].Cmp(minimumAmountOut) < 0 {
+		return ExactInputSwapSimulation{}, executionDomainError(SwapExecutionInvalidSimulation)
+	}
+	if err := assertExecutionDeadline(execution, prepared.state.initial.timestamp, big.NewInt(s.currentClockSeconds())); err != nil {
+		return ExactInputSwapSimulation{}, err
+	}
+	return ExactInputSwapSimulation{
+		SimulationKind:   "evm-call",
+		Preparation:      prepared.preparation,
+		Snapshot:         prepared.quote.Snapshot,
+		CurrentAllowance: currentAllowance.String(),
+		Amounts:          []string{amounts[0].String(), amounts[1].String()},
+		AmountOut:        amounts[1].String(),
+	}, nil
+}
+
+// allowanceTokenAddress returns the input token address already captured in a
+// preparation. Keeping this small helper beside the execution code avoids
+// reconstructing a caller request after the first RPC.
+func (p ExactInputSwapPreparation) allowanceTokenAddress() string {
+	return p.Allowance.TokenAddress
+}
+
+func executionDomainError(code SwapExecutionErrorCode) error {
+	return &SwapExecutionError{Code: code}
+}
+
+func normalizeExecutionRequest(request PrepareExactInputSwapRequest, clock func() int64) (normalizedExecutionRequest, error) {
+	sender, err := normalizeExecutionAddress(request.Sender)
+	if err != nil {
+		return normalizedExecutionRequest{}, err
+	}
+	recipient, err := normalizeExecutionAddress(request.Recipient)
+	if err != nil {
+		return normalizedExecutionRequest{}, err
+	}
+	slippageBps, err := normalizeExecutionSlippage(request.SlippageBps)
+	if err != nil {
+		return normalizedExecutionRequest{}, err
+	}
+	deadline, deadlineValue, err := parseExecutionDeadline(request.Deadline)
+	if err != nil {
+		return normalizedExecutionRequest{}, err
+	}
+	if deadlineValue.Cmp(big.NewInt(clock())) <= 0 {
+		return normalizedExecutionRequest{}, executionDomainError(SwapExecutionInvalidArgument)
+	}
+
+	// Copy the one nested request value before quote normalization. The
+	// normalized quote retains only scalar freshness bounds, so mutations made
+	// while RPC is in flight cannot affect validation or freshness policy.
+	var freshness *SwapFreshness
+	if request.Freshness != nil {
+		copyValue := *request.Freshness
+		if request.Freshness.MaxBlockAgeSeconds != nil {
+			value := *request.Freshness.MaxBlockAgeSeconds
+			copyValue.MaxBlockAgeSeconds = &value
+		}
+		if request.Freshness.MaxBlockLag != nil {
+			value := *request.Freshness.MaxBlockLag
+			copyValue.MaxBlockLag = &value
+		}
+		if request.Freshness.MaxClockSkewSeconds != nil {
+			value := *request.Freshness.MaxClockSkewSeconds
+			copyValue.MaxClockSkewSeconds = &value
+		}
+		freshness = &copyValue
+	}
+	quoteRequest := ExactInputQuoteRequest{
+		ChainID:                 request.ChainID,
+		PoolDefinitionID:        request.PoolDefinitionID,
+		InputTokenDeploymentID:  request.InputTokenDeploymentID,
+		OutputTokenDeploymentID: request.OutputTokenDeploymentID,
+		AmountIn:                request.AmountIn,
+		Freshness:               freshness,
+	}
+	normalized, err := normalizeSwapRequest(quoteRequest)
+	if err != nil {
+		var quoteErr *SwapQuoteError
+		if errors.As(err, &quoteErr) {
+			switch quoteErr.Code {
+			case SwapQuoteUnknownPool, SwapQuoteUnsupportedAdapter, SwapQuoteUnsupportedToken, SwapQuoteUnsupportedStandard:
+				return normalizedExecutionRequest{}, executionDomainError(SwapExecutionUnsupported)
+			}
+		}
+		return normalizedExecutionRequest{}, err
+	}
+	return normalizedExecutionRequest{
+		normalized:    normalized,
+		sender:        sender,
+		recipient:     recipient,
+		slippageBps:   slippageBps,
+		deadline:      deadline,
+		deadlineValue: deadlineValue,
+	}, nil
+}
+
+func normalizeExecutionAddress(value string) (string, error) {
+	if !evmAddressPattern.MatchString(value) {
+		return "", executionDomainError(SwapExecutionInvalidArgument)
+	}
+	normalized := strings.ToLower(value)
+	if normalized == "0x"+strings.Repeat("0", 40) {
+		return "", executionDomainError(SwapExecutionInvalidArgument)
+	}
+	return normalized, nil
+}
+
+func normalizeExecutionSlippage(value any) (uint64, error) {
+	invalid := func() (uint64, error) {
+		return 0, executionDomainError(SwapExecutionInvalidArgument)
+	}
+	acceptSigned := func(value int64) (uint64, error) {
+		if value < 0 || value > 9999 {
+			return invalid()
+		}
+		return uint64(value), nil
+	}
+	acceptUnsigned := func(value uint64) (uint64, error) {
+		if value > 9999 {
+			return invalid()
+		}
+		return value, nil
+	}
+	switch typed := value.(type) {
+	case int:
+		return acceptSigned(int64(typed))
+	case int8:
+		return acceptSigned(int64(typed))
+	case int16:
+		return acceptSigned(int64(typed))
+	case int32:
+		return acceptSigned(int64(typed))
+	case int64:
+		return acceptSigned(typed)
+	case uint:
+		return acceptUnsigned(uint64(typed))
+	case uint8:
+		return acceptUnsigned(uint64(typed))
+	case uint16:
+		return acceptUnsigned(uint64(typed))
+	case uint32:
+		return acceptUnsigned(uint64(typed))
+	case uint64:
+		return acceptUnsigned(typed)
+	case float32:
+		converted := float64(typed)
+		if math.IsNaN(converted) || math.IsInf(converted, 0) || math.Trunc(converted) != converted || converted < 0 || converted > 9999 {
+			return invalid()
+		}
+		return uint64(converted), nil
+	case float64:
+		if math.IsNaN(typed) || math.IsInf(typed, 0) || math.Trunc(typed) != typed || typed < 0 || typed > 9999 {
+			return invalid()
+		}
+		return uint64(typed), nil
+	case json.Number:
+		parsed, parseErr := typed.Float64()
+		if parseErr != nil || math.IsNaN(parsed) || math.IsInf(parsed, 0) || math.Trunc(parsed) != parsed || parsed < 0 || parsed > 9999 {
+			return invalid()
+		}
+		return uint64(parsed), nil
+	default:
+		return invalid()
+	}
+}
+
+func parseExecutionDeadline(value string) (string, *big.Int, error) {
+	if len(value) > 78 || !uint256DecimalPattern.MatchString(value) {
+		return "", nil, executionDomainError(SwapExecutionInvalidArgument)
+	}
+	parsed, ok := new(big.Int).SetString(value, 10)
+	if !ok || parsed.Sign() <= 0 || !fitsSwapUint256(parsed) {
+		return "", nil, executionDomainError(SwapExecutionInvalidArgument)
+	}
+	return value, parsed, nil
+}
+
+func generatedSwapExecutionCapabilities() []swapExecutionCapability {
+	var capabilities []swapExecutionCapability
+	if err := json.Unmarshal([]byte(swapExecutionCapabilitiesJSON), &capabilities); err != nil {
+		return nil
+	}
+	return capabilities
+}
+
+var swapExecutionCapabilities = generatedSwapExecutionCapabilities()
+
+func executionCapabilityFor(normalized normalizedExecutionRequest) (swapExecutionCapability, error) {
+	for _, capability := range swapExecutionCapabilities {
+		if capability.PoolDefinitionID != normalized.normalized.poolDefinitionID {
+			continue
+		}
+		if executionCapabilityMatches(capability, normalized) {
+			return capability, nil
+		}
+		return swapExecutionCapability{}, executionDomainError(SwapExecutionUnsupported)
+	}
+	return swapExecutionCapability{}, executionDomainError(SwapExecutionUnsupported)
+}
+
+func executionCapabilityMatches(capability swapExecutionCapability, execution normalizedExecutionRequest) bool {
+	normalized := execution.normalized
+	if !matchesSupportedQuoteCapability(normalized.pool, normalized.dex, normalized.input, normalized.output) {
+		return false
+	}
+	if capability.SwapExecutionCapabilityID == "" || capability.Status != "active" || capability.ChainID != normalized.pool.ChainID || capability.DexDeploymentID != normalized.pool.DexDeploymentID || capability.PoolDefinitionID != normalized.pool.PoolDefinitionID {
+		return false
+	}
+	if capability.RouterKind != "uniswap-v2-router02" && capability.RouterKind != "joe-v1-router02" {
+		return false
+	}
+	if capability.AdapterKind != supportedQuoteAdapter || capability.FunctionKind != "exact-input-erc20-to-erc20" || capability.FunctionSignature != swapExecutionFunctionSignature || capability.FunctionSelector != swapExecutionFunctionSelector {
+		return false
+	}
+	if !isExecutionAddress(capability.FactoryAddress) || !isExecutionAddress(capability.RouterAddress) || !isExecutionAddress(capability.WrappedNativeTokenAddress) || !isExecutionSelector(capability.WrappedNativeFunctionSelector) || !isExecutionSelector(capability.FunctionSelector) {
+		return false
+	}
+	if capability.FactoryAddress != normalized.dex.ProgramAddress || normalized.dex.AdapterKind != capability.AdapterKind || normalized.dex.Status != "active" || normalized.pool.Status != "active" || normalized.pool.Adapter.Kind != capability.AdapterKind {
+		return false
+	}
+	if normalized.pool.Adapter.FeeNumerator == nil || *normalized.pool.Adapter.FeeNumerator != "3" || normalized.pool.Adapter.FeeDenominator == nil || *normalized.pool.Adapter.FeeDenominator != "1000" {
+		return false
+	}
+	if normalized.pool.Token0DeploymentID != capability.Token0DeploymentID || normalized.pool.Token1DeploymentID != capability.Token1DeploymentID {
+		return false
+	}
+	token0, ok0 := TokenDeploymentByID(capability.Token0DeploymentID)
+	token1, ok1 := TokenDeploymentByID(capability.Token1DeploymentID)
+	wrapped, okWrapped := TokenDeploymentByID(capability.WrappedNativeTokenDeploymentID)
+	if !ok0 || !ok1 || !okWrapped || !executionCatalogTokenMatches(token0, capability.ChainID, capability.Token0DeploymentID, capability.Token0Address, capability.Token0Standard) || !executionCatalogTokenMatches(token1, capability.ChainID, capability.Token1DeploymentID, capability.Token1Address, capability.Token1Standard) {
+		return false
+	}
+	if !executionCatalogTokenMatches(wrapped, capability.ChainID, capability.WrappedNativeTokenDeploymentID, capability.WrappedNativeTokenAddress, "erc20") {
+		return false
+	}
+	if wrapped.Status != TokenStatusActive {
+		return false
+	}
+	if !executionCatalogTokenMatches(normalized.input, capability.ChainID, normalized.input.DeploymentID, executionTokenAddressForCapability(normalized.input), "erc20") || !executionCatalogTokenMatches(normalized.output, capability.ChainID, normalized.output.DeploymentID, executionTokenAddressForCapability(normalized.output), "erc20") {
+		return false
+	}
+	if !executionInputOutputMatch(normalized.input, capability) || !executionInputOutputMatch(normalized.output, capability) {
+		return false
+	}
+	for _, definition := range NativeWrapDefinitions() {
+		if definition.ChainID == capability.ChainID && definition.WrappedTokenDeploymentID == capability.WrappedNativeTokenDeploymentID {
+			return definition.Status == "active"
+		}
+	}
+	return false
+}
+
+func executionCatalogTokenMatches(token TokenDeployment, chainID, deploymentID, address, standard string) bool {
+	return string(token.ChainID) == chainID && token.DeploymentID == deploymentID && token.Status == TokenStatusActive && token.Standard == TokenStandard(standard) && token.Address != nil && strings.EqualFold(*token.Address, address)
+}
+
+func executionTokenAddressForCapability(token TokenDeployment) string {
+	if token.Address == nil {
+		return ""
+	}
+	return strings.ToLower(*token.Address)
+}
+
+func executionInputOutputMatch(token TokenDeployment, capability swapExecutionCapability) bool {
+	if token.Address == nil || token.Standard != TokenStandardERC20 || token.Status != TokenStatusActive || string(token.ChainID) != capability.ChainID {
+		return false
+	}
+	return (token.DeploymentID == capability.Token0DeploymentID && strings.EqualFold(*token.Address, capability.Token0Address) && capability.Token0Standard == "erc20") || (token.DeploymentID == capability.Token1DeploymentID && strings.EqualFold(*token.Address, capability.Token1Address) && capability.Token1Standard == "erc20")
+}
+
+func isExecutionAddress(value string) bool {
+	return evmAddressPattern.MatchString(value) && strings.ToLower(value) != "0x"+strings.Repeat("0", 40)
+}
+
+func isExecutionSelector(value string) bool {
+	return len(value) == 10 && hexBytesPattern.MatchString(value)
+}
+
+func (s *SwapClient) executionTransportFor(normalized normalizedSwapRequest) (*httpRPCTransport, error) {
+	ids := DexChainIDs()
+	switch normalized.chainID {
+	case ids["ethereum"]:
+		return s.ethereum, nil
+	case ids["avalancheC"]:
+		return s.avalanche, nil
+	default:
+		return nil, executionDomainError(SwapExecutionUnsupported)
+	}
+}
+
+func (s *SwapClient) prepareExecutionContext(ctx context.Context, execution normalizedExecutionRequest, capability swapExecutionCapability, transport *httpRPCTransport) (preparedExecutionContext, error) {
+	state, err := s.readEVMState(ctx, transport, execution.normalized)
+	if err != nil {
+		return preparedExecutionContext{}, err
+	}
+	if err := s.assertFreshness(state, execution.normalized.freshness); err != nil {
+		return preparedExecutionContext{}, err
+	}
+	amountOut, feeNumerator, feeDenominator, err := calculateSwapQuote(execution.normalized, state)
+	if err != nil {
+		return preparedExecutionContext{}, err
+	}
+	quote := ExactInputQuoteResult{
+		QuoteKind:               "exact-input",
+		ChainID:                 execution.normalized.chainID,
+		PoolDefinitionID:        execution.normalized.poolDefinitionID,
+		DexDeploymentID:         execution.normalized.pool.DexDeploymentID,
+		AdapterKind:             execution.normalized.pool.Adapter.Kind,
+		InputTokenDeploymentID:  execution.normalized.inputTokenDeploymentID,
+		OutputTokenDeploymentID: execution.normalized.outputTokenDeploymentID,
+		AmountIn:                execution.normalized.amountIn.String(),
+		AmountOut:               amountOut.String(),
+		Fee: QuoteFee{
+			Numerator:   feeNumerator.String(),
+			Denominator: feeDenominator.String(),
+		},
+		Snapshot: EvmBlockSnapshot{
+			Kind:           "evm-block",
+			BlockNumber:    state.initial.number.String(),
+			BlockHash:      state.initial.hash,
+			BlockTimestamp: state.initial.timestamp.String(),
+		},
+		TokenCatalogDigest: TOKEN_CATALOG_CONTENT_DIGEST,
+		DexCatalogDigest:   DexCatalogContentDigest,
+	}
+	if execution.deadlineValue.Cmp(state.initial.timestamp) <= 0 {
+		return preparedExecutionContext{}, executionDomainError(SwapExecutionInvalidArgument)
+	}
+	inputAddress, err := executionTokenAddress(execution.normalized.input)
+	if err != nil {
+		return preparedExecutionContext{}, err
+	}
+	outputAddress, err := executionTokenAddress(execution.normalized.output)
+	if err != nil {
+		return preparedExecutionContext{}, err
+	}
+	selector := map[string]any{"blockHash": state.initial.hash, "requireCanonical": true}
+	routerCodeRaw, err := s.rpcRaw(ctx, transport, "eth_getCode", []any{capability.RouterAddress, selector})
+	if err != nil {
+		return preparedExecutionContext{}, err
+	}
+	routerCode, err := parseExecutionHexBytes(routerCodeRaw, 0, SwapExecutionInvalidSimulation)
+	if err != nil {
+		return preparedExecutionContext{}, err
+	}
+	if len(routerCode) <= 2 {
+		return preparedExecutionContext{}, executionDomainError(SwapExecutionInvalidSimulation)
+	}
+	routerFactoryRaw, err := s.rpcRaw(ctx, transport, "eth_call", []any{map[string]string{"to": capability.RouterAddress, "data": routerFactorySelector}, selector})
+	if err != nil {
+		return preparedExecutionContext{}, err
+	}
+	routerFactory, err := parseExecutionAddressWord(routerFactoryRaw, SwapExecutionInvalidSimulation)
+	if err != nil {
+		return preparedExecutionContext{}, err
+	}
+	if routerFactory != capability.FactoryAddress {
+		return preparedExecutionContext{}, executionDomainError(SwapExecutionProgramMismatch)
+	}
+	wrappedNativeRaw, err := s.rpcRaw(ctx, transport, "eth_call", []any{map[string]string{"to": capability.RouterAddress, "data": capability.WrappedNativeFunctionSelector}, selector})
+	if err != nil {
+		return preparedExecutionContext{}, err
+	}
+	wrappedNative, err := parseExecutionAddressWord(wrappedNativeRaw, SwapExecutionInvalidSimulation)
+	if err != nil {
+		return preparedExecutionContext{}, err
+	}
+	if wrappedNative != capability.WrappedNativeTokenAddress {
+		return preparedExecutionContext{}, executionDomainError(SwapExecutionProgramMismatch)
+	}
+	amountsOutRaw, err := s.rpcRaw(ctx, transport, "eth_call", []any{map[string]string{"to": capability.RouterAddress, "data": executionGetAmountsOutData(execution.normalized.amountIn, inputAddress, outputAddress)}, selector})
+	if err != nil {
+		return preparedExecutionContext{}, err
+	}
+	amountsOut, err := parseExecutionUintArrayOfTwo(amountsOutRaw)
+	if err != nil {
+		return preparedExecutionContext{}, err
+	}
+	quoteAmountOut, err := parseSwapDecimalQuantity(&quote.AmountOut, SwapQuoteArithmetic)
+	if err != nil {
+		return preparedExecutionContext{}, err
+	}
+	if amountsOut[0].Cmp(execution.normalized.amountIn) != 0 || amountsOut[1].Cmp(quoteAmountOut) != 0 {
+		return preparedExecutionContext{}, executionDomainError(SwapExecutionInvalidSimulation)
+	}
+	latestRaw, err := s.rpcRaw(ctx, transport, "eth_getBlockByNumber", []any{"latest", false})
+	if err != nil {
+		return preparedExecutionContext{}, err
+	}
+	latest, err := parseSwapHeader(latestRaw)
+	if err != nil {
+		return preparedExecutionContext{}, err
+	}
+	if err := s.assertFreshness(evmSwapState{initial: state.initial, latestAfterReads: latest}, execution.normalized.freshness); err != nil {
+		return preparedExecutionContext{}, err
+	}
+	preparation, err := buildExecutionPreparation(execution, capability, quote)
+	if err != nil {
+		return preparedExecutionContext{}, err
+	}
+	if err := assertExecutionDeadline(execution, state.initial.timestamp, big.NewInt(s.currentClockSeconds())); err != nil {
+		return preparedExecutionContext{}, err
+	}
+	return preparedExecutionContext{normalized: execution, capability: capability, transport: transport, state: state, quote: quote, preparation: preparation}, nil
+}
+
+func executionTokenAddress(token TokenDeployment) (string, error) {
+	if token.Address == nil || !evmAddressPattern.MatchString(*token.Address) {
+		return "", executionDomainError(SwapExecutionInvalidSimulation)
+	}
+	return strings.ToLower(*token.Address), nil
+}
+
+func buildExecutionPreparation(execution normalizedExecutionRequest, capability swapExecutionCapability, quote ExactInputQuoteResult) (ExactInputSwapPreparation, error) {
+	quoteAmountOut, err := parseSwapDecimalQuantity(&quote.AmountOut, SwapQuoteArithmetic)
+	if err != nil {
+		return ExactInputSwapPreparation{}, err
+	}
+	factor := new(big.Int).SetUint64(10000 - execution.slippageBps)
+	product := new(big.Int).Mul(quoteAmountOut, factor)
+	if !fitsSwapUint256(product) {
+		return ExactInputSwapPreparation{}, swapDomainError(SwapQuoteArithmetic)
+	}
+	minimumAmountOut := new(big.Int).Quo(product, big.NewInt(10000))
+	if minimumAmountOut.Sign() <= 0 {
+		return ExactInputSwapPreparation{}, executionDomainError(SwapExecutionInvalidArgument)
+	}
+	inputAddress, err := executionTokenAddress(execution.normalized.input)
+	if err != nil {
+		return ExactInputSwapPreparation{}, err
+	}
+	outputAddress, err := executionTokenAddress(execution.normalized.output)
+	if err != nil {
+		return ExactInputSwapPreparation{}, err
+	}
+	data, ok := executionSwapData(execution.normalized.amountIn, minimumAmountOut, inputAddress, outputAddress, execution.recipient, execution.deadlineValue)
+	if !ok {
+		return ExactInputSwapPreparation{}, executionDomainError(SwapExecutionInvalidSimulation)
+	}
+	path := []ExactInputSwapPathEntry{
+		{TokenDeploymentID: execution.normalized.input.DeploymentID, Address: inputAddress, Standard: "erc20", RepresentationKind: execution.normalized.input.RepresentationKind},
+		{TokenDeploymentID: execution.normalized.output.DeploymentID, Address: outputAddress, Standard: "erc20", RepresentationKind: execution.normalized.output.RepresentationKind},
+	}
+	return ExactInputSwapPreparation{
+		PreparationKind:           "evm-router-v2-exact-input",
+		ExecutionCapabilityID:     capability.SwapExecutionCapabilityID,
+		ExecutionCapabilityDigest: swapExecutionCapabilitiesContentDigest,
+		Quote:                     quote,
+		MinimumAmountOut:          minimumAmountOut.String(),
+		SlippageBps:               execution.slippageBps,
+		Deadline:                  execution.deadline,
+		Recipient:                 execution.recipient,
+		Path:                      path,
+		Transaction: EvmUnsignedTransaction{
+			Kind:    "evm-unsigned-transaction",
+			ChainID: quote.ChainID,
+			From:    execution.sender,
+			To:      capability.RouterAddress,
+			Data:    data,
+			Value:   "0",
+		},
+		Allowance: SwapAllowance{
+			TokenDeploymentID: execution.normalized.input.DeploymentID,
+			TokenAddress:      inputAddress,
+			Owner:             execution.sender,
+			Spender:           capability.RouterAddress,
+			RequiredAmount:    quote.AmountIn,
+		},
+	}, nil
+}
+
+func encodeExecutionUint256Word(value *big.Int) (string, bool) {
+	if !fitsSwapUint256(value) {
+		return "", false
+	}
+	digits := strings.ToLower(value.Text(16))
+	if len(digits) > 64 {
+		return "", false
+	}
+	return strings.Repeat("0", 64-len(digits)) + digits, true
+}
+
+func executionGetAmountsOutData(amountIn *big.Int, inputAddress, outputAddress string) string {
+	amountWord, _ := encodeExecutionUint256Word(amountIn)
+	offsetWord, _ := encodeExecutionUint256Word(big.NewInt(0x40))
+	lengthWord, _ := encodeExecutionUint256Word(big.NewInt(2))
+	inputWord, _ := encodeSwapAddressArgument(inputAddress)
+	outputWord, _ := encodeSwapAddressArgument(outputAddress)
+	return routerGetAmountsOutSelector + amountWord + offsetWord + lengthWord + inputWord + outputWord
+}
+
+func executionSwapData(amountIn, minimumAmountOut *big.Int, inputAddress, outputAddress, recipient string, deadline *big.Int) (string, bool) {
+	amountWord, ok := encodeExecutionUint256Word(amountIn)
+	if !ok {
+		return "", false
+	}
+	minimumWord, ok := encodeExecutionUint256Word(minimumAmountOut)
+	if !ok {
+		return "", false
+	}
+	offsetWord, ok := encodeExecutionUint256Word(big.NewInt(0xa0))
+	if !ok {
+		return "", false
+	}
+	recipientWord, ok := encodeSwapAddressArgument(recipient)
+	if !ok {
+		return "", false
+	}
+	deadlineWord, ok := encodeExecutionUint256Word(deadline)
+	if !ok {
+		return "", false
+	}
+	lengthWord, ok := encodeExecutionUint256Word(big.NewInt(2))
+	if !ok {
+		return "", false
+	}
+	inputWord, ok := encodeSwapAddressArgument(inputAddress)
+	if !ok {
+		return "", false
+	}
+	outputWord, ok := encodeSwapAddressArgument(outputAddress)
+	if !ok {
+		return "", false
+	}
+	return swapExecutionFunctionSelector + amountWord + minimumWord + offsetWord + recipientWord + deadlineWord + lengthWord + inputWord + outputWord, true
+}
+
+func assertExecutionDeadline(execution normalizedExecutionRequest, quoteTimestamp, completionClock *big.Int) error {
+	if execution.deadlineValue.Cmp(quoteTimestamp) <= 0 || execution.deadlineValue.Cmp(completionClock) <= 0 {
+		return executionDomainError(SwapExecutionInvalidArgument)
+	}
+	return nil
+}
+
+func parseExecutionHexBytes(raw json.RawMessage, expectedBytes int, code SwapExecutionErrorCode) (string, error) {
+	value, ok := rawString(raw)
+	if !ok || !hexBytesPattern.MatchString(value) || (len(value)-2)%2 != 0 || (expectedBytes > 0 && len(value) != expectedBytes*2+2) {
+		return "", executionDomainError(code)
+	}
+	return strings.ToLower(value), nil
+}
+
+func parseExecutionAddressWord(raw json.RawMessage, code SwapExecutionErrorCode) (string, error) {
+	value, err := parseExecutionHexBytes(raw, 32, code)
+	if err != nil {
+		return "", err
+	}
+	word := value[2:]
+	if !strings.HasPrefix(word, strings.Repeat("0", 24)) || !evmAddressPattern.MatchString("0x"+word[24:]) {
+		return "", executionDomainError(code)
+	}
+	return "0x" + word[24:], nil
+}
+
+func parseExecutionUintWord(raw json.RawMessage, code SwapExecutionErrorCode) (*big.Int, error) {
+	value, err := parseExecutionHexBytes(raw, 32, code)
+	if err != nil {
+		return nil, err
+	}
+	parsed, ok := new(big.Int).SetString(value[2:], 16)
+	if !ok || !fitsSwapUint256(parsed) {
+		return nil, executionDomainError(code)
+	}
+	return parsed, nil
+}
+
+func parseExecutionUintArrayOfTwo(raw json.RawMessage) ([2]*big.Int, error) {
+	value, err := parseExecutionHexBytes(raw, 0, SwapExecutionInvalidSimulation)
+	if err != nil {
+		return [2]*big.Int{}, err
+	}
+	payload := value[2:]
+	if len(payload) != 256 {
+		return [2]*big.Int{}, executionDomainError(SwapExecutionInvalidSimulation)
+	}
+	offset, ok := new(big.Int).SetString(payload[:64], 16)
+	if !ok || offset.Cmp(big.NewInt(0x20)) != 0 {
+		return [2]*big.Int{}, executionDomainError(SwapExecutionInvalidSimulation)
+	}
+	length, ok := new(big.Int).SetString(payload[64:128], 16)
+	if !ok || length.Cmp(big.NewInt(2)) != 0 {
+		return [2]*big.Int{}, executionDomainError(SwapExecutionInvalidSimulation)
+	}
+	first, ok := new(big.Int).SetString(payload[128:192], 16)
+	if !ok || !fitsSwapUint256(first) {
+		return [2]*big.Int{}, executionDomainError(SwapExecutionInvalidSimulation)
+	}
+	second, ok := new(big.Int).SetString(payload[192:256], 16)
+	if !ok || !fitsSwapUint256(second) {
+		return [2]*big.Int{}, executionDomainError(SwapExecutionInvalidSimulation)
+	}
+	return [2]*big.Int{first, second}, nil
+}
+
+func isRecognizedExecutionRevert(err error) bool {
+	var rpcErr *Error
+	if !errors.As(err, &rpcErr) || rpcErr.Kind != ErrorRPC {
+		return false
+	}
+	if rpcErr.Code != 3 && rpcErr.Code != -32000 && rpcErr.Code != -32015 && rpcErr.Code != -32603 {
+		return false
+	}
+	message := strings.ToLower(rpcErr.Message)
+	return strings.Contains(message, "execution reverted") || strings.Contains(message, "transaction reverted") || strings.Contains(message, "vm execution error") || message == "revert" || message == "reverted" || strings.HasPrefix(message, "revert ") || strings.HasPrefix(message, "revert:") || strings.HasPrefix(message, "reverted ") || strings.HasPrefix(message, "reverted:")
 }

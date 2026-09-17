@@ -160,6 +160,84 @@ Newly discovered pools remain available for lookup, monitoring, and rankings
 until a reviewed quote capability is admitted.
 The DEX catalog and swap exports are included in the published 0.7.0 package.
 
+The two reviewed EVM pools also support unsigned ERC-20 exact-input
+preparation and read-only RPC simulation:
+
+```python
+request = {
+    "chainId": DexChainIds.ETHEREUM_MAINNET,
+    "poolDefinitionId": "pool-0001",
+    "inputTokenDeploymentId": "deployment-0002",  # WETH
+    "outputTokenDeploymentId": "deployment-0008",  # USDC
+    "amountIn": "1000000000000000000",
+    "sender": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "recipient": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "slippageBps": 50,
+    "deadline": "1789498800",
+}
+
+prepared = await erpc.swap.prepare_exact_input_swap(request)
+simulation = await erpc.swap.simulate_exact_input_swap(request)
+```
+
+Preparation performs a fresh quote and validates the reviewed router at the
+same canonical block. It returns an unsigned transaction envelope and an
+allowance description; it does not create approval calldata, sign, send, or
+fill wallet-specific nonce and fee fields. The envelope uses the canonical
+CAIP-2 chain ID, so convert it explicitly when passing fields to a wallet API:
+
+```python
+transaction = prepared["transaction"]
+wallet_transaction = {
+    key: transaction[key] for key in ("from", "to", "data", "value")
+}
+```
+
+The simulation result reports the canonical allowance and router amounts. The
+caller wallet controls allowance changes, signing, and broadcasting.
+
+## Optional Mayan Swift v2 bridge
+
+The standalone bridge adapter covers the reviewed native EURC routes between
+Ethereum and Solana. It uses Mayan's configured quote, transaction-builder,
+source-swap, solver, relayer, Wormhole, and Explorer services; normal ERPC
+configuration, keys, and headers are never forwarded to those services.
+
+```python
+from erpc_sdk import MayanSwiftV2BridgeConfig, create_mayan_swift_v2_bridge_client
+
+bridge = create_mayan_swift_v2_bridge_client(
+    MayanSwiftV2BridgeConfig(builder_api_key="provider-key")
+)
+quote = (
+    await bridge.quote_exact_input(
+        {
+            "sourceChainId": "eip155:1",
+            "destinationChainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+            "sourceTokenDeploymentId": "deployment-0011",
+            "destinationTokenDeploymentId": "deployment-0013",
+            "amountIn": "100000000",
+            "slippageBps": 50,
+        }
+    )
+)[0]
+unsigned = await bridge.build_unsigned(
+    {
+        "quote": quote,
+        "swapperAddress": "0x2222222222222222222222222222222222222222",
+        "destinationAddress": "So11111111111111111111111111111111111111112",
+    }
+)
+```
+
+Builds are unsigned and structurally checked. The adapter does not sign,
+approve, broadcast, submit, cancel, refund, or locally verify provider
+signatures, transaction semantics, or settlement. Builds without a provider
+key require the explicit `allow_unauthenticated_build=True` configuration.
+The optional adapter is an external cross-chain intent flow with a Mayan
+source-side USDC conversion, including Jupiter v6 for Solana-origin orders;
+it is separate from the RPC-only swap helpers.
+
 Both exact wire names (`getSlot`, `eth_chainId`) and Python snake-case aliases
 (`get_slot`, `eth_chain_id`) create inert requests. Network I/O starts only
 when `send()` is awaited. `request()` restricts calls to the namespace catalog;

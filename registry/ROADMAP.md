@@ -1,12 +1,20 @@
 # Token, DEX, and pool roadmap
 
-Status: the source checkout contains the bounded offline token, DEX/pool, and
-ranking implementation with deterministic generation and five-SDK outputs. A
-2026-09-16 local integration populated the canonical source snapshot with
-partial three-chain coverage. These features remain planned for the unreleased
-`0.7.0` package. The current published package baseline, latest GitHub release,
-and package manifests remain `0.6.0`; remote CI, native runtime parity, live
-automation, release readiness, and legal readiness remain separate gates.
+Status: the published
+[`v0.7.0` release](https://github.com/elsoul/erpc-sdk/releases/tag/v0.7.0)
+contains the bounded offline token, DEX/pool, ranking, and reviewed EVM
+RPC-only quote implementation with deterministic five-SDK outputs. The
+[token snapshot](./token-catalog.json), [DEX/pool snapshot](./dex-catalog.json),
+and [ranking snapshot](./token-rankings.json) are the source of record; dated
+evidence preserves historical observations without a current coverage claim.
+Direct RPC overrides merged by [PR25](https://github.com/elsoul/erpc-sdk/pull/25)
+(`e19a5532705818a2afdf07f96c7cae2044e6f202`), and this documentation baseline
+merged by [PR26](https://github.com/elsoul/erpc-sdk/pull/26)
+(`691df2852cd8b82e5a9fce4ea07ea7b2cc4791ae`), are source-checkout features after
+that release. EVM swap preparation/simulation and the optional Mayan EURC bridge
+below are also source-checkout features. Native captures, CI, independent
+review, release readiness, and legal readiness are tracked by their respective
+source-controlled gates.
 
 The maintenance implementation is installed as reviewable tooling:
 [`weekly-maintenance.md`](./weekly-maintenance.md),
@@ -29,24 +37,23 @@ controls preparation and makes no publication claim.
 | Gate | State | Owner / evidence |
 | --- | --- | --- |
 | Canonical schema, deterministic digest, and history guard | Implemented; central tests pass | Registry owner; `token-catalog.schema.json`, tests, and `--previous` |
-| Five generated package outputs | Implemented; all five byte checks and package validations passed | TypeScript, Rust, Python, Go, Ruby owners |
+| Five generated package outputs | Source-generated package data is defined by the canonical renderers; per-package byte checks remain owner and CI checks | TypeScript, Rust, Python, Go, Ruby owners |
 | DEX/pool generated outputs and lookup/quote slice | Implemented across all five SDKs; CI checks the shared native quote cases | [`DEX.md`](./DEX.md), generated outputs, and `dex-catalog.test.mjs` |
-| Three-chain discovery and bounded admission | Local review PASS (partial): 5 tokens and 8 pools admitted with 8-token/8-pool caps, resumable cursors, and deferred revalidation | [`discovery.mjs`](./discovery.mjs), [`discovery-config.json`](./discovery-config.json), [`data-promotion.mjs`](./data-promotion.mjs), [`evidence/discovery-ranking-review-2026-09-16.json`](./evidence/discovery-ranking-review-2026-09-16.json) |
-| Offline ranking contract | Local review PASS (partial): 11 records and 54 explicit unranked rows; native total-supply × direct native-pool price uses exact rationals | [`token-rankings.mjs`](./token-rankings.mjs), [`token-rankings.json`](./token-rankings.json), [`ranking-config.json`](./ranking-config.json), [`evidence/discovery-ranking-review-2026-09-16.json`](./evidence/discovery-ranking-review-2026-09-16.json) |
-| Cross-language catalog gate | PASS for the populated 2026-09-16 token, DEX, and ranking snapshots; remote CI remains pending | `verify-token-parity.mjs`, `verify-dex-parity.mjs`, `verify-ranking-parity.mjs`; dated captures in evidence |
-| Independent SDK code/package gate | PASS | Steiner |
-| Cross-domain catalog review gate | PASS (bounded catalog scope) | Cyan; final review 2026-09-15 |
+| Three-chain discovery and bounded admission | Local review PASS (partial); current records and deferred candidates remain in the canonical snapshot with bounded caps and receipt revalidation | [`discovery.mjs`](./discovery.mjs), [`discovery-config.json`](./discovery-config.json), [`data-promotion.mjs`](./data-promotion.mjs), [`evidence/discovery-ranking-review-2026-09-16.json`](./evidence/discovery-ranking-review-2026-09-16.json) |
+| Offline ranking contract | Local review PASS (partial); exact native-unit metric, coverage, and unranked reasons remain in the canonical snapshot | [`token-rankings.mjs`](./token-rankings.mjs), [`token-rankings.json`](./token-rankings.json), [`ranking-config.json`](./ranking-config.json), [`evidence/discovery-ranking-review-2026-09-16.json`](./evidence/discovery-ranking-review-2026-09-16.json) |
+| Cross-language catalog gate | Validation is defined by the shared parity verifiers and dated captures; CI and independent review records provide gate status | `verify-token-parity.mjs`, `verify-dex-parity.mjs`, `verify-ranking-parity.mjs`; dated captures in evidence |
+| Reviewed EVM swap preparation and simulation | Source-only; shared fixtures and the parity verifier define behavior across SDKs | [`DEX.md`](./DEX.md), swap execution registry, and native parity evidence |
+| Optional Mayan Swift v2 native EURC bridge | Source-only; shared fixtures and the parity verifier define behavior across SDKs | [`BRIDGE.md`](./BRIDGE.md), `verify-bridge-parity.mjs`, bridge registry, and provider evidence |
+| Independent SDK code/package gate | Review findings and any blockers are tracked by the independent gate; this roadmap makes no final bridge claim | Steiner |
+| Cross-domain catalog review gate | Bounded catalog scope is recorded separately from final bridge review | Cyan; final review 2026-09-15 |
 | EU OSS planning packet | Applicability, role, classification, support, compliance, and data rights undetermined | [`evidence/weekly-maintenance-eu-oss-2026-09-15.json`](./evidence/weekly-maintenance-eu-oss-2026-09-15.json); human legal owner still to be assigned |
 
 ## Near-term maintenance
 
-The current source snapshot contains 44 assets, 65 token deployments, 65
-aliases, 12 pools, and 16 DEX aliases. Candidate digests are token
-`5a7ed7f57a8cfaed87c46512586da8123e94fae80f1ce18ebb3861ccb95a9f70`, DEX
-`a0268a45d2b037ab8ea35aad1c45366d2582cbc9b10681ded590b56e07b011c8`, and
-ranking `f8ae479007fa782995aaaf6aa1c414ba1b6a10a92b7abe481b055293a91ac01c`.
-The local review is partial and does not substitute for native parity or remote
-CI.
+The canonical [token](./token-catalog.json), [DEX/pool](./dex-catalog.json),
+and [ranking](./token-rankings.json) snapshots carry their own records,
+digests, dates, and coverage metadata. The local review is partial and does
+not substitute for native parity or remote CI.
 
 - Keep asset IDs, deployment IDs, normalized bindings, and aliases immutable.
 - Keep newly discovered token candidates unclassified with address-only names
@@ -95,6 +102,52 @@ classic WSOL/EURC for deterministic lookup and pair discovery only.
 Native-to-wrapped definitions describe relationships and do not wrap assets
 automatically. New catalog records never automatically become quote-enabled.
 
+### Source-only EVM swap execution
+
+The post-release source checkout adds `prepareExactInputSwap` and
+`simulateExactInputSwap` for both directions of the reviewed Ethereum Uniswap
+V2 WETH/USDC and Avalanche LFJ Joe V1 WAVAX/USDC tuples. Quotes use a fresh
+configured RPC snapshot; calldata is built locally; results contain an unsigned
+neutral EVM envelope and an explicit allowance requirement. The SDK does not
+approve, sign, send, wrap native assets, execute Solana CLMM routes, or select a
+multi-hop router. Separate client instances can choose different dedicated RPC
+endpoints for read quotes and preparation or simulation.
+
+The shared swap fixtures and parity verifier define the cross-language behavior
+contract. Root's read-only preparation evidence is recorded in
+[`evidence/swap-execution-capabilities-2026-09-16.json`](./evidence/swap-execution-capabilities-2026-09-16.json);
+CI and independent review records provide gate status.
+
+### Source-only Mayan Swift v2 bridge
+
+The standalone opt-in `MayanSwiftV2BridgeClient` covers native issued EURC
+between Ethereum and Solana through `quoteExactInput`, `buildUnsigned`, and
+`getStatus`. The exact routes, native versus provider-wire standards, source
+USDC conversion, Jupiter v6 dependency for Solana-origin orders, and external
+Mayan services are recorded in [`BRIDGE.md`](./BRIDGE.md). Endpoints are
+customizable; `builderApiKey` is a separate build-only provider credential.
+Quotes work without it, while builds require it unless a compatible no-auth
+builder is explicitly enabled. The ERPC key is never reused.
+
+The adapter returns unsigned transactions with structural checks only and does
+not locally verify provider signatures, transaction semantics, or settlement.
+The shared bridge fixtures and parity verifier define the cross-language
+behavior contract. Root's public read-only EURC quote observations are recorded
+in
+[`evidence/mayan-swift-v2-2026-09-16.json`](./evidence/mayan-swift-v2-2026-09-16.json).
+CI and independent review records provide gate status; this source-only slice
+does not claim live settlement or funds movement.
+
+### Solana transaction version boundary
+
+Solana v1 and 4096-byte transaction support were activated on 2026-09-15; v0
+and legacy transactions remain unchanged. Existing generic RPC pass-through
+supports caller-supplied `maxSupportedTransactionVersion: 1` and serialized v1
+payloads. The Mayan bridge adapter has a separate provider contract that
+accepts only v0 framing at or below 1232 bytes and rejects v1 until a
+provider-specific validation contract is reviewed. See the [official larger
+transaction sizes note](https://solana.com/upgrades/larger-transaction-sizes).
+
 ## Explicitly pending future work
 
 ### Rankings and coverage
@@ -107,19 +160,24 @@ reasons. The optional global USD market-cap metric is rights-gated and disabled
 by default. Ranking lookups read bundled data only and do not call a vendor API,
 RPC endpoint, or current clock. The populated local ranking integration and
 fresh raw evidence are recorded in
-[`evidence/discovery-ranking-review-2026-09-16.json`](./evidence/discovery-ranking-review-2026-09-16.json);
-remote CI and native runtime parity remain pending review.
+[`evidence/discovery-ranking-review-2026-09-16.json`](./evidence/discovery-ranking-review-2026-09-16.json).
+Use the dated captures and parity verifier for the applicable CI and runtime
+review status.
 
-### Routes and transaction execution
+### Broader routes and transaction execution
 
-Route selection, transaction building, signing, simulation, and sending remain
-pending separate contracts, test vectors, and money-path review. Solana CLMM
-quote math and bridging also remain future work. Hosted Jupiter and 0x
-dependencies are not part of this registry.
+Multi-hop route selection and further transaction features remain pending
+separate contracts, test vectors, and money-path review. Signing and sending
+remain caller-owned operations. Solana CLMM quote math and hosted Jupiter or
+0x dependencies are not part of normal SDK swap helpers.
 
 ### Separate bridging research
 
-Bridging remains a separate research track. Any future work must identify exact source and destination chains, native versus wrapped addresses, proof or attestation rules, and relayer dependencies. No bridge stub or activation schedule is implied by the current `economicReferenceAssetId` relationships.
+Bridges beyond the reviewed Mayan EURC directions remain a separate research
+track. Any future work must identify exact source and destination chains,
+native versus wrapped addresses, proof or attestation rules, and relayer
+dependencies. No bridge activation schedule is implied by token
+`economicReferenceAssetId` relationships.
 
 ### EU OSS and release readiness
 
