@@ -225,10 +225,9 @@ for the source records, evidence, and generation workflow.
 
 The crate also exposes an immutable ranking snapshot through
 `list_token_rankings(chain_id)`. It is offline and returns an empty `Vec` for
-an empty or unknown chain ID. The bundled snapshot currently reports
-`status = "unconfigured"`; metadata exposes metric, as-of time, source IDs,
-and per-chain coverage so consumers can distinguish an empty configured
-snapshot from one that has not been populated.
+an empty or unknown chain ID. Consult the bundled ranking metadata for its
+current status, metric, as-of time, source IDs, and per-chain coverage;
+coverage can be partial and unranked deployments remain explicit.
 
 ```rust
 use erpc_sdk::{list_token_rankings, token_chain_ids};
