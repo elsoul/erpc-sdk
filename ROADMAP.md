@@ -112,20 +112,24 @@ Source, schema, adapter, and API changes after the published release remain
 manually reviewed. The schedules prepare reviewable work; they do not establish
 that a live scheduled run, publication, or release promotion has succeeded.
 
-## Source-only capabilities after 0.7.0
+## 0.8 — Direct endpoints, swap preparation, and Mayan bridge
+
+The following additions are introduced in `0.8.0` and require that package when
+consumed from a registry. Check the package version badges in the [root
+README](README.md) and the [latest GitHub release](https://github.com/elsoul/erpc-sdk/releases/latest)
+for live publication status. The `0.7.0` section above remains the historical
+catalog and quote baseline.
 
 [PR25](https://github.com/elsoul/erpc-sdk/pull/25) merged direct RPC endpoint
 overrides (`e19a5532705818a2afdf07f96c7cae2044e6f202`), and
 [PR26](https://github.com/elsoul/erpc-sdk/pull/26) merged the documentation
-baseline (`691df2852cd8b82e5a9fce4ea07ea7b2cc4791ae`) after the published
-release. Those additions remain source-checkout features and do not change the
-`0.7.0` package artifacts. The current source checkout is covered by the
-common harness and the relevant local implementation checks; CI and independent
-final-gate findings remain tracked separately.
+baseline (`691df2852cd8b82e5a9fce4ea07ea7b2cc4791ae`). The `0.8.0` additions
+are covered by the common harness and relevant local implementation checks; CI
+and independent final-gate findings remain tracked separately.
 
 ### Reviewed EVM swap execution
 
-The source checkout supports both directions of the reviewed Ethereum Uniswap
+The `0.8.0` API supports both directions of the reviewed Ethereum Uniswap
 V2 WETH/USDC and Avalanche LFJ Joe V1 WAVAX/USDC tuples through
 `prepareExactInputSwap` and `simulateExactInputSwap`. Quotes use a fresh
 configured RPC snapshot; calldata is built locally; results carry an unsigned
@@ -139,30 +143,31 @@ contract. Root's read-only swap preparation observations are recorded in
 [`evidence/swap-execution-capabilities-2026-09-16.json`](registry/evidence/swap-execution-capabilities-2026-09-16.json);
 CI and independent review records provide gate status.
 
-### Optional Mayan Swift v2 bridge
+### Optional Mayan Swift v2 bridge introduced in 0.8.0
 
-The source checkout also contains the standalone opt-in
+The `0.8.0` API also contains the standalone opt-in
 `createMayanSwiftV2BridgeClient` for native issued EURC between Ethereum and
 Solana. It exposes `quoteExactInput`, `buildUnsigned`, and `getStatus` for the
 two exact catalog directions. `builderEndpoint` and `explorerEndpoint` are
 independently configurable, and `builderApiKey` is a separate Mayan build-only
-credential. Hosted quotes work without that key; builds require it unless the
-caller explicitly opts into a compatible no-auth builder. The ERPC key is never
-used as the provider key.
+credential. The defaults are `https://tx-builder.mayan.finance` for quote/build
+and `https://explorer-api.mayan.finance/v3` for indexed status. Hosted quotes
+work without that key; builds require it unless the caller explicitly opts into
+a compatible no-auth builder. The ERPC key is never used as the provider key.
 
 Mayan, solvers, relayers, Wormhole, Explorer, and the Solana-origin Jupiter v6
 source swap remain visible external dependencies. The adapter reports
 structural checks and does not locally verify provider signatures, transaction
 semantics, or settlement. Returned transactions remain unsigned and wallet
-policy stays with the caller. This source-only bridge slice is documented in
+policy stays with the caller. This `0.8.0` bridge slice is documented in
 [`registry/BRIDGE.md`](registry/BRIDGE.md) and its evidence packet.
 
 The shared bridge fixtures and parity verifier define the cross-language
 behavior contract. Root's public read-only EURC quote observations are
 recorded in
 [`evidence/mayan-swift-v2-2026-09-16.json`](registry/evidence/mayan-swift-v2-2026-09-16.json).
-CI and independent review records provide gate status; this source-only feature
-does not claim settlement or live-funds evidence.
+CI and independent review records provide gate status; this feature does not
+claim settlement or live-funds evidence.
 
 ### Solana transaction version boundary
 

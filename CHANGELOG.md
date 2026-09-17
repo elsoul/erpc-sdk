@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.8.0 — 2026-09-17
+
+- Add caller-owned direct JSON-RPC endpoint overrides for Solana, Ethereum, and Avalanche C-Chain across TypeScript, Rust, Python, Go, and Ruby, with exact URL preservation, scoped HTTP headers, explicit WebSocket endpoints, and keyless operation for overridden chains.
+- Add unsigned exact-input EVM swap preparation and read-only simulation for both directions of the reviewed Ethereum Uniswap V2 WETH/USDC and Avalanche C-Chain LFJ Joe V1 WAVAX/USDC routes. Normal SDK swaps use configured RPC endpoints and local quote, route-validation, and calldata logic; the SDK does not approve, sign, send, wrap native assets, select multi-hop routes, or call hosted Jupiter or 0x services.
+- Add an optional standalone Mayan Swift v2 adapter for native issued EURC between Ethereum mainnet (`0x1abaea1f7c830bd89acc67ec4af516284b1bc33c`) and Solana mainnet (`HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr`). It exposes provider-backed quotes, unsigned builds, and indexed status for those two exact directions while disclosing source-USDC conversion and the external Mayan solver and relayer, Wormhole, Explorer, and Solana-origin Jupiter v6 dependencies.
+- Keep bridge verification bounded to structural checks: provider signatures, transaction semantics, indexed status, and settlement are not locally verified, and the adapter performs no wallet approval, signing, submission, broadcast, polling, or live-funds action.
+- Update release-availability documentation and make swap examples compute future five-minute deadlines instead of copying dated fixture deadlines.
 
 ## 0.7.0 — 2026-09-16
 

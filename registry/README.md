@@ -19,12 +19,14 @@ data source: it does not call an RPC, require an API key, or bundle a
 third-party token database. It does not claim to list every token, rank every
 asset, or provide a complete top-N list.
 
-The token, DEX, pool, quote, and ranking slices are implemented in the source
-checkout. A bounded local integration on 2026-09-16 populated the source
-snapshot; shipping remains planned for the unreleased `0.7.0` package. The
-current published package baseline, latest GitHub release, and package
-manifests remain `0.6.0`; current package installs do not include these
-source-checkout exports yet.
+The token, DEX, pool, quote, and ranking slices are recorded in the source
+artifacts. The published `0.7.0` release is the historical catalog and
+read-only quote baseline. Direct RPC overrides, unsigned EVM swap preparation
+and simulation, and the optional Mayan adapter are introduced in `0.8.0` and
+require that package when consumed from a registry. Check the package version
+badges in the [root README](../README.md) and the [latest GitHub
+release](https://github.com/elsoul/erpc-sdk/releases/latest) for live
+publication status.
 
 `token-catalog.json` is the canonical source. Its asset and deployment records retain `evidence` and `asOfDate` for source review. Generated SDK records contain the runtime fields below and omit per-record provenance; only the catalog-wide `asOfDate` and `contentDigest` are emitted as metadata.
 
@@ -148,8 +150,11 @@ requests retain their pending `.send()` method. Other SDKs expose
 language-appropriate async or synchronous wrappers.
 
 The quote API does not select routes, build, sign, simulate, or send
-transactions. Solana CLMM quote math and bridging remain separate future work;
-hosted Jupiter and 0x dependencies are not implied.
+transactions. The optional Mayan Swift v2 native EURC bridge is introduced in
+`0.8.0` as a separate provider adapter with its own documented structural
+checks and external dependencies. Broader bridging and Solana CLMM quote math
+remain separate future work; hosted Jupiter and 0x dependencies are not
+implied for normal SDK swaps.
 
 ## Generate and check
 
@@ -184,7 +189,17 @@ The generated paths are fixed by the model:
 
 ## Native parity
 
-Renderer byte equality checks that one source renderer produced the expected text. The 2026-09-15 cross-language catalog capture remains historical evidence for 39 assets, 60 deployments, and 60 aliases; its commands and hashes are in [`evidence/token-catalog-2026-09-15.json`](./evidence/token-catalog-2026-09-15.json). The populated 2026-09-16 snapshot has 44 assets, 65 deployments, and 65 aliases, and its recorded five-language token, DEX, and ranking parity captures pass. Remote CI and the final independent gate remain pending.
+Renderer byte equality checks that one source renderer produced the expected
+text. The dated 2026-09-15 cross-language catalog capture is historical
+evidence for 39 assets, 60 deployments, and 60 aliases; its commands and hashes
+are in [`evidence/token-catalog-2026-09-15.json`](./evidence/token-catalog-2026-09-15.json).
+The separate dated 2026-09-16 capture records 44 assets, 65 deployments, and 65
+aliases, with recorded five-language token, DEX, and ranking parity captures.
+Those counts describe dated captures rather than live coverage. The canonical
+[token snapshot](./token-catalog.json), [DEX/pool snapshot](./dex-catalog.json),
+and [ranking snapshot](./token-rankings.json) remain the source of record;
+current validation status is reported by [CI](../.github/workflows/ci.yml) and
+the independent gate records.
 
 The verifier requires an explicit snapshot envelope containing all five languages. Each language snapshot includes:
 

@@ -7,14 +7,13 @@ RPC-only quote implementation with deterministic five-SDK outputs. The
 [token snapshot](./token-catalog.json), [DEX/pool snapshot](./dex-catalog.json),
 and [ranking snapshot](./token-rankings.json) are the source of record; dated
 evidence preserves historical observations without a current coverage claim.
-Direct RPC overrides merged by [PR25](https://github.com/elsoul/erpc-sdk/pull/25)
-(`e19a5532705818a2afdf07f96c7cae2044e6f202`), and this documentation baseline
-merged by [PR26](https://github.com/elsoul/erpc-sdk/pull/26)
-(`691df2852cd8b82e5a9fce4ea07ea7b2cc4791ae`), are source-checkout features after
-that release. EVM swap preparation/simulation and the optional Mayan EURC bridge
-below are also source-checkout features. Native captures, CI, independent
-review, release readiness, and legal readiness are tracked by their respective
-source-controlled gates.
+Direct RPC overrides, EVM swap preparation/simulation, and the optional Mayan
+EURC bridge are introduced in `0.8.0` and require that package when consumed
+from a registry. Check the package version badges in the [root
+README](../README.md) and the [latest GitHub release](https://github.com/elsoul/erpc-sdk/releases/latest)
+for live publication status. Native captures, CI, independent review, release
+readiness, and legal readiness are tracked by their respective source-controlled
+gates.
 
 The maintenance implementation is installed as reviewable tooling:
 [`weekly-maintenance.md`](./weekly-maintenance.md),
@@ -42,8 +41,8 @@ controls preparation and makes no publication claim.
 | Three-chain discovery and bounded admission | Local review PASS (partial); current records and deferred candidates remain in the canonical snapshot with bounded caps and receipt revalidation | [`discovery.mjs`](./discovery.mjs), [`discovery-config.json`](./discovery-config.json), [`data-promotion.mjs`](./data-promotion.mjs), [`evidence/discovery-ranking-review-2026-09-16.json`](./evidence/discovery-ranking-review-2026-09-16.json) |
 | Offline ranking contract | Local review PASS (partial); exact native-unit metric, coverage, and unranked reasons remain in the canonical snapshot | [`token-rankings.mjs`](./token-rankings.mjs), [`token-rankings.json`](./token-rankings.json), [`ranking-config.json`](./ranking-config.json), [`evidence/discovery-ranking-review-2026-09-16.json`](./evidence/discovery-ranking-review-2026-09-16.json) |
 | Cross-language catalog gate | Validation is defined by the shared parity verifiers and dated captures; CI and independent review records provide gate status | `verify-token-parity.mjs`, `verify-dex-parity.mjs`, `verify-ranking-parity.mjs`; dated captures in evidence |
-| Reviewed EVM swap preparation and simulation | Source-only; shared fixtures and the parity verifier define behavior across SDKs | [`DEX.md`](./DEX.md), swap execution registry, and native parity evidence |
-| Optional Mayan Swift v2 native EURC bridge | Source-only; shared fixtures and the parity verifier define behavior across SDKs | [`BRIDGE.md`](./BRIDGE.md), `verify-bridge-parity.mjs`, bridge registry, and provider evidence |
+| Reviewed EVM swap preparation and simulation | Introduced in `0.8.0`; shared fixtures and the parity verifier define behavior across SDKs | [`DEX.md`](./DEX.md), swap execution registry, and native parity evidence |
+| Optional Mayan Swift v2 native EURC bridge | Introduced in `0.8.0`; shared fixtures and the parity verifier define behavior across SDKs | [`BRIDGE.md`](./BRIDGE.md), `verify-bridge-parity.mjs`, bridge registry, and provider evidence |
 | Independent SDK code/package gate | Review findings and any blockers are tracked by the independent gate; this roadmap makes no final bridge claim | Steiner |
 | Cross-domain catalog review gate | Bounded catalog scope is recorded separately from final bridge review | Cyan; final review 2026-09-15 |
 | EU OSS planning packet | Applicability, role, classification, support, compliance, and data rights undetermined | [`evidence/weekly-maintenance-eu-oss-2026-09-15.json`](./evidence/weekly-maintenance-eu-oss-2026-09-15.json); human legal owner still to be assigned |
@@ -102,9 +101,9 @@ classic WSOL/EURC for deterministic lookup and pair discovery only.
 Native-to-wrapped definitions describe relationships and do not wrap assets
 automatically. New catalog records never automatically become quote-enabled.
 
-### Source-only EVM swap execution
+### EVM swap execution introduced in 0.8.0
 
-The post-release source checkout adds `prepareExactInputSwap` and
+The `0.8.0` API adds `prepareExactInputSwap` and
 `simulateExactInputSwap` for both directions of the reviewed Ethereum Uniswap
 V2 WETH/USDC and Avalanche LFJ Joe V1 WAVAX/USDC tuples. Quotes use a fresh
 configured RPC snapshot; calldata is built locally; results contain an unsigned
@@ -118,14 +117,16 @@ contract. Root's read-only preparation evidence is recorded in
 [`evidence/swap-execution-capabilities-2026-09-16.json`](./evidence/swap-execution-capabilities-2026-09-16.json);
 CI and independent review records provide gate status.
 
-### Source-only Mayan Swift v2 bridge
+### Mayan Swift v2 bridge introduced in 0.8.0
 
-The standalone opt-in `MayanSwiftV2BridgeClient` covers native issued EURC
-between Ethereum and Solana through `quoteExactInput`, `buildUnsigned`, and
-`getStatus`. The exact routes, native versus provider-wire standards, source
-USDC conversion, Jupiter v6 dependency for Solana-origin orders, and external
-Mayan services are recorded in [`BRIDGE.md`](./BRIDGE.md). Endpoints are
-customizable; `builderApiKey` is a separate build-only provider credential.
+The standalone opt-in `MayanSwiftV2BridgeClient` introduced in `0.8.0` covers
+native issued EURC between Ethereum and Solana through `quoteExactInput`,
+`buildUnsigned`, and `getStatus`. The exact routes, native versus provider-wire
+standards, source USDC conversion, Jupiter v6 dependency for Solana-origin
+orders, and external Mayan services are recorded in [`BRIDGE.md`](./BRIDGE.md).
+The defaults are `https://tx-builder.mayan.finance` for quote/build and
+`https://explorer-api.mayan.finance/v3` for indexed status; both endpoints are
+customizable. `builderApiKey` is a separate build-only provider credential.
 Quotes work without it, while builds require it unless a compatible no-auth
 builder is explicitly enabled. The ERPC key is never reused.
 
@@ -135,8 +136,8 @@ The shared bridge fixtures and parity verifier define the cross-language
 behavior contract. Root's public read-only EURC quote observations are recorded
 in
 [`evidence/mayan-swift-v2-2026-09-16.json`](./evidence/mayan-swift-v2-2026-09-16.json).
-CI and independent review records provide gate status; this source-only slice
-does not claim live settlement or funds movement.
+CI and independent review records provide gate status; this feature does not
+claim live settlement or funds movement.
 
 ### Solana transaction version boundary
 

@@ -6,11 +6,8 @@ account information, usage, and Cloud APIs.
 
 ## Install
 
-The first Go release is version `v0.3.0` from the monorepo tag
-`packages/go/v0.3.0`.
-
 ```bash
-go get github.com/elsoul/erpc-sdk/packages/go@v0.4.0
+go get github.com/elsoul/erpc-sdk/packages/go@v0.8.0
 ```
 
 Go 1.22 or later is supported.
@@ -54,7 +51,7 @@ func main() {
 Every network method accepts `context.Context`. HTTP calls are attempted once;
 transaction submission and other state-changing calls are never retried.
 
-## Caller-owned RPC endpoints (unreleased source checkout)
+## Caller-owned RPC endpoints (introduced in 0.8.0)
 
 Supply a complete HTTP request target for any chain. A direct endpoint can be
 used without an eRPC API key; its path and query are sent unchanged. The URL
@@ -62,8 +59,11 @@ is the final RPC target: direct HTTP requests do not follow redirects.
 Direct HTTP also ignores the supplied `http.Client` cookie jar; add any
 intentional `Cookie` value to `RPCEndpointConfig.Headers`.
 
-These direct RPC examples describe the unreleased source checkout and are not
-included in published 0.7.0.
+Caller-owned direct endpoint overrides were introduced in `0.8.0` and require
+that package when installed from a registry. The published `0.7.0` package
+does not include them; check the package version badge and the [latest GitHub
+release](https://github.com/elsoul/erpc-sdk/releases/latest) for live
+publication status.
 
 ```go
 client, err := erpc.NewClient(erpc.Config{
@@ -284,13 +284,13 @@ reread. It only returns a quote; transaction building, signing, broadcasting,
 native wrapping, routing, and bridging are separate capabilities.
 
 The reviewed DEX and swap exports described above are included in published
-0.7.0. Quote capability remains limited to the reviewed Ethereum Uniswap V2
+`0.7.0`. Quote capability remains limited to the reviewed Ethereum Uniswap V2
 USDC/WETH and Avalanche LFJ legacy WAVAX/USDC pools; catalog growth does not
 grant quote capability.
 
-## Unsigned EVM swap preparation and simulation
+## Unsigned EVM swap preparation and simulation (introduced in 0.8.0)
 
-`Client.Swap.PrepareExactInputSwap` obtains a fresh quote through the selected
+The `0.8.0` API's `Client.Swap.PrepareExactInputSwap` obtains a fresh quote through the selected
 Ethereum or Avalanche RPC, checks the reviewed router, factory, and wrapped
 token at the quote block, and returns unsigned
 `swapExactTokensForTokens(uint256,uint256,address[],address,uint256)` calldata.
@@ -301,6 +301,11 @@ and transaction value are canonical decimal strings; calldata is lowercase ABI
 hex.
 
 ```go
+import (
+	"strconv"
+	"time"
+)
+
 preparation, err := client.Swap.PrepareExactInputSwap(ctx, erpc.PrepareExactInputSwapRequest{
 	ChainID:                 erpc.TokenChainEthereumMainnet,
 	PoolDefinitionID:        erpc.PoolEthereumUNISWAP_V2_USDC_WETH,
@@ -310,7 +315,7 @@ preparation, err := client.Swap.PrepareExactInputSwap(ctx, erpc.PrepareExactInpu
 	Sender:                  "0x1111111111111111111111111111111111111111",
 	Recipient:               "0x2222222222222222222222222222222222222222",
 	SlippageBps:             uint64(50),
-	Deadline:                "1789498800",
+	Deadline:                strconv.FormatInt(time.Now().Add(5*time.Minute).Unix(),10),
 })
 if err != nil {
 	panic(err)
@@ -334,9 +339,9 @@ change that allowance, then controls signing and sending. This capability is
 limited to the two reviewed EVM pools; it does not provide hosted Jupiter or
 0x routing, native wrapping, bridging, wallet custody, or live-funds effects.
 
-## Optional Mayan Swift v2 EURC bridge
+## Optional Mayan Swift v2 EURC bridge (introduced in 0.8.0)
 
-`NewMayanSwiftV2BridgeClient` creates a standalone, explicit opt-in adapter for
+The `0.8.0` API's `NewMayanSwiftV2BridgeClient` creates a standalone, explicit opt-in adapter for
 native issued EURC between Ethereum and Solana. It calls the configured Mayan
 builder for quotes and unsigned source transactions, and the configured
 Explorer endpoint for read-only indexed status. It does not use `Client` or
@@ -344,10 +349,17 @@ the ERPC API key, and it never signs, approves, submits, broadcasts, polls,
 or claims local signature, transaction-semantics, or settlement verification.
 `MayanSwiftV2BridgeConfig.MinimumQuoteValiditySeconds` is a pointer: `nil`
 uses the 60-second default, while a pointer to `0` explicitly permits quotes
-that are still live without an additional margin.
+that are still live without an additional margin. The defaults are
+`https://tx-builder.mayan.finance` for quote/build and
+`https://explorer-api.mayan.finance/v3` for indexed status; set
+`BuilderEndpoint` and `ExplorerEndpoint` to customize them. `BuilderAPIKey` is
+a separate Mayan build-only credential; quote and status requests never receive
+it or an ERPC credential.
 
 ```go
 bridge, err := erpc.NewMayanSwiftV2BridgeClient(erpc.MayanSwiftV2BridgeConfig{
+	BuilderEndpoint:           "https://tx-builder.mayan.finance",
+	ExplorerEndpoint:          "https://explorer-api.mayan.finance/v3",
 	BuilderAPIKey:             os.Getenv("MAYAN_BUILDER_API_KEY"),
 	AllowUnauthenticatedBuild: false,
 })

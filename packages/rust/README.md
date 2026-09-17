@@ -49,8 +49,11 @@ including any path and query; the SDK does not add an eRPC route or API key and
 does not follow HTTP redirects. `for_rpc()` allows a keyless client when at
 least one direct endpoint is configured.
 
-Direct RPC endpoint support is on unreleased `main` and is not included in the
-published `erpc-sdk` 0.7.0 package.
+Direct RPC endpoint overrides were introduced in `0.8.0` and require that
+package when installed from a registry. The published `erpc-sdk` 0.7.0 package
+does not include them; check the package version badge and the [latest GitHub
+release](https://github.com/elsoul/erpc-sdk/releases/latest) for live
+publication status.
 
 ```rust,no_run
 # use erpc_sdk::{ErpcClient, ErpcClientConfig, RpcEndpointConfig};
@@ -222,10 +225,9 @@ for the source records, evidence, and generation workflow.
 
 The crate also exposes an immutable ranking snapshot through
 `list_token_rankings(chain_id)`. It is offline and returns an empty `Vec` for
-an empty or unknown chain ID. The bundled snapshot currently reports
-`status = "unconfigured"`; metadata exposes metric, as-of time, source IDs,
-and per-chain coverage so consumers can distinguish an empty configured
-snapshot from one that has not been populated.
+an empty or unknown chain ID. Consult the bundled ranking metadata for its
+current status, metric, as-of time, source IDs, and per-chain coverage;
+coverage can be partial and unranked deployments remain explicit.
 
 ```rust
 use erpc_sdk::{list_token_rankings, token_chain_ids};
@@ -233,16 +235,19 @@ use erpc_sdk::{list_token_rankings, token_chain_ids};
 let ethereum_rankings = list_token_rankings(token_chain_ids::ETHEREUM_MAINNET);
 ```
 
-When observations are published, the native metric is
-`onchain-total-supply-value-native`: values are rational atomic native units
-and quote deployment IDs identify ETH, AVAX, or SOL. A circulating market-cap
-estimate is not implied by this metric, and automatic source operations and
-publication are not active yet.
+Read the bundled ranking metadata for the current `status`, `metric`, `as-of`
+time, source IDs, and per-chain coverage before presenting a result as current;
+an empty result can reflect the requested chain or the metadata state. When
+configured, the native metric is `onchain-total-supply-value-native`: values are
+rational atomic native units and quote deployment IDs identify ETH, AVAX, or
+SOL. A circulating market-cap estimate is not implied by this metric.
 
 ## DEX catalog and exact-input quotes
 
 The published 0.7.0 package includes the reviewed DEX and swap exports. The
-source tree also ships an offline DEX and pool catalog. The six lookup functions
+offline DEX and pool catalog is available in that history baseline. Unsigned
+EVM preparation and simulation below were introduced in `0.8.0` and require
+that package. The six lookup functions
 (`get_dex_deployment`, `get_pool_definition`,
 `find_pool_definition_by_address`, `find_pool_definitions_by_pair`,
 `list_pool_definitions`, and `get_native_wrap_definition`) never access an RPC
@@ -288,7 +293,7 @@ transport and use a single canonical block selector for the seven code and
 state reads. Solana Orca and Raydium records are lookup-only in this release;
 the quote API does not build, sign, simulate, or send transactions.
 
-### Unsigned EVM preparation and simulation
+### Unsigned EVM preparation and simulation (introduced in 0.8.0)
 
 The two reviewed EVM pools also support local calldata construction and
 configured-RPC simulation. Preparation performs a new 11-call quote followed
@@ -301,6 +306,7 @@ checks the final block freshness.
 #     token_chain_ids, tokens, ErpcClient, ErpcClientConfig,
 #     PrepareExactInputSwapRequest,
 # };
+# use std::time::{Duration, SystemTime, UNIX_EPOCH};
 # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 let erpc = ErpcClient::new(ErpcClientConfig::new("api-key"))?;
 let request = PrepareExactInputSwapRequest {
@@ -313,7 +319,7 @@ let request = PrepareExactInputSwapRequest {
     sender: "0x1111111111111111111111111111111111111111".to_owned(),
     recipient: "0x2222222222222222222222222222222222222222".to_owned(),
     slippage_bps: 50,
-    deadline: "1890000000".to_owned(),
+    deadline: (SystemTime::now().duration_since(UNIX_EPOCH)? + Duration::from_secs(300)).as_secs().to_string(),
 };
 let prepared = erpc.swap.prepare_exact_input_swap(&request).await?;
 let simulated = erpc.swap.simulate_exact_input_swap(&request).await?;
@@ -330,7 +336,7 @@ policy. The SDK does not sign, send, create approvals, or choose an unlimited
 allowance policy; the caller's wallet controls allowance changes and
 broadcasting.
 
-### Optional Mayan Swift v2 bridge
+### Optional Mayan Swift v2 bridge (introduced in 0.8.0)
 
 `MayanSwiftV2BridgeClient` is a separate, explicit client for the two reviewed
 native issued EURC directions: Ethereum (`deployment-0011`) and Solana
@@ -342,7 +348,11 @@ RPC-only swap route.
 The bridge client owns a no-redirect HTTP client and sends only its
 allowlisted `accept`, `content-type`, and build-only `x-api-key` headers. Its
 configuration accepts provider endpoints, the optional builder key, the quote
-validity margin, timeout, and unauthenticated-build opt-in; it does not accept
+validity margin, timeout, and unauthenticated-build opt-in; the defaults are
+`https://tx-builder.mayan.finance` for quote/build and
+`https://explorer-api.mayan.finance/v3` for indexed status. Both endpoints are
+customizable. The builder key is a separate Mayan build-only credential; quote
+and status requests never receive it or an eRPC credential. It does not accept
 arbitrary headers or a prebuilt HTTP client.
 
 ```rust,no_run
@@ -352,7 +362,10 @@ arbitrary headers or a prebuilt HTTP client.
 # };
 # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 let bridge = MayanSwiftV2BridgeClient::new(
-    MayanSwiftV2BridgeConfig::new().with_builder_api_key("mayan-builder-key"),
+    MayanSwiftV2BridgeConfig::new()
+        .with_builder_endpoint("https://tx-builder.mayan.finance")
+        .with_explorer_endpoint("https://explorer-api.mayan.finance/v3")
+        .with_builder_api_key("mayan-builder-key"),
 )?;
 let quotes = bridge
     .quote_exact_input(MayanSwiftV2QuoteRequest {
