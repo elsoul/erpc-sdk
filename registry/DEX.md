@@ -208,3 +208,22 @@ Factual RPC receipts and source-license boundaries are recorded in
 [`evidence/dex-catalog-2026-09-15.json`](evidence/dex-catalog-2026-09-15.json).
 That evidence also records the dated EU OSS planning packet pointer, dependency
 license notice hashes, and the limits of the engineering source-copy boundary.
+
+## Swap execution closeout
+
+The separate execution registry at
+[`swap-execution-capabilities.json`](./swap-execution-capabilities.json) binds
+the two EVM exact-input routes to the reviewed factory, pool, token, router,
+fee, and wrapped-native records. Its runtime projection and five-language
+generated data use the content digest
+`84424dc48687e2cb1dd0c9a2446f820efd2c311e71ce5acacfeb6e882811875f`.
+Catalog discovery and lookup records do not grant execution capability to new
+tuples.
+
+The read-only closeout packet is
+[`evidence/swap-execution-capabilities-2026-09-16.json`](./evidence/swap-execution-capabilities-2026-09-16.json).
+It records the named-block and router observations, the distinction between
+the live preparation rows and the deterministic fixture sentinel, and the
+fact that no transaction was signed or broadcast. The fixture's Ethereum
+minimum output is `2381896855` for quoted output `2393866186` at 50 bps with
+deadline `1789498800`; this is test data, not a live-funds guarantee.

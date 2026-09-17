@@ -8,6 +8,12 @@
 pub mod dex_catalog;
 
 #[allow(missing_docs)]
+pub mod bridge_capabilities;
+
+#[allow(missing_docs)]
+pub mod swap_execution_capabilities;
+
+#[allow(missing_docs)]
 pub mod token_catalog;
 
 #[allow(missing_docs)]

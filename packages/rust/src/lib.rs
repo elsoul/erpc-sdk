@@ -3,6 +3,7 @@
 
 mod account;
 mod avalanche;
+mod bridge;
 mod cloud;
 mod config;
 pub mod dex_catalog;
@@ -25,6 +26,15 @@ pub use avalanche::{
     AVALANCHE_P_CHAIN_METHODS, AVALANCHE_PROPOSER_VM_METHODS, AVALANCHE_X_CHAIN_METHODS,
     AvalancheAvaxClient, AvalancheClient, AvalancheIndexClient, AvalancheIndexRpcClient,
     AvalancheInfoClient, AvalanchePChainClient, AvalancheProposerVmClient, AvalancheXChainClient,
+};
+pub use bridge::{
+    BridgeClient, BridgeError, BridgeErrorCode, BridgeResult, MayanEvmUnsignedTransaction,
+    MayanSolanaUnsignedTransaction, MayanSwiftV2Allowance, MayanSwiftV2BridgeClient,
+    MayanSwiftV2BridgeConfig, MayanSwiftV2Build, MayanSwiftV2BuildRequest, MayanSwiftV2BuildResult,
+    MayanSwiftV2BuildUnsignedRequest, MayanSwiftV2BuildValidation, MayanSwiftV2Quote,
+    MayanSwiftV2QuoteRequest, MayanSwiftV2QuoteResult, MayanSwiftV2SourceSwap, MayanSwiftV2Status,
+    MayanSwiftV2StatusRequest, MayanSwiftV2StatusResult, MayanSwiftV2UnsignedTransaction,
+    create_mayan_swift_v2_bridge_client,
 };
 pub use cloud::{
     CloudCatalogClient, CloudCredit, CloudCreditAlertLevel, CloudCreditClient, CloudOffering,
@@ -76,8 +86,12 @@ pub use solana::{
 };
 pub use subscriptions::{RpcNotification, RpcSubscription, SubscriptionId};
 pub use swap::{
-    EvmBlockSnapshot, ExactInputQuoteRequest, ExactInputQuoteResult, QuoteFee, SwapClient,
-    SwapFreshness, SwapQuoteError, SwapQuoteErrorCode, SwapQuoteRequest, SwapResult,
+    EvmBlockSnapshot, EvmUnsignedTransaction, ExactInputQuoteRequest, ExactInputQuoteResult,
+    ExactInputSwapPathEntry, ExactInputSwapPreparation, ExactInputSwapRequest,
+    ExactInputSwapSimulation, PrepareExactInputSwapRequest, PrepareExactInputSwapResult, QuoteFee,
+    SimulateExactInputSwapResult, SwapAllowance, SwapClient, SwapExecutionError,
+    SwapExecutionErrorCode, SwapExecutionResult, SwapFreshness, SwapPathEntry, SwapPreparation,
+    SwapQuoteError, SwapQuoteErrorCode, SwapQuoteRequest, SwapResult, SwapSimulation,
 };
 pub use token_catalog::{
     TOKEN_ALIASES, TOKEN_ASSETS, TOKEN_CATALOG_AS_OF_DATE, TOKEN_CATALOG_CONTENT_DIGEST,

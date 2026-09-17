@@ -1,6 +1,9 @@
 # frozen_string_literal: true
 
+require "json"
+
 require_relative "dex_catalog"
+require_relative "generated/swap_execution_capabilities"
 
 module ERPC
   # Stable local failures raised by the RPC-only exact-input quote path.
@@ -30,6 +33,55 @@ module ERPC
     def initialize(code)
       @code = code.to_s.freeze
       super(MESSAGES.fetch(@code, "Swap quote failed"))
+    end
+  end
+
+  # Stable machine-readable codes for unsigned swap preparation and RPC
+  # simulation. The prefixed aliases keep the shared identifiers convenient
+  # for callers that use the wire spelling as a Ruby constant.
+  module SwapExecutionErrorCode
+    INVALID_ARGUMENT = "SWAP_EXECUTION_INVALID_ARGUMENT"
+    UNSUPPORTED_EXECUTION = "SWAP_UNSUPPORTED_EXECUTION"
+    PROGRAM_MISMATCH = "SWAP_PROGRAM_MISMATCH"
+    INSUFFICIENT_ALLOWANCE = "SWAP_INSUFFICIENT_ALLOWANCE"
+    SIMULATION_REVERTED = "SWAP_SIMULATION_REVERTED"
+    INVALID_SIMULATION = "SWAP_INVALID_SIMULATION"
+
+    SWAP_EXECUTION_INVALID_ARGUMENT = INVALID_ARGUMENT
+    SWAP_UNSUPPORTED_EXECUTION = UNSUPPORTED_EXECUTION
+    SWAP_PROGRAM_MISMATCH = PROGRAM_MISMATCH
+    SWAP_INSUFFICIENT_ALLOWANCE = INSUFFICIENT_ALLOWANCE
+    SWAP_SIMULATION_REVERTED = SIMULATION_REVERTED
+    SWAP_INVALID_SIMULATION = INVALID_SIMULATION
+
+    ALL = [
+      INVALID_ARGUMENT,
+      UNSUPPORTED_EXECUTION,
+      PROGRAM_MISMATCH,
+      INSUFFICIENT_ALLOWANCE,
+      SIMULATION_REVERTED,
+      INVALID_SIMULATION
+    ].freeze
+  end
+
+  # Stable local failures raised by unsigned preparation and simulation.
+  # Quote, transport, timeout, cancellation, and non-revert JSON-RPC errors
+  # retain their existing native behavior.
+  class SwapExecutionError < Error
+    MESSAGES = {
+      SwapExecutionErrorCode::INVALID_ARGUMENT => "Swap execution request is invalid",
+      SwapExecutionErrorCode::UNSUPPORTED_EXECUTION => "Swap execution is unsupported for the selected records",
+      SwapExecutionErrorCode::PROGRAM_MISMATCH => "Swap program does not match the selected records",
+      SwapExecutionErrorCode::INSUFFICIENT_ALLOWANCE => "Swap allowance is insufficient",
+      SwapExecutionErrorCode::SIMULATION_REVERTED => "Swap simulation reverted",
+      SwapExecutionErrorCode::INVALID_SIMULATION => "Swap simulation result is invalid"
+    }.freeze
+
+    attr_reader :code
+
+    def initialize(code)
+      @code = code.to_s.freeze
+      super(MESSAGES.fetch(@code, "Swap execution failed"))
     end
   end
 
@@ -86,6 +138,9 @@ module ERPC
     PAIR_TOKEN0_SELECTOR = "0x0dfe1681"
     PAIR_TOKEN1_SELECTOR = "0xd21220a7"
     PAIR_GET_RESERVES_SELECTOR = "0x0902f1ac"
+    ROUTER_FACTORY_SELECTOR = "0xc45a0155"
+    ROUTER_GET_AMOUNTS_OUT_SELECTOR = "0xd06ca61f"
+    ERC20_ALLOWANCE_SELECTOR = "0xdd62ed3e"
 
     REQUEST_KEY_ALIASES = {
       "chainId" => :chain_id,
@@ -126,6 +181,26 @@ module ERPC
       "max_clock_skew_seconds" => :max_clock_skew_seconds,
       :max_clock_skew_seconds => :max_clock_skew_seconds
     }.freeze
+
+    EXECUTION_REQUEST_KEY_ALIASES = REQUEST_KEY_ALIASES.merge(
+      "sender" => :sender,
+      :sender => :sender,
+      "recipient" => :recipient,
+      :recipient => :recipient,
+      "slippageBps" => :slippage_bps,
+      :slippageBps => :slippage_bps,
+      "slippage_bps" => :slippage_bps,
+      :slippage_bps => :slippage_bps,
+      "deadline" => :deadline,
+      :deadline => :deadline
+    ).freeze
+
+    EXECUTION_UNSUPPORTED_QUOTE_CODES = %w[
+      SWAP_UNKNOWN_POOL
+      SWAP_UNSUPPORTED_ADAPTER
+      SWAP_UNSUPPORTED_TOKEN
+      SWAP_UNSUPPORTED_TOKEN_STANDARD
+    ].freeze
 
     REQUIRED_REQUEST_KEYS = %i[
       chain_id
@@ -169,16 +244,55 @@ module ERPC
       :fee_denominator,
       keyword_init: true
     )
+    ExecutionRequestSnapshot = Struct.new(
+      :quote_request,
+      :sender,
+      :recipient,
+      :slippage_bps,
+      :deadline,
+      keyword_init: true
+    )
+    NormalizedExecutionRequest = Struct.new(
+      :normalized,
+      :sender,
+      :recipient,
+      :slippage_bps,
+      :deadline,
+      :deadline_value,
+      keyword_init: true
+    )
+    PreparedExecutionContext = Struct.new(
+      :normalized,
+      :capability,
+      :transport,
+      :state,
+      :quote,
+      :preparation,
+      keyword_init: true
+    )
+
+    # The execution capability rows are generated from the canonical
+    # registry. Runtime code only parses this immutable string; it never reads
+    # the registry or a file at runtime.
+    EXECUTION_CAPABILITIES = JSON.parse(SWAP_EXECUTION_CAPABILITIES_JSON).map do |row|
+      row.freeze
+    end.freeze
 
     private_constant :REQUEST_KEY_ALIASES
     private_constant :FRESHNESS_KEY_ALIASES
+    private_constant :EXECUTION_REQUEST_KEY_ALIASES
+    private_constant :EXECUTION_UNSUPPORTED_QUOTE_CODES
     private_constant :REQUIRED_REQUEST_KEYS
     private_constant :SUPPORTED_QUOTE_CAPABILITIES
+    private_constant :EXECUTION_CAPABILITIES
     private_constant :NormalizedFreshness
     private_constant :NormalizedRequest
     private_constant :BlockHeader
     private_constant :EvmState
     private_constant :CalculatedQuote
+    private_constant :ExecutionRequestSnapshot
+    private_constant :NormalizedExecutionRequest
+    private_constant :PreparedExecutionContext
 
     def initialize(ethereum_transport:, avalanche_transport:)
       @ethereum_transport = ethereum_transport
@@ -210,6 +324,26 @@ module ERPC
       # being decoded cannot turn an old quote into a fresh one.
       assert_freshness(state.initial, state.latest_after_reads, normalized.freshness)
       build_quote_result(normalized, state, calculated)
+    end
+
+    # Prepare an unsigned ERC-20-to-ERC-20 router transaction from a fresh
+    # local quote and router preflight. No allowance, signature, or send is
+    # produced by this method.
+    def prepare_exact_input_swap(request, options = nil, **keyword_options)
+      options = keyword_options unless keyword_options.empty?
+      execution = normalize_execution_request(request)
+      context = prepare_execution_context(execution, options)
+      context.preparation
+    end
+
+    # Simulate the prepared router call against the quote block. The caller's
+    # allowance is read first; an insufficient allowance never reaches the
+    # router simulation.
+    def simulate_exact_input_swap(request, options = nil, **keyword_options)
+      options = keyword_options unless keyword_options.empty?
+      execution = normalize_execution_request(request)
+      context = prepare_execution_context(execution, options)
+      simulate_execution_context(context, options)
     end
 
     private
@@ -295,6 +429,547 @@ module ERPC
         input: input,
         output: output
       )
+    end
+
+    def snapshot_execution_request(request)
+      return execution_domain_error(SwapExecutionErrorCode::INVALID_ARGUMENT) unless request.is_a?(Hash)
+
+      values = {}
+      request.each do |key, value|
+        canonical = EXECUTION_REQUEST_KEY_ALIASES[key]
+        return execution_domain_error(SwapExecutionErrorCode::INVALID_ARGUMENT) unless canonical
+        return execution_domain_error(SwapExecutionErrorCode::INVALID_ARGUMENT) if values.key?(canonical)
+
+        values[canonical] = snapshot_request_value(value)
+      end
+
+      quote_request = {}
+      %i[chain_id pool_definition_id input_token_deployment_id output_token_deployment_id amount_in].each do |key|
+        quote_request[key] = values[key] if values.key?(key)
+      end
+      quote_request[:freshness] = values[:freshness] if values.key?(:freshness)
+
+      ExecutionRequestSnapshot.new(
+        quote_request: quote_request.freeze,
+        sender: values[:sender],
+        recipient: values[:recipient],
+        slippage_bps: values[:slippage_bps],
+        deadline: values[:deadline]
+      ).freeze
+    end
+
+    def snapshot_request_value(value)
+      case value
+      when String
+        value.dup.freeze
+      when Hash
+        value.each_with_object({}) do |(key, child), copy|
+          copy[snapshot_request_value(key)] = snapshot_request_value(child)
+        end.freeze
+      when Array
+        value.map { |child| snapshot_request_value(child) }.freeze
+      else
+        value
+      end
+    end
+
+    def normalize_execution_request(request)
+      snapshot = snapshot_execution_request(request)
+      sender = normalize_execution_address(snapshot.sender)
+      recipient = normalize_execution_address(snapshot.recipient)
+      slippage_bps = normalize_execution_slippage(snapshot.slippage_bps)
+      deadline_value = parse_execution_deadline(snapshot.deadline)
+
+      # Reject an already elapsed deadline before any RPC call. It is checked
+      # again against the quote block and at completion below.
+      initial_clock = execution_current_time
+      return execution_domain_error(SwapExecutionErrorCode::INVALID_ARGUMENT) if deadline_value <= initial_clock
+
+      normalized = begin
+        normalize_request(snapshot.quote_request)
+      rescue SwapQuoteError => error
+        if EXECUTION_UNSUPPORTED_QUOTE_CODES.include?(error.code)
+          execution_domain_error(SwapExecutionErrorCode::UNSUPPORTED_EXECUTION)
+        end
+        raise
+      end
+
+      NormalizedExecutionRequest.new(
+        normalized: normalized,
+        sender: sender,
+        recipient: recipient,
+        slippage_bps: slippage_bps,
+        deadline: snapshot.deadline,
+        deadline_value: deadline_value
+      ).freeze
+    end
+
+    def normalize_execution_address(value)
+      return execution_domain_error(SwapExecutionErrorCode::INVALID_ARGUMENT) unless evm_address?(value)
+
+      normalized = value.downcase
+      return execution_domain_error(SwapExecutionErrorCode::INVALID_ARGUMENT) if normalized == "0x#{'0' * 40}"
+
+      normalized.freeze
+    end
+
+    def normalize_execution_slippage(value)
+      return execution_domain_error(SwapExecutionErrorCode::INVALID_ARGUMENT) unless value.is_a?(Integer)
+      return execution_domain_error(SwapExecutionErrorCode::INVALID_ARGUMENT) unless value.between?(0, 9_999)
+
+      value
+    end
+
+    def parse_execution_deadline(value)
+      return execution_domain_error(SwapExecutionErrorCode::INVALID_ARGUMENT) unless value.is_a?(String) &&
+        value.length.between?(1, UINT256_DECIMAL_MAX_LENGTH) &&
+        value.match?(/\A[0-9]+\z/) &&
+        (value.length == 1 || value[0] != "0")
+
+      parsed = Integer(value, 10)
+      return execution_domain_error(SwapExecutionErrorCode::INVALID_ARGUMENT) if parsed.zero? || parsed > UINT256_MAX
+
+      parsed
+    rescue ArgumentError
+      execution_domain_error(SwapExecutionErrorCode::INVALID_ARGUMENT)
+    end
+
+    def execution_current_time
+      value = @clock.call
+      return execution_domain_error(SwapExecutionErrorCode::INVALID_ARGUMENT) unless value.is_a?(Integer) && value >= 0
+
+      value
+    end
+
+    def execution_capability_for(normalized)
+      capability = EXECUTION_CAPABILITIES.find do |row|
+        row.fetch("poolDefinitionId") == normalized.pool.fetch(:pool_definition_id)
+      end
+      return execution_domain_error(SwapExecutionErrorCode::UNSUPPORTED_EXECUTION) unless capability
+      return execution_domain_error(SwapExecutionErrorCode::UNSUPPORTED_EXECUTION) unless capability.fetch("status") == "active"
+
+      token0 = TokenCatalog.get_token_deployment(capability.fetch("token0DeploymentId"))
+      token1 = TokenCatalog.get_token_deployment(capability.fetch("token1DeploymentId"))
+      wrapped = TokenCatalog.get_token_deployment(capability.fetch("wrappedNativeTokenDeploymentId"))
+      native_wrap = DexCatalog::NATIVE_WRAP_DEFINITIONS.find do |definition|
+        definition.fetch(:chain_id) == capability.fetch("chainId") &&
+          definition.fetch(:wrapped_token_deployment_id) == capability.fetch("wrappedNativeTokenDeploymentId")
+      end
+
+      matches_capability_token = lambda do |token, deployment_key, address_key, standard_key|
+        token &&
+          token.fetch(:deployment_id) == capability.fetch(deployment_key) &&
+          token.fetch(:chain_id) == capability.fetch("chainId") &&
+          canonical_evm_address_equal?(token[:address], capability.fetch(address_key)) &&
+          token.fetch(:standard) == capability.fetch(standard_key) &&
+          token.fetch(:status) == "active"
+      end
+
+      input_matches = matches_capability_token.call(
+        normalized.input,
+        "token0DeploymentId",
+        "token0Address",
+        "token0Standard"
+      ) || matches_capability_token.call(
+        normalized.input,
+        "token1DeploymentId",
+        "token1Address",
+        "token1Standard"
+      )
+      output_matches = matches_capability_token.call(
+        normalized.output,
+        "token0DeploymentId",
+        "token0Address",
+        "token0Standard"
+      ) || matches_capability_token.call(
+        normalized.output,
+        "token1DeploymentId",
+        "token1Address",
+        "token1Standard"
+      )
+
+      pool = normalized.pool
+      dex = normalized.dex
+      pool_adapter = pool.fetch(:adapter)
+      capability_matches =
+        capability.fetch("chainId") == pool.fetch(:chain_id) &&
+        capability.fetch("dexDeploymentId") == pool.fetch(:dex_deployment_id) &&
+        capability.fetch("adapterKind") == SUPPORTED_QUOTE_ADAPTER &&
+        capability.fetch("functionKind") == "exact-input-erc20-to-erc20" &&
+        capability.fetch("functionSignature") == SWAP_EXECUTION_FUNCTION_SIGNATURE &&
+        capability.fetch("functionSelector") == SWAP_EXECUTION_FUNCTION_SELECTOR &&
+        dex.fetch(:status) == "active" &&
+        canonical_evm_address_equal?(dex[:program_address], capability.fetch("factoryAddress")) &&
+        dex.fetch(:adapter_kind) == capability.fetch("adapterKind") &&
+        pool.fetch(:status) == "active" &&
+        pool_adapter.fetch(:kind) == capability.fetch("adapterKind") &&
+        pool_adapter.fetch(:fee_numerator) == "3" &&
+        pool_adapter.fetch(:fee_denominator) == "1000" &&
+        pool.fetch(:token0_deployment_id) == capability.fetch("token0DeploymentId") &&
+        pool.fetch(:token1_deployment_id) == capability.fetch("token1DeploymentId") &&
+        input_matches && output_matches &&
+        token0 && token1 && wrapped &&
+        wrapped.fetch(:chain_id) == capability.fetch("chainId") &&
+        canonical_evm_address_equal?(wrapped[:address], capability.fetch("wrappedNativeTokenAddress")) &&
+        wrapped.fetch(:standard) == "erc20" &&
+        wrapped.fetch(:status) == "active" &&
+        native_wrap &&
+        native_wrap.fetch(:status) == "active" &&
+        native_wrap.fetch(:wrapped_token_deployment_id) == capability.fetch("wrappedNativeTokenDeploymentId")
+
+      return execution_domain_error(SwapExecutionErrorCode::UNSUPPORTED_EXECUTION) unless capability_matches
+
+      capability
+    end
+
+    def canonical_evm_address_equal?(left, right)
+      left.is_a?(String) && right.is_a?(String) && evm_address?(left) && evm_address?(right) && left.casecmp?(right)
+    end
+
+    def prepare_execution_context(execution, options)
+      check_execution_options(options)
+      normalized = execution.normalized
+      capability = execution_capability_for(normalized)
+      transport = execution_transport_for(normalized)
+
+      state = read_evm_state(transport, normalized)
+      assert_freshness(state.initial, state.latest_after_reads, normalized.freshness)
+      quote = build_quote_result(normalized, state, calculate_quote(normalized, state))
+      assert_execution_deadline(execution, state.initial.timestamp, execution_current_time)
+
+      input_address = execution_token_address(normalized.input)
+      output_address = execution_token_address(normalized.output)
+      selector = rpc_selector(state.initial.hash)
+      router_address = capability.fetch("routerAddress")
+
+      router_code_raw = rpc_request(
+        transport,
+        "eth_getCode",
+        [router_address, selector]
+      )
+      router_code = parse_execution_hex_bytes(router_code_raw)
+      return execution_domain_error(SwapExecutionErrorCode::INVALID_SIMULATION) if router_code.length <= 2
+
+      router_factory_raw = rpc_request(
+        transport,
+        "eth_call",
+        [abi_call(router_address, ROUTER_FACTORY_SELECTOR), selector]
+      )
+      router_factory = parse_execution_address_word(router_factory_raw)
+      return execution_domain_error(SwapExecutionErrorCode::PROGRAM_MISMATCH) unless router_factory == capability.fetch("factoryAddress")
+
+      wrapped_native_raw = rpc_request(
+        transport,
+        "eth_call",
+        [abi_call(router_address, capability.fetch("wrappedNativeFunctionSelector")), selector]
+      )
+      wrapped_native = parse_execution_address_word(wrapped_native_raw)
+      return execution_domain_error(SwapExecutionErrorCode::PROGRAM_MISMATCH) unless wrapped_native == capability.fetch("wrappedNativeTokenAddress")
+
+      amounts_out_raw = rpc_request(
+        transport,
+        "eth_call",
+        [
+          abi_call(
+            router_address,
+            execution_get_amounts_out_data(normalized.amount_in, input_address, output_address)
+          ),
+          selector
+        ]
+      )
+      amounts_out = parse_execution_uint_array_of_two(amounts_out_raw)
+      quote_amount_out = parse_decimal_quantity(quote.fetch("amountOut"), "SWAP_ARITHMETIC")
+      return execution_domain_error(SwapExecutionErrorCode::INVALID_SIMULATION) unless
+        amounts_out[0] == normalized.amount_in && amounts_out[1] == quote_amount_out
+
+      latest_after_router_reads = parse_block_header(
+        rpc_request(transport, "eth_getBlockByNumber", ["latest", false])
+      )
+      assert_freshness(
+        state.initial,
+        latest_after_router_reads,
+        normalized.freshness
+      )
+
+      preparation = build_execution_preparation(execution, capability, quote)
+      assert_execution_deadline(execution, state.initial.timestamp, execution_current_time)
+      PreparedExecutionContext.new(
+        normalized: execution,
+        capability: capability,
+        transport: transport,
+        state: state,
+        quote: quote,
+        preparation: preparation
+      ).freeze
+    end
+
+    def execution_transport_for(normalized)
+      case normalized.chain_id
+      when DexChainIDs::ETHEREUM_MAINNET
+        @ethereum_transport
+      when DexChainIDs::AVALANCHE_C_MAINNET
+        @avalanche_transport
+      else
+        execution_domain_error(SwapExecutionErrorCode::UNSUPPORTED_EXECUTION)
+      end
+    end
+
+    def execution_token_address(token)
+      address = token[:address]
+      return execution_domain_error(SwapExecutionErrorCode::INVALID_SIMULATION) unless evm_address?(address)
+
+      address.downcase.freeze
+    end
+
+    def encode_execution_address_argument(address)
+      return execution_domain_error(SwapExecutionErrorCode::INVALID_SIMULATION) unless evm_address?(address)
+
+      "0" * 24 + address[2..].downcase
+    end
+
+    def encode_execution_uint256_word(value)
+      return execution_domain_error(SwapExecutionErrorCode::INVALID_SIMULATION) unless value.is_a?(Integer) && value.between?(0, UINT256_MAX)
+
+      format("%064x", value)
+    end
+
+    def execution_get_amounts_out_data(amount_in, input_address, output_address)
+      ROUTER_GET_AMOUNTS_OUT_SELECTOR +
+        encode_execution_uint256_word(amount_in) +
+        encode_execution_uint256_word(0x40) +
+        encode_execution_uint256_word(2) +
+        encode_execution_address_argument(input_address) +
+        encode_execution_address_argument(output_address)
+    end
+
+    def execution_swap_data(amount_in, minimum_amount_out, input_address, output_address, recipient, deadline)
+      SWAP_EXECUTION_FUNCTION_SELECTOR +
+        encode_execution_uint256_word(amount_in) +
+        encode_execution_uint256_word(minimum_amount_out) +
+        encode_execution_uint256_word(0xa0) +
+        encode_execution_address_argument(recipient) +
+        encode_execution_uint256_word(deadline) +
+        encode_execution_uint256_word(2) +
+        encode_execution_address_argument(input_address) +
+        encode_execution_address_argument(output_address)
+    end
+
+    def build_execution_preparation(execution, capability, quote)
+      normalized = execution.normalized
+      input_address = execution_token_address(normalized.input)
+      output_address = execution_token_address(normalized.output)
+      quote_amount_out = parse_decimal_quantity(quote.fetch("amountOut"), "SWAP_ARITHMETIC")
+      minimum_amount_out = checked_uint256(
+        quote_amount_out * (10_000 - execution.slippage_bps)
+      ) / 10_000
+      return execution_domain_error(SwapExecutionErrorCode::INVALID_ARGUMENT) if minimum_amount_out.zero?
+
+      preparation = {
+        "preparationKind" => "evm-router-v2-exact-input",
+        "executionCapabilityId" => capability.fetch("swapExecutionCapabilityId"),
+        "executionCapabilityDigest" => SWAP_EXECUTION_CAPABILITIES_CONTENT_DIGEST,
+        "quote" => quote,
+        "minimumAmountOut" => minimum_amount_out.to_s,
+        "slippageBps" => execution.slippage_bps,
+        "deadline" => execution.deadline,
+        "recipient" => execution.recipient,
+        "path" => [
+          {
+            "tokenDeploymentId" => normalized.input.fetch(:deployment_id),
+            "address" => input_address,
+            "standard" => "erc20",
+            "representationKind" => normalized.input.fetch(:representation_kind)
+          },
+          {
+            "tokenDeploymentId" => normalized.output.fetch(:deployment_id),
+            "address" => output_address,
+            "standard" => "erc20",
+            "representationKind" => normalized.output.fetch(:representation_kind)
+          }
+        ],
+        "transaction" => {
+          "kind" => "evm-unsigned-transaction",
+          "chainId" => quote.fetch("chainId"),
+          "from" => execution.sender,
+          "to" => capability.fetch("routerAddress"),
+          "data" => execution_swap_data(
+            normalized.amount_in,
+            minimum_amount_out,
+            input_address,
+            output_address,
+            execution.recipient,
+            execution.deadline_value
+          ),
+          "value" => "0"
+        },
+        "allowance" => {
+          "tokenDeploymentId" => normalized.input.fetch(:deployment_id),
+          "tokenAddress" => input_address,
+          "owner" => execution.sender,
+          "spender" => capability.fetch("routerAddress"),
+          "requiredAmount" => quote.fetch("amountIn")
+        }
+      }
+      deep_freeze(preparation)
+    end
+
+    def assert_execution_deadline(execution, quote_timestamp, completion_clock)
+      return true if execution.deadline_value > quote_timestamp && execution.deadline_value > completion_clock
+
+      execution_domain_error(SwapExecutionErrorCode::INVALID_ARGUMENT)
+    end
+
+    def simulate_execution_context(context, options)
+      check_execution_options(options)
+      execution = context.normalized
+      capability = context.capability
+      transport = context.transport
+      state = context.state
+      preparation = context.preparation
+      selector = rpc_selector(state.initial.hash)
+      allowance_data = ERC20_ALLOWANCE_SELECTOR +
+        encode_execution_address_argument(execution.sender) +
+        encode_execution_address_argument(capability.fetch("routerAddress"))
+      allowance_raw = rpc_request(
+        transport,
+        "eth_call",
+        [abi_call(preparation.fetch("allowance").fetch("tokenAddress"), allowance_data), selector]
+      )
+      current_allowance = parse_execution_uint_word(
+        allowance_raw,
+        code: SwapExecutionErrorCode::INSUFFICIENT_ALLOWANCE
+      )
+      return execution_domain_error(SwapExecutionErrorCode::INSUFFICIENT_ALLOWANCE) if current_allowance < execution.normalized.amount_in
+
+      simulation_raw = begin
+        rpc_request(
+          transport,
+          "eth_call",
+          [
+            {
+              "from" => preparation.fetch("transaction").fetch("from"),
+              "to" => preparation.fetch("transaction").fetch("to"),
+              "data" => preparation.fetch("transaction").fetch("data"),
+              "value" => "0x0"
+            },
+            selector
+          ]
+        )
+      rescue JsonRpcError => error
+        return execution_domain_error(SwapExecutionErrorCode::SIMULATION_REVERTED) if recognized_execution_revert?(error)
+
+        raise
+      end
+
+      latest_after_simulation = parse_block_header(
+        rpc_request(transport, "eth_getBlockByNumber", ["latest", false])
+      )
+      assert_freshness(
+        state.initial,
+        latest_after_simulation,
+        execution.normalized.freshness
+      )
+
+      amounts = parse_execution_uint_array_of_two(simulation_raw)
+      quote_amount_out = parse_decimal_quantity(preparation.fetch("quote").fetch("amountOut"), "SWAP_ARITHMETIC")
+      minimum_amount_out = parse_decimal_quantity(preparation.fetch("minimumAmountOut"), "SWAP_ARITHMETIC")
+      return execution_domain_error(SwapExecutionErrorCode::INVALID_SIMULATION) unless
+        amounts[0] == execution.normalized.amount_in &&
+        amounts[1] == quote_amount_out &&
+        amounts[1] >= minimum_amount_out
+
+      assert_execution_deadline(execution, state.initial.timestamp, execution_current_time)
+      deep_freeze(
+        "simulationKind" => "evm-call",
+        "preparation" => preparation,
+        "snapshot" => preparation.fetch("quote").fetch("snapshot"),
+        "currentAllowance" => current_allowance.to_s,
+        "amounts" => amounts.map(&:to_s),
+        "amountOut" => amounts[1].to_s
+      )
+    end
+
+    def parse_execution_hex_bytes(value, expected_bytes: nil, code: SwapExecutionErrorCode::INVALID_SIMULATION)
+      return execution_domain_error(code) unless value.is_a?(String) && value.start_with?("0x")
+
+      hex = value[2..]
+      return execution_domain_error(code) unless hex && hex.match?(/\A[0-9a-fA-F]*\z/) && hex.length.even?
+      return execution_domain_error(code) if expected_bytes && hex.length != expected_bytes * 2
+
+      "0x#{hex.downcase}"
+    end
+
+    def parse_execution_address_word(value, code: SwapExecutionErrorCode::INVALID_SIMULATION)
+      parsed = parse_execution_hex_bytes(value, expected_bytes: 32, code: code)
+      word = parsed[2..]
+      return execution_domain_error(code) unless word[0, 24] == "0" * 24
+
+      "0x#{word[24, 40]}"
+    end
+
+    def parse_execution_uint_word(value, code: SwapExecutionErrorCode::INVALID_SIMULATION)
+      parsed = parse_execution_hex_bytes(value, expected_bytes: 32, code: code)
+      Integer(parsed[2..], 16)
+    rescue ArgumentError
+      execution_domain_error(code)
+    end
+
+    def parse_execution_uint_array_of_two(value)
+      parsed = parse_execution_hex_bytes(value)
+      payload = parsed[2..]
+      return execution_domain_error(SwapExecutionErrorCode::INVALID_SIMULATION) unless payload.length == 256
+
+      offset = Integer(payload[0, 64], 16)
+      length = Integer(payload[64, 64], 16)
+      return execution_domain_error(SwapExecutionErrorCode::INVALID_SIMULATION) unless offset == 0x20 && length == 2
+
+      [
+        Integer(payload[128, 64], 16),
+        Integer(payload[192, 64], 16)
+      ].freeze
+    rescue ArgumentError, TypeError
+      execution_domain_error(SwapExecutionErrorCode::INVALID_SIMULATION)
+    end
+
+    def recognized_execution_revert?(error)
+      return false unless error.is_a?(JsonRpcError)
+      return false unless [-32_000, -32_015, -32_603, 3].include?(error.code)
+
+      message = error.message.to_s.downcase
+      message.include?("execution reverted") ||
+        message.include?("transaction reverted") ||
+        message.include?("vm execution error") ||
+        message.match?(/\Arevert(?:ed)?(?:\b|:)/)
+    end
+
+    def check_execution_options(options)
+      return if options.nil?
+
+      cancelled = if options.is_a?(Hash)
+                    options[:cancelled] || options["cancelled"] || options[:aborted] || options["aborted"]
+                  elsif options.respond_to?(:cancelled?)
+                    options.cancelled?
+                  elsif options.respond_to?(:aborted?)
+                    options.aborted?
+                  end
+      return unless cancelled
+
+      reason = if options.is_a?(Hash)
+                 options[:reason] || options["reason"]
+               end
+      raise reason if reason.is_a?(Exception)
+
+      raise TransportError, "Swap operation was cancelled", cause: nil
+    end
+
+    def deep_freeze(value)
+      case value
+      when Hash
+        value.each { |key, child| deep_freeze(key); deep_freeze(child) }
+      when Array
+        value.each { |child| deep_freeze(child) }
+      end
+      value.freeze
     end
 
     def copy_request_string(value)
@@ -683,6 +1358,10 @@ module ERPC
 
     def domain_error(code)
       raise SwapQuoteError, code
+    end
+
+    def execution_domain_error(code)
+      raise SwapExecutionError, code
     end
   end
 end

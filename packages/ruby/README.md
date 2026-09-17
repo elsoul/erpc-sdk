@@ -174,6 +174,54 @@ quote-enabled; an otherwise valid request outside those tuples returns
 Transaction building, signing, sending, route search, native wrapping, and
 cross-chain bridging are outside this quote API.
 
+## Unsigned swap preparation and simulation
+
+For the reviewed Ethereum Uniswap V2 and Avalanche LFJ V1 pools, the client
+can prepare an unsigned ERC-20-to-ERC-20 router call and simulate it against a
+fresh RPC snapshot. The methods use the selected dedicated chain transport
+when one is configured.
+
+```ruby
+request = {
+  chainId: ERPC::DexChainIDs::ETHEREUM_MAINNET,
+  poolDefinitionId: ERPC::Pools::Ethereum.fetch(:UNISWAP_V2_USDC_WETH),
+  inputTokenDeploymentId: ERPC::Tokens::Ethereum.fetch(:WETH),
+  outputTokenDeploymentId: ERPC::Tokens::Ethereum.fetch(:USDC),
+  amountIn: "1000000000000000000",
+  sender: "0x1111111111111111111111111111111111111111",
+  recipient: "0x2222222222222222222222222222222222222222",
+  slippageBps: 50,
+  deadline: "1789498800"
+}
+
+preparation = erpc.swap.prepare_exact_input_swap(request)
+simulation = erpc.swap.simulate_exact_input_swap(request)
+puts preparation.fetch("minimumAmountOut")
+puts simulation.fetch("amountOut")
+```
+
+The preparation contains a chain-bound transaction envelope. Convert its
+fields to the wallet library's native request type and convert the CAIP-2
+`chainId` separately when that library expects a numeric network ID:
+
+```ruby
+envelope = preparation.fetch("transaction")
+wallet_request = {
+  chain_id: Integer(envelope.fetch("chainId").delete_prefix("eip155:")),
+  from: envelope.fetch("from"),
+  to: envelope.fetch("to"),
+  data: envelope.fetch("data"),
+  value: envelope.fetch("value")
+}
+```
+
+The SDK never creates approval calldata, changes allowances, signs, or sends
+the envelope. Simulation checks the input-token allowance before calling the
+router and validates the returned amounts. `SwapExecutionError#code` exposes
+stable execution codes such as `SWAP_INSUFFICIENT_ALLOWANCE`,
+`SWAP_SIMULATION_REVERTED`, and `SWAP_INVALID_SIMULATION`; transport and
+non-revert JSON-RPC errors retain their native classes.
+
 Both exact wire names (`getSlot`, `eth_chainId`) and idiomatic snake-case
 aliases (`get_slot`, `eth_chain_id`) create inert requests. Network I/O starts
 only when `send` is called. `request` restricts calls to the namespace catalog;
@@ -187,6 +235,38 @@ preserved. For serialized transactions larger than 1232 bytes, pass the exact
 base64 payload with `"encoding" => "base64"` to `send_transaction` or
 `simulate_transaction`; the SDK forwards the request and response unchanged.
 See the [Solana v1 guide](https://github.com/elsoul/erpc-sdk/blob/main/packages/typescript/docs/solana-v1.md).
+
+## Optional Mayan Swift v2 bridge
+
+`MayanSwiftV2BridgeClient` is an explicit standalone adapter for the reviewed
+issued EURC routes between Ethereum mainnet and Solana mainnet. It does not
+attach to `ERPC::Client`, inherit eRPC credentials or headers, or make any
+request during construction. Configure the Mayan builder and Explorer
+endpoints separately when needed:
+
+```ruby
+bridge = ERPC::MayanSwiftV2BridgeClient.new(
+  builder_api_key: ENV.fetch("MAYAN_BUILDER_API_KEY"),
+  http_adapter: ERPC::NetHttpAdapter.new
+)
+
+quotes = bridge.quote_exact_input(
+  "sourceChainId" => ERPC::TokenChainIDs::ETHEREUM_MAINNET,
+  "destinationChainId" => ERPC::TokenChainIDs::SOLANA_MAINNET,
+  "sourceTokenDeploymentId" => "deployment-0011",
+  "destinationTokenDeploymentId" => "deployment-0013",
+  "amountIn" => "100000000",
+  "slippageBps" => 50
+)
+```
+
+The adapter exposes `quote_exact_input`, `build_unsigned`, and `get_status`.
+Builds return unsigned, structurally checked provider transactions and an
+Ethereum allowance description; the SDK does not approve, sign, broadcast,
+submit, cancel, refund, or claim settlement verification. Provider source
+swaps use Mayan's disclosed internal USDC path (and Jupiter v6 for Solana
+source orders), so this optional adapter is separate from the SDK's configured
+RPC-only swap helpers. `BridgeError#code` provides stable secret-free errors.
 
 ## Namespaces
 

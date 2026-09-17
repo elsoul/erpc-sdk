@@ -21,12 +21,17 @@ use tokio_util::sync::CancellationToken;
 use crate::{
     ErpcError, HttpJsonRpcTransport, RequestOptions,
     dex_catalog::{
-        DEX_CATALOG_CONTENT_DIGEST, DEX_CHAIN_IDS, DexDeployment, PoolDefinition,
-        get_dex_deployment, get_pool_definition,
+        DEX_CATALOG_CONTENT_DIGEST, DEX_CHAIN_IDS, DexDeployment, NATIVE_WRAP_DEFINITIONS,
+        PoolDefinition, get_dex_deployment, get_pool_definition,
+    },
+    generated::swap_execution_capabilities::{
+        SWAP_EXECUTION_CAPABILITIES_AS_OF_DATE, SWAP_EXECUTION_CAPABILITIES_CONTENT_DIGEST,
+        SWAP_EXECUTION_CAPABILITIES_JSON, SWAP_EXECUTION_FUNCTION_SELECTOR,
+        SWAP_EXECUTION_FUNCTION_SIGNATURE,
     },
     token_catalog::{
-        TOKEN_CATALOG_CONTENT_DIGEST, TokenDeployment, TokenStandard, TokenStatus,
-        get_token_deployment,
+        TOKEN_CATALOG_CONTENT_DIGEST, TokenDeployment, TokenRepresentationKind, TokenStandard,
+        TokenStatus, get_token_deployment,
     },
 };
 
@@ -40,6 +45,8 @@ const PAIR_FACTORY_SELECTOR: &str = "0xc45a0155";
 const PAIR_TOKEN0_SELECTOR: &str = "0x0dfe1681";
 const PAIR_TOKEN1_SELECTOR: &str = "0xd21220a7";
 const PAIR_GET_RESERVES_SELECTOR: &str = "0x0902f1ac";
+const ROUTER_GET_AMOUNTS_OUT_SELECTOR: &str = "0xd06ca61f";
+const ERC20_ALLOWANCE_SELECTOR: &str = "0xdd62ed3e";
 
 #[derive(Clone, Copy)]
 struct SupportedQuoteCapability {
@@ -284,6 +291,173 @@ impl From<ErpcError> for SwapQuoteError {
 /// Result type for the public swap quote client.
 pub type SwapResult<T> = std::result::Result<T, SwapQuoteError>;
 
+/// Fixed domain error codes for unsigned EVM swap preparation and simulation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SwapExecutionErrorCode {
+    /// The execution request shape or scalar value is invalid.
+    InvalidArgument,
+    /// The selected records do not have an approved execution capability.
+    UnsupportedExecution,
+    /// A reviewed router binding did not match the selected records.
+    ProgramMismatch,
+    /// The caller's current token allowance is below the requested amount.
+    InsufficientAllowance,
+    /// The final router simulation returned a recognized execution revert.
+    SimulationReverted,
+    /// A preflight or final simulation response was malformed or inconsistent.
+    InvalidSimulation,
+}
+
+impl SwapExecutionErrorCode {
+    /// Stable spelling for [`Self::InvalidArgument`].
+    pub const SWAP_EXECUTION_INVALID_ARGUMENT: Self = Self::InvalidArgument;
+    /// Stable spelling for [`Self::UnsupportedExecution`].
+    pub const SWAP_UNSUPPORTED_EXECUTION: Self = Self::UnsupportedExecution;
+    /// Stable spelling for [`Self::ProgramMismatch`].
+    pub const SWAP_PROGRAM_MISMATCH: Self = Self::ProgramMismatch;
+    /// Stable spelling for [`Self::InsufficientAllowance`].
+    pub const SWAP_INSUFFICIENT_ALLOWANCE: Self = Self::InsufficientAllowance;
+    /// Stable spelling for [`Self::SimulationReverted`].
+    pub const SWAP_SIMULATION_REVERTED: Self = Self::SimulationReverted;
+    /// Stable spelling for [`Self::InvalidSimulation`].
+    pub const SWAP_INVALID_SIMULATION: Self = Self::InvalidSimulation;
+
+    /// Returns the stable wire/error code string.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::InvalidArgument => "SWAP_EXECUTION_INVALID_ARGUMENT",
+            Self::UnsupportedExecution => "SWAP_UNSUPPORTED_EXECUTION",
+            Self::ProgramMismatch => "SWAP_PROGRAM_MISMATCH",
+            Self::InsufficientAllowance => "SWAP_INSUFFICIENT_ALLOWANCE",
+            Self::SimulationReverted => "SWAP_SIMULATION_REVERTED",
+            Self::InvalidSimulation => "SWAP_INVALID_SIMULATION",
+        }
+    }
+
+    const fn message(self) -> &'static str {
+        match self {
+            Self::InvalidArgument => "Swap execution request is invalid",
+            Self::UnsupportedExecution => "Swap execution is unsupported for the selected records",
+            Self::ProgramMismatch => "Swap program does not match the selected records",
+            Self::InsufficientAllowance => "Swap allowance is insufficient",
+            Self::SimulationReverted => "Swap simulation reverted",
+            Self::InvalidSimulation => "Swap simulation result is invalid",
+        }
+    }
+}
+
+impl fmt::Display for SwapExecutionErrorCode {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+/// Errors produced by unsigned EVM swap preparation and simulation.
+///
+/// Quote-domain failures remain available through [`Self::Quote`], while
+/// transport, timeout, cancellation, and non-revert JSON-RPC failures retain
+/// their sanitized SDK error through [`Self::Upstream`].
+#[derive(Debug)]
+pub enum SwapExecutionError {
+    /// A deterministic execution-domain failure.
+    Domain(SwapExecutionErrorCode),
+    /// A quote-domain failure that occurred before router execution reads.
+    Quote(SwapQuoteError),
+    /// An existing transport, timeout, cancellation, or JSON-RPC error.
+    Upstream(ErpcError),
+}
+
+impl SwapExecutionError {
+    /// Returns the execution-domain code, or `None` for a quote or upstream error.
+    #[must_use]
+    pub const fn code(&self) -> Option<SwapExecutionErrorCode> {
+        match self {
+            Self::Domain(code) => Some(*code),
+            Self::Quote(_) | Self::Upstream(_) => None,
+        }
+    }
+
+    /// Returns the nested quote error when quote validation failed.
+    #[must_use]
+    pub const fn quote(&self) -> Option<&SwapQuoteError> {
+        match self {
+            Self::Quote(error) => Some(error),
+            Self::Domain(_) | Self::Upstream(_) => None,
+        }
+    }
+
+    /// Returns the preserved upstream error when transport failed.
+    #[must_use]
+    pub const fn upstream(&self) -> Option<&ErpcError> {
+        match self {
+            Self::Upstream(error) => Some(error),
+            Self::Domain(_) | Self::Quote(_) => None,
+        }
+    }
+
+    /// Returns the stable code string for either execution or quote errors.
+    #[must_use]
+    pub const fn code_string(&self) -> Option<&'static str> {
+        match self {
+            Self::Domain(code) => Some(code.as_str()),
+            Self::Quote(error) => error.code_string(),
+            Self::Upstream(_) => None,
+        }
+    }
+
+    /// Returns the nested quote-domain code when one is present.
+    #[must_use]
+    pub const fn quote_code(&self) -> Option<SwapQuoteErrorCode> {
+        match self {
+            Self::Quote(SwapQuoteError::Domain(code)) => Some(*code),
+            Self::Domain(_) | Self::Quote(SwapQuoteError::Upstream(_)) | Self::Upstream(_) => None,
+        }
+    }
+}
+
+impl fmt::Display for SwapExecutionError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Domain(code) => formatter.write_str(code.message()),
+            Self::Quote(error) => error.fmt(formatter),
+            Self::Upstream(error) => error.fmt(formatter),
+        }
+    }
+}
+
+impl Error for SwapExecutionError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Domain(_) => None,
+            Self::Quote(error) => Some(error),
+            Self::Upstream(error) => Some(error),
+        }
+    }
+}
+
+impl From<SwapQuoteError> for SwapExecutionError {
+    fn from(error: SwapQuoteError) -> Self {
+        match error {
+            SwapQuoteError::Upstream(error) => Self::Upstream(error),
+            SwapQuoteError::Domain(code) => match code {
+                // These quote gates mean the records can be looked up but do
+                // not have an approved execution capability.
+                SwapQuoteErrorCode::UnsupportedAdapter
+                | SwapQuoteErrorCode::UnsupportedToken
+                | SwapQuoteErrorCode::UnsupportedTokenStandard
+                | SwapQuoteErrorCode::UnknownPool => {
+                    Self::Domain(SwapExecutionErrorCode::UnsupportedExecution)
+                }
+                other => Self::Quote(SwapQuoteError::Domain(other)),
+            },
+        }
+    }
+}
+
+/// Result type for unsigned swap preparation and simulation.
+pub type SwapExecutionResult<T> = std::result::Result<T, SwapExecutionError>;
+
 /// Freshness limits for an exact-input quote. Omitted fields use SDK defaults.
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
@@ -341,6 +515,145 @@ pub struct ExactInputQuoteRequest {
 
 /// Alias for callers that prefer the swap-specific request name.
 pub type SwapQuoteRequest = ExactInputQuoteRequest;
+
+/// Request for unsigned ERC20-to-ERC20 preparation or RPC simulation.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct PrepareExactInputSwapRequest {
+    /// Chain-qualified catalog identifier.
+    pub chain_id: String,
+    /// Opaque catalog pool identifier.
+    pub pool_definition_id: String,
+    /// Opaque input token deployment identifier.
+    pub input_token_deployment_id: String,
+    /// Opaque output token deployment identifier.
+    pub output_token_deployment_id: String,
+    /// Positive canonical decimal amount in base units.
+    pub amount_in: String,
+    /// Optional block freshness limits.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub freshness: Option<SwapFreshness>,
+    /// Nonzero EVM address that owns the input tokens.
+    pub sender: String,
+    /// Nonzero EVM address that receives the output tokens.
+    pub recipient: String,
+    /// Slippage tolerance in basis points, from 0 through 9999.
+    pub slippage_bps: u64,
+    /// Positive canonical decimal deadline in seconds.
+    pub deadline: String,
+}
+
+/// Alias for callers that prefer a shorter execution request name.
+pub type ExactInputSwapRequest = PrepareExactInputSwapRequest;
+
+/// One ERC20 deployment and address in an execution path.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SwapPathEntry {
+    /// Opaque token deployment identifier.
+    pub token_deployment_id: String,
+    /// Lowercase 20-byte EVM token address.
+    pub address: String,
+    /// Token standard discriminator.
+    pub standard: String,
+    /// Catalog representation discriminator.
+    pub representation_kind: String,
+}
+
+/// Alias matching the full exact-input path entry name.
+pub type ExactInputSwapPathEntry = SwapPathEntry;
+
+/// Chain-bound unsigned EVM transaction envelope.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EvmUnsignedTransaction {
+    /// Transaction envelope discriminator.
+    pub kind: String,
+    /// Canonical CAIP-2 chain identifier.
+    pub chain_id: String,
+    /// Lowercase sender address.
+    pub from: String,
+    /// Lowercase reviewed router address.
+    pub to: String,
+    /// Lowercase ABI calldata.
+    pub data: String,
+    /// Canonical decimal zero value.
+    pub value: String,
+}
+
+/// Allowance requirement attached to a prepared swap.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SwapAllowance {
+    /// Input token deployment identifier.
+    pub token_deployment_id: String,
+    /// Lowercase input token address.
+    pub token_address: String,
+    /// Lowercase allowance owner address.
+    pub owner: String,
+    /// Lowercase reviewed router spender address.
+    pub spender: String,
+    /// Canonical decimal amount required by the swap.
+    pub required_amount: String,
+}
+
+/// Unsigned ERC20-to-ERC20 router preparation.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExactInputSwapPreparation {
+    /// Preparation discriminator.
+    pub preparation_kind: String,
+    /// Reviewed execution capability identifier.
+    pub execution_capability_id: String,
+    /// SHA-256 digest of the canonical runtime capability projection.
+    pub execution_capability_digest: String,
+    /// Fresh quote used to construct the transaction.
+    pub quote: ExactInputQuoteResult,
+    /// Canonical decimal minimum output after slippage.
+    pub minimum_amount_out: String,
+    /// Slippage tolerance in basis points.
+    pub slippage_bps: u64,
+    /// Canonical decimal deadline in seconds.
+    pub deadline: String,
+    /// Lowercase recipient address.
+    pub recipient: String,
+    /// Exactly two entries, input followed by output.
+    pub path: Vec<SwapPathEntry>,
+    /// Chain-bound unsigned transaction envelope.
+    pub transaction: EvmUnsignedTransaction,
+    /// Input allowance requirement for the reviewed router.
+    pub allowance: SwapAllowance,
+}
+
+/// Alias for the preparation result.
+pub type PrepareExactInputSwapResult = ExactInputSwapPreparation;
+
+/// Alias for callers that use the generic preparation name.
+pub type SwapPreparation = ExactInputSwapPreparation;
+
+/// Result of a simulated prepared swap.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExactInputSwapSimulation {
+    /// Simulation discriminator.
+    pub simulation_kind: String,
+    /// Fresh unsigned preparation used for this simulation.
+    pub preparation: ExactInputSwapPreparation,
+    /// Block snapshot used for the simulation.
+    pub snapshot: EvmBlockSnapshot,
+    /// Canonical decimal current input-token allowance.
+    pub current_allowance: String,
+    /// Exact simulated amounts, input followed by output.
+    pub amounts: Vec<String>,
+    /// Canonical decimal simulated output amount.
+    pub amount_out: String,
+}
+
+/// Alias for the simulation result.
+pub type SimulateExactInputSwapResult = ExactInputSwapSimulation;
+
+/// Alias for callers that use the generic simulation name.
+pub type SwapSimulation = ExactInputSwapSimulation;
 
 /// Exact-input quote result.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -465,6 +778,380 @@ impl SwapClient {
         Ok(quote_result(&normalized, &state, &calculated))
     }
 
+    /// Prepares an unsigned ERC20-to-ERC20 router transaction from a fresh
+    /// quote and the reviewed execution capability for the selected pool.
+    ///
+    /// The returned transaction is a chain-bound SDK envelope. It does not
+    /// contain approval calldata, a signature, a nonce, fees, or a send
+    /// operation; the caller's wallet remains responsible for those actions.
+    pub async fn prepare_exact_input_swap<R>(
+        &self,
+        request: R,
+    ) -> SwapExecutionResult<ExactInputSwapPreparation>
+    where
+        R: Borrow<PrepareExactInputSwapRequest>,
+    {
+        self.prepare_exact_input_swap_with(request.borrow(), None)
+            .await
+    }
+
+    /// Prepares an unsigned swap while observing an optional cancellation token.
+    pub async fn prepare_exact_input_swap_with<R>(
+        &self,
+        request: R,
+        cancellation: Option<&CancellationToken>,
+    ) -> SwapExecutionResult<ExactInputSwapPreparation>
+    where
+        R: Borrow<PrepareExactInputSwapRequest>,
+    {
+        // Copy every caller scalar before the first await. This also keeps
+        // interior-mutable callers from changing the request during RPC I/O.
+        let request = request.borrow().clone();
+        let options = RequestOptions {
+            cancellation: cancellation.cloned(),
+        };
+        let prepared = self.prepare_internal(request, &options).await?;
+        Ok(prepared.preparation)
+    }
+
+    /// Simulates a freshly prepared unsigned ERC20-to-ERC20 router call.
+    pub async fn simulate_exact_input_swap<R>(
+        &self,
+        request: R,
+    ) -> SwapExecutionResult<ExactInputSwapSimulation>
+    where
+        R: Borrow<PrepareExactInputSwapRequest>,
+    {
+        self.simulate_exact_input_swap_with(request.borrow(), None)
+            .await
+    }
+
+    /// Simulates a freshly prepared swap while observing an optional
+    /// cancellation token.
+    pub async fn simulate_exact_input_swap_with<R>(
+        &self,
+        request: R,
+        cancellation: Option<&CancellationToken>,
+    ) -> SwapExecutionResult<ExactInputSwapSimulation>
+    where
+        R: Borrow<PrepareExactInputSwapRequest>,
+    {
+        // Keep a caller-owned snapshot for the complete operation, including
+        // the preparation phase and every simulation read.
+        let request = request.borrow().clone();
+        let options = RequestOptions {
+            cancellation: cancellation.cloned(),
+        };
+        let prepared = self.prepare_internal(request, &options).await?;
+        self.simulate_internal(prepared, &options).await
+    }
+
+    #[allow(clippy::too_many_lines)]
+    async fn prepare_internal(
+        &self,
+        request: PrepareExactInputSwapRequest,
+        options: &RequestOptions,
+    ) -> SwapExecutionResult<PreparedExecution> {
+        let scalars = normalize_execution_scalars(&request, self)?;
+        let quote_request = quote_request_from_execution(&request);
+        let normalized = normalize_request(&quote_request).map_err(SwapExecutionError::from)?;
+        let Some(capability) = execution_capability_for(&normalized) else {
+            return execution_domain_error(SwapExecutionErrorCode::UnsupportedExecution);
+        };
+        let transport = if normalized.pool.chain_id == chain_id("ethereum") {
+            &self.ethereum
+        } else if normalized.pool.chain_id == chain_id("avalancheC") {
+            &self.avalanche
+        } else {
+            return execution_domain_error(SwapExecutionErrorCode::UnsupportedExecution);
+        };
+
+        // This is intentionally the existing quote sequence and decoder. A
+        // preparation owns a new quote rather than trusting caller data.
+        let state = read_evm_state(transport, &normalized, options, self)
+            .await
+            .map_err(SwapExecutionError::from)?;
+        assert_freshness(
+            &state.initial,
+            &state.latest_after_reads,
+            &normalized.freshness,
+            self,
+        )
+        .map_err(SwapExecutionError::from)?;
+        let calculated = calculate_quote(&normalized, &state).map_err(SwapExecutionError::from)?;
+        let quote = quote_result(&normalized, &state, &calculated);
+
+        // Deadline comparisons need the quote timestamp and the current
+        // completion clock, so they happen after the quote's 11 reads but
+        // before any router-specific read.
+        ensure_deadline(&scalars, &state.initial.timestamp, self)?;
+        let minimum_amount_out = minimum_amount_out(&quote.amount_out, scalars.slippage_bps)?;
+        let input_address = normalized
+            .input
+            .address
+            .ok_or(SwapExecutionError::Domain(
+                SwapExecutionErrorCode::InvalidSimulation,
+            ))?
+            .to_ascii_lowercase();
+        let output_address = normalized
+            .output
+            .address
+            .ok_or(SwapExecutionError::Domain(
+                SwapExecutionErrorCode::InvalidSimulation,
+            ))?
+            .to_ascii_lowercase();
+        let selector = rpc_selector(&state.initial.hash);
+
+        // Router reads are all pinned to the quote block. They deliberately
+        // remain separate calls so the RPC trace proves the required order.
+        let router_code_raw = execution_rpc_request(
+            transport,
+            "eth_getCode",
+            json!([capability.router_address, selector.clone()]),
+            options,
+        )
+        .await?;
+        let router_code = parse_execution_hex_bytes(&router_code_raw)?;
+        if router_code.len() <= 2 {
+            return execution_invalid_simulation();
+        }
+
+        let router_factory_raw = execution_rpc_request(
+            transport,
+            "eth_call",
+            json!([
+                abi_call(&capability.router_address, PAIR_FACTORY_SELECTOR),
+                selector.clone()
+            ]),
+            options,
+        )
+        .await?;
+        let router_factory = parse_execution_address_word(&router_factory_raw)?;
+        if !router_factory.eq_ignore_ascii_case(&capability.factory_address) {
+            return execution_domain_error(SwapExecutionErrorCode::ProgramMismatch);
+        }
+
+        let router_wrapped_raw = execution_rpc_request(
+            transport,
+            "eth_call",
+            json!([
+                abi_call(
+                    &capability.router_address,
+                    &capability.wrapped_native_function_selector
+                ),
+                selector.clone()
+            ]),
+            options,
+        )
+        .await?;
+        let router_wrapped = parse_execution_address_word(&router_wrapped_raw)?;
+        if !router_wrapped.eq_ignore_ascii_case(&capability.wrapped_native_token_address) {
+            return execution_domain_error(SwapExecutionErrorCode::ProgramMismatch);
+        }
+
+        let amounts_out_data =
+            encode_get_amounts_out(&normalized.amount_in, &input_address, &output_address)?;
+        let router_amounts_raw = execution_rpc_request(
+            transport,
+            "eth_call",
+            json!([
+                abi_call(&capability.router_address, &amounts_out_data),
+                selector.clone()
+            ]),
+            options,
+        )
+        .await?;
+        let (router_amount_in, router_amount_out) = parse_execution_amounts(&router_amounts_raw)?;
+        if router_amount_in != normalized.amount_in
+            || router_amount_out
+                != BigUint::parse_bytes(quote.amount_out.as_bytes(), 10)
+                    .expect("quote amount is canonical")
+        {
+            return execution_invalid_simulation();
+        }
+
+        let latest_after_router_raw = execution_rpc_request(
+            transport,
+            "eth_getBlockByNumber",
+            json!(["latest", false]),
+            options,
+        )
+        .await?;
+        let latest_after_router = parse_execution_block_header(&latest_after_router_raw)?;
+        assert_freshness(
+            &state.initial,
+            &latest_after_router,
+            &normalized.freshness,
+            self,
+        )
+        .map_err(SwapExecutionError::from)?;
+        ensure_deadline(&scalars, &state.initial.timestamp, self)?;
+
+        let data = encode_swap_exact_tokens_for_tokens(
+            &normalized.amount_in,
+            &minimum_amount_out,
+            &input_address,
+            &output_address,
+            &scalars.recipient,
+            &scalars.deadline_value,
+        )?;
+        let preparation = ExactInputSwapPreparation {
+            preparation_kind: "evm-router-v2-exact-input".to_owned(),
+            execution_capability_id: capability.swap_execution_capability_id,
+            execution_capability_digest: SWAP_EXECUTION_CAPABILITIES_CONTENT_DIGEST.to_owned(),
+            quote,
+            minimum_amount_out: minimum_amount_out.to_str_radix(10),
+            slippage_bps: scalars.slippage_bps,
+            deadline: scalars.deadline,
+            recipient: scalars.recipient.clone(),
+            path: vec![
+                SwapPathEntry {
+                    token_deployment_id: normalized.input.deployment_id.to_owned(),
+                    address: input_address.clone(),
+                    standard: "erc20".to_owned(),
+                    representation_kind: representation_kind_text(
+                        normalized.input.representation_kind,
+                    )
+                    .to_owned(),
+                },
+                SwapPathEntry {
+                    token_deployment_id: normalized.output.deployment_id.to_owned(),
+                    address: output_address,
+                    standard: "erc20".to_owned(),
+                    representation_kind: representation_kind_text(
+                        normalized.output.representation_kind,
+                    )
+                    .to_owned(),
+                },
+            ],
+            transaction: EvmUnsignedTransaction {
+                kind: "evm-unsigned-transaction".to_owned(),
+                chain_id: normalized.request.chain_id,
+                from: scalars.sender.clone(),
+                to: capability.router_address.clone(),
+                data,
+                value: "0".to_owned(),
+            },
+            allowance: SwapAllowance {
+                token_deployment_id: normalized.input.deployment_id.to_owned(),
+                token_address: input_address,
+                owner: scalars.sender,
+                spender: capability.router_address,
+                required_amount: normalized.amount_in.to_str_radix(10),
+            },
+        };
+        Ok(PreparedExecution {
+            preparation,
+            initial: state.initial,
+            freshness: normalized.freshness,
+        })
+    }
+
+    async fn simulate_internal(
+        &self,
+        prepared: PreparedExecution,
+        options: &RequestOptions,
+    ) -> SwapExecutionResult<ExactInputSwapSimulation> {
+        let preparation = prepared.preparation;
+        let selected_chain_id = preparation.transaction.chain_id.clone();
+        let transport = if selected_chain_id == chain_id("ethereum") {
+            &self.ethereum
+        } else if selected_chain_id == chain_id("avalancheC") {
+            &self.avalanche
+        } else {
+            return execution_domain_error(SwapExecutionErrorCode::UnsupportedExecution);
+        };
+        let amount_in = parse_execution_decimal(&preparation.quote.amount_in)?;
+        let Ok(quote_amount_out) = parse_execution_decimal(&preparation.quote.amount_out) else {
+            return execution_invalid_simulation();
+        };
+        let token_address = preparation.allowance.token_address.clone();
+        let allowance_data =
+            encode_allowance(&preparation.allowance.owner, &preparation.allowance.spender)?;
+        let selector = rpc_selector(&preparation.quote.snapshot.block_hash);
+        let allowance_raw = execution_rpc_request(
+            transport,
+            "eth_call",
+            json!([abi_call(&token_address, &allowance_data), selector.clone()]),
+            options,
+        )
+        .await?;
+        let Ok(current_allowance) = parse_execution_uint_word(&allowance_raw) else {
+            return execution_domain_error(SwapExecutionErrorCode::InsufficientAllowance);
+        };
+        if current_allowance < amount_in {
+            return execution_domain_error(SwapExecutionErrorCode::InsufficientAllowance);
+        }
+
+        let simulation_call = json!({
+            "from": preparation.transaction.from,
+            "to": preparation.transaction.to,
+            "data": preparation.transaction.data,
+            "value": "0x0",
+        });
+        let simulated_raw = match execution_rpc_request(
+            transport,
+            "eth_call",
+            json!([simulation_call, selector]),
+            options,
+        )
+        .await
+        {
+            Ok(value) => value,
+            Err(SwapExecutionError::Upstream(error)) if is_execution_revert(&error) => {
+                return execution_domain_error(SwapExecutionErrorCode::SimulationReverted);
+            }
+            Err(error) => return Err(error),
+        };
+        let (simulated_amount_in, simulated_amount_out, mut invalid_result) =
+            match parse_execution_amounts(&simulated_raw) {
+                Ok((amount_in, amount_out)) => (amount_in, amount_out, false),
+                Err(_) => (BigUint::default(), BigUint::default(), true),
+            };
+        let minimum_amount_out =
+            if let Ok(value) = parse_execution_decimal(&preparation.minimum_amount_out) {
+                value
+            } else {
+                invalid_result = true;
+                BigUint::default()
+            };
+
+        let latest_raw = execution_rpc_request(
+            transport,
+            "eth_getBlockByNumber",
+            json!(["latest", false]),
+            options,
+        )
+        .await?;
+        let latest = parse_execution_block_header(&latest_raw)?;
+        assert_freshness(&prepared.initial, &latest, &prepared.freshness, self)
+            .map_err(SwapExecutionError::from)?;
+        let deadline_value = parse_execution_decimal(&preparation.deadline)?;
+        let now = BigUint::from(now_seconds(self).map_err(SwapExecutionError::from)?);
+        if deadline_value <= now {
+            return execution_domain_error(SwapExecutionErrorCode::InvalidArgument);
+        }
+
+        if invalid_result
+            || simulated_amount_in != amount_in
+            || simulated_amount_out != quote_amount_out
+            || simulated_amount_out < minimum_amount_out
+        {
+            return execution_invalid_simulation();
+        }
+
+        let amount_in_text = simulated_amount_in.to_str_radix(10);
+        let amount_out_text = simulated_amount_out.to_str_radix(10);
+        Ok(ExactInputSwapSimulation {
+            simulation_kind: "evm-call".to_owned(),
+            snapshot: preparation.quote.snapshot.clone(),
+            current_allowance: current_allowance.to_str_radix(10),
+            amounts: vec![amount_in_text, amount_out_text.clone()],
+            amount_out: amount_out_text,
+            preparation,
+        })
+    }
+
     #[cfg(test)]
     #[allow(dead_code)]
     pub(crate) fn with_clock(mut self, clock: fn() -> u64) -> Self {
@@ -511,8 +1198,408 @@ struct CalculatedQuote {
     fee_denominator: BigUint,
 }
 
+#[allow(clippy::struct_field_names)]
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct SwapExecutionCapability {
+    swap_execution_capability_id: String,
+    chain_id: String,
+    dex_deployment_id: String,
+    pool_definition_id: String,
+    factory_address: String,
+    router_address: String,
+    router_kind: String,
+    adapter_kind: String,
+    token0_deployment_id: String,
+    token0_address: String,
+    token0_standard: String,
+    token1_deployment_id: String,
+    token1_address: String,
+    token1_standard: String,
+    wrapped_native_token_deployment_id: String,
+    wrapped_native_token_address: String,
+    wrapped_native_function_selector: String,
+    function_kind: String,
+    function_signature: String,
+    function_selector: String,
+    status: String,
+}
+
+#[derive(Clone, Debug)]
+struct NormalizedExecutionScalars {
+    sender: String,
+    recipient: String,
+    slippage_bps: u64,
+    deadline: String,
+    deadline_value: BigUint,
+}
+
+struct PreparedExecution {
+    preparation: ExactInputSwapPreparation,
+    initial: BlockHeader,
+    freshness: NormalizedFreshness,
+}
+
 fn domain_error<T>(code: SwapQuoteErrorCode) -> SwapResult<T> {
     Err(SwapQuoteError::Domain(code))
+}
+
+fn execution_domain_error<T>(code: SwapExecutionErrorCode) -> SwapExecutionResult<T> {
+    Err(SwapExecutionError::Domain(code))
+}
+
+fn execution_invalid_simulation<T>() -> SwapExecutionResult<T> {
+    execution_domain_error(SwapExecutionErrorCode::InvalidSimulation)
+}
+
+fn normalize_execution_address(value: &str) -> SwapExecutionResult<String> {
+    if !is_evm_address(value) || value[2..].bytes().all(|byte| byte == b'0') {
+        return execution_domain_error(SwapExecutionErrorCode::InvalidArgument);
+    }
+    Ok(format!("0x{}", value[2..].to_ascii_lowercase()))
+}
+
+fn parse_execution_decimal(value: &str) -> SwapExecutionResult<BigUint> {
+    if value.is_empty()
+        || value.len() > UINT256_DECIMAL_MAX_LENGTH
+        || !value.bytes().all(|byte| byte.is_ascii_digit())
+        || (value.len() > 1 && value.as_bytes()[0] == b'0')
+    {
+        return execution_domain_error(SwapExecutionErrorCode::InvalidArgument);
+    }
+    let Some(parsed) = BigUint::parse_bytes(value.as_bytes(), 10) else {
+        return execution_domain_error(SwapExecutionErrorCode::InvalidArgument);
+    };
+    if parsed == BigUint::default() {
+        return execution_domain_error(SwapExecutionErrorCode::InvalidArgument);
+    }
+    if parsed.bits() > 256 {
+        return execution_domain_error(SwapExecutionErrorCode::InvalidArgument);
+    }
+    Ok(parsed)
+}
+
+fn normalize_execution_scalars(
+    request: &PrepareExactInputSwapRequest,
+    client: &SwapClient,
+) -> SwapExecutionResult<NormalizedExecutionScalars> {
+    let sender = normalize_execution_address(&request.sender)?;
+    let recipient = normalize_execution_address(&request.recipient)?;
+    if request.slippage_bps > 9_999 {
+        return execution_domain_error(SwapExecutionErrorCode::InvalidArgument);
+    }
+    let deadline_value = parse_execution_decimal(&request.deadline)?;
+    let now = BigUint::from(now_seconds(client).map_err(SwapExecutionError::from)?);
+    if deadline_value <= now {
+        return execution_domain_error(SwapExecutionErrorCode::InvalidArgument);
+    }
+    Ok(NormalizedExecutionScalars {
+        sender,
+        recipient,
+        slippage_bps: request.slippage_bps,
+        deadline: request.deadline.clone(),
+        deadline_value,
+    })
+}
+
+fn generated_execution_capabilities() -> Vec<SwapExecutionCapability> {
+    let _ = std::hint::black_box(SWAP_EXECUTION_CAPABILITIES_AS_OF_DATE);
+    serde_json::from_str(SWAP_EXECUTION_CAPABILITIES_JSON)
+        .expect("generated swap execution capabilities must be valid")
+}
+
+fn execution_capability_for(normalized: &NormalizedRequest) -> Option<SwapExecutionCapability> {
+    let capability = generated_execution_capabilities()
+        .into_iter()
+        .find(|entry| entry.pool_definition_id == normalized.pool.pool_definition_id)?;
+    let quote_capability = SUPPORTED_QUOTE_CAPABILITIES
+        .iter()
+        .find(|entry| entry.pool_definition_id == normalized.pool.pool_definition_id)?;
+    let wrapped = get_token_deployment(&capability.wrapped_native_token_deployment_id)?;
+    let native_wrap = NATIVE_WRAP_DEFINITIONS.iter().find(|entry| {
+        entry.chain_id == capability.chain_id
+            && entry.wrapped_token_deployment_id == capability.wrapped_native_token_deployment_id
+    })?;
+    let input_address = normalized.input.address?;
+    let output_address = normalized.output.address?;
+    let token0 = get_token_deployment(&capability.token0_deployment_id)?;
+    let token1 = get_token_deployment(&capability.token1_deployment_id)?;
+    let token0_address = token0.address?;
+    let token1_address = token1.address?;
+
+    let rows_match = capability.status == "active"
+        && capability.chain_id == normalized.pool.chain_id
+        && capability.dex_deployment_id == normalized.pool.dex_deployment_id
+        && capability.pool_definition_id == normalized.pool.pool_definition_id
+        && capability.factory_address == normalized.dex.program_address
+        && capability.router_address.starts_with("0x")
+        && is_evm_address(&capability.router_address)
+        && !capability.router_kind.is_empty()
+        && capability.adapter_kind == SUPPORTED_QUOTE_ADAPTER
+        && capability.token0_deployment_id == normalized.pool.token0_deployment_id
+        && capability
+            .token0_address
+            .eq_ignore_ascii_case(token0_address)
+        && capability.token0_standard == "erc20"
+        && capability.token1_deployment_id == normalized.pool.token1_deployment_id
+        && capability
+            .token1_address
+            .eq_ignore_ascii_case(token1_address)
+        && capability.token1_standard == "erc20"
+        && capability.wrapped_native_token_deployment_id == wrapped.deployment_id
+        && capability
+            .wrapped_native_token_address
+            .eq_ignore_ascii_case(wrapped.address?)
+        && wrapped.chain_id == normalized.pool.chain_id
+        && wrapped.standard == TokenStandard::Erc20
+        && wrapped.status == TokenStatus::Active
+        && native_wrap.status == "active"
+        && native_wrap.wrapped_token_deployment_id == capability.wrapped_native_token_deployment_id
+        && capability
+            .wrapped_native_function_selector
+            .starts_with("0x")
+        && capability.wrapped_native_function_selector.len() == 10
+        && capability.function_kind == "exact-input-erc20-to-erc20"
+        && capability.function_signature == SWAP_EXECUTION_FUNCTION_SIGNATURE
+        && capability.function_selector == SWAP_EXECUTION_FUNCTION_SELECTOR
+        && capability.router_address.len() == 42
+        && normalized
+            .pool
+            .address
+            .eq_ignore_ascii_case(quote_capability.pool_address)
+        && normalized.pool.adapter.kind == quote_capability.adapter_kind
+        && normalized.pool.adapter.fee_numerator == Some(quote_capability.fee_numerator)
+        && normalized.pool.adapter.fee_denominator == Some(quote_capability.fee_denominator)
+        && normalized.dex.dex_deployment_id == quote_capability.dex_deployment_id
+        && normalized.dex.chain_id == quote_capability.chain_id
+        && input_address != output_address;
+    if !rows_match {
+        return None;
+    }
+
+    // The generated row binds the exact reviewed ordered pair, while the
+    // quote request may select either direction.
+    let token_pair_matches = (normalized.input.deployment_id == capability.token0_deployment_id
+        || normalized.input.deployment_id == capability.token1_deployment_id)
+        && (normalized.output.deployment_id == capability.token0_deployment_id
+            || normalized.output.deployment_id == capability.token1_deployment_id);
+    token_pair_matches.then_some(capability)
+}
+
+fn quote_request_from_execution(request: &PrepareExactInputSwapRequest) -> ExactInputQuoteRequest {
+    ExactInputQuoteRequest {
+        chain_id: request.chain_id.clone(),
+        pool_definition_id: request.pool_definition_id.clone(),
+        input_token_deployment_id: request.input_token_deployment_id.clone(),
+        output_token_deployment_id: request.output_token_deployment_id.clone(),
+        amount_in: request.amount_in.clone(),
+        freshness: request.freshness.clone(),
+    }
+}
+
+fn encode_uint256_word(value: &BigUint) -> SwapExecutionResult<String> {
+    if value.bits() > 256 {
+        return execution_domain_error(SwapExecutionErrorCode::InvalidArgument);
+    }
+    let hex = value.to_str_radix(16);
+    Ok(format!("{hex:0>64}"))
+}
+
+fn encode_execution_address_argument(address: &str) -> SwapExecutionResult<String> {
+    if !is_evm_address(address) {
+        return execution_invalid_simulation();
+    }
+    Ok(format!(
+        "{}{}",
+        "0".repeat(24),
+        &address[2..].to_ascii_lowercase()
+    ))
+}
+
+async fn execution_rpc_request(
+    transport: &HttpJsonRpcTransport,
+    method: &str,
+    params: Value,
+    options: &RequestOptions,
+) -> SwapExecutionResult<Value> {
+    rpc_request(transport, method, params, options)
+        .await
+        .map_err(SwapExecutionError::from)
+}
+
+fn parse_execution_hex_bytes(value: &Value) -> SwapExecutionResult<String> {
+    parse_hex_bytes(value, None, SwapQuoteErrorCode::InvalidPoolState)
+        .map_err(|_| SwapExecutionError::Domain(SwapExecutionErrorCode::InvalidSimulation))
+}
+
+fn parse_execution_address_word(value: &Value) -> SwapExecutionResult<String> {
+    let value = parse_execution_hex_bytes_exact(value, 32)?;
+    let word = &value[2..];
+    if !word[..24].bytes().all(|byte| byte == b'0') {
+        return execution_invalid_simulation();
+    }
+    Ok(format!("0x{}", &word[24..]))
+}
+
+fn parse_execution_hex_bytes_exact(
+    value: &Value,
+    expected_bytes: usize,
+) -> SwapExecutionResult<String> {
+    parse_hex_bytes(
+        value,
+        Some(expected_bytes),
+        SwapQuoteErrorCode::InvalidPoolState,
+    )
+    .map_err(|_| SwapExecutionError::Domain(SwapExecutionErrorCode::InvalidSimulation))
+}
+
+fn parse_execution_uint_word(value: &Value) -> SwapExecutionResult<BigUint> {
+    let value = parse_execution_hex_bytes_exact(value, 32)?;
+    let parsed = BigUint::parse_bytes(value[2..].as_bytes(), 16).ok_or(
+        SwapExecutionError::Domain(SwapExecutionErrorCode::InvalidSimulation),
+    )?;
+    if parsed.bits() > 256 {
+        return execution_invalid_simulation();
+    }
+    Ok(parsed)
+}
+
+fn parse_execution_amounts(value: &Value) -> SwapExecutionResult<(BigUint, BigUint)> {
+    let value = parse_execution_hex_bytes(value)?;
+    let payload = &value[2..];
+    // offset, length, and exactly two 32-byte values; trailing words are not
+    // accepted because they could change the meaning of the returned array.
+    if payload.len() != 64 * 4 {
+        return execution_invalid_simulation();
+    }
+    let offset = BigUint::parse_bytes(payload[..64].as_bytes(), 16).ok_or(
+        SwapExecutionError::Domain(SwapExecutionErrorCode::InvalidSimulation),
+    )?;
+    let length = BigUint::parse_bytes(payload[64..128].as_bytes(), 16).ok_or(
+        SwapExecutionError::Domain(SwapExecutionErrorCode::InvalidSimulation),
+    )?;
+    if offset != BigUint::from(32_u8) || length != BigUint::from(2_u8) {
+        return execution_invalid_simulation();
+    }
+    let amount_in = BigUint::parse_bytes(payload[128..192].as_bytes(), 16).ok_or(
+        SwapExecutionError::Domain(SwapExecutionErrorCode::InvalidSimulation),
+    )?;
+    let amount_out = BigUint::parse_bytes(payload[192..256].as_bytes(), 16).ok_or(
+        SwapExecutionError::Domain(SwapExecutionErrorCode::InvalidSimulation),
+    )?;
+    if amount_in.bits() > 256 || amount_out.bits() > 256 {
+        return execution_invalid_simulation();
+    }
+    Ok((amount_in, amount_out))
+}
+
+fn parse_execution_block_header(value: &Value) -> SwapExecutionResult<BlockHeader> {
+    parse_block_header(value).map_err(SwapExecutionError::from)
+}
+
+fn ensure_deadline(
+    scalars: &NormalizedExecutionScalars,
+    quote_timestamp: &BigUint,
+    client: &SwapClient,
+) -> SwapExecutionResult<()> {
+    if scalars.deadline_value <= *quote_timestamp {
+        return execution_domain_error(SwapExecutionErrorCode::InvalidArgument);
+    }
+    let now = BigUint::from(now_seconds(client).map_err(SwapExecutionError::from)?);
+    if scalars.deadline_value <= now {
+        return execution_domain_error(SwapExecutionErrorCode::InvalidArgument);
+    }
+    Ok(())
+}
+
+fn minimum_amount_out(quote_amount_out: &str, slippage_bps: u64) -> SwapExecutionResult<BigUint> {
+    let amount_out = BigUint::parse_bytes(quote_amount_out.as_bytes(), 10).ok_or(
+        SwapExecutionError::Domain(SwapExecutionErrorCode::InvalidSimulation),
+    )?;
+    let product = ensure_uint256(
+        amount_out * BigUint::from(10_000_u64 - slippage_bps),
+        SwapQuoteErrorCode::Arithmetic,
+    )
+    .map_err(SwapExecutionError::from)?;
+    let minimum = product / BigUint::from(10_000_u64);
+    if minimum == BigUint::default() {
+        return execution_domain_error(SwapExecutionErrorCode::InvalidArgument);
+    }
+    Ok(minimum)
+}
+
+fn encode_get_amounts_out(
+    amount_in: &BigUint,
+    input_address: &str,
+    output_address: &str,
+) -> SwapExecutionResult<String> {
+    Ok(format!(
+        "{}{}{}{}{}{}",
+        ROUTER_GET_AMOUNTS_OUT_SELECTOR,
+        encode_uint256_word(amount_in)?,
+        encode_uint256_word(&BigUint::from(64_u8))?,
+        encode_uint256_word(&BigUint::from(2_u8))?,
+        encode_execution_address_argument(input_address)?,
+        encode_execution_address_argument(output_address)?,
+    ))
+}
+
+fn encode_swap_exact_tokens_for_tokens(
+    amount_in: &BigUint,
+    minimum_amount_out: &BigUint,
+    input_address: &str,
+    output_address: &str,
+    recipient: &str,
+    deadline: &BigUint,
+) -> SwapExecutionResult<String> {
+    Ok(format!(
+        "{}{}{}{}{}{}{}{}{}",
+        SWAP_EXECUTION_FUNCTION_SELECTOR,
+        encode_uint256_word(amount_in)?,
+        encode_uint256_word(minimum_amount_out)?,
+        encode_uint256_word(&BigUint::from(160_u16))?,
+        encode_execution_address_argument(recipient)?,
+        encode_uint256_word(deadline)?,
+        encode_uint256_word(&BigUint::from(2_u8))?,
+        encode_execution_address_argument(input_address)?,
+        encode_execution_address_argument(output_address)?,
+    ))
+}
+
+fn encode_allowance(owner: &str, spender: &str) -> SwapExecutionResult<String> {
+    Ok(format!(
+        "{}{}{}",
+        ERC20_ALLOWANCE_SELECTOR,
+        encode_execution_address_argument(owner)?,
+        encode_execution_address_argument(spender)?,
+    ))
+}
+
+fn representation_kind_text(kind: TokenRepresentationKind) -> &'static str {
+    match kind {
+        TokenRepresentationKind::Native => "native",
+        TokenRepresentationKind::Issued => "issued",
+        TokenRepresentationKind::Wrapped => "wrapped",
+        TokenRepresentationKind::Bridged => "bridged",
+        TokenRepresentationKind::Unclassified => "unclassified",
+    }
+}
+
+fn is_execution_revert(error: &ErpcError) -> bool {
+    let ErpcError::JsonRpc {
+        code,
+        message,
+        data: _,
+    } = error
+    else {
+        return false;
+    };
+    let message = message.to_ascii_lowercase();
+    (*code == 3 || *code == -32_000 || *code == -32_015 || *code == -32_603)
+        && (message.contains("execution reverted")
+            || message.contains("transaction reverted")
+            || message.contains("vm execution error")
+            || message.starts_with("revert"))
 }
 
 fn normalize_request(request: &ExactInputQuoteRequest) -> SwapResult<NormalizedRequest> {
@@ -1445,6 +2532,31 @@ mod tests {
             .expect("fixture response body write");
     }
 
+    async fn write_http_rpc_error(stream: &mut TcpStream, id: &Value, code: i64, message: &str) {
+        let body = json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "error": {
+                "code": code,
+                "message": message,
+                "data": "0x",
+            },
+        });
+        let body = serde_json::to_vec(&body).expect("fixture RPC error serializes");
+        let headers = format!(
+            "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
+            body.len()
+        );
+        stream
+            .write_all(headers.as_bytes())
+            .await
+            .expect("fixture RPC error headers write");
+        stream
+            .write_all(&body)
+            .await
+            .expect("fixture RPC error body write");
+    }
+
     async fn start_fixture_server(responses: Vec<Value>) -> (String, JoinHandle<Vec<Value>>) {
         let listener = TcpListener::bind("127.0.0.1:0")
             .await
@@ -1471,6 +2583,7 @@ mod tests {
                 )
                 .await;
             }
+
             captured
         });
         (format!("http://{address}"), handle)
@@ -1886,6 +2999,329 @@ mod tests {
             })
             .collect();
         (actual_outcome(result), trace)
+    }
+
+    fn execution_fixture_value() -> Value {
+        fixture_value("swap-execution-cases.json")
+    }
+
+    fn execution_address_word(address: &str) -> String {
+        format!("0x{}{}", "00".repeat(12), &address[2..])
+    }
+
+    fn mutate_execution_response(mutation: Option<&str>, index: usize, value: Value) -> Value {
+        match (mutation, index) {
+            (Some("emptyRouterCode"), 11) => json!("0x"),
+            (Some("wrongFactory"), 12) => json!(execution_address_word(
+                "0x1111111111111111111111111111111111111111"
+            )),
+            (Some("wrongWrapped"), 13) => json!(execution_address_word(
+                "0x2222222222222222222222222222222222222222"
+            )),
+            (Some("malformedRouterQuote"), 14) => json!("0x20"),
+            (Some("wrongRouterQuote"), 14) => {
+                let Some(value) = value.as_str() else {
+                    return value;
+                };
+                let mut value = value.to_owned();
+                value.pop();
+                value.push('b');
+                json!(value)
+            }
+            (Some("quoteStale"), 9) | (Some("staleAfterRouter"), 15) => json!({
+                "number": "0x18c7f20",
+                "hash": format!("0x{}", "aa".repeat(32)),
+                "timestamp": "0x6aa99537",
+            }),
+            _ => value,
+        }
+    }
+
+    async fn start_execution_fixture_server(case: &Value) -> (String, JoinHandle<Vec<Value>>) {
+        let responses = case
+            .get("rpcResponses")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        let expected_trace = case
+            .get("rpcTrace")
+            .and_then(Value::as_array)
+            .map_or(0, Vec::len);
+        let mutation = case
+            .get("mutation")
+            .and_then(Value::as_str)
+            .map(str::to_owned);
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("execution fixture listener");
+        let address = listener
+            .local_addr()
+            .expect("execution fixture listener address");
+        let handle = tokio::spawn(async move {
+            let mut captured = Vec::with_capacity(expected_trace);
+            let mut response_index = 0_usize;
+            while captured.len() < expected_trace {
+                let (mut stream, _) = listener
+                    .accept()
+                    .await
+                    .expect("execution fixture connection");
+                let Some(request) = read_http_json(&mut stream).await else {
+                    continue;
+                };
+                let index = captured.len();
+                let id = request.get("id").cloned().unwrap_or_else(|| json!(1));
+                captured.push(request);
+                let rpc_error = match mutation.as_deref() {
+                    Some("preflightProviderError") if index == 0 => {
+                        Some((-32_001, "provider preflight failure"))
+                    }
+                    Some("routerRevert") if index == 17 => Some((-32_000, "execution reverted")),
+                    Some("routerRevertCode3") if index == 17 => Some((
+                        3,
+                        "execution reverted: ERC20: transfer amount exceeds balance",
+                    )),
+                    Some("routerNonRevertCode3") if index == 17 => {
+                        Some((3, "invalid router request"))
+                    }
+                    Some("routerProviderError") if index == 17 => {
+                        Some((-32_001, "provider simulation failure"))
+                    }
+                    _ => None,
+                };
+                if let Some((code, message)) = rpc_error {
+                    write_http_rpc_error(&mut stream, &id, code, message).await;
+                    break;
+                }
+                let response = responses
+                    .get(response_index)
+                    .cloned()
+                    .unwrap_or(Value::Null);
+                response_index += 1;
+                let response = mutate_execution_response(mutation.as_deref(), index, response);
+                write_http_json(
+                    &mut stream,
+                    &json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "result": response,
+                    }),
+                )
+                .await;
+            }
+            captured
+        });
+        (format!("http://{address}"), handle)
+    }
+
+    fn execution_actual_outcome<T: Serialize>(result: SwapExecutionResult<T>) -> Value {
+        match result {
+            Ok(value) => json!({
+                "kind": "success",
+                "value": serde_json::to_value(value).expect("execution result serializes"),
+            }),
+            Err(error) => match error.code_string() {
+                Some(code) => json!({ "kind": "sdk-error", "code": code }),
+                None => json!({
+                    "kind": "transport-error",
+                    "sourcePreserved": error.upstream().is_some(),
+                }),
+            },
+        }
+    }
+
+    fn expected_execution_outcome(outcome: &Value) -> Value {
+        let mut expected = outcome.clone();
+        if expected.get("kind").and_then(Value::as_str) != Some("success") {
+            return expected;
+        }
+        let Some(value) = expected.get_mut("value").and_then(Value::as_object_mut) else {
+            return expected;
+        };
+        if let Some(preparation) = value.get_mut("preparation").and_then(Value::as_object_mut) {
+            preparation.insert(
+                "executionCapabilityDigest".to_owned(),
+                json!(SWAP_EXECUTION_CAPABILITIES_CONTENT_DIGEST),
+            );
+            if let Some(quote) = preparation.get_mut("quote").and_then(Value::as_object_mut) {
+                quote.insert(
+                    "tokenCatalogDigest".to_owned(),
+                    json!(crate::TOKEN_CATALOG_CONTENT_DIGEST),
+                );
+                quote.insert(
+                    "dexCatalogDigest".to_owned(),
+                    json!(DEX_CATALOG_CONTENT_DIGEST),
+                );
+            }
+        } else {
+            value.insert(
+                "executionCapabilityDigest".to_owned(),
+                json!(SWAP_EXECUTION_CAPABILITIES_CONTENT_DIGEST),
+            );
+            if let Some(quote) = value.get_mut("quote").and_then(Value::as_object_mut) {
+                quote.insert(
+                    "tokenCatalogDigest".to_owned(),
+                    json!(crate::TOKEN_CATALOG_CONTENT_DIGEST),
+                );
+                quote.insert(
+                    "dexCatalogDigest".to_owned(),
+                    json!(DEX_CATALOG_CONTENT_DIGEST),
+                );
+            }
+        }
+        expected
+    }
+
+    async fn execute_execution_fixture_case(case: &Value) -> (Value, Vec<Value>) {
+        let request_value = case.get("request").expect("execution fixture request");
+        let Ok(request) =
+            serde_json::from_value::<PrepareExactInputSwapRequest>(request_value.clone())
+        else {
+            return (
+                json!({
+                    "kind": "sdk-error",
+                    "code": SwapExecutionErrorCode::InvalidArgument.as_str(),
+                }),
+                Vec::new(),
+            );
+        };
+        let mutation = case.get("mutation").and_then(Value::as_str);
+        if mutation == Some("cancelBeforeFirstRpc") {
+            let cancellation = CancellationToken::new();
+            cancellation.cancel();
+            let client = crate::ErpcClient::new_with_swap_clock(
+                crate::ErpcClientConfig::new("parity")
+                    .with_endpoint("http://127.0.0.1:1")
+                    .with_avalanche_endpoint("http://127.0.0.1:1")
+                    .with_account_endpoint("http://127.0.0.1:1")
+                    .with_user_endpoint("http://127.0.0.1:1"),
+                fixed_fixture_clock,
+            )
+            .expect("cancellation fixture client");
+            let result = client
+                .swap
+                .simulate_exact_input_swap_with(&request, Some(&cancellation))
+                .await;
+            return (execution_actual_outcome(result), Vec::new());
+        }
+
+        let (endpoint, server) = if case
+            .get("rpcResponses")
+            .and_then(Value::as_array)
+            .is_some_and(|responses| !responses.is_empty())
+        {
+            let (endpoint, server) = start_execution_fixture_server(case).await;
+            (endpoint, Some(server))
+        } else {
+            ("http://127.0.0.1:1".to_owned(), None)
+        };
+        let client = crate::ErpcClient::new_with_swap_clock(
+            crate::ErpcClientConfig::new("parity")
+                .with_endpoint(&endpoint)
+                .with_avalanche_endpoint(&endpoint)
+                .with_account_endpoint(&endpoint)
+                .with_user_endpoint(&endpoint),
+            fixed_fixture_clock,
+        )
+        .expect("execution fixture client");
+        let result = match case.get("method").and_then(Value::as_str) {
+            Some("prepare") => {
+                execution_actual_outcome(client.swap.prepare_exact_input_swap(&request).await)
+            }
+            Some("simulate") => {
+                execution_actual_outcome(client.swap.simulate_exact_input_swap(&request).await)
+            }
+            _ => json!({
+                "kind": "sdk-error",
+                "code": SwapExecutionErrorCode::InvalidArgument.as_str(),
+            }),
+        };
+        let captured = if let Some(server) = server {
+            tokio::time::timeout(Duration::from_secs(5), server)
+                .await
+                .expect("execution fixture server completed")
+                .expect("execution fixture server task joined")
+        } else {
+            Vec::new()
+        };
+        let trace = captured
+            .into_iter()
+            .map(|request| {
+                json!({
+                    "method": request.get("method").cloned().unwrap_or(Value::Null),
+                    "params": request.get("params").cloned().unwrap_or(Value::Null),
+                })
+            })
+            .collect();
+        (result, trace)
+    }
+
+    #[tokio::test]
+    async fn capture_native_swap_execution_snapshot_when_requested() {
+        let Some(output) = env::var_os("ERPC_SDK_SWAP_EXECUTION_PARITY_OUTPUT") else {
+            return;
+        };
+        let fixture = execution_fixture_value();
+        let mut behavior = Map::from_iter([
+            ("prepare".to_owned(), json!([])),
+            ("simulate".to_owned(), json!([])),
+        ]);
+        for case in fixture
+            .get("cases")
+            .and_then(Value::as_array)
+            .expect("execution fixture cases")
+        {
+            let case_id = case
+                .get("caseId")
+                .and_then(Value::as_str)
+                .expect("execution fixture case ID");
+            let method = case
+                .get("method")
+                .and_then(Value::as_str)
+                .expect("execution fixture method");
+            let (actual, trace) = execute_execution_fixture_case(case).await;
+            let expected =
+                expected_execution_outcome(case.get("outcome").expect("execution fixture outcome"));
+            assert_eq!(actual, expected, "native result mismatch for {case_id}");
+            let expected_trace = case
+                .get("rpcTrace")
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default();
+            assert_eq!(
+                trace, expected_trace,
+                "native RPC trace mismatch for {case_id}"
+            );
+            push_behavior(
+                &mut behavior,
+                method,
+                json!({
+                    "caseId": case_id,
+                    "outcome": actual,
+                    "rpcTrace": trace,
+                }),
+            );
+        }
+        let snapshot = json!({
+            "snapshotVersion": 1,
+            "snapshotKind": "swap-execution-native-runtime",
+            "language": "rust",
+            "runtime": concat!(
+                "Rust compiled-library unit tests (erpc-sdk ",
+                env!("CARGO_PKG_VERSION"),
+                ")"
+            ),
+            "capabilityAsOfDate": SWAP_EXECUTION_CAPABILITIES_AS_OF_DATE,
+            "capabilityDigest": SWAP_EXECUTION_CAPABILITIES_CONTENT_DIGEST,
+            "behavior": behavior,
+        });
+        let output = Path::new(&output);
+        if let Some(parent) = output.parent() {
+            fs::create_dir_all(parent).expect("execution parity output directory");
+        }
+        let mut encoded =
+            serde_json::to_vec_pretty(&snapshot).expect("execution snapshot serializes");
+        encoded.push(b'\n');
+        fs::write(output, encoded).expect("execution parity snapshot write");
     }
 
     fn add_quote_row(

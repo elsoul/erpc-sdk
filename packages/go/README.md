@@ -288,6 +288,97 @@ The reviewed DEX and swap exports described above are included in published
 USDC/WETH and Avalanche LFJ legacy WAVAX/USDC pools; catalog growth does not
 grant quote capability.
 
+## Unsigned EVM swap preparation and simulation
+
+`Client.Swap.PrepareExactInputSwap` obtains a fresh quote through the selected
+Ethereum or Avalanche RPC, checks the reviewed router, factory, and wrapped
+token at the quote block, and returns unsigned
+`swapExactTokensForTokens(uint256,uint256,address[],address,uint256)` calldata.
+`SimulateExactInputSwap` performs the same preparation, checks the input-token
+allowance, and makes one final `eth_call` at the pinned block. Preparation uses
+16 RPC requests and successful simulation uses 19. All amounts, the deadline,
+and transaction value are canonical decimal strings; calldata is lowercase ABI
+hex.
+
+```go
+preparation, err := client.Swap.PrepareExactInputSwap(ctx, erpc.PrepareExactInputSwapRequest{
+	ChainID:                 erpc.TokenChainEthereumMainnet,
+	PoolDefinitionID:        erpc.PoolEthereumUNISWAP_V2_USDC_WETH,
+	InputTokenDeploymentID:  erpc.TokenEthereumWETH,
+	OutputTokenDeploymentID: erpc.TokenEthereumUSDC,
+	AmountIn:                "1000000000000000000",
+	Sender:                  "0x1111111111111111111111111111111111111111",
+	Recipient:               "0x2222222222222222222222222222222222222222",
+	SlippageBps:             uint64(50),
+	Deadline:                "1789498800",
+})
+if err != nil {
+	panic(err)
+}
+
+// Convert the chain-bound envelope to the wallet library's transaction type.
+// The SDK does not sign or send it, and it does not produce approval calldata.
+walletFrom := preparation.Transaction.From
+walletTo := preparation.Transaction.To
+walletData := preparation.Transaction.Data
+walletValue := preparation.Transaction.Value
+_ = walletFrom
+_ = walletTo
+_ = walletData
+_ = walletValue
+```
+
+The preparation's `Allowance` identifies the input token, owner, reviewed
+router spender, and required amount. The caller decides whether and how to
+change that allowance, then controls signing and sending. This capability is
+limited to the two reviewed EVM pools; it does not provide hosted Jupiter or
+0x routing, native wrapping, bridging, wallet custody, or live-funds effects.
+
+## Optional Mayan Swift v2 EURC bridge
+
+`NewMayanSwiftV2BridgeClient` creates a standalone, explicit opt-in adapter for
+native issued EURC between Ethereum and Solana. It calls the configured Mayan
+builder for quotes and unsigned source transactions, and the configured
+Explorer endpoint for read-only indexed status. It does not use `Client` or
+the ERPC API key, and it never signs, approves, submits, broadcasts, polls,
+or claims local signature, transaction-semantics, or settlement verification.
+`MayanSwiftV2BridgeConfig.MinimumQuoteValiditySeconds` is a pointer: `nil`
+uses the 60-second default, while a pointer to `0` explicitly permits quotes
+that are still live without an additional margin.
+
+```go
+bridge, err := erpc.NewMayanSwiftV2BridgeClient(erpc.MayanSwiftV2BridgeConfig{
+	BuilderAPIKey:             os.Getenv("MAYAN_BUILDER_API_KEY"),
+	AllowUnauthenticatedBuild: false,
+})
+if err != nil {
+	panic(err)
+}
+defer bridge.Close()
+
+quotes, err := bridge.QuoteExactInput(ctx, erpc.MayanSwiftV2QuoteRequest{
+	SourceChainID:                erpc.TokenChainEthereumMainnet,
+	DestinationChainID:           erpc.TokenChainSolanaMainnet,
+	SourceTokenDeploymentID:      "deployment-0011",
+	DestinationTokenDeploymentID: "deployment-0013",
+	AmountIn:                     "100000000",
+	SlippageBps:                  50,
+})
+if err != nil {
+	panic(err)
+}
+_ = quotes
+```
+
+The adapter binds both reviewed directions to the issued EURC catalog records,
+while disclosing Mayan's internal source USDC conversion. Solana source quotes
+also disclose the provider's Jupiter v6 source-swap dependency; this is
+provider output, not a hosted Jupiter route in the normal swap helpers. The
+returned `MayanSwiftV2Build` is unsigned and structurally checked. Ethereum
+builds expose the caller-owned EURC allowance requirement; the caller controls
+approval policy and signing. `GetStatus` reports the provider-indexed state
+and does not prove on-chain settlement.
+
 ## License
 
 MIT

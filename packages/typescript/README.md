@@ -197,6 +197,94 @@ the constant-product formula locally. The request does not build, sign,
 simulate, or broadcast a transaction; route selection, slippage, bridging,
 and Solana CLMM execution are separate capabilities.
 
+The two reviewed EVM pools also support unsigned ERC-20 exact-input
+preparation and RPC simulation:
+
+```ts
+const request = {
+  chainId: DEX_CHAIN_IDS.ethereum,
+  poolDefinitionId: 'pool-0001',
+  inputTokenDeploymentId: tokens.ethereum.WETH,
+  outputTokenDeploymentId: tokens.ethereum.USDC,
+  amountIn: '1000000000000000000',
+  sender: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+  recipient: '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+  slippageBps: 50,
+  deadline: '1789498800',
+}
+
+const prepared = await erpc.swap.prepareExactInputSwap(request)
+
+const simulation = await erpc.swap.simulateExactInputSwap(request)
+```
+
+Preparation performs a fresh quote, validates the reviewed router and wrapped
+native deployment, and returns an immutable chain-bound unsigned transaction
+envelope. It does not create approval calldata, sign, send, or fill wallet
+fields. When a wallet API needs a raw transaction object, explicitly convert
+the envelope, for example:
+
+```ts
+const { chainId: _chainId, kind: _kind, ...walletTransaction } =
+  prepared.transaction
+await wallet.sendTransaction(walletTransaction)
+```
+
+Use the `simulation` result to inspect the canonical allowance and router
+amounts before asking the caller's wallet to manage allowance, signing, or
+broadcasting. The simulation call itself is read-only and uses only the
+configured RPC transport.
+
+## Optional Mayan Swift v2 bridge
+
+The Mayan Swift v2 client is an explicit standalone adapter for the reviewed
+issued EURC routes between Ethereum and Solana. It is not attached to the
+default `ErpcClient`; construct it separately when the external provider and
+its solver, relayer, and explorer dependencies are acceptable:
+
+```ts
+import {
+  createMayanSwiftV2BridgeClient,
+  TOKEN_CHAIN_IDS,
+} from '@elsoul/erpc-sdk'
+
+const mayan = createMayanSwiftV2BridgeClient({
+  builderApiKey: 'provider-key',
+})
+const quotes = await mayan.quoteExactInput({
+  sourceChainId: TOKEN_CHAIN_IDS.ethereumMainnet,
+  destinationChainId: TOKEN_CHAIN_IDS.solanaMainnet,
+  sourceTokenDeploymentId: 'deployment-0011',
+  destinationTokenDeploymentId: 'deployment-0013',
+  amountIn: '1000000',
+  slippageBps: 50,
+})
+```
+
+The adapter posts the exact route request to Mayan's `/quote`, preserves the
+provider-signed quote text, and can build a structurally checked unsigned
+source transaction with `buildUnsigned`. It does not verify the provider
+signature locally or prove settlement, and it does not sign, approve, submit,
+refund, or broadcast transactions. For an EVM build, convert the returned
+chain-bound envelope before passing fields to a wallet API:
+
+```ts
+const built = await mayan.buildUnsigned({
+  quote: quotes[0],
+  swapperAddress: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+  destinationAddress: '11111111111111111111111111111111',
+})
+if (built.transaction.kind === 'evm-unsigned-transaction') {
+  const { chainId: _chainId, kind: _kind, ...walletTransaction } =
+    built.transaction
+  await wallet.sendTransaction(walletTransaction)
+}
+```
+
+`getStatus` reads Mayan's indexed status endpoint and reports the provider
+assertion as unverified local settlement state. `builderApiKey` is sent only
+to `/build`; quote and status calls do not receive it.
+
 ## Namespaces
 
 | Namespace | Purpose |

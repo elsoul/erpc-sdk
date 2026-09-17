@@ -1,0 +1,168 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://erpc-sdk.dev/registry/bridge-capabilities.schema.json",
+  "title": "ERPC SDK Mayan Swift v2 bridge capability registry",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "asOfDate", "capabilities"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "asOfDate": { "$ref": "#/$defs/date" },
+    "capabilities": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": { "$ref": "#/$defs/capability" }
+    }
+  },
+  "$defs": {
+    "date": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "chainId": {
+      "enum": [
+        "eip155:1",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+      ]
+    },
+    "evmAddress": {
+      "type": "string",
+      "pattern": "^0x[0-9a-f]{40}$"
+    },
+    "solanaAddress": {
+      "type": "string",
+      "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,44}$"
+    },
+    "providerAddress": {
+      "type": "string",
+      "pattern": "^(?:0x[0-9a-f]{40}|[1-9A-HJ-NP-Za-km-z]{32,44})$"
+    },
+    "selector": {
+      "type": "string",
+      "pattern": "^0x[0-9a-f]{8}$"
+    },
+    "endpoint": {
+      "type": "string",
+      "pattern": "^https://[^?#\\s]+$"
+    },
+    "dependency": {
+      "enum": [
+        "mayan-hosted-quote-api",
+        "mayan-hosted-transaction-builder",
+        "mayan-hosted-source-swap-builder",
+        "swift-auction-solvers",
+        "relayers",
+        "wormhole-guardian-messaging",
+        "mayan-explorer-indexer",
+        "jupiter-v6-source-swap"
+      ]
+    },
+    "capability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "bridgeCapabilityId",
+        "providerId",
+        "capabilityKind",
+        "sourceChainId",
+        "destinationChainId",
+        "sourceTokenDeploymentId",
+        "destinationTokenDeploymentId",
+        "sourceTokenAddress",
+        "destinationTokenAddress",
+        "sourceTokenStandard",
+        "destinationTokenStandard",
+        "sourceTokenDecimals",
+        "destinationTokenDecimals",
+        "sourceProviderChainName",
+        "destinationProviderChainName",
+        "sourceProviderChainId",
+        "destinationProviderChainId",
+        "sourceWormholeChainId",
+        "destinationWormholeChainId",
+        "sourceUsdcDeploymentId",
+        "sourceUsdcAddress",
+        "sourceUsdcStandard",
+        "sourceUsdcDecimals",
+        "swiftContract",
+        "forwarderAddress",
+        "forwarderFunctionSelector",
+        "jupiterProgramAddress",
+        "builderEndpoint",
+        "explorerEndpoint",
+        "dependencies",
+        "status",
+        "evidence",
+        "asOfDate"
+      ],
+      "properties": {
+        "bridgeCapabilityId": {
+          "enum": [
+            "bridge-mayan-swift-v2-eurc-eth-sol",
+            "bridge-mayan-swift-v2-eurc-sol-eth"
+          ]
+        },
+        "providerId": { "const": "mayan-swift-v2" },
+        "capabilityKind": { "const": "external-provider-dynamic" },
+        "sourceChainId": { "$ref": "#/$defs/chainId" },
+        "destinationChainId": { "$ref": "#/$defs/chainId" },
+        "sourceTokenDeploymentId": { "$ref": "#/$defs/id" },
+        "destinationTokenDeploymentId": { "$ref": "#/$defs/id" },
+        "sourceTokenAddress": { "$ref": "#/$defs/providerAddress" },
+        "destinationTokenAddress": { "$ref": "#/$defs/providerAddress" },
+        "sourceTokenStandard": { "enum": ["erc20", "spl-token"] },
+        "destinationTokenStandard": { "enum": ["erc20", "spl-token"] },
+        "sourceTokenDecimals": { "const": 6 },
+        "destinationTokenDecimals": { "const": 6 },
+        "sourceProviderChainName": { "enum": ["ethereum", "solana"] },
+        "destinationProviderChainName": { "enum": ["ethereum", "solana"] },
+        "sourceProviderChainId": { "type": "integer", "enum": [0, 1] },
+        "destinationProviderChainId": { "type": "integer", "enum": [0, 1] },
+        "sourceWormholeChainId": { "type": "integer", "enum": [1, 2] },
+        "destinationWormholeChainId": { "type": "integer", "enum": [1, 2] },
+        "sourceUsdcDeploymentId": { "$ref": "#/$defs/id" },
+        "sourceUsdcAddress": { "$ref": "#/$defs/providerAddress" },
+        "sourceUsdcStandard": { "enum": ["erc20", "spl-token"] },
+        "sourceUsdcDecimals": { "const": 6 },
+        "swiftContract": { "$ref": "#/$defs/providerAddress" },
+        "forwarderAddress": {
+          "type": ["string", "null"],
+          "pattern": "^0x[0-9a-f]{40}$"
+        },
+        "forwarderFunctionSelector": {
+          "type": ["string", "null"],
+          "pattern": "^0x[0-9a-f]{8}$"
+        },
+        "jupiterProgramAddress": {
+          "type": ["string", "null"],
+          "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,44}$"
+        },
+        "builderEndpoint": { "$ref": "#/$defs/endpoint" },
+        "explorerEndpoint": { "$ref": "#/$defs/endpoint" },
+        "dependencies": {
+          "type": "array",
+          "minItems": 7,
+          "maxItems": 8,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/dependency" }
+        },
+        "status": { "const": "active" },
+        "evidence": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^https://\\S+$"
+          }
+        },
+        "asOfDate": { "$ref": "#/$defs/date" }
+      }
+    }
+  }
+}

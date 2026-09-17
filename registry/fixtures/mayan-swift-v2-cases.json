@@ -1,0 +1,1419 @@
+{
+  "schemaVersion": 1,
+  "fixtureKind": "mayan-swift-v2-fixtures",
+  "capabilityAsOfDate": "2026-09-16",
+  "capabilityDigest": "fe698f99218057f8cb40b3e24421d1d78e4e2cd7508cf6e3eb2457b329e5141b",
+  "cases": [
+    {
+      "caseId": "quote-eth-sol-synthetic",
+      "method": "quote",
+      "source": "synthetic",
+      "capabilityId": "bridge-mayan-swift-v2-eurc-eth-sol",
+      "request": {
+        "sourceChainId": "eip155:1",
+        "destinationChainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+        "sourceTokenDeploymentId": "deployment-0011",
+        "destinationTokenDeploymentId": "deployment-0013",
+        "amountIn": "100000000",
+        "slippageBps": 50
+      },
+      "nowSeconds": 1789600000,
+      "providerStatus": 200,
+      "providerBody": "{\"success\":true,\"quotes\":[{\"type\":\"SWIFT\",\"gasless\":false,\"swiftVersion\":\"V2\",\"swiftAuctionMode\":2,\"slippageBps\":50,\"effectiveAmountIn64\":\"100000000\",\"swiftInputDecimals\":6,\"onlyBridging\":false,\"expectedAmountOutBaseUnits\":\"99557029\",\"minAmountOutBaseUnits\":\"99059244\",\"minReceivedBaseUnits\":\"99059244\",\"deadline64\":\"1893456000\",\"quoteId\":\"0x11111111111111111111111111111111\",\"signature\":\"0x1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111\",\"minMiddleAmount\":114.5000,\"unknownSignedField\":\"keep-me\",\"fromChain\":\"ethereum\",\"toChain\":\"solana\",\"fromToken\":{\"name\":\"EuroC\",\"standard\":\"erc20\",\"mint\":\"\",\"contract\":\"0x1aBaEA1f7C830bD89acc67eC4af516284b1bC33c\",\"chainId\":1,\"wChainId\":2,\"decimals\":6,\"realOriginContractAddress\":\"0x1aBaEA1f7C830bD89acc67eC4af516284b1bC33c\",\"realOriginChainId\":2},\"toToken\":{\"name\":\"EuroC\",\"standard\":\"spl\",\"mint\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"contract\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"chainId\":0,\"wChainId\":1,\"decimals\":6,\"realOriginContractAddress\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"realOriginChainId\":1},\"swiftInputContract\":\"0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48\",\"swiftInputContractStandard\":\"erc20\",\"swiftMayanContract\":\"0x40ffe85a28dc9993541449464d7529a922142960\",\"evmSwapRouterAddress\":\"0xa929c559E5e6537359680F39CB4E3708E1a14dd1\"}]}",
+      "expected": {
+        "kind": "success",
+        "value": [
+          {
+            "quoteKind": "mayan-swift-v2",
+            "providerId": "mayan-swift-v2",
+            "sourceChainId": "eip155:1",
+            "destinationChainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+            "sourceTokenDeploymentId": "deployment-0011",
+            "destinationTokenDeploymentId": "deployment-0013",
+            "amountIn": "100000000",
+            "expectedAmountOut": "99557029",
+            "minimumAmountOut": "99059244",
+            "minimumReceived": "99059244",
+            "deadline": "1893456000",
+            "slippageBps": 50,
+            "quoteId": "0x11111111111111111111111111111111",
+            "providerSignature": "0x1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111",
+            "sourceSwap": {
+              "required": true,
+              "inputTokenDeploymentId": "deployment-0011",
+              "intermediateTokenDeploymentId": "deployment-0008",
+              "intermediateTokenAddress": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+              "intermediateTokenStandard": "erc20",
+              "intermediateTokenDecimals": 6,
+              "providerMinimumAmount": "114.5000",
+              "routerKind": "provider-selected-evm",
+              "routerAddress": "0xa929c559e5e6537359680f39cb4e3708e1a14dd1"
+            },
+            "dependencies": [
+              "mayan-hosted-quote-api",
+              "mayan-hosted-transaction-builder",
+              "mayan-hosted-source-swap-builder",
+              "swift-auction-solvers",
+              "relayers",
+              "wormhole-guardian-messaging",
+              "mayan-explorer-indexer"
+            ],
+            "quoteVerification": "provider-signed-not-locally-verified",
+            "rawSignedQuoteJson": "{\"type\":\"SWIFT\",\"gasless\":false,\"swiftVersion\":\"V2\",\"swiftAuctionMode\":2,\"slippageBps\":50,\"effectiveAmountIn64\":\"100000000\",\"swiftInputDecimals\":6,\"onlyBridging\":false,\"expectedAmountOutBaseUnits\":\"99557029\",\"minAmountOutBaseUnits\":\"99059244\",\"minReceivedBaseUnits\":\"99059244\",\"deadline64\":\"1893456000\",\"quoteId\":\"0x11111111111111111111111111111111\",\"signature\":\"0x1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111\",\"minMiddleAmount\":114.5000,\"unknownSignedField\":\"keep-me\",\"fromChain\":\"ethereum\",\"toChain\":\"solana\",\"fromToken\":{\"name\":\"EuroC\",\"standard\":\"erc20\",\"mint\":\"\",\"contract\":\"0x1aBaEA1f7C830bD89acc67eC4af516284b1bC33c\",\"chainId\":1,\"wChainId\":2,\"decimals\":6,\"realOriginContractAddress\":\"0x1aBaEA1f7C830bD89acc67eC4af516284b1bC33c\",\"realOriginChainId\":2},\"toToken\":{\"name\":\"EuroC\",\"standard\":\"spl\",\"mint\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"contract\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"chainId\":0,\"wChainId\":1,\"decimals\":6,\"realOriginContractAddress\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"realOriginChainId\":1},\"swiftInputContract\":\"0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48\",\"swiftInputContractStandard\":\"erc20\",\"swiftMayanContract\":\"0x40ffe85a28dc9993541449464d7529a922142960\",\"evmSwapRouterAddress\":\"0xa929c559E5e6537359680F39CB4E3708E1a14dd1\"}"
+          }
+        ]
+      },
+      "httpTrace": [
+        {
+          "method": "POST",
+          "url": "https://tx-builder.mayan.finance/quote",
+          "headers": {
+            "accept": "application/json",
+            "content-type": "application/json"
+          },
+          "body": "{\"fromToken\":\"0x1abaea1f7c830bd89acc67ec4af516284b1bc33c\",\"fromChain\":\"ethereum\",\"toToken\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"toChain\":\"solana\",\"amountIn64\":\"100000000\",\"slippageBps\":50,\"swift\":true,\"mctp\":false,\"fastMctp\":false,\"wormhole\":false,\"monoChain\":false,\"gasless\":false,\"fullList\":true,\"guaranteedOutput\":true,\"gasDrop\":0}"
+        }
+      ],
+      "config": null,
+      "quoteCaseId": null
+    },
+    {
+      "caseId": "quote-sol-eth-synthetic",
+      "method": "quote",
+      "source": "synthetic",
+      "capabilityId": "bridge-mayan-swift-v2-eurc-sol-eth",
+      "request": {
+        "sourceChainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+        "destinationChainId": "eip155:1",
+        "sourceTokenDeploymentId": "deployment-0013",
+        "destinationTokenDeploymentId": "deployment-0011",
+        "amountIn": "100000000",
+        "slippageBps": 50
+      },
+      "nowSeconds": 1789600000,
+      "providerStatus": 200,
+      "providerBody": "{\"success\":true,\"quotes\":[{\"type\":\"SWIFT\",\"gasless\":false,\"swiftVersion\":\"V2\",\"swiftAuctionMode\":2,\"slippageBps\":50,\"effectiveAmountIn64\":\"100000000\",\"swiftInputDecimals\":6,\"onlyBridging\":false,\"expectedAmountOutBaseUnits\":\"99557029\",\"minAmountOutBaseUnits\":\"99059244\",\"minReceivedBaseUnits\":\"99059244\",\"deadline64\":\"1893456000\",\"quoteId\":\"0x11111111111111111111111111111111\",\"signature\":\"0x1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111\",\"minMiddleAmount\":114.5000,\"unknownSignedField\":\"keep-me\",\"fromChain\":\"solana\",\"toChain\":\"ethereum\",\"fromToken\":{\"name\":\"EuroC\",\"standard\":\"spl\",\"mint\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"contract\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"chainId\":0,\"wChainId\":1,\"decimals\":6,\"realOriginContractAddress\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"realOriginChainId\":1},\"toToken\":{\"name\":\"EuroC\",\"standard\":\"erc20\",\"mint\":\"\",\"contract\":\"0x1aBaEA1f7C830bD89acc67eC4af516284b1bC33c\",\"chainId\":1,\"wChainId\":2,\"decimals\":6,\"realOriginContractAddress\":\"0x1aBaEA1f7C830bD89acc67eC4af516284b1bC33c\",\"realOriginChainId\":2},\"swiftInputContract\":\"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\",\"swiftInputContractStandard\":\"spl\",\"swiftMayanContract\":\"mayan34VedncxdK2XobtvWFDXQASUTBXhUVzt2kKgny\",\"evmSwapRouterAddress\":null}]}",
+      "expected": {
+        "kind": "success",
+        "value": [
+          {
+            "quoteKind": "mayan-swift-v2",
+            "providerId": "mayan-swift-v2",
+            "sourceChainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+            "destinationChainId": "eip155:1",
+            "sourceTokenDeploymentId": "deployment-0013",
+            "destinationTokenDeploymentId": "deployment-0011",
+            "amountIn": "100000000",
+            "expectedAmountOut": "99557029",
+            "minimumAmountOut": "99059244",
+            "minimumReceived": "99059244",
+            "deadline": "1893456000",
+            "slippageBps": 50,
+            "quoteId": "0x11111111111111111111111111111111",
+            "providerSignature": "0x1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111",
+            "sourceSwap": {
+              "required": true,
+              "inputTokenDeploymentId": "deployment-0013",
+              "intermediateTokenDeploymentId": "deployment-0010",
+              "intermediateTokenAddress": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+              "intermediateTokenStandard": "spl",
+              "intermediateTokenDecimals": 6,
+              "providerMinimumAmount": "114.5000",
+              "routerKind": "jupiter-v6",
+              "routerAddress": "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4"
+            },
+            "dependencies": [
+              "mayan-hosted-quote-api",
+              "mayan-hosted-transaction-builder",
+              "mayan-hosted-source-swap-builder",
+              "swift-auction-solvers",
+              "relayers",
+              "wormhole-guardian-messaging",
+              "mayan-explorer-indexer",
+              "jupiter-v6-source-swap"
+            ],
+            "quoteVerification": "provider-signed-not-locally-verified",
+            "rawSignedQuoteJson": "{\"type\":\"SWIFT\",\"gasless\":false,\"swiftVersion\":\"V2\",\"swiftAuctionMode\":2,\"slippageBps\":50,\"effectiveAmountIn64\":\"100000000\",\"swiftInputDecimals\":6,\"onlyBridging\":false,\"expectedAmountOutBaseUnits\":\"99557029\",\"minAmountOutBaseUnits\":\"99059244\",\"minReceivedBaseUnits\":\"99059244\",\"deadline64\":\"1893456000\",\"quoteId\":\"0x11111111111111111111111111111111\",\"signature\":\"0x1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111\",\"minMiddleAmount\":114.5000,\"unknownSignedField\":\"keep-me\",\"fromChain\":\"solana\",\"toChain\":\"ethereum\",\"fromToken\":{\"name\":\"EuroC\",\"standard\":\"spl\",\"mint\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"contract\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"chainId\":0,\"wChainId\":1,\"decimals\":6,\"realOriginContractAddress\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"realOriginChainId\":1},\"toToken\":{\"name\":\"EuroC\",\"standard\":\"erc20\",\"mint\":\"\",\"contract\":\"0x1aBaEA1f7C830bD89acc67eC4af516284b1bC33c\",\"chainId\":1,\"wChainId\":2,\"decimals\":6,\"realOriginContractAddress\":\"0x1aBaEA1f7C830bD89acc67eC4af516284b1bC33c\",\"realOriginChainId\":2},\"swiftInputContract\":\"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\",\"swiftInputContractStandard\":\"spl\",\"swiftMayanContract\":\"mayan34VedncxdK2XobtvWFDXQASUTBXhUVzt2kKgny\",\"evmSwapRouterAddress\":null}"
+          }
+        ]
+      },
+      "httpTrace": [
+        {
+          "method": "POST",
+          "url": "https://tx-builder.mayan.finance/quote",
+          "headers": {
+            "accept": "application/json",
+            "content-type": "application/json"
+          },
+          "body": "{\"fromToken\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"fromChain\":\"solana\",\"toToken\":\"0x1abaea1f7c830bd89acc67ec4af516284b1bc33c\",\"toChain\":\"ethereum\",\"amountIn64\":\"100000000\",\"slippageBps\":50,\"swift\":true,\"mctp\":false,\"fastMctp\":false,\"wormhole\":false,\"monoChain\":false,\"gasless\":false,\"fullList\":true,\"guaranteedOutput\":true,\"gasDrop\":0}"
+        }
+      ],
+      "config": null,
+      "quoteCaseId": null
+    },
+    {
+      "caseId": "build-eth-sol-synthetic",
+      "method": "build",
+      "source": "synthetic",
+      "capabilityId": "bridge-mayan-swift-v2-eurc-eth-sol",
+      "request": {
+        "swapperAddress": "0x2222222222222222222222222222222222222222",
+        "destinationAddress": "So11111111111111111111111111111111111111112"
+      },
+      "nowSeconds": 1789600000,
+      "providerStatus": 200,
+      "providerBody": "{\"success\":true,\"transaction\":{\"chainCategory\":\"evm\",\"quoteType\":\"SWIFT\",\"gasless\":false,\"transaction\":{\"chainId\":1,\"to\":\"0x337685fdab40d39bd02028545a4ffa7d287cc3e2\",\"value\":\"0\",\"data\":\"0x30dedc570000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"}}}",
+      "expected": {
+        "kind": "success",
+        "value": {
+          "buildKind": "mayan-swift-v2-unsigned",
+          "providerId": "mayan-swift-v2",
+          "quote": {
+            "quoteKind": "mayan-swift-v2",
+            "providerId": "mayan-swift-v2",
+            "sourceChainId": "eip155:1",
+            "destinationChainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+            "sourceTokenDeploymentId": "deployment-0011",
+            "destinationTokenDeploymentId": "deployment-0013",
+            "amountIn": "100000000",
+            "expectedAmountOut": "99557029",
+            "minimumAmountOut": "99059244",
+            "minimumReceived": "99059244",
+            "deadline": "1893456000",
+            "slippageBps": 50,
+            "quoteId": "0x11111111111111111111111111111111",
+            "providerSignature": "0x1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111",
+            "sourceSwap": {
+              "required": true,
+              "inputTokenDeploymentId": "deployment-0011",
+              "intermediateTokenDeploymentId": "deployment-0008",
+              "intermediateTokenAddress": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+              "intermediateTokenStandard": "erc20",
+              "intermediateTokenDecimals": 6,
+              "providerMinimumAmount": "114.5000",
+              "routerKind": "provider-selected-evm",
+              "routerAddress": "0xa929c559e5e6537359680f39cb4e3708e1a14dd1"
+            },
+            "dependencies": [
+              "mayan-hosted-quote-api",
+              "mayan-hosted-transaction-builder",
+              "mayan-hosted-source-swap-builder",
+              "swift-auction-solvers",
+              "relayers",
+              "wormhole-guardian-messaging",
+              "mayan-explorer-indexer"
+            ],
+            "quoteVerification": "provider-signed-not-locally-verified",
+            "rawSignedQuoteJson": "{\"type\":\"SWIFT\",\"gasless\":false,\"swiftVersion\":\"V2\",\"swiftAuctionMode\":2,\"slippageBps\":50,\"effectiveAmountIn64\":\"100000000\",\"swiftInputDecimals\":6,\"onlyBridging\":false,\"expectedAmountOutBaseUnits\":\"99557029\",\"minAmountOutBaseUnits\":\"99059244\",\"minReceivedBaseUnits\":\"99059244\",\"deadline64\":\"1893456000\",\"quoteId\":\"0x11111111111111111111111111111111\",\"signature\":\"0x1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111\",\"minMiddleAmount\":114.5000,\"unknownSignedField\":\"keep-me\",\"fromChain\":\"ethereum\",\"toChain\":\"solana\",\"fromToken\":{\"name\":\"EuroC\",\"standard\":\"erc20\",\"mint\":\"\",\"contract\":\"0x1aBaEA1f7C830bD89acc67eC4af516284b1bC33c\",\"chainId\":1,\"wChainId\":2,\"decimals\":6,\"realOriginContractAddress\":\"0x1aBaEA1f7C830bD89acc67eC4af516284b1bC33c\",\"realOriginChainId\":2},\"toToken\":{\"name\":\"EuroC\",\"standard\":\"spl\",\"mint\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"contract\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"chainId\":0,\"wChainId\":1,\"decimals\":6,\"realOriginContractAddress\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"realOriginChainId\":1},\"swiftInputContract\":\"0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48\",\"swiftInputContractStandard\":\"erc20\",\"swiftMayanContract\":\"0x40ffe85a28dc9993541449464d7529a922142960\",\"evmSwapRouterAddress\":\"0xa929c559E5e6537359680F39CB4E3708E1a14dd1\"}"
+          },
+          "sourceChainId": "eip155:1",
+          "destinationChainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+          "transaction": {
+            "kind": "evm-unsigned-transaction",
+            "chainId": "eip155:1",
+            "from": "0x2222222222222222222222222222222222222222",
+            "to": "0x337685fdab40d39bd02028545a4ffa7d287cc3e2",
+            "data": "0x30dedc570000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+            "value": "0"
+          },
+          "allowance": {
+            "tokenDeploymentId": "deployment-0011",
+            "tokenAddress": "0x1abaea1f7c830bd89acc67ec4af516284b1bc33c",
+            "owner": "0x2222222222222222222222222222222222222222",
+            "spender": "0x337685fdab40d39bd02028545a4ffa7d287cc3e2",
+            "requiredAmount": "100000000"
+          },
+          "validation": {
+            "level": "structural",
+            "quoteSignatureLocallyVerified": false,
+            "transactionSemanticsLocallyVerified": false,
+            "settlementLocallyVerified": false
+          },
+          "rawProviderBuildJson": "{\"success\":true,\"transaction\":{\"chainCategory\":\"evm\",\"quoteType\":\"SWIFT\",\"gasless\":false,\"transaction\":{\"chainId\":1,\"to\":\"0x337685fdab40d39bd02028545a4ffa7d287cc3e2\",\"value\":\"0\",\"data\":\"0x30dedc570000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"}}}"
+        }
+      },
+      "httpTrace": [
+        {
+          "method": "POST",
+          "url": "https://tx-builder.mayan.finance/build",
+          "headers": {
+            "accept": "application/json",
+            "content-type": "application/json"
+          },
+          "body": "{\"quote\":{\"type\":\"SWIFT\",\"gasless\":false,\"swiftVersion\":\"V2\",\"swiftAuctionMode\":2,\"slippageBps\":50,\"effectiveAmountIn64\":\"100000000\",\"swiftInputDecimals\":6,\"onlyBridging\":false,\"expectedAmountOutBaseUnits\":\"99557029\",\"minAmountOutBaseUnits\":\"99059244\",\"minReceivedBaseUnits\":\"99059244\",\"deadline64\":\"1893456000\",\"quoteId\":\"0x11111111111111111111111111111111\",\"signature\":\"0x1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111\",\"minMiddleAmount\":114.5000,\"unknownSignedField\":\"keep-me\",\"fromChain\":\"ethereum\",\"toChain\":\"solana\",\"fromToken\":{\"name\":\"EuroC\",\"standard\":\"erc20\",\"mint\":\"\",\"contract\":\"0x1aBaEA1f7C830bD89acc67eC4af516284b1bC33c\",\"chainId\":1,\"wChainId\":2,\"decimals\":6,\"realOriginContractAddress\":\"0x1aBaEA1f7C830bD89acc67eC4af516284b1bC33c\",\"realOriginChainId\":2},\"toToken\":{\"name\":\"EuroC\",\"standard\":\"spl\",\"mint\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"contract\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"chainId\":0,\"wChainId\":1,\"decimals\":6,\"realOriginContractAddress\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"realOriginChainId\":1},\"swiftInputContract\":\"0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48\",\"swiftInputContractStandard\":\"erc20\",\"swiftMayanContract\":\"0x40ffe85a28dc9993541449464d7529a922142960\",\"evmSwapRouterAddress\":\"0xa929c559E5e6537359680F39CB4E3708E1a14dd1\"},\"params\":{\"swapperAddress\":\"0x2222222222222222222222222222222222222222\",\"destinationAddress\":\"So11111111111111111111111111111111111111112\",\"signerChainId\":1}}"
+        }
+      ],
+      "config": {
+        "allowUnauthenticatedBuild": true
+      },
+      "quoteCaseId": "quote-eth-sol-synthetic"
+    },
+    {
+      "caseId": "build-sol-eth-synthetic",
+      "method": "build",
+      "source": "synthetic",
+      "capabilityId": "bridge-mayan-swift-v2-eurc-sol-eth",
+      "request": {
+        "swapperAddress": "So11111111111111111111111111111111111111112",
+        "destinationAddress": "0x3333333333333333333333333333333333333333"
+      },
+      "nowSeconds": 1789600000,
+      "providerStatus": 200,
+      "providerBody": "{\"success\":true,\"transaction\":{\"chainCategory\":\"svm\",\"quoteType\":\"SWIFT\",\"gasless\":false,\"signers\":[],\"swapMessageV0Params\":null,\"transaction\":\"AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAQAAAQabiFf+q4GE+2h/Y0YYwDXaxDncGus7VZig8AAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==\"}}",
+      "expected": {
+        "kind": "success",
+        "value": {
+          "buildKind": "mayan-swift-v2-unsigned",
+          "providerId": "mayan-swift-v2",
+          "quote": {
+            "quoteKind": "mayan-swift-v2",
+            "providerId": "mayan-swift-v2",
+            "sourceChainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+            "destinationChainId": "eip155:1",
+            "sourceTokenDeploymentId": "deployment-0013",
+            "destinationTokenDeploymentId": "deployment-0011",
+            "amountIn": "100000000",
+            "expectedAmountOut": "99557029",
+            "minimumAmountOut": "99059244",
+            "minimumReceived": "99059244",
+            "deadline": "1893456000",
+            "slippageBps": 50,
+            "quoteId": "0x11111111111111111111111111111111",
+            "providerSignature": "0x1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111",
+            "sourceSwap": {
+              "required": true,
+              "inputTokenDeploymentId": "deployment-0013",
+              "intermediateTokenDeploymentId": "deployment-0010",
+              "intermediateTokenAddress": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+              "intermediateTokenStandard": "spl",
+              "intermediateTokenDecimals": 6,
+              "providerMinimumAmount": "114.5000",
+              "routerKind": "jupiter-v6",
+              "routerAddress": "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4"
+            },
+            "dependencies": [
+              "mayan-hosted-quote-api",
+              "mayan-hosted-transaction-builder",
+              "mayan-hosted-source-swap-builder",
+              "swift-auction-solvers",
+              "relayers",
+              "wormhole-guardian-messaging",
+              "mayan-explorer-indexer",
+              "jupiter-v6-source-swap"
+            ],
+            "quoteVerification": "provider-signed-not-locally-verified",
+            "rawSignedQuoteJson": "{\"type\":\"SWIFT\",\"gasless\":false,\"swiftVersion\":\"V2\",\"swiftAuctionMode\":2,\"slippageBps\":50,\"effectiveAmountIn64\":\"100000000\",\"swiftInputDecimals\":6,\"onlyBridging\":false,\"expectedAmountOutBaseUnits\":\"99557029\",\"minAmountOutBaseUnits\":\"99059244\",\"minReceivedBaseUnits\":\"99059244\",\"deadline64\":\"1893456000\",\"quoteId\":\"0x11111111111111111111111111111111\",\"signature\":\"0x1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111\",\"minMiddleAmount\":114.5000,\"unknownSignedField\":\"keep-me\",\"fromChain\":\"solana\",\"toChain\":\"ethereum\",\"fromToken\":{\"name\":\"EuroC\",\"standard\":\"spl\",\"mint\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"contract\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"chainId\":0,\"wChainId\":1,\"decimals\":6,\"realOriginContractAddress\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"realOriginChainId\":1},\"toToken\":{\"name\":\"EuroC\",\"standard\":\"erc20\",\"mint\":\"\",\"contract\":\"0x1aBaEA1f7C830bD89acc67eC4af516284b1bC33c\",\"chainId\":1,\"wChainId\":2,\"decimals\":6,\"realOriginContractAddress\":\"0x1aBaEA1f7C830bD89acc67eC4af516284b1bC33c\",\"realOriginChainId\":2},\"swiftInputContract\":\"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\",\"swiftInputContractStandard\":\"spl\",\"swiftMayanContract\":\"mayan34VedncxdK2XobtvWFDXQASUTBXhUVzt2kKgny\",\"evmSwapRouterAddress\":null}"
+          },
+          "sourceChainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+          "destinationChainId": "eip155:1",
+          "transaction": {
+            "kind": "solana-v0-unsigned-transaction",
+            "chainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+            "feePayer": "So11111111111111111111111111111111111111112",
+            "transactionBase64": "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAQAAAQabiFf+q4GE+2h/Y0YYwDXaxDncGus7VZig8AAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+          },
+          "allowance": null,
+          "validation": {
+            "level": "structural",
+            "quoteSignatureLocallyVerified": false,
+            "transactionSemanticsLocallyVerified": false,
+            "settlementLocallyVerified": false
+          },
+          "rawProviderBuildJson": "{\"success\":true,\"transaction\":{\"chainCategory\":\"svm\",\"quoteType\":\"SWIFT\",\"gasless\":false,\"signers\":[],\"swapMessageV0Params\":null,\"transaction\":\"AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAQAAAQabiFf+q4GE+2h/Y0YYwDXaxDncGus7VZig8AAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==\"}}"
+        }
+      },
+      "httpTrace": [
+        {
+          "method": "POST",
+          "url": "https://tx-builder.mayan.finance/build",
+          "headers": {
+            "accept": "application/json",
+            "content-type": "application/json"
+          },
+          "body": "{\"quote\":{\"type\":\"SWIFT\",\"gasless\":false,\"swiftVersion\":\"V2\",\"swiftAuctionMode\":2,\"slippageBps\":50,\"effectiveAmountIn64\":\"100000000\",\"swiftInputDecimals\":6,\"onlyBridging\":false,\"expectedAmountOutBaseUnits\":\"99557029\",\"minAmountOutBaseUnits\":\"99059244\",\"minReceivedBaseUnits\":\"99059244\",\"deadline64\":\"1893456000\",\"quoteId\":\"0x11111111111111111111111111111111\",\"signature\":\"0x1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111\",\"minMiddleAmount\":114.5000,\"unknownSignedField\":\"keep-me\",\"fromChain\":\"solana\",\"toChain\":\"ethereum\",\"fromToken\":{\"name\":\"EuroC\",\"standard\":\"spl\",\"mint\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"contract\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"chainId\":0,\"wChainId\":1,\"decimals\":6,\"realOriginContractAddress\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"realOriginChainId\":1},\"toToken\":{\"name\":\"EuroC\",\"standard\":\"erc20\",\"mint\":\"\",\"contract\":\"0x1aBaEA1f7C830bD89acc67eC4af516284b1bC33c\",\"chainId\":1,\"wChainId\":2,\"decimals\":6,\"realOriginContractAddress\":\"0x1aBaEA1f7C830bD89acc67eC4af516284b1bC33c\",\"realOriginChainId\":2},\"swiftInputContract\":\"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\",\"swiftInputContractStandard\":\"spl\",\"swiftMayanContract\":\"mayan34VedncxdK2XobtvWFDXQASUTBXhUVzt2kKgny\",\"evmSwapRouterAddress\":null},\"params\":{\"swapperAddress\":\"So11111111111111111111111111111111111111112\",\"destinationAddress\":\"0x3333333333333333333333333333333333333333\"}}"
+        }
+      ],
+      "config": {
+        "allowUnauthenticatedBuild": true
+      },
+      "quoteCaseId": "quote-sol-eth-synthetic"
+    },
+    {
+      "caseId": "status-eth-inprogress-synthetic",
+      "method": "status",
+      "source": "synthetic",
+      "capabilityId": "bridge-mayan-swift-v2-eurc-eth-sol",
+      "request": {
+        "sourceChainId": "eip155:1",
+        "sourceTransactionHash": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "nowSeconds": 1789600000,
+      "providerStatus": 200,
+      "providerBody": "{\"clientStatus\":\"INPROGRESS\",\"status\":\"PENDING\"}",
+      "expected": {
+        "kind": "success",
+        "value": {
+          "statusKind": "mayan-explorer-index",
+          "providerId": "mayan-swift-v2",
+          "sourceChainId": "eip155:1",
+          "sourceTransactionHash": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "state": "in-progress",
+          "providerClientStatus": "INPROGRESS",
+          "providerStatus": "PENDING",
+          "statusVerification": "provider-indexed-not-locally-verified",
+          "rawProviderStatusJson": "{\"clientStatus\":\"INPROGRESS\",\"status\":\"PENDING\"}"
+        }
+      },
+      "httpTrace": [
+        {
+          "method": "GET",
+          "url": "https://explorer-api.mayan.finance/v3/swap/trx/0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "headers": {
+            "accept": "application/json"
+          },
+          "body": null
+        }
+      ],
+      "config": null,
+      "quoteCaseId": null
+    },
+    {
+      "caseId": "status-eth-completed-synthetic",
+      "method": "status",
+      "source": "synthetic",
+      "capabilityId": "bridge-mayan-swift-v2-eurc-eth-sol",
+      "request": {
+        "sourceChainId": "eip155:1",
+        "sourceTransactionHash": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "nowSeconds": 1789600000,
+      "providerStatus": 200,
+      "providerBody": "{\"clientStatus\":\"COMPLETED\",\"status\":\"SETTLED\"}",
+      "expected": {
+        "kind": "success",
+        "value": {
+          "statusKind": "mayan-explorer-index",
+          "providerId": "mayan-swift-v2",
+          "sourceChainId": "eip155:1",
+          "sourceTransactionHash": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "state": "completed",
+          "providerClientStatus": "COMPLETED",
+          "providerStatus": "SETTLED",
+          "statusVerification": "provider-indexed-not-locally-verified",
+          "rawProviderStatusJson": "{\"clientStatus\":\"COMPLETED\",\"status\":\"SETTLED\"}"
+        }
+      },
+      "httpTrace": [
+        {
+          "method": "GET",
+          "url": "https://explorer-api.mayan.finance/v3/swap/trx/0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "headers": {
+            "accept": "application/json"
+          },
+          "body": null
+        }
+      ],
+      "config": null,
+      "quoteCaseId": null
+    },
+    {
+      "caseId": "status-sol-refunded-synthetic",
+      "method": "status",
+      "source": "synthetic",
+      "capabilityId": "bridge-mayan-swift-v2-eurc-sol-eth",
+      "request": {
+        "sourceChainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+        "sourceTransactionHash": "1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "nowSeconds": 1789600000,
+      "providerStatus": 200,
+      "providerBody": "{\"clientStatus\":\"REFUNDED\",\"status\":\"REFUNDED\"}",
+      "expected": {
+        "kind": "success",
+        "value": {
+          "statusKind": "mayan-explorer-index",
+          "providerId": "mayan-swift-v2",
+          "sourceChainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+          "sourceTransactionHash": "1111111111111111111111111111111111111111111111111111111111111111",
+          "state": "refunded",
+          "providerClientStatus": "REFUNDED",
+          "providerStatus": "REFUNDED",
+          "statusVerification": "provider-indexed-not-locally-verified",
+          "rawProviderStatusJson": "{\"clientStatus\":\"REFUNDED\",\"status\":\"REFUNDED\"}"
+        }
+      },
+      "httpTrace": [
+        {
+          "method": "GET",
+          "url": "https://explorer-api.mayan.finance/v3/swap/trx/1111111111111111111111111111111111111111111111111111111111111111",
+          "headers": {
+            "accept": "application/json"
+          },
+          "body": null
+        }
+      ],
+      "config": null,
+      "quoteCaseId": null
+    },
+    {
+      "caseId": "status-sol-unknown-synthetic",
+      "method": "status",
+      "source": "synthetic",
+      "capabilityId": "bridge-mayan-swift-v2-eurc-sol-eth",
+      "request": {
+        "sourceChainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+        "sourceTransactionHash": "1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "nowSeconds": 1789600000,
+      "providerStatus": 200,
+      "providerBody": "{\"clientStatus\":\"CANCELLED\",\"status\":\"CANCELLED\"}",
+      "expected": {
+        "kind": "success",
+        "value": {
+          "statusKind": "mayan-explorer-index",
+          "providerId": "mayan-swift-v2",
+          "sourceChainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+          "sourceTransactionHash": "1111111111111111111111111111111111111111111111111111111111111111",
+          "state": "unknown",
+          "providerClientStatus": "CANCELLED",
+          "providerStatus": "CANCELLED",
+          "statusVerification": "provider-indexed-not-locally-verified",
+          "rawProviderStatusJson": "{\"clientStatus\":\"CANCELLED\",\"status\":\"CANCELLED\"}"
+        }
+      },
+      "httpTrace": [
+        {
+          "method": "GET",
+          "url": "https://explorer-api.mayan.finance/v3/swap/trx/1111111111111111111111111111111111111111111111111111111111111111",
+          "headers": {
+            "accept": "application/json"
+          },
+          "body": null
+        }
+      ],
+      "config": null,
+      "quoteCaseId": null
+    },
+    {
+      "caseId": "status-eth-not-found-synthetic",
+      "method": "status",
+      "source": "synthetic",
+      "capabilityId": "bridge-mayan-swift-v2-eurc-eth-sol",
+      "request": {
+        "sourceChainId": "eip155:1",
+        "sourceTransactionHash": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "nowSeconds": 1789600000,
+      "providerStatus": 404,
+      "providerBody": null,
+      "expected": {
+        "kind": "sdk-error",
+        "code": "BRIDGE_STATUS_NOT_FOUND",
+        "message": "Bridge status was not found"
+      },
+      "httpTrace": [
+        {
+          "method": "GET",
+          "url": "https://explorer-api.mayan.finance/v3/swap/trx/0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "headers": {
+            "accept": "application/json"
+          },
+          "body": null
+        }
+      ],
+      "config": null,
+      "quoteCaseId": null
+    },
+    {
+      "caseId": "quote-duplicate-key",
+      "method": "quote",
+      "source": "synthetic",
+      "capabilityId": "bridge-mayan-swift-v2-eurc-eth-sol",
+      "request": {
+        "sourceChainId": "eip155:1",
+        "destinationChainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+        "sourceTokenDeploymentId": "deployment-0011",
+        "destinationTokenDeploymentId": "deployment-0013",
+        "amountIn": "100000000",
+        "slippageBps": 50
+      },
+      "nowSeconds": 1789600000,
+      "providerStatus": 200,
+      "providerBody": "{\"success\":true,\"quotes\":[{\"type\":\"SWIFT\",\"type\":\"SWIFT\"}]}",
+      "expected": {
+        "kind": "sdk-error",
+        "code": "BRIDGE_PROVIDER_INVALID_RESPONSE",
+        "message": "Bridge provider response is invalid"
+      },
+      "httpTrace": [
+        {
+          "method": "POST",
+          "url": "https://tx-builder.mayan.finance/quote",
+          "headers": {
+            "accept": "application/json",
+            "content-type": "application/json"
+          },
+          "body": "{\"fromToken\":\"0x1abaea1f7c830bd89acc67ec4af516284b1bc33c\",\"fromChain\":\"ethereum\",\"toToken\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"toChain\":\"solana\",\"amountIn64\":\"100000000\",\"slippageBps\":50,\"swift\":true,\"mctp\":false,\"fastMctp\":false,\"wormhole\":false,\"monoChain\":false,\"gasless\":false,\"fullList\":true,\"guaranteedOutput\":true,\"gasDrop\":0}"
+        }
+      ],
+      "config": null,
+      "quoteCaseId": null
+    },
+    {
+      "caseId": "quote-malformed-json",
+      "method": "quote",
+      "source": "synthetic",
+      "capabilityId": "bridge-mayan-swift-v2-eurc-eth-sol",
+      "request": {
+        "sourceChainId": "eip155:1",
+        "destinationChainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+        "sourceTokenDeploymentId": "deployment-0011",
+        "destinationTokenDeploymentId": "deployment-0013",
+        "amountIn": "100000000",
+        "slippageBps": 50
+      },
+      "nowSeconds": 1789600000,
+      "providerStatus": 200,
+      "providerBody": "{\"success\":true,\"quotes\":[",
+      "expected": {
+        "kind": "sdk-error",
+        "code": "BRIDGE_PROVIDER_INVALID_RESPONSE",
+        "message": "Bridge provider response is invalid"
+      },
+      "httpTrace": [
+        {
+          "method": "POST",
+          "url": "https://tx-builder.mayan.finance/quote",
+          "headers": {
+            "accept": "application/json",
+            "content-type": "application/json"
+          },
+          "body": "{\"fromToken\":\"0x1abaea1f7c830bd89acc67ec4af516284b1bc33c\",\"fromChain\":\"ethereum\",\"toToken\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"toChain\":\"solana\",\"amountIn64\":\"100000000\",\"slippageBps\":50,\"swift\":true,\"mctp\":false,\"fastMctp\":false,\"wormhole\":false,\"monoChain\":false,\"gasless\":false,\"fullList\":true,\"guaranteedOutput\":true,\"gasDrop\":0}"
+        }
+      ],
+      "config": null,
+      "quoteCaseId": null
+    },
+    {
+      "caseId": "quote-expired",
+      "method": "quote",
+      "source": "synthetic",
+      "capabilityId": "bridge-mayan-swift-v2-eurc-eth-sol",
+      "request": {
+        "sourceChainId": "eip155:1",
+        "destinationChainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+        "sourceTokenDeploymentId": "deployment-0011",
+        "destinationTokenDeploymentId": "deployment-0013",
+        "amountIn": "100000000",
+        "slippageBps": 50
+      },
+      "nowSeconds": 1789600000,
+      "providerStatus": 200,
+      "providerBody": "{\"success\":true,\"quotes\":[{\"type\":\"SWIFT\",\"gasless\":false,\"swiftVersion\":\"V2\",\"swiftAuctionMode\":2,\"slippageBps\":50,\"effectiveAmountIn64\":\"100000000\",\"swiftInputDecimals\":6,\"onlyBridging\":false,\"expectedAmountOutBaseUnits\":\"99557029\",\"minAmountOutBaseUnits\":\"99059244\",\"minReceivedBaseUnits\":\"99059244\",\"deadline64\":\"1789600020\",\"quoteId\":\"0x11111111111111111111111111111111\",\"signature\":\"0x1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111\",\"minMiddleAmount\":114.5000,\"unknownSignedField\":\"keep-me\",\"fromChain\":\"ethereum\",\"toChain\":\"solana\",\"fromToken\":{\"name\":\"EuroC\",\"standard\":\"erc20\",\"mint\":\"\",\"contract\":\"0x1aBaEA1f7C830bD89acc67eC4af516284b1bC33c\",\"chainId\":1,\"wChainId\":2,\"decimals\":6,\"realOriginContractAddress\":\"0x1aBaEA1f7C830bD89acc67eC4af516284b1bC33c\",\"realOriginChainId\":2},\"toToken\":{\"name\":\"EuroC\",\"standard\":\"spl\",\"mint\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"contract\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"chainId\":0,\"wChainId\":1,\"decimals\":6,\"realOriginContractAddress\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"realOriginChainId\":1},\"swiftInputContract\":\"0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48\",\"swiftInputContractStandard\":\"erc20\",\"swiftMayanContract\":\"0x40ffe85a28dc9993541449464d7529a922142960\",\"evmSwapRouterAddress\":\"0xa929c559E5e6537359680F39CB4E3708E1a14dd1\"}]}",
+      "expected": {
+        "kind": "sdk-error",
+        "code": "BRIDGE_QUOTE_EXPIRED",
+        "message": "Bridge quote is expired"
+      },
+      "httpTrace": [
+        {
+          "method": "POST",
+          "url": "https://tx-builder.mayan.finance/quote",
+          "headers": {
+            "accept": "application/json",
+            "content-type": "application/json"
+          },
+          "body": "{\"fromToken\":\"0x1abaea1f7c830bd89acc67ec4af516284b1bc33c\",\"fromChain\":\"ethereum\",\"toToken\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"toChain\":\"solana\",\"amountIn64\":\"100000000\",\"slippageBps\":50,\"swift\":true,\"mctp\":false,\"fastMctp\":false,\"wormhole\":false,\"monoChain\":false,\"gasless\":false,\"fullList\":true,\"guaranteedOutput\":true,\"gasDrop\":0}"
+        }
+      ],
+      "config": null,
+      "quoteCaseId": null
+    },
+    {
+      "caseId": "quote-mismatched-amount",
+      "method": "quote",
+      "source": "synthetic",
+      "capabilityId": "bridge-mayan-swift-v2-eurc-eth-sol",
+      "request": {
+        "sourceChainId": "eip155:1",
+        "destinationChainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+        "sourceTokenDeploymentId": "deployment-0011",
+        "destinationTokenDeploymentId": "deployment-0013",
+        "amountIn": "100000000",
+        "slippageBps": 50
+      },
+      "nowSeconds": 1789600000,
+      "providerStatus": 200,
+      "providerBody": "{\"success\":true,\"quotes\":[{\"type\":\"SWIFT\",\"gasless\":false,\"swiftVersion\":\"V2\",\"swiftAuctionMode\":2,\"slippageBps\":50,\"effectiveAmountIn64\":\"100000001\",\"swiftInputDecimals\":6,\"onlyBridging\":false,\"expectedAmountOutBaseUnits\":\"99557029\",\"minAmountOutBaseUnits\":\"99059244\",\"minReceivedBaseUnits\":\"99059244\",\"deadline64\":\"1893456000\",\"quoteId\":\"0x11111111111111111111111111111111\",\"signature\":\"0x1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111\",\"minMiddleAmount\":114.5000,\"unknownSignedField\":\"keep-me\",\"fromChain\":\"ethereum\",\"toChain\":\"solana\",\"fromToken\":{\"name\":\"EuroC\",\"standard\":\"erc20\",\"mint\":\"\",\"contract\":\"0x1aBaEA1f7C830bD89acc67eC4af516284b1bC33c\",\"chainId\":1,\"wChainId\":2,\"decimals\":6,\"realOriginContractAddress\":\"0x1aBaEA1f7C830bD89acc67eC4af516284b1bC33c\",\"realOriginChainId\":2},\"toToken\":{\"name\":\"EuroC\",\"standard\":\"spl\",\"mint\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"contract\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"chainId\":0,\"wChainId\":1,\"decimals\":6,\"realOriginContractAddress\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"realOriginChainId\":1},\"swiftInputContract\":\"0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48\",\"swiftInputContractStandard\":\"erc20\",\"swiftMayanContract\":\"0x40ffe85a28dc9993541449464d7529a922142960\",\"evmSwapRouterAddress\":\"0xa929c559E5e6537359680F39CB4E3708E1a14dd1\"}]}",
+      "expected": {
+        "kind": "sdk-error",
+        "code": "BRIDGE_PROVIDER_INVALID_RESPONSE",
+        "message": "Bridge provider response is invalid"
+      },
+      "httpTrace": [
+        {
+          "method": "POST",
+          "url": "https://tx-builder.mayan.finance/quote",
+          "headers": {
+            "accept": "application/json",
+            "content-type": "application/json"
+          },
+          "body": "{\"fromToken\":\"0x1abaea1f7c830bd89acc67ec4af516284b1bc33c\",\"fromChain\":\"ethereum\",\"toToken\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"toChain\":\"solana\",\"amountIn64\":\"100000000\",\"slippageBps\":50,\"swift\":true,\"mctp\":false,\"fastMctp\":false,\"wormhole\":false,\"monoChain\":false,\"gasless\":false,\"fullList\":true,\"guaranteedOutput\":true,\"gasDrop\":0}"
+        }
+      ],
+      "config": null,
+      "quoteCaseId": null
+    },
+    {
+      "caseId": "quote-bad-signature-shape",
+      "method": "quote",
+      "source": "synthetic",
+      "capabilityId": "bridge-mayan-swift-v2-eurc-eth-sol",
+      "request": {
+        "sourceChainId": "eip155:1",
+        "destinationChainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+        "sourceTokenDeploymentId": "deployment-0011",
+        "destinationTokenDeploymentId": "deployment-0013",
+        "amountIn": "100000000",
+        "slippageBps": 50
+      },
+      "nowSeconds": 1789600000,
+      "providerStatus": 200,
+      "providerBody": "{\"success\":true,\"quotes\":[{\"type\":\"SWIFT\",\"gasless\":false,\"swiftVersion\":\"V2\",\"swiftAuctionMode\":2,\"slippageBps\":50,\"effectiveAmountIn64\":\"100000000\",\"swiftInputDecimals\":6,\"onlyBridging\":false,\"expectedAmountOutBaseUnits\":\"99557029\",\"minAmountOutBaseUnits\":\"99059244\",\"minReceivedBaseUnits\":\"99059244\",\"deadline64\":\"1893456000\",\"quoteId\":\"0x11111111111111111111111111111111\",\"signature\":\"0x11\",\"minMiddleAmount\":114.5000,\"unknownSignedField\":\"keep-me\",\"fromChain\":\"ethereum\",\"toChain\":\"solana\",\"fromToken\":{\"name\":\"EuroC\",\"standard\":\"erc20\",\"mint\":\"\",\"contract\":\"0x1aBaEA1f7C830bD89acc67eC4af516284b1bC33c\",\"chainId\":1,\"wChainId\":2,\"decimals\":6,\"realOriginContractAddress\":\"0x1aBaEA1f7C830bD89acc67eC4af516284b1bC33c\",\"realOriginChainId\":2},\"toToken\":{\"name\":\"EuroC\",\"standard\":\"spl\",\"mint\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"contract\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"chainId\":0,\"wChainId\":1,\"decimals\":6,\"realOriginContractAddress\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"realOriginChainId\":1},\"swiftInputContract\":\"0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48\",\"swiftInputContractStandard\":\"erc20\",\"swiftMayanContract\":\"0x40ffe85a28dc9993541449464d7529a922142960\",\"evmSwapRouterAddress\":\"0xa929c559E5e6537359680F39CB4E3708E1a14dd1\"}]}",
+      "expected": {
+        "kind": "sdk-error",
+        "code": "BRIDGE_PROVIDER_INVALID_RESPONSE",
+        "message": "Bridge provider response is invalid"
+      },
+      "httpTrace": [
+        {
+          "method": "POST",
+          "url": "https://tx-builder.mayan.finance/quote",
+          "headers": {
+            "accept": "application/json",
+            "content-type": "application/json"
+          },
+          "body": "{\"fromToken\":\"0x1abaea1f7c830bd89acc67ec4af516284b1bc33c\",\"fromChain\":\"ethereum\",\"toToken\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"toChain\":\"solana\",\"amountIn64\":\"100000000\",\"slippageBps\":50,\"swift\":true,\"mctp\":false,\"fastMctp\":false,\"wormhole\":false,\"monoChain\":false,\"gasless\":false,\"fullList\":true,\"guaranteedOutput\":true,\"gasDrop\":0}"
+        }
+      ],
+      "config": null,
+      "quoteCaseId": null
+    },
+    {
+      "caseId": "quote-json-depth-limit",
+      "method": "quote",
+      "source": "synthetic",
+      "capabilityId": "bridge-mayan-swift-v2-eurc-eth-sol",
+      "request": {
+        "sourceChainId": "eip155:1",
+        "destinationChainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+        "sourceTokenDeploymentId": "deployment-0011",
+        "destinationTokenDeploymentId": "deployment-0013",
+        "amountIn": "100000000",
+        "slippageBps": 50
+      },
+      "nowSeconds": 1789600000,
+      "providerStatus": 200,
+      "providerBody": "[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]",
+      "expected": {
+        "kind": "sdk-error",
+        "code": "BRIDGE_PROVIDER_INVALID_RESPONSE",
+        "message": "Bridge provider response is invalid"
+      },
+      "httpTrace": [
+        {
+          "method": "POST",
+          "url": "https://tx-builder.mayan.finance/quote",
+          "headers": {
+            "accept": "application/json",
+            "content-type": "application/json"
+          },
+          "body": "{\"fromToken\":\"0x1abaea1f7c830bd89acc67ec4af516284b1bc33c\",\"fromChain\":\"ethereum\",\"toToken\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"toChain\":\"solana\",\"amountIn64\":\"100000000\",\"slippageBps\":50,\"swift\":true,\"mctp\":false,\"fastMctp\":false,\"wormhole\":false,\"monoChain\":false,\"gasless\":false,\"fullList\":true,\"guaranteedOutput\":true,\"gasDrop\":0}"
+        }
+      ],
+      "config": null,
+      "quoteCaseId": null
+    },
+    {
+      "caseId": "quote-body-size-limit",
+      "method": "quote",
+      "source": "synthetic",
+      "capabilityId": "bridge-mayan-swift-v2-eurc-eth-sol",
+      "request": {
+        "sourceChainId": "eip155:1",
+        "destinationChainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+        "sourceTokenDeploymentId": "deployment-0011",
+        "destinationTokenDeploymentId": "deployment-0013",
+        "amountIn": "100000000",
+        "slippageBps": 50
+      },
+      "nowSeconds": 1789600000,
+      "providerStatus": 200,
+      "providerBody": "__SYNTHETIC_BODY_EXCEEDS_1MIB__",
+      "expected": {
+        "kind": "sdk-error",
+        "code": "BRIDGE_PROVIDER_INVALID_RESPONSE",
+        "message": "Bridge provider response is invalid"
+      },
+      "httpTrace": [
+        {
+          "method": "POST",
+          "url": "https://tx-builder.mayan.finance/quote",
+          "headers": {
+            "accept": "application/json",
+            "content-type": "application/json"
+          },
+          "body": "{\"fromToken\":\"0x1abaea1f7c830bd89acc67ec4af516284b1bc33c\",\"fromChain\":\"ethereum\",\"toToken\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"toChain\":\"solana\",\"amountIn64\":\"100000000\",\"slippageBps\":50,\"swift\":true,\"mctp\":false,\"fastMctp\":false,\"wormhole\":false,\"monoChain\":false,\"gasless\":false,\"fullList\":true,\"guaranteedOutput\":true,\"gasDrop\":0}"
+        }
+      ],
+      "config": null,
+      "quoteCaseId": null
+    },
+    {
+      "caseId": "quote-unsupported-route",
+      "method": "quote",
+      "source": "synthetic",
+      "capabilityId": null,
+      "request": {
+        "sourceChainId": "eip155:43114",
+        "destinationChainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+        "sourceTokenDeploymentId": "deployment-0011",
+        "destinationTokenDeploymentId": "deployment-0013",
+        "amountIn": "100000000",
+        "slippageBps": 50
+      },
+      "nowSeconds": 1789600000,
+      "providerStatus": null,
+      "providerBody": null,
+      "expected": {
+        "kind": "sdk-error",
+        "code": "BRIDGE_UNSUPPORTED_ROUTE",
+        "message": "Bridge route is unsupported"
+      },
+      "httpTrace": [],
+      "config": null,
+      "quoteCaseId": null
+    },
+    {
+      "caseId": "build-auth-required-local",
+      "method": "build",
+      "source": "synthetic",
+      "capabilityId": "bridge-mayan-swift-v2-eurc-eth-sol",
+      "request": {
+        "swapperAddress": "0x2222222222222222222222222222222222222222",
+        "destinationAddress": "So11111111111111111111111111111111111111112"
+      },
+      "nowSeconds": 1789600000,
+      "providerStatus": null,
+      "providerBody": null,
+      "expected": {
+        "kind": "sdk-error",
+        "code": "BRIDGE_PROVIDER_AUTH_REQUIRED",
+        "message": "Bridge provider authentication is required"
+      },
+      "httpTrace": [],
+      "config": {},
+      "quoteCaseId": "quote-eth-sol-synthetic"
+    },
+    {
+      "caseId": "build-quote-mismatch",
+      "method": "build",
+      "source": "synthetic",
+      "capabilityId": "bridge-mayan-swift-v2-eurc-eth-sol",
+      "request": {
+        "swapperAddress": "0x2222222222222222222222222222222222222222",
+        "destinationAddress": "So11111111111111111111111111111111111111112"
+      },
+      "nowSeconds": 1789600000,
+      "providerStatus": null,
+      "providerBody": null,
+      "expected": {
+        "kind": "sdk-error",
+        "code": "BRIDGE_QUOTE_MISMATCH",
+        "message": "Bridge quote does not match the request"
+      },
+      "httpTrace": [],
+      "config": {
+        "allowUnauthenticatedBuild": true
+      },
+      "quoteCaseId": "quote-sol-eth-synthetic"
+    },
+    {
+      "caseId": "build-evm-forwarder-violation",
+      "method": "build",
+      "source": "synthetic",
+      "capabilityId": "bridge-mayan-swift-v2-eurc-eth-sol",
+      "request": {
+        "swapperAddress": "0x2222222222222222222222222222222222222222",
+        "destinationAddress": "So11111111111111111111111111111111111111112"
+      },
+      "nowSeconds": 1789600000,
+      "providerStatus": 200,
+      "providerBody": "{\"success\":true,\"transaction\":{\"chainCategory\":\"evm\",\"quoteType\":\"SWIFT\",\"gasless\":false,\"transaction\":{\"chainId\":1,\"to\":\"0x5555555555555555555555555555555555555555\",\"value\":\"0\",\"data\":\"0x30dedc570000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"}}}",
+      "expected": {
+        "kind": "sdk-error",
+        "code": "BRIDGE_BUILD_INVALID",
+        "message": "Bridge provider build is invalid"
+      },
+      "httpTrace": [
+        {
+          "method": "POST",
+          "url": "https://tx-builder.mayan.finance/build",
+          "headers": {
+            "accept": "application/json",
+            "content-type": "application/json"
+          },
+          "body": "{\"quote\":{\"type\":\"SWIFT\",\"gasless\":false,\"swiftVersion\":\"V2\",\"swiftAuctionMode\":2,\"slippageBps\":50,\"effectiveAmountIn64\":\"100000000\",\"swiftInputDecimals\":6,\"onlyBridging\":false,\"expectedAmountOutBaseUnits\":\"99557029\",\"minAmountOutBaseUnits\":\"99059244\",\"minReceivedBaseUnits\":\"99059244\",\"deadline64\":\"1893456000\",\"quoteId\":\"0x11111111111111111111111111111111\",\"signature\":\"0x1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111\",\"minMiddleAmount\":114.5000,\"unknownSignedField\":\"keep-me\",\"fromChain\":\"ethereum\",\"toChain\":\"solana\",\"fromToken\":{\"name\":\"EuroC\",\"standard\":\"erc20\",\"mint\":\"\",\"contract\":\"0x1aBaEA1f7C830bD89acc67eC4af516284b1bC33c\",\"chainId\":1,\"wChainId\":2,\"decimals\":6,\"realOriginContractAddress\":\"0x1aBaEA1f7C830bD89acc67eC4af516284b1bC33c\",\"realOriginChainId\":2},\"toToken\":{\"name\":\"EuroC\",\"standard\":\"spl\",\"mint\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"contract\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"chainId\":0,\"wChainId\":1,\"decimals\":6,\"realOriginContractAddress\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"realOriginChainId\":1},\"swiftInputContract\":\"0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48\",\"swiftInputContractStandard\":\"erc20\",\"swiftMayanContract\":\"0x40ffe85a28dc9993541449464d7529a922142960\",\"evmSwapRouterAddress\":\"0xa929c559E5e6537359680F39CB4E3708E1a14dd1\"},\"params\":{\"swapperAddress\":\"0x2222222222222222222222222222222222222222\",\"destinationAddress\":\"So11111111111111111111111111111111111111112\",\"signerChainId\":1}}"
+        }
+      ],
+      "config": {
+        "allowUnauthenticatedBuild": true
+      },
+      "quoteCaseId": "quote-eth-sol-synthetic"
+    },
+    {
+      "caseId": "build-evm-selector-violation",
+      "method": "build",
+      "source": "synthetic",
+      "capabilityId": "bridge-mayan-swift-v2-eurc-eth-sol",
+      "request": {
+        "swapperAddress": "0x2222222222222222222222222222222222222222",
+        "destinationAddress": "So11111111111111111111111111111111111111112"
+      },
+      "nowSeconds": 1789600000,
+      "providerStatus": 200,
+      "providerBody": "{\"success\":true,\"transaction\":{\"chainCategory\":\"evm\",\"quoteType\":\"SWIFT\",\"gasless\":false,\"transaction\":{\"chainId\":1,\"to\":\"0x337685fdab40d39bd02028545a4ffa7d287cc3e2\",\"value\":\"0\",\"data\":\"0xdeadbeef0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"}}}",
+      "expected": {
+        "kind": "sdk-error",
+        "code": "BRIDGE_BUILD_INVALID",
+        "message": "Bridge provider build is invalid"
+      },
+      "httpTrace": [
+        {
+          "method": "POST",
+          "url": "https://tx-builder.mayan.finance/build",
+          "headers": {
+            "accept": "application/json",
+            "content-type": "application/json"
+          },
+          "body": "{\"quote\":{\"type\":\"SWIFT\",\"gasless\":false,\"swiftVersion\":\"V2\",\"swiftAuctionMode\":2,\"slippageBps\":50,\"effectiveAmountIn64\":\"100000000\",\"swiftInputDecimals\":6,\"onlyBridging\":false,\"expectedAmountOutBaseUnits\":\"99557029\",\"minAmountOutBaseUnits\":\"99059244\",\"minReceivedBaseUnits\":\"99059244\",\"deadline64\":\"1893456000\",\"quoteId\":\"0x11111111111111111111111111111111\",\"signature\":\"0x1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111\",\"minMiddleAmount\":114.5000,\"unknownSignedField\":\"keep-me\",\"fromChain\":\"ethereum\",\"toChain\":\"solana\",\"fromToken\":{\"name\":\"EuroC\",\"standard\":\"erc20\",\"mint\":\"\",\"contract\":\"0x1aBaEA1f7C830bD89acc67eC4af516284b1bC33c\",\"chainId\":1,\"wChainId\":2,\"decimals\":6,\"realOriginContractAddress\":\"0x1aBaEA1f7C830bD89acc67eC4af516284b1bC33c\",\"realOriginChainId\":2},\"toToken\":{\"name\":\"EuroC\",\"standard\":\"spl\",\"mint\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"contract\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"chainId\":0,\"wChainId\":1,\"decimals\":6,\"realOriginContractAddress\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"realOriginChainId\":1},\"swiftInputContract\":\"0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48\",\"swiftInputContractStandard\":\"erc20\",\"swiftMayanContract\":\"0x40ffe85a28dc9993541449464d7529a922142960\",\"evmSwapRouterAddress\":\"0xa929c559E5e6537359680F39CB4E3708E1a14dd1\"},\"params\":{\"swapperAddress\":\"0x2222222222222222222222222222222222222222\",\"destinationAddress\":\"So11111111111111111111111111111111111111112\",\"signerChainId\":1}}"
+        }
+      ],
+      "config": {
+        "allowUnauthenticatedBuild": true
+      },
+      "quoteCaseId": "quote-eth-sol-synthetic"
+    },
+    {
+      "caseId": "build-evm-value-violation",
+      "method": "build",
+      "source": "synthetic",
+      "capabilityId": "bridge-mayan-swift-v2-eurc-eth-sol",
+      "request": {
+        "swapperAddress": "0x2222222222222222222222222222222222222222",
+        "destinationAddress": "So11111111111111111111111111111111111111112"
+      },
+      "nowSeconds": 1789600000,
+      "providerStatus": 200,
+      "providerBody": "{\"success\":true,\"transaction\":{\"chainCategory\":\"evm\",\"quoteType\":\"SWIFT\",\"gasless\":false,\"transaction\":{\"chainId\":1,\"to\":\"0x337685fdab40d39bd02028545a4ffa7d287cc3e2\",\"value\":\"1\",\"data\":\"0x30dedc570000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"}}}",
+      "expected": {
+        "kind": "sdk-error",
+        "code": "BRIDGE_BUILD_INVALID",
+        "message": "Bridge provider build is invalid"
+      },
+      "httpTrace": [
+        {
+          "method": "POST",
+          "url": "https://tx-builder.mayan.finance/build",
+          "headers": {
+            "accept": "application/json",
+            "content-type": "application/json"
+          },
+          "body": "{\"quote\":{\"type\":\"SWIFT\",\"gasless\":false,\"swiftVersion\":\"V2\",\"swiftAuctionMode\":2,\"slippageBps\":50,\"effectiveAmountIn64\":\"100000000\",\"swiftInputDecimals\":6,\"onlyBridging\":false,\"expectedAmountOutBaseUnits\":\"99557029\",\"minAmountOutBaseUnits\":\"99059244\",\"minReceivedBaseUnits\":\"99059244\",\"deadline64\":\"1893456000\",\"quoteId\":\"0x11111111111111111111111111111111\",\"signature\":\"0x1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111\",\"minMiddleAmount\":114.5000,\"unknownSignedField\":\"keep-me\",\"fromChain\":\"ethereum\",\"toChain\":\"solana\",\"fromToken\":{\"name\":\"EuroC\",\"standard\":\"erc20\",\"mint\":\"\",\"contract\":\"0x1aBaEA1f7C830bD89acc67eC4af516284b1bC33c\",\"chainId\":1,\"wChainId\":2,\"decimals\":6,\"realOriginContractAddress\":\"0x1aBaEA1f7C830bD89acc67eC4af516284b1bC33c\",\"realOriginChainId\":2},\"toToken\":{\"name\":\"EuroC\",\"standard\":\"spl\",\"mint\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"contract\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"chainId\":0,\"wChainId\":1,\"decimals\":6,\"realOriginContractAddress\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"realOriginChainId\":1},\"swiftInputContract\":\"0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48\",\"swiftInputContractStandard\":\"erc20\",\"swiftMayanContract\":\"0x40ffe85a28dc9993541449464d7529a922142960\",\"evmSwapRouterAddress\":\"0xa929c559E5e6537359680F39CB4E3708E1a14dd1\"},\"params\":{\"swapperAddress\":\"0x2222222222222222222222222222222222222222\",\"destinationAddress\":\"So11111111111111111111111111111111111111112\",\"signerChainId\":1}}"
+        }
+      ],
+      "config": {
+        "allowUnauthenticatedBuild": true
+      },
+      "quoteCaseId": "quote-eth-sol-synthetic"
+    },
+    {
+      "caseId": "build-solana-framing-violation",
+      "method": "build",
+      "source": "synthetic",
+      "capabilityId": "bridge-mayan-swift-v2-eurc-sol-eth",
+      "request": {
+        "swapperAddress": "So11111111111111111111111111111111111111112",
+        "destinationAddress": "0x3333333333333333333333333333333333333333"
+      },
+      "nowSeconds": 1789600000,
+      "providerStatus": 200,
+      "providerBody": "{\"success\":true,\"transaction\":{\"chainCategory\":\"svm\",\"quoteType\":\"SWIFT\",\"gasless\":false,\"signers\":[],\"swapMessageV0Params\":null,\"transaction\":\"AA==\"}}",
+      "expected": {
+        "kind": "sdk-error",
+        "code": "BRIDGE_BUILD_INVALID",
+        "message": "Bridge provider build is invalid"
+      },
+      "httpTrace": [
+        {
+          "method": "POST",
+          "url": "https://tx-builder.mayan.finance/build",
+          "headers": {
+            "accept": "application/json",
+            "content-type": "application/json"
+          },
+          "body": "{\"quote\":{\"type\":\"SWIFT\",\"gasless\":false,\"swiftVersion\":\"V2\",\"swiftAuctionMode\":2,\"slippageBps\":50,\"effectiveAmountIn64\":\"100000000\",\"swiftInputDecimals\":6,\"onlyBridging\":false,\"expectedAmountOutBaseUnits\":\"99557029\",\"minAmountOutBaseUnits\":\"99059244\",\"minReceivedBaseUnits\":\"99059244\",\"deadline64\":\"1893456000\",\"quoteId\":\"0x11111111111111111111111111111111\",\"signature\":\"0x1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111\",\"minMiddleAmount\":114.5000,\"unknownSignedField\":\"keep-me\",\"fromChain\":\"solana\",\"toChain\":\"ethereum\",\"fromToken\":{\"name\":\"EuroC\",\"standard\":\"spl\",\"mint\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"contract\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"chainId\":0,\"wChainId\":1,\"decimals\":6,\"realOriginContractAddress\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"realOriginChainId\":1},\"toToken\":{\"name\":\"EuroC\",\"standard\":\"erc20\",\"mint\":\"\",\"contract\":\"0x1aBaEA1f7C830bD89acc67eC4af516284b1bC33c\",\"chainId\":1,\"wChainId\":2,\"decimals\":6,\"realOriginContractAddress\":\"0x1aBaEA1f7C830bD89acc67eC4af516284b1bC33c\",\"realOriginChainId\":2},\"swiftInputContract\":\"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\",\"swiftInputContractStandard\":\"spl\",\"swiftMayanContract\":\"mayan34VedncxdK2XobtvWFDXQASUTBXhUVzt2kKgny\",\"evmSwapRouterAddress\":null},\"params\":{\"swapperAddress\":\"So11111111111111111111111111111111111111112\",\"destinationAddress\":\"0x3333333333333333333333333333333333333333\"}}"
+        }
+      ],
+      "config": {
+        "allowUnauthenticatedBuild": true
+      },
+      "quoteCaseId": "quote-sol-eth-synthetic"
+    },
+    {
+      "caseId": "build-solana-fee-payer-violation",
+      "method": "build",
+      "source": "synthetic",
+      "capabilityId": "bridge-mayan-swift-v2-eurc-sol-eth",
+      "request": {
+        "swapperAddress": "So11111111111111111111111111111111111111112",
+        "destinationAddress": "0x3333333333333333333333333333333333333333"
+      },
+      "nowSeconds": 1789600000,
+      "providerStatus": 200,
+      "providerBody": "{\"success\":true,\"transaction\":{\"chainCategory\":\"svm\",\"quoteType\":\"SWIFT\",\"gasless\":false,\"signers\":[],\"swapMessageV0Params\":null,\"transaction\":\"AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAQAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==\"}}",
+      "expected": {
+        "kind": "sdk-error",
+        "code": "BRIDGE_BUILD_INVALID",
+        "message": "Bridge provider build is invalid"
+      },
+      "httpTrace": [
+        {
+          "method": "POST",
+          "url": "https://tx-builder.mayan.finance/build",
+          "headers": {
+            "accept": "application/json",
+            "content-type": "application/json"
+          },
+          "body": "{\"quote\":{\"type\":\"SWIFT\",\"gasless\":false,\"swiftVersion\":\"V2\",\"swiftAuctionMode\":2,\"slippageBps\":50,\"effectiveAmountIn64\":\"100000000\",\"swiftInputDecimals\":6,\"onlyBridging\":false,\"expectedAmountOutBaseUnits\":\"99557029\",\"minAmountOutBaseUnits\":\"99059244\",\"minReceivedBaseUnits\":\"99059244\",\"deadline64\":\"1893456000\",\"quoteId\":\"0x11111111111111111111111111111111\",\"signature\":\"0x1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111\",\"minMiddleAmount\":114.5000,\"unknownSignedField\":\"keep-me\",\"fromChain\":\"solana\",\"toChain\":\"ethereum\",\"fromToken\":{\"name\":\"EuroC\",\"standard\":\"spl\",\"mint\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"contract\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"chainId\":0,\"wChainId\":1,\"decimals\":6,\"realOriginContractAddress\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"realOriginChainId\":1},\"toToken\":{\"name\":\"EuroC\",\"standard\":\"erc20\",\"mint\":\"\",\"contract\":\"0x1aBaEA1f7C830bD89acc67eC4af516284b1bC33c\",\"chainId\":1,\"wChainId\":2,\"decimals\":6,\"realOriginContractAddress\":\"0x1aBaEA1f7C830bD89acc67eC4af516284b1bC33c\",\"realOriginChainId\":2},\"swiftInputContract\":\"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\",\"swiftInputContractStandard\":\"spl\",\"swiftMayanContract\":\"mayan34VedncxdK2XobtvWFDXQASUTBXhUVzt2kKgny\",\"evmSwapRouterAddress\":null},\"params\":{\"swapperAddress\":\"So11111111111111111111111111111111111111112\",\"destinationAddress\":\"0x3333333333333333333333333333333333333333\"}}"
+        }
+      ],
+      "config": {
+        "allowUnauthenticatedBuild": true
+      },
+      "quoteCaseId": "quote-sol-eth-synthetic"
+    },
+    {
+      "caseId": "build-solana-extra-signer-violation",
+      "method": "build",
+      "source": "synthetic",
+      "capabilityId": "bridge-mayan-swift-v2-eurc-sol-eth",
+      "request": {
+        "swapperAddress": "So11111111111111111111111111111111111111112",
+        "destinationAddress": "0x3333333333333333333333333333333333333333"
+      },
+      "nowSeconds": 1789600000,
+      "providerStatus": 200,
+      "providerBody": "{\"success\":true,\"transaction\":{\"chainCategory\":\"svm\",\"quoteType\":\"SWIFT\",\"gasless\":false,\"signers\":[\"synthetic-ephemeral-signer-redacted\"],\"swapMessageV0Params\":null,\"transaction\":\"AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAQAAAQabiFf+q4GE+2h/Y0YYwDXaxDncGus7VZig8AAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==\"}}",
+      "expected": {
+        "kind": "sdk-error",
+        "code": "BRIDGE_BUILD_INVALID",
+        "message": "Bridge provider build is invalid"
+      },
+      "httpTrace": [
+        {
+          "method": "POST",
+          "url": "https://tx-builder.mayan.finance/build",
+          "headers": {
+            "accept": "application/json",
+            "content-type": "application/json"
+          },
+          "body": "{\"quote\":{\"type\":\"SWIFT\",\"gasless\":false,\"swiftVersion\":\"V2\",\"swiftAuctionMode\":2,\"slippageBps\":50,\"effectiveAmountIn64\":\"100000000\",\"swiftInputDecimals\":6,\"onlyBridging\":false,\"expectedAmountOutBaseUnits\":\"99557029\",\"minAmountOutBaseUnits\":\"99059244\",\"minReceivedBaseUnits\":\"99059244\",\"deadline64\":\"1893456000\",\"quoteId\":\"0x11111111111111111111111111111111\",\"signature\":\"0x1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111\",\"minMiddleAmount\":114.5000,\"unknownSignedField\":\"keep-me\",\"fromChain\":\"solana\",\"toChain\":\"ethereum\",\"fromToken\":{\"name\":\"EuroC\",\"standard\":\"spl\",\"mint\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"contract\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"chainId\":0,\"wChainId\":1,\"decimals\":6,\"realOriginContractAddress\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"realOriginChainId\":1},\"toToken\":{\"name\":\"EuroC\",\"standard\":\"erc20\",\"mint\":\"\",\"contract\":\"0x1aBaEA1f7C830bD89acc67eC4af516284b1bC33c\",\"chainId\":1,\"wChainId\":2,\"decimals\":6,\"realOriginContractAddress\":\"0x1aBaEA1f7C830bD89acc67eC4af516284b1bC33c\",\"realOriginChainId\":2},\"swiftInputContract\":\"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\",\"swiftInputContractStandard\":\"spl\",\"swiftMayanContract\":\"mayan34VedncxdK2XobtvWFDXQASUTBXhUVzt2kKgny\",\"evmSwapRouterAddress\":null},\"params\":{\"swapperAddress\":\"So11111111111111111111111111111111111111112\",\"destinationAddress\":\"0x3333333333333333333333333333333333333333\"}}"
+        }
+      ],
+      "config": {
+        "allowUnauthenticatedBuild": true
+      },
+      "quoteCaseId": "quote-sol-eth-synthetic"
+    },
+    {
+      "caseId": "build-solana-swap-message-violation",
+      "method": "build",
+      "source": "synthetic",
+      "capabilityId": "bridge-mayan-swift-v2-eurc-sol-eth",
+      "request": {
+        "swapperAddress": "So11111111111111111111111111111111111111112",
+        "destinationAddress": "0x3333333333333333333333333333333333333333"
+      },
+      "nowSeconds": 1789600000,
+      "providerStatus": 200,
+      "providerBody": "{\"success\":true,\"transaction\":{\"chainCategory\":\"svm\",\"quoteType\":\"SWIFT\",\"gasless\":false,\"signers\":[],\"swapMessageV0Params\":{\"synthetic\":true},\"transaction\":\"AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAQAAAQabiFf+q4GE+2h/Y0YYwDXaxDncGus7VZig8AAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==\"}}",
+      "expected": {
+        "kind": "sdk-error",
+        "code": "BRIDGE_BUILD_INVALID",
+        "message": "Bridge provider build is invalid"
+      },
+      "httpTrace": [
+        {
+          "method": "POST",
+          "url": "https://tx-builder.mayan.finance/build",
+          "headers": {
+            "accept": "application/json",
+            "content-type": "application/json"
+          },
+          "body": "{\"quote\":{\"type\":\"SWIFT\",\"gasless\":false,\"swiftVersion\":\"V2\",\"swiftAuctionMode\":2,\"slippageBps\":50,\"effectiveAmountIn64\":\"100000000\",\"swiftInputDecimals\":6,\"onlyBridging\":false,\"expectedAmountOutBaseUnits\":\"99557029\",\"minAmountOutBaseUnits\":\"99059244\",\"minReceivedBaseUnits\":\"99059244\",\"deadline64\":\"1893456000\",\"quoteId\":\"0x11111111111111111111111111111111\",\"signature\":\"0x1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111\",\"minMiddleAmount\":114.5000,\"unknownSignedField\":\"keep-me\",\"fromChain\":\"solana\",\"toChain\":\"ethereum\",\"fromToken\":{\"name\":\"EuroC\",\"standard\":\"spl\",\"mint\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"contract\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"chainId\":0,\"wChainId\":1,\"decimals\":6,\"realOriginContractAddress\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"realOriginChainId\":1},\"toToken\":{\"name\":\"EuroC\",\"standard\":\"erc20\",\"mint\":\"\",\"contract\":\"0x1aBaEA1f7C830bD89acc67eC4af516284b1bC33c\",\"chainId\":1,\"wChainId\":2,\"decimals\":6,\"realOriginContractAddress\":\"0x1aBaEA1f7C830bD89acc67eC4af516284b1bC33c\",\"realOriginChainId\":2},\"swiftInputContract\":\"EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\",\"swiftInputContractStandard\":\"spl\",\"swiftMayanContract\":\"mayan34VedncxdK2XobtvWFDXQASUTBXhUVzt2kKgny\",\"evmSwapRouterAddress\":null},\"params\":{\"swapperAddress\":\"So11111111111111111111111111111111111111112\",\"destinationAddress\":\"0x3333333333333333333333333333333333333333\"}}"
+        }
+      ],
+      "config": {
+        "allowUnauthenticatedBuild": true
+      },
+      "quoteCaseId": "quote-sol-eth-synthetic"
+    },
+    {
+      "caseId": "build-http-auth-401",
+      "method": "build",
+      "source": "synthetic",
+      "capabilityId": "bridge-mayan-swift-v2-eurc-eth-sol",
+      "request": {
+        "swapperAddress": "0x2222222222222222222222222222222222222222",
+        "destinationAddress": "So11111111111111111111111111111111111111112"
+      },
+      "nowSeconds": 1789600000,
+      "providerStatus": 401,
+      "providerBody": "{\"success\":false}",
+      "expected": {
+        "kind": "sdk-error",
+        "code": "BRIDGE_PROVIDER_AUTH_REQUIRED",
+        "message": "Bridge provider authentication is required"
+      },
+      "httpTrace": [
+        {
+          "method": "POST",
+          "url": "https://tx-builder.mayan.finance/build",
+          "headers": {
+            "accept": "application/json",
+            "content-type": "application/json",
+            "x-api-key": "synthetic-fixture-key"
+          },
+          "body": "{\"quote\":{\"type\":\"SWIFT\",\"gasless\":false,\"swiftVersion\":\"V2\",\"swiftAuctionMode\":2,\"slippageBps\":50,\"effectiveAmountIn64\":\"100000000\",\"swiftInputDecimals\":6,\"onlyBridging\":false,\"expectedAmountOutBaseUnits\":\"99557029\",\"minAmountOutBaseUnits\":\"99059244\",\"minReceivedBaseUnits\":\"99059244\",\"deadline64\":\"1893456000\",\"quoteId\":\"0x11111111111111111111111111111111\",\"signature\":\"0x1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111\",\"minMiddleAmount\":114.5000,\"unknownSignedField\":\"keep-me\",\"fromChain\":\"ethereum\",\"toChain\":\"solana\",\"fromToken\":{\"name\":\"EuroC\",\"standard\":\"erc20\",\"mint\":\"\",\"contract\":\"0x1aBaEA1f7C830bD89acc67eC4af516284b1bC33c\",\"chainId\":1,\"wChainId\":2,\"decimals\":6,\"realOriginContractAddress\":\"0x1aBaEA1f7C830bD89acc67eC4af516284b1bC33c\",\"realOriginChainId\":2},\"toToken\":{\"name\":\"EuroC\",\"standard\":\"spl\",\"mint\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"contract\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"chainId\":0,\"wChainId\":1,\"decimals\":6,\"realOriginContractAddress\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"realOriginChainId\":1},\"swiftInputContract\":\"0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48\",\"swiftInputContractStandard\":\"erc20\",\"swiftMayanContract\":\"0x40ffe85a28dc9993541449464d7529a922142960\",\"evmSwapRouterAddress\":\"0xa929c559E5e6537359680F39CB4E3708E1a14dd1\"},\"params\":{\"swapperAddress\":\"0x2222222222222222222222222222222222222222\",\"destinationAddress\":\"So11111111111111111111111111111111111111112\",\"signerChainId\":1}}"
+        }
+      ],
+      "config": {
+        "builderApiKey": "synthetic-fixture-key"
+      },
+      "quoteCaseId": "quote-eth-sol-synthetic"
+    },
+    {
+      "caseId": "build-http-rate-limit-429",
+      "method": "build",
+      "source": "synthetic",
+      "capabilityId": "bridge-mayan-swift-v2-eurc-eth-sol",
+      "request": {
+        "swapperAddress": "0x2222222222222222222222222222222222222222",
+        "destinationAddress": "So11111111111111111111111111111111111111112"
+      },
+      "nowSeconds": 1789600000,
+      "providerStatus": 429,
+      "providerBody": "{\"success\":false}",
+      "expected": {
+        "kind": "sdk-error",
+        "code": "BRIDGE_PROVIDER_HTTP",
+        "message": "Bridge provider HTTP request failed",
+        "status": 429
+      },
+      "httpTrace": [
+        {
+          "method": "POST",
+          "url": "https://tx-builder.mayan.finance/build",
+          "headers": {
+            "accept": "application/json",
+            "content-type": "application/json",
+            "x-api-key": "synthetic-fixture-key"
+          },
+          "body": "{\"quote\":{\"type\":\"SWIFT\",\"gasless\":false,\"swiftVersion\":\"V2\",\"swiftAuctionMode\":2,\"slippageBps\":50,\"effectiveAmountIn64\":\"100000000\",\"swiftInputDecimals\":6,\"onlyBridging\":false,\"expectedAmountOutBaseUnits\":\"99557029\",\"minAmountOutBaseUnits\":\"99059244\",\"minReceivedBaseUnits\":\"99059244\",\"deadline64\":\"1893456000\",\"quoteId\":\"0x11111111111111111111111111111111\",\"signature\":\"0x1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111\",\"minMiddleAmount\":114.5000,\"unknownSignedField\":\"keep-me\",\"fromChain\":\"ethereum\",\"toChain\":\"solana\",\"fromToken\":{\"name\":\"EuroC\",\"standard\":\"erc20\",\"mint\":\"\",\"contract\":\"0x1aBaEA1f7C830bD89acc67eC4af516284b1bC33c\",\"chainId\":1,\"wChainId\":2,\"decimals\":6,\"realOriginContractAddress\":\"0x1aBaEA1f7C830bD89acc67eC4af516284b1bC33c\",\"realOriginChainId\":2},\"toToken\":{\"name\":\"EuroC\",\"standard\":\"spl\",\"mint\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"contract\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"chainId\":0,\"wChainId\":1,\"decimals\":6,\"realOriginContractAddress\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"realOriginChainId\":1},\"swiftInputContract\":\"0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48\",\"swiftInputContractStandard\":\"erc20\",\"swiftMayanContract\":\"0x40ffe85a28dc9993541449464d7529a922142960\",\"evmSwapRouterAddress\":\"0xa929c559E5e6537359680F39CB4E3708E1a14dd1\"},\"params\":{\"swapperAddress\":\"0x2222222222222222222222222222222222222222\",\"destinationAddress\":\"So11111111111111111111111111111111111111112\",\"signerChainId\":1}}"
+        }
+      ],
+      "config": {
+        "builderApiKey": "synthetic-fixture-key"
+      },
+      "quoteCaseId": "quote-eth-sol-synthetic"
+    },
+    {
+      "caseId": "quote-redirect-rejected",
+      "method": "quote",
+      "source": "synthetic",
+      "capabilityId": "bridge-mayan-swift-v2-eurc-eth-sol",
+      "request": {
+        "sourceChainId": "eip155:1",
+        "destinationChainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+        "sourceTokenDeploymentId": "deployment-0011",
+        "destinationTokenDeploymentId": "deployment-0013",
+        "amountIn": "100000000",
+        "slippageBps": 50
+      },
+      "nowSeconds": 1789600000,
+      "providerStatus": 302,
+      "providerBody": "",
+      "expected": {
+        "kind": "sdk-error",
+        "code": "BRIDGE_PROVIDER_TRANSPORT",
+        "message": "Bridge provider transport failed"
+      },
+      "httpTrace": [
+        {
+          "method": "POST",
+          "url": "https://tx-builder.mayan.finance/quote",
+          "headers": {
+            "accept": "application/json",
+            "content-type": "application/json"
+          },
+          "body": "{\"fromToken\":\"0x1abaea1f7c830bd89acc67ec4af516284b1bc33c\",\"fromChain\":\"ethereum\",\"toToken\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"toChain\":\"solana\",\"amountIn64\":\"100000000\",\"slippageBps\":50,\"swift\":true,\"mctp\":false,\"fastMctp\":false,\"wormhole\":false,\"monoChain\":false,\"gasless\":false,\"fullList\":true,\"guaranteedOutput\":true,\"gasDrop\":0}"
+        }
+      ],
+      "config": null,
+      "quoteCaseId": null
+    },
+    {
+      "caseId": "quote-timeout",
+      "method": "quote",
+      "source": "synthetic",
+      "capabilityId": "bridge-mayan-swift-v2-eurc-eth-sol",
+      "request": {
+        "sourceChainId": "eip155:1",
+        "destinationChainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+        "sourceTokenDeploymentId": "deployment-0011",
+        "destinationTokenDeploymentId": "deployment-0013",
+        "amountIn": "100000000",
+        "slippageBps": 50
+      },
+      "nowSeconds": 1789600000,
+      "providerStatus": null,
+      "providerBody": null,
+      "expected": {
+        "kind": "sdk-error",
+        "code": "BRIDGE_TIMEOUT",
+        "message": "Bridge provider request timed out"
+      },
+      "httpTrace": [
+        {
+          "method": "POST",
+          "url": "https://tx-builder.mayan.finance/quote",
+          "headers": {
+            "accept": "application/json",
+            "content-type": "application/json"
+          },
+          "body": "{\"fromToken\":\"0x1abaea1f7c830bd89acc67ec4af516284b1bc33c\",\"fromChain\":\"ethereum\",\"toToken\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"toChain\":\"solana\",\"amountIn64\":\"100000000\",\"slippageBps\":50,\"swift\":true,\"mctp\":false,\"fastMctp\":false,\"wormhole\":false,\"monoChain\":false,\"gasless\":false,\"fullList\":true,\"guaranteedOutput\":true,\"gasDrop\":0}"
+        }
+      ],
+      "config": null,
+      "quoteCaseId": null
+    },
+    {
+      "caseId": "quote-aborted",
+      "method": "quote",
+      "source": "synthetic",
+      "capabilityId": "bridge-mayan-swift-v2-eurc-eth-sol",
+      "request": {
+        "sourceChainId": "eip155:1",
+        "destinationChainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+        "sourceTokenDeploymentId": "deployment-0011",
+        "destinationTokenDeploymentId": "deployment-0013",
+        "amountIn": "100000000",
+        "slippageBps": 50
+      },
+      "nowSeconds": 1789600000,
+      "providerStatus": null,
+      "providerBody": null,
+      "expected": {
+        "kind": "sdk-error",
+        "code": "BRIDGE_ABORTED",
+        "message": "Bridge provider request was aborted"
+      },
+      "httpTrace": [
+        {
+          "method": "POST",
+          "url": "https://tx-builder.mayan.finance/quote",
+          "headers": {
+            "accept": "application/json",
+            "content-type": "application/json"
+          },
+          "body": "{\"fromToken\":\"0x1abaea1f7c830bd89acc67ec4af516284b1bc33c\",\"fromChain\":\"ethereum\",\"toToken\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"toChain\":\"solana\",\"amountIn64\":\"100000000\",\"slippageBps\":50,\"swift\":true,\"mctp\":false,\"fastMctp\":false,\"wormhole\":false,\"monoChain\":false,\"gasless\":false,\"fullList\":true,\"guaranteedOutput\":true,\"gasDrop\":0}"
+        }
+      ],
+      "config": null,
+      "quoteCaseId": null
+    },
+    {
+      "caseId": "status-invalid-evm-hash",
+      "method": "status",
+      "source": "synthetic",
+      "capabilityId": "bridge-mayan-swift-v2-eurc-eth-sol",
+      "request": {
+        "sourceChainId": "eip155:1",
+        "sourceTransactionHash": "0x1234"
+      },
+      "nowSeconds": 1789600000,
+      "providerStatus": null,
+      "providerBody": null,
+      "expected": {
+        "kind": "sdk-error",
+        "code": "BRIDGE_INVALID_ARGUMENT",
+        "message": "Bridge request is invalid"
+      },
+      "httpTrace": [],
+      "config": null,
+      "quoteCaseId": null
+    },
+    {
+      "caseId": "status-invalid-provider-fields",
+      "method": "status",
+      "source": "synthetic",
+      "capabilityId": "bridge-mayan-swift-v2-eurc-eth-sol",
+      "request": {
+        "sourceChainId": "eip155:1",
+        "sourceTransactionHash": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "nowSeconds": 1789600000,
+      "providerStatus": 200,
+      "providerBody": "{\"clientStatus\":1,\"status\":null}",
+      "expected": {
+        "kind": "sdk-error",
+        "code": "BRIDGE_PROVIDER_INVALID_RESPONSE",
+        "message": "Bridge provider response is invalid"
+      },
+      "httpTrace": [
+        {
+          "method": "GET",
+          "url": "https://explorer-api.mayan.finance/v3/swap/trx/0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "headers": {
+            "accept": "application/json"
+          },
+          "body": null
+        }
+      ],
+      "config": null,
+      "quoteCaseId": null
+    },
+    {
+      "caseId": "build-eth-sol-wrong-evm-destination",
+      "method": "build",
+      "source": "synthetic",
+      "capabilityId": "bridge-mayan-swift-v2-eurc-eth-sol",
+      "request": {
+        "swapperAddress": "0x2222222222222222222222222222222222222222",
+        "destinationAddress": "0x5555555555555555555555555555555555555555"
+      },
+      "nowSeconds": 1789600000,
+      "providerStatus": null,
+      "providerBody": null,
+      "expected": {
+        "kind": "sdk-error",
+        "code": "BRIDGE_INVALID_ARGUMENT",
+        "message": "Bridge request is invalid"
+      },
+      "httpTrace": [],
+      "config": {
+        "allowUnauthenticatedBuild": true
+      },
+      "quoteCaseId": "quote-eth-sol-synthetic"
+    },
+    {
+      "caseId": "build-sol-eth-wrong-solana-destination",
+      "method": "build",
+      "source": "synthetic",
+      "capabilityId": "bridge-mayan-swift-v2-eurc-sol-eth",
+      "request": {
+        "swapperAddress": "So11111111111111111111111111111111111111112",
+        "destinationAddress": "So11111111111111111111111111111111111111112"
+      },
+      "nowSeconds": 1789600000,
+      "providerStatus": null,
+      "providerBody": null,
+      "expected": {
+        "kind": "sdk-error",
+        "code": "BRIDGE_INVALID_ARGUMENT",
+        "message": "Bridge request is invalid"
+      },
+      "httpTrace": [],
+      "config": {
+        "allowUnauthenticatedBuild": true
+      },
+      "quoteCaseId": "quote-sol-eth-synthetic"
+    },
+    {
+      "caseId": "quote-eth-sol-zero-validity-margin",
+      "method": "quote",
+      "source": "synthetic",
+      "capabilityId": "bridge-mayan-swift-v2-eurc-eth-sol",
+      "request": {
+        "sourceChainId": "eip155:1",
+        "destinationChainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+        "sourceTokenDeploymentId": "deployment-0011",
+        "destinationTokenDeploymentId": "deployment-0013",
+        "amountIn": "100000000",
+        "slippageBps": 50
+      },
+      "nowSeconds": 1789600000,
+      "providerStatus": 200,
+      "providerBody": "{\"success\":true,\"quotes\":[{\"type\":\"SWIFT\",\"gasless\":false,\"swiftVersion\":\"V2\",\"swiftAuctionMode\":2,\"slippageBps\":50,\"effectiveAmountIn64\":\"100000000\",\"swiftInputDecimals\":6,\"onlyBridging\":false,\"expectedAmountOutBaseUnits\":\"99557029\",\"minAmountOutBaseUnits\":\"99059244\",\"minReceivedBaseUnits\":\"99059244\",\"deadline64\":\"1789600030\",\"quoteId\":\"0x11111111111111111111111111111111\",\"signature\":\"0x1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111\",\"minMiddleAmount\":114.5000,\"unknownSignedField\":\"keep-me\",\"fromChain\":\"ethereum\",\"toChain\":\"solana\",\"fromToken\":{\"name\":\"EuroC\",\"standard\":\"erc20\",\"mint\":\"\",\"contract\":\"0x1aBaEA1f7C830bD89acc67eC4af516284b1bC33c\",\"chainId\":1,\"wChainId\":2,\"decimals\":6,\"realOriginContractAddress\":\"0x1aBaEA1f7C830bD89acc67eC4af516284b1bC33c\",\"realOriginChainId\":2},\"toToken\":{\"name\":\"EuroC\",\"standard\":\"spl\",\"mint\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"contract\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"chainId\":0,\"wChainId\":1,\"decimals\":6,\"realOriginContractAddress\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"realOriginChainId\":1},\"swiftInputContract\":\"0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48\",\"swiftInputContractStandard\":\"erc20\",\"swiftMayanContract\":\"0x40ffe85a28dc9993541449464d7529a922142960\",\"evmSwapRouterAddress\":\"0xa929c559E5e6537359680F39CB4E3708E1a14dd1\"}]}",
+      "expected": {
+        "kind": "success",
+        "value": [
+          {
+            "quoteKind": "mayan-swift-v2",
+            "providerId": "mayan-swift-v2",
+            "sourceChainId": "eip155:1",
+            "destinationChainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+            "sourceTokenDeploymentId": "deployment-0011",
+            "destinationTokenDeploymentId": "deployment-0013",
+            "amountIn": "100000000",
+            "expectedAmountOut": "99557029",
+            "minimumAmountOut": "99059244",
+            "minimumReceived": "99059244",
+            "deadline": "1789600030",
+            "slippageBps": 50,
+            "quoteId": "0x11111111111111111111111111111111",
+            "providerSignature": "0x1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111",
+            "sourceSwap": {
+              "required": true,
+              "inputTokenDeploymentId": "deployment-0011",
+              "intermediateTokenDeploymentId": "deployment-0008",
+              "intermediateTokenAddress": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+              "intermediateTokenStandard": "erc20",
+              "intermediateTokenDecimals": 6,
+              "providerMinimumAmount": "114.5000",
+              "routerKind": "provider-selected-evm",
+              "routerAddress": "0xa929c559e5e6537359680f39cb4e3708e1a14dd1"
+            },
+            "dependencies": [
+              "mayan-hosted-quote-api",
+              "mayan-hosted-transaction-builder",
+              "mayan-hosted-source-swap-builder",
+              "swift-auction-solvers",
+              "relayers",
+              "wormhole-guardian-messaging",
+              "mayan-explorer-indexer"
+            ],
+            "quoteVerification": "provider-signed-not-locally-verified",
+            "rawSignedQuoteJson": "{\"type\":\"SWIFT\",\"gasless\":false,\"swiftVersion\":\"V2\",\"swiftAuctionMode\":2,\"slippageBps\":50,\"effectiveAmountIn64\":\"100000000\",\"swiftInputDecimals\":6,\"onlyBridging\":false,\"expectedAmountOutBaseUnits\":\"99557029\",\"minAmountOutBaseUnits\":\"99059244\",\"minReceivedBaseUnits\":\"99059244\",\"deadline64\":\"1789600030\",\"quoteId\":\"0x11111111111111111111111111111111\",\"signature\":\"0x1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111\",\"minMiddleAmount\":114.5000,\"unknownSignedField\":\"keep-me\",\"fromChain\":\"ethereum\",\"toChain\":\"solana\",\"fromToken\":{\"name\":\"EuroC\",\"standard\":\"erc20\",\"mint\":\"\",\"contract\":\"0x1aBaEA1f7C830bD89acc67eC4af516284b1bC33c\",\"chainId\":1,\"wChainId\":2,\"decimals\":6,\"realOriginContractAddress\":\"0x1aBaEA1f7C830bD89acc67eC4af516284b1bC33c\",\"realOriginChainId\":2},\"toToken\":{\"name\":\"EuroC\",\"standard\":\"spl\",\"mint\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"contract\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"chainId\":0,\"wChainId\":1,\"decimals\":6,\"realOriginContractAddress\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"realOriginChainId\":1},\"swiftInputContract\":\"0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48\",\"swiftInputContractStandard\":\"erc20\",\"swiftMayanContract\":\"0x40ffe85a28dc9993541449464d7529a922142960\",\"evmSwapRouterAddress\":\"0xa929c559E5e6537359680F39CB4E3708E1a14dd1\"}"
+          }
+        ]
+      },
+      "httpTrace": [
+        {
+          "method": "POST",
+          "url": "https://tx-builder.mayan.finance/quote",
+          "headers": {
+            "accept": "application/json",
+            "content-type": "application/json"
+          },
+          "body": "{\"fromToken\":\"0x1abaea1f7c830bd89acc67ec4af516284b1bc33c\",\"fromChain\":\"ethereum\",\"toToken\":\"HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr\",\"toChain\":\"solana\",\"amountIn64\":\"100000000\",\"slippageBps\":50,\"swift\":true,\"mctp\":false,\"fastMctp\":false,\"wormhole\":false,\"monoChain\":false,\"gasless\":false,\"fullList\":true,\"guaranteedOutput\":true,\"gasDrop\":0}"
+        }
+      ],
+      "config": {
+        "minimumQuoteValiditySeconds": 0
+      },
+      "quoteCaseId": null
+    }
+  ]
+}

@@ -1,7 +1,8 @@
-"""RPC-only exact-input swap quotes for the bundled EVM V2 pools."""
+"""RPC-only exact-input swap quotes and unsigned execution for EVM V2 pools."""
 
 from __future__ import annotations
 
+import json
 import re
 import time
 from collections.abc import Callable, Mapping
@@ -9,16 +10,23 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Final, Literal, NamedTuple, NoReturn, NotRequired, TypedDict, cast
 
+from ._swap_execution_capabilities_data import (
+    SWAP_EXECUTION_CAPABILITIES_CONTENT_DIGEST,
+    SWAP_EXECUTION_CAPABILITIES_JSON,
+    SWAP_EXECUTION_FUNCTION_SELECTOR,
+    SWAP_EXECUTION_FUNCTION_SIGNATURE,
+)
 from ._token_catalog_data import TokenDeployment
 from .dex_catalog import (
     DEX_CATALOG_CONTENT_DIGEST,
     DEX_CHAIN_IDS,
+    NATIVE_WRAP_DEFINITIONS,
     DexDeployment,
     PoolDefinition,
     get_dex_deployment,
     get_pool_definition,
 )
-from .errors import ErpcAbortedError
+from .errors import ErpcAbortedError, ErpcJsonRpcError
 from .token_catalog import TOKEN_CATALOG_CONTENT_DIGEST, get_token_deployment
 from .transport import HttpJsonRpcTransport
 from .types import DEFAULT_REQUEST_OPTIONS, JsonRpcParams, RequestOptions
@@ -96,6 +104,54 @@ class SwapQuoteError(Exception):
         super().__init__(SWAP_QUOTE_ERROR_MESSAGES[code])
 
 
+class SwapExecutionErrorCode(StrEnum):
+    """Stable machine-readable errors produced by execution preflight."""
+
+    INVALID_ARGUMENT = "SWAP_EXECUTION_INVALID_ARGUMENT"
+    UNSUPPORTED_EXECUTION = "SWAP_UNSUPPORTED_EXECUTION"
+    PROGRAM_MISMATCH = "SWAP_PROGRAM_MISMATCH"
+    INSUFFICIENT_ALLOWANCE = "SWAP_INSUFFICIENT_ALLOWANCE"
+    SIMULATION_REVERTED = "SWAP_SIMULATION_REVERTED"
+    INVALID_SIMULATION = "SWAP_INVALID_SIMULATION"
+
+    # Keep the prefixed spellings available for callers that use the shared
+    # cross-language error identifiers as enum members.
+    SWAP_EXECUTION_INVALID_ARGUMENT = INVALID_ARGUMENT
+    SWAP_UNSUPPORTED_EXECUTION = UNSUPPORTED_EXECUTION
+    SWAP_PROGRAM_MISMATCH = PROGRAM_MISMATCH
+    SWAP_INSUFFICIENT_ALLOWANCE = INSUFFICIENT_ALLOWANCE
+    SWAP_SIMULATION_REVERTED = SIMULATION_REVERTED
+    SWAP_INVALID_SIMULATION = INVALID_SIMULATION
+
+
+SWAP_EXECUTION_ERROR_MESSAGES: Final[dict[SwapExecutionErrorCode, str]] = {
+    SwapExecutionErrorCode.INVALID_ARGUMENT: "Swap execution request is invalid",
+    SwapExecutionErrorCode.UNSUPPORTED_EXECUTION: (
+        "Swap execution is unsupported for the selected records"
+    ),
+    SwapExecutionErrorCode.PROGRAM_MISMATCH: "Swap program does not match the selected records",
+    SwapExecutionErrorCode.INSUFFICIENT_ALLOWANCE: "Swap allowance is insufficient",
+    SwapExecutionErrorCode.SIMULATION_REVERTED: "Swap simulation reverted",
+    SwapExecutionErrorCode.INVALID_SIMULATION: "Swap simulation result is invalid",
+}
+
+
+class SwapExecutionError(Exception):
+    """A deterministic unsigned-preparation or simulation error.
+
+    Quote-domain failures, transport errors, cancellation, and non-revert
+    JSON-RPC errors retain their existing native Python error types. Only the
+    final router call's recognized execution-revert responses are converted
+    into this error family.
+    """
+
+    code: SwapExecutionErrorCode
+
+    def __init__(self, code: SwapExecutionErrorCode) -> None:
+        self.code = code
+        super().__init__(SWAP_EXECUTION_ERROR_MESSAGES[code])
+
+
 class SwapFreshness(TypedDict, total=False):
     """Optional freshness limits for an exact-input quote."""
 
@@ -145,6 +201,81 @@ class ExactInputQuoteResult(TypedDict):
     dexCatalogDigest: str
 
 
+class PrepareExactInputSwapRequest(ExactInputQuoteRequest):
+    """Flat exact-input request with the local execution fields."""
+
+    sender: str
+    recipient: str
+    slippageBps: int
+    deadline: str
+
+
+# Alias for callers that prefer a shorter execution request name.
+ExactInputSwapRequest = PrepareExactInputSwapRequest
+
+
+class ExactInputSwapPathEntry(TypedDict):
+    tokenDeploymentId: str
+    address: str
+    standard: Literal["erc20"]
+    representationKind: str
+
+
+ExactInputSwapTransaction = TypedDict(
+    "ExactInputSwapTransaction",
+    {
+        "kind": Literal["evm-unsigned-transaction"],
+        "chainId": str,
+        "from": str,
+        "to": str,
+        "data": str,
+        "value": Literal["0"],
+    },
+)
+
+
+class ExactInputSwapAllowance(TypedDict):
+    tokenDeploymentId: str
+    tokenAddress: str
+    owner: str
+    spender: str
+    requiredAmount: str
+
+
+class ExactInputSwapPreparation(TypedDict):
+    """Unsigned, chain-bound EVM transaction preparation."""
+
+    preparationKind: Literal["evm-router-v2-exact-input"]
+    executionCapabilityId: str
+    executionCapabilityDigest: str
+    quote: ExactInputQuoteResult
+    minimumAmountOut: str
+    slippageBps: int
+    deadline: str
+    recipient: str
+    path: list[ExactInputSwapPathEntry]
+    transaction: ExactInputSwapTransaction
+    allowance: ExactInputSwapAllowance
+
+
+class ExactInputSwapSimulation(TypedDict):
+    """Read-only router simulation result."""
+
+    simulationKind: Literal["evm-call"]
+    preparation: ExactInputSwapPreparation
+    snapshot: EvmBlockSnapshot
+    currentAllowance: str
+    amounts: list[str]
+    amountOut: str
+
+
+# Aliases matching the method-name result spellings used by other packages.
+PrepareExactInputSwapResult = ExactInputSwapPreparation
+SimulateExactInputSwapResult = ExactInputSwapSimulation
+SwapPreparation = ExactInputSwapPreparation
+SwapSimulation = ExactInputSwapSimulation
+
+
 @dataclass(frozen=True, slots=True)
 class _Freshness:
     max_block_age_seconds: int
@@ -185,6 +316,35 @@ class _EvmState:
     initial: _Header
     latest_after_reads: _Header
     reserves: _Reserves
+
+
+@dataclass(frozen=True, slots=True)
+class _ExecutionRequestSnapshot:
+    quote_request: Mapping[str, object]
+    sender: object
+    recipient: object
+    slippage_bps: object
+    deadline: object
+
+
+@dataclass(frozen=True, slots=True)
+class _NormalizedExecutionRequest:
+    normalized: _NormalizedRequest
+    sender: str
+    recipient: str
+    slippage_bps: int
+    deadline: str
+    deadline_value: int
+
+
+@dataclass(frozen=True, slots=True)
+class _PreparedExecutionContext:
+    normalized: _NormalizedExecutionRequest
+    capability: Mapping[str, object]
+    transport: HttpJsonRpcTransport
+    state: _EvmState
+    quote: ExactInputQuoteResult
+    preparation: ExactInputSwapPreparation
 
 
 class _SupportedQuoteCapability(NamedTuple):
@@ -274,6 +434,40 @@ _PAIR_FACTORY_SELECTOR = "0xc45a0155"
 _PAIR_TOKEN0_SELECTOR = "0x0dfe1681"
 _PAIR_TOKEN1_SELECTOR = "0xd21220a7"
 _PAIR_GET_RESERVES_SELECTOR = "0x0902f1ac"
+
+_ROUTER_FACTORY_SELECTOR = "0xc45a0155"
+_ROUTER_GET_AMOUNTS_OUT_SELECTOR = "0xd06ca61f"
+_ERC20_ALLOWANCE_SELECTOR = "0xdd62ed3e"
+_EXECUTION_REQUEST_KEYS: Final[frozenset[str]] = frozenset(
+    {
+        "chainId",
+        "poolDefinitionId",
+        "inputTokenDeploymentId",
+        "outputTokenDeploymentId",
+        "amountIn",
+        "freshness",
+        "sender",
+        "recipient",
+        "slippageBps",
+        "deadline",
+    }
+)
+_EXECUTION_QUOTE_KEYS: Final[tuple[str, ...]] = (
+    "chainId",
+    "poolDefinitionId",
+    "inputTokenDeploymentId",
+    "outputTokenDeploymentId",
+    "amountIn",
+    "freshness",
+)
+_EXECUTION_CAPABILITIES: Final[tuple[Mapping[str, object], ...]] = tuple(
+    cast(
+        Mapping[str, object],
+        row,
+    )
+    for row in cast(list[object], json.loads(SWAP_EXECUTION_CAPABILITIES_JSON))
+    if isinstance(row, Mapping)
+)
 
 
 def _fail(code: SwapQuoteErrorCode) -> NoReturn:
@@ -616,6 +810,355 @@ def _encode_address_argument(address: str) -> str:
     return address[2:].lower().rjust(64, "0")
 
 
+def _execution_fail(code: SwapExecutionErrorCode) -> NoReturn:
+    raise SwapExecutionError(code)
+
+
+def _snapshot_execution_request(request: object) -> _ExecutionRequestSnapshot:
+    mapping = _as_mapping(request)
+    if mapping is None or any(
+        not isinstance(key, str) or key not in _EXECUTION_REQUEST_KEYS for key in mapping
+    ):
+        _execution_fail(SwapExecutionErrorCode.INVALID_ARGUMENT)
+
+    quote_request: dict[str, object] = {}
+    for key in _EXECUTION_QUOTE_KEYS:
+        value = mapping.get(key, _MISSING)
+        if value is _MISSING:
+            continue
+        # Freshness is the only request value that is itself a mapping. Copy it
+        # synchronously so mutations while RPC is in flight cannot affect the
+        # quote's validation or freshness policy.
+        if key == "freshness" and isinstance(value, Mapping):
+            value = dict(value)
+        quote_request[key] = value
+
+    return _ExecutionRequestSnapshot(
+        quote_request=quote_request,
+        sender=mapping.get("sender", _MISSING),
+        recipient=mapping.get("recipient", _MISSING),
+        slippage_bps=mapping.get("slippageBps", _MISSING),
+        deadline=mapping.get("deadline", _MISSING),
+    )
+
+
+def _normalize_execution_address(value: object) -> str:
+    if not isinstance(value, str) or _EVM_ADDRESS.fullmatch(value) is None:
+        _execution_fail(SwapExecutionErrorCode.INVALID_ARGUMENT)
+    normalized = value.lower()
+    if normalized == "0x" + "0" * 40:
+        _execution_fail(SwapExecutionErrorCode.INVALID_ARGUMENT)
+    return normalized
+
+
+def _normalize_execution_slippage(value: object) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0 or value > 9999:
+        _execution_fail(SwapExecutionErrorCode.INVALID_ARGUMENT)
+    return value
+
+
+def _parse_execution_deadline(value: object) -> tuple[str, int]:
+    if (
+        not isinstance(value, str)
+        or len(value) > 78
+        or _UINT256_DECIMAL.fullmatch(value) is None
+    ):
+        _execution_fail(SwapExecutionErrorCode.INVALID_ARGUMENT)
+    try:
+        parsed = int(value, 10)
+    except ValueError:
+        _execution_fail(SwapExecutionErrorCode.INVALID_ARGUMENT)
+    if parsed <= 0 or parsed > _UINT256_MAX:
+        _execution_fail(SwapExecutionErrorCode.INVALID_ARGUMENT)
+    return value, parsed
+
+
+def _normalize_execution_request(
+    request: object,
+    current_clock: Callable[[], int],
+) -> _NormalizedExecutionRequest:
+    snapshot = _snapshot_execution_request(request)
+    sender = _normalize_execution_address(snapshot.sender)
+    recipient = _normalize_execution_address(snapshot.recipient)
+    slippage_bps = _normalize_execution_slippage(snapshot.slippage_bps)
+    deadline, deadline_value = _parse_execution_deadline(snapshot.deadline)
+
+    # Reject an already-expired deadline before the first RPC. The quote block
+    # timestamp and completion clock are checked again after their reads.
+    now = current_clock()
+    if deadline_value <= now:
+        _execution_fail(SwapExecutionErrorCode.INVALID_ARGUMENT)
+
+    try:
+        normalized = _normalize_request(snapshot.quote_request)
+    except SwapQuoteError as error:
+        if error.code in {
+            SwapQuoteErrorCode.UNKNOWN_POOL,
+            SwapQuoteErrorCode.UNSUPPORTED_ADAPTER,
+            SwapQuoteErrorCode.UNSUPPORTED_TOKEN,
+            SwapQuoteErrorCode.UNSUPPORTED_TOKEN_STANDARD,
+        }:
+            _execution_fail(SwapExecutionErrorCode.UNSUPPORTED_EXECUTION)
+        raise
+
+    return _NormalizedExecutionRequest(
+        normalized=normalized,
+        sender=sender,
+        recipient=recipient,
+        slippage_bps=slippage_bps,
+        deadline=deadline,
+        deadline_value=deadline_value,
+    )
+
+
+def _matches_execution_token(
+    token: TokenDeployment | None,
+    deployment_id: object,
+    address: object,
+    standard: object,
+    chain_id: object,
+) -> bool:
+    return (
+        token is not None
+        and isinstance(deployment_id, str)
+        and isinstance(address, str)
+        and isinstance(standard, str)
+        and isinstance(chain_id, str)
+        and token.deployment_id == deployment_id
+        and token.chain_id == chain_id
+        and token.address == address
+        and token.standard == standard == "erc20"
+        and token.status == "active"
+    )
+
+
+def _is_execution_address(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and _EVM_ADDRESS.fullmatch(value) is not None
+        and value.lower() != "0x" + "0" * 40
+    )
+
+
+def _is_execution_selector(value: object) -> bool:
+    return isinstance(value, str) and _HEX_BYTES.fullmatch(value) is not None and len(value) == 10
+
+
+def _execution_capability_for(
+    normalized: _NormalizedRequest,
+) -> Mapping[str, object]:
+    capability = next(
+        (
+            entry
+            for entry in _EXECUTION_CAPABILITIES
+            if entry.get("poolDefinitionId") == normalized.pool_definition_id
+        ),
+        None,
+    )
+    if capability is None or capability.get("status") != "active":
+        _execution_fail(SwapExecutionErrorCode.UNSUPPORTED_EXECUTION)
+
+    chain_id = capability.get("chainId")
+    dex_id = capability.get("dexDeploymentId")
+    token0_id = capability.get("token0DeploymentId")
+    token1_id = capability.get("token1DeploymentId")
+    wrapped_id = capability.get("wrappedNativeTokenDeploymentId")
+    token0 = get_token_deployment(token0_id)
+    token1 = get_token_deployment(token1_id)
+    wrapped = get_token_deployment(wrapped_id)
+    native_wrap = next(
+        (
+            definition
+            for definition in NATIVE_WRAP_DEFINITIONS
+            if definition.chain_id == chain_id
+            and definition.wrapped_token_deployment_id == wrapped_id
+        ),
+        None,
+    )
+
+    input_matches = _matches_execution_token(
+        normalized.input_token,
+        token0_id,
+        capability.get("token0Address"),
+        capability.get("token0Standard"),
+        chain_id,
+    ) or _matches_execution_token(
+        normalized.input_token,
+        token1_id,
+        capability.get("token1Address"),
+        capability.get("token1Standard"),
+        chain_id,
+    )
+    output_matches = _matches_execution_token(
+        normalized.output_token,
+        token0_id,
+        capability.get("token0Address"),
+        capability.get("token0Standard"),
+        chain_id,
+    ) or _matches_execution_token(
+        normalized.output_token,
+        token1_id,
+        capability.get("token1Address"),
+        capability.get("token1Standard"),
+        chain_id,
+    )
+
+    matches = (
+        chain_id == normalized.pool.chain_id
+        and dex_id == normalized.pool.dex_deployment_id
+        and isinstance(capability.get("swapExecutionCapabilityId"), str)
+        and _is_execution_address(capability.get("factoryAddress"))
+        and _is_execution_address(capability.get("routerAddress"))
+        and _is_execution_address(capability.get("wrappedNativeTokenAddress"))
+        and _is_execution_selector(capability.get("wrappedNativeFunctionSelector"))
+        and capability.get("adapterKind") == SUPPORTED_QUOTE_ADAPTER
+        and capability.get("functionKind") == "exact-input-erc20-to-erc20"
+        and capability.get("functionSignature") == SWAP_EXECUTION_FUNCTION_SIGNATURE
+        and capability.get("functionSelector") == SWAP_EXECUTION_FUNCTION_SELECTOR
+        and normalized.dex.status == "active"
+        and normalized.dex.program_address == capability.get("factoryAddress")
+        and normalized.dex.adapter_kind == capability.get("adapterKind")
+        and normalized.pool.status == "active"
+        and normalized.pool.adapter.kind == capability.get("adapterKind")
+        and normalized.pool.adapter.fee_numerator == "3"
+        and normalized.pool.adapter.fee_denominator == "1000"
+        and normalized.pool.token0_deployment_id == token0_id
+        and normalized.pool.token1_deployment_id == token1_id
+        and input_matches
+        and output_matches
+        and token0 is not None
+        and token1 is not None
+        and wrapped is not None
+        and wrapped.chain_id == chain_id
+        and wrapped.address == capability.get("wrappedNativeTokenAddress")
+        and wrapped.standard == "erc20"
+        and wrapped.status == "active"
+        and native_wrap is not None
+        and native_wrap.status == "active"
+        and native_wrap.wrapped_token_deployment_id == wrapped_id
+    )
+    if not matches:
+        _execution_fail(SwapExecutionErrorCode.UNSUPPORTED_EXECUTION)
+    return capability
+
+
+def _parse_execution_hex_bytes(
+    value: object,
+    expected_bytes: int | None = None,
+    code: SwapExecutionErrorCode = SwapExecutionErrorCode.INVALID_SIMULATION,
+) -> str:
+    if not isinstance(value, str) or _HEX_BYTES.fullmatch(value) is None or len(value) % 2 != 0:
+        _execution_fail(code)
+    if expected_bytes is not None and len(value) != expected_bytes * 2 + 2:
+        _execution_fail(code)
+    return value.lower()
+
+
+def _execution_address_word(
+    value: object,
+    code: SwapExecutionErrorCode = SwapExecutionErrorCode.INVALID_SIMULATION,
+) -> str:
+    word = _parse_execution_hex_bytes(value, 32, code)[2:]
+    if not word.startswith("0" * 24) or _EVM_ADDRESS.fullmatch("0x" + word[24:]) is None:
+        _execution_fail(code)
+    return "0x" + word[24:]
+
+
+def _execution_uint_word(
+    value: object,
+    code: SwapExecutionErrorCode = SwapExecutionErrorCode.INVALID_SIMULATION,
+) -> int:
+    return int(_parse_execution_hex_bytes(value, 32, code)[2:], 16)
+
+
+def _execution_uint_array_of_two(value: object) -> tuple[int, int]:
+    payload = _parse_execution_hex_bytes(value)[2:]
+    # offset, length, and two values are exactly four ABI words. Reject both
+    # truncated and trailing data instead of silently accepting a prefix.
+    if len(payload) != 256:
+        _execution_fail(SwapExecutionErrorCode.INVALID_SIMULATION)
+    try:
+        offset = int(payload[0:64], 16)
+        length = int(payload[64:128], 16)
+    except ValueError:
+        _execution_fail(SwapExecutionErrorCode.INVALID_SIMULATION)
+    if offset != 0x20 or length != 2:
+        _execution_fail(SwapExecutionErrorCode.INVALID_SIMULATION)
+    return (
+        _execution_uint_word("0x" + payload[128:192]),
+        _execution_uint_word("0x" + payload[192:256]),
+    )
+
+
+def _encode_execution_uint256_word(value: int) -> str:
+    _ensure_uint256(value)
+    return format(value, "064x")
+
+
+def _execution_token_address(token: TokenDeployment) -> str:
+    if token.address is None or _EVM_ADDRESS.fullmatch(token.address) is None:
+        _execution_fail(SwapExecutionErrorCode.INVALID_SIMULATION)
+    return token.address.lower()
+
+
+def _execution_get_amounts_out_data(amount_in: int, input_address: str, output_address: str) -> str:
+    return (
+        _ROUTER_GET_AMOUNTS_OUT_SELECTOR
+        + _encode_execution_uint256_word(amount_in)
+        + _encode_execution_uint256_word(0x40)
+        + _encode_execution_uint256_word(2)
+        + _encode_address_argument(input_address)
+        + _encode_address_argument(output_address)
+    )
+
+
+def _execution_swap_data(
+    amount_in: int,
+    minimum_amount_out: int,
+    input_address: str,
+    output_address: str,
+    recipient: str,
+    deadline: int,
+) -> str:
+    return (
+        SWAP_EXECUTION_FUNCTION_SELECTOR
+        + _encode_execution_uint256_word(amount_in)
+        + _encode_execution_uint256_word(minimum_amount_out)
+        + _encode_execution_uint256_word(0xA0)
+        + _encode_address_argument(recipient)
+        + _encode_execution_uint256_word(deadline)
+        + _encode_execution_uint256_word(2)
+        + _encode_address_argument(input_address)
+        + _encode_address_argument(output_address)
+    )
+
+
+def _is_recognized_execution_revert(error: object) -> bool:
+    if not isinstance(error, ErpcJsonRpcError) or error.rpc_code not in {
+        3,
+        -32000,
+        -32015,
+        -32603,
+    }:
+        return False
+    message = str(error).lower()
+    return (
+        "execution reverted" in message
+        or "transaction reverted" in message
+        or "vm execution error" in message
+        or re.match(r"^revert(?:ed)?(?:\b|:)", message) is not None
+    )
+
+
+def _assert_execution_deadline(
+    execution: _NormalizedExecutionRequest,
+    quote_timestamp: int,
+    completion_clock: int,
+) -> None:
+    if execution.deadline_value <= quote_timestamp or execution.deadline_value <= completion_clock:
+        _execution_fail(SwapExecutionErrorCode.INVALID_ARGUMENT)
+
+
 class SwapClient:
     """Configured RPC-backed swap quote client.
 
@@ -642,6 +1185,8 @@ class SwapClient:
         params: list[object],
         options: RequestOptions,
     ) -> object:
+        if options.cancel_event is not None and options.cancel_event.is_set():
+            raise ErpcAbortedError()
         return await transport.request(
             method,
             cast(JsonRpcParams, params),
@@ -682,6 +1227,317 @@ class SwapClient:
             fee_numerator,
             fee_denominator,
         )
+
+    def _transport_for_normalized(self, normalized: _NormalizedRequest) -> HttpJsonRpcTransport:
+        if normalized.chain_id == DEX_CHAIN_IDS["ethereum"]:
+            return self._ethereum
+        if normalized.chain_id == DEX_CHAIN_IDS["avalancheC"]:
+            return self._avalanche
+        _fail(SwapQuoteErrorCode.UNSUPPORTED_ADAPTER)
+
+    def _build_execution_preparation(
+        self,
+        execution: _NormalizedExecutionRequest,
+        capability: Mapping[str, object],
+        quote: ExactInputQuoteResult,
+    ) -> ExactInputSwapPreparation:
+        input_address = _execution_token_address(execution.normalized.input_token)
+        output_address = _execution_token_address(execution.normalized.output_token)
+        quote_amount_out = _parse_decimal_quantity(
+            quote["amountOut"],
+            SwapQuoteErrorCode.ARITHMETIC,
+        )
+        product = quote_amount_out * (10000 - execution.slippage_bps)
+        _ensure_uint256(product, SwapQuoteErrorCode.ARITHMETIC)
+        minimum_amount_out = product // 10000
+        if minimum_amount_out <= 0:
+            _execution_fail(SwapExecutionErrorCode.INVALID_ARGUMENT)
+
+        router_address = capability.get("routerAddress")
+        if not isinstance(router_address, str):
+            _execution_fail(SwapExecutionErrorCode.UNSUPPORTED_EXECUTION)
+        transaction: ExactInputSwapTransaction = {
+            "kind": "evm-unsigned-transaction",
+            "chainId": quote["chainId"],
+            "from": execution.sender,
+            "to": router_address,
+            "data": _execution_swap_data(
+                execution.normalized.amount_in,
+                minimum_amount_out,
+                input_address,
+                output_address,
+                execution.recipient,
+                execution.deadline_value,
+            ),
+            "value": "0",
+        }
+        path: list[ExactInputSwapPathEntry] = [
+            {
+                "tokenDeploymentId": execution.normalized.input_token_deployment_id,
+                "address": input_address,
+                "standard": "erc20",
+                "representationKind": execution.normalized.input_token.representation_kind,
+            },
+            {
+                "tokenDeploymentId": execution.normalized.output_token_deployment_id,
+                "address": output_address,
+                "standard": "erc20",
+                "representationKind": execution.normalized.output_token.representation_kind,
+            },
+        ]
+        return {
+            "preparationKind": "evm-router-v2-exact-input",
+            "executionCapabilityId": str(capability["swapExecutionCapabilityId"]),
+            "executionCapabilityDigest": SWAP_EXECUTION_CAPABILITIES_CONTENT_DIGEST,
+            "quote": quote,
+            "minimumAmountOut": str(minimum_amount_out),
+            "slippageBps": execution.slippage_bps,
+            "deadline": execution.deadline,
+            "recipient": execution.recipient,
+            "path": path,
+            "transaction": transaction,
+            "allowance": {
+                "tokenDeploymentId": execution.normalized.input_token_deployment_id,
+                "tokenAddress": input_address,
+                "owner": execution.sender,
+                "spender": router_address,
+                "requiredAmount": quote["amountIn"],
+            },
+        }
+
+    async def _prepare_execution_context(
+        self,
+        execution: _NormalizedExecutionRequest,
+        capability: Mapping[str, object],
+        transport: HttpJsonRpcTransport,
+        options: RequestOptions,
+    ) -> _PreparedExecutionContext:
+        # Reuse the existing eleven-call quote path verbatim. Router reads are
+        # appended only after the quote has passed its own freshness checks.
+        state = await self._read_evm_state(transport, execution.normalized, options)
+        self._assert_freshness(state, execution.normalized.freshness)
+        amount_out, fee_numerator, fee_denominator = self._calculate_quote(
+            execution.normalized,
+            state,
+        )
+        quote = self._quote_result(
+            execution.normalized,
+            state,
+            amount_out,
+            fee_numerator,
+            fee_denominator,
+        )
+        if execution.deadline_value <= state.initial.timestamp:
+            _execution_fail(SwapExecutionErrorCode.INVALID_ARGUMENT)
+
+        input_address = _execution_token_address(execution.normalized.input_token)
+        output_address = _execution_token_address(execution.normalized.output_token)
+        router_address = capability.get("routerAddress")
+        factory_address = capability.get("factoryAddress")
+        wrapped_selector = capability.get("wrappedNativeFunctionSelector")
+        if (
+            not isinstance(router_address, str)
+            or not isinstance(factory_address, str)
+            or not isinstance(wrapped_selector, str)
+        ):
+            _execution_fail(SwapExecutionErrorCode.UNSUPPORTED_EXECUTION)
+        selector = _rpc_selector(state.initial.block_hash)
+
+        router_code_raw = await self._rpc_request(
+            transport,
+            "eth_getCode",
+            [router_address, selector],
+            options,
+        )
+        router_code = _parse_execution_hex_bytes(router_code_raw)
+        if len(router_code) <= 2:
+            _execution_fail(SwapExecutionErrorCode.INVALID_SIMULATION)
+
+        router_factory_raw = await self._rpc_request(
+            transport,
+            "eth_call",
+            [_abi_call(router_address, _ROUTER_FACTORY_SELECTOR), selector],
+            options,
+        )
+        router_factory = _execution_address_word(router_factory_raw)
+        if router_factory != factory_address:
+            _execution_fail(SwapExecutionErrorCode.PROGRAM_MISMATCH)
+
+        wrapped_native_raw = await self._rpc_request(
+            transport,
+            "eth_call",
+            [_abi_call(router_address, wrapped_selector), selector],
+            options,
+        )
+        wrapped_native = _execution_address_word(wrapped_native_raw)
+        if wrapped_native != capability.get("wrappedNativeTokenAddress"):
+            _execution_fail(SwapExecutionErrorCode.PROGRAM_MISMATCH)
+
+        amounts_out_raw = await self._rpc_request(
+            transport,
+            "eth_call",
+            [
+                _abi_call(
+                    router_address,
+                    _execution_get_amounts_out_data(
+                        execution.normalized.amount_in,
+                        input_address,
+                        output_address,
+                    ),
+                ),
+                selector,
+            ],
+            options,
+        )
+        amounts_out = _execution_uint_array_of_two(amounts_out_raw)
+        quote_amount_out = _parse_decimal_quantity(
+            quote["amountOut"],
+            SwapQuoteErrorCode.ARITHMETIC,
+        )
+        if amounts_out != (execution.normalized.amount_in, quote_amount_out):
+            _execution_fail(SwapExecutionErrorCode.INVALID_SIMULATION)
+
+        latest_after_router_reads = _block_header(
+            await self._rpc_request(
+                transport,
+                "eth_getBlockByNumber",
+                ["latest", False],
+                options,
+            )
+        )
+        self._assert_freshness(
+            _EvmState(state.initial, latest_after_router_reads, state.reserves),
+            execution.normalized.freshness,
+        )
+        preparation = self._build_execution_preparation(execution, capability, quote)
+        _assert_execution_deadline(
+            execution,
+            state.initial.timestamp,
+            self._current_clock_seconds(),
+        )
+        return _PreparedExecutionContext(
+            normalized=execution,
+            capability=capability,
+            transport=transport,
+            state=state,
+            quote=quote,
+            preparation=preparation,
+        )
+
+    async def prepare_exact_input_swap(
+        self,
+        request: object,
+        options: RequestOptions = DEFAULT_REQUEST_OPTIONS,
+    ) -> ExactInputSwapPreparation:
+        """Prepare unsigned ERC20-to-ERC20 router calldata from fresh RPC data."""
+
+        execution = _normalize_execution_request(request, self._current_clock_seconds)
+        capability = _execution_capability_for(execution.normalized)
+        transport = self._transport_for_normalized(execution.normalized)
+        context = await self._prepare_execution_context(execution, capability, transport, options)
+        return context.preparation
+
+    async def simulate_exact_input_swap(
+        self,
+        request: object,
+        options: RequestOptions = DEFAULT_REQUEST_OPTIONS,
+    ) -> ExactInputSwapSimulation:
+        """Prepare and simulate an unsigned router call through configured RPC."""
+
+        execution = _normalize_execution_request(request, self._current_clock_seconds)
+        capability = _execution_capability_for(execution.normalized)
+        transport = self._transport_for_normalized(execution.normalized)
+        context = await self._prepare_execution_context(execution, capability, transport, options)
+
+        selector = _rpc_selector(context.state.initial.block_hash)
+        router_address = context.capability.get("routerAddress")
+        if not isinstance(router_address, str):
+            _execution_fail(SwapExecutionErrorCode.UNSUPPORTED_EXECUTION)
+        input_address = context.preparation["allowance"]["tokenAddress"]
+        allowance_data = (
+            _ERC20_ALLOWANCE_SELECTOR
+            + _encode_address_argument(execution.sender)
+            + _encode_address_argument(router_address)
+        )
+        allowance_raw = await self._rpc_request(
+            transport,
+            "eth_call",
+            [_abi_call(input_address, allowance_data), selector],
+            options,
+        )
+        current_allowance = _execution_uint_word(
+            allowance_raw,
+            SwapExecutionErrorCode.INSUFFICIENT_ALLOWANCE,
+        )
+        if current_allowance < execution.normalized.amount_in:
+            _execution_fail(SwapExecutionErrorCode.INSUFFICIENT_ALLOWANCE)
+
+        try:
+            simulation_raw = await self._rpc_request(
+                transport,
+                "eth_call",
+                [
+                    {
+                        "from": context.preparation["transaction"]["from"],
+                        "to": context.preparation["transaction"]["to"],
+                        "data": context.preparation["transaction"]["data"],
+                        "value": "0x0",
+                    },
+                    selector,
+                ],
+                options,
+            )
+        except ErpcJsonRpcError as error:
+            if _is_recognized_execution_revert(error):
+                # The transport error is already credential-redacted. Do not
+                # retain a provider/native exception as an execution cause.
+                raise SwapExecutionError(
+                    SwapExecutionErrorCode.SIMULATION_REVERTED
+                ) from None
+            raise
+
+        latest_after_simulation = _block_header(
+            await self._rpc_request(
+                transport,
+                "eth_getBlockByNumber",
+                ["latest", False],
+                options,
+            )
+        )
+        self._assert_freshness(
+            _EvmState(context.state.initial, latest_after_simulation, context.state.reserves),
+            execution.normalized.freshness,
+        )
+
+        amounts = _execution_uint_array_of_two(simulation_raw)
+        quote_amount_out = _parse_decimal_quantity(
+            context.quote["amountOut"],
+            SwapQuoteErrorCode.ARITHMETIC,
+        )
+        minimum_amount_out = _parse_decimal_quantity(
+            context.preparation["minimumAmountOut"],
+            SwapQuoteErrorCode.ARITHMETIC,
+        )
+        if (
+            amounts[0] != execution.normalized.amount_in
+            or amounts[1] != quote_amount_out
+            or amounts[1] < minimum_amount_out
+        ):
+            _execution_fail(SwapExecutionErrorCode.INVALID_SIMULATION)
+
+        _assert_execution_deadline(
+            execution,
+            context.state.initial.timestamp,
+            self._current_clock_seconds(),
+        )
+        return {
+            "simulationKind": "evm-call",
+            "preparation": context.preparation,
+            "snapshot": context.quote["snapshot"],
+            "currentAllowance": str(current_allowance),
+            "amounts": [str(amounts[0]), str(amounts[1])],
+            "amountOut": str(amounts[1]),
+        }
 
     async def _read_evm_state(
         self,
@@ -905,11 +1761,25 @@ __all__ = [
     "EvmBlockSnapshot",
     "ExactInputQuoteRequest",
     "ExactInputQuoteResult",
+    "ExactInputSwapAllowance",
+    "ExactInputSwapPathEntry",
+    "ExactInputSwapPreparation",
+    "ExactInputSwapRequest",
+    "ExactInputSwapSimulation",
+    "ExactInputSwapTransaction",
+    "PrepareExactInputSwapRequest",
+    "PrepareExactInputSwapResult",
     "QuoteFee",
+    "SimulateExactInputSwapResult",
     "SUPPORTED_QUOTE_ADAPTER",
     "SwapClient",
+    "SwapExecutionError",
+    "SwapExecutionErrorCode",
     "SwapFreshness",
+    "SwapPreparation",
     "SwapQuoteError",
     "SwapQuoteErrorCode",
+    "SwapSimulation",
+    "SWAP_EXECUTION_ERROR_MESSAGES",
     "SWAP_QUOTE_ERROR_MESSAGES",
 ]

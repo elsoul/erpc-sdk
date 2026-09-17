@@ -1,6 +1,7 @@
 import {
   DEX_CATALOG_CONTENT_DIGEST,
   DEX_CHAIN_IDS,
+  NATIVE_WRAP_DEFINITIONS,
   getDexDeployment,
   getPoolDefinition,
   type DexDeployment,
@@ -11,6 +12,13 @@ import {
   TOKEN_CATALOG_CONTENT_DIGEST,
   type TokenDeployment,
 } from './token_catalog'
+import {
+  SWAP_EXECUTION_CAPABILITIES_CONTENT_DIGEST,
+  SWAP_EXECUTION_CAPABILITIES_JSON,
+  SWAP_EXECUTION_FUNCTION_SELECTOR,
+  SWAP_EXECUTION_FUNCTION_SIGNATURE,
+} from './generated/swap_execution_capabilities'
+import { ErpcJsonRpcError } from './errors'
 import type { HttpJsonRpcTransport } from './transport/http'
 import type { RpcSendOptions } from './rpc/types'
 
@@ -61,6 +69,36 @@ export class SwapQuoteError extends Error {
   }
 }
 
+export type SwapExecutionErrorCode =
+  | 'SWAP_EXECUTION_INVALID_ARGUMENT'
+  | 'SWAP_UNSUPPORTED_EXECUTION'
+  | 'SWAP_PROGRAM_MISMATCH'
+  | 'SWAP_INSUFFICIENT_ALLOWANCE'
+  | 'SWAP_SIMULATION_REVERTED'
+  | 'SWAP_INVALID_SIMULATION'
+
+export const SWAP_EXECUTION_ERROR_MESSAGES: Readonly<
+  Record<SwapExecutionErrorCode, string>
+> = Object.freeze({
+  SWAP_EXECUTION_INVALID_ARGUMENT: 'Swap execution request is invalid',
+  SWAP_UNSUPPORTED_EXECUTION:
+    'Swap execution is unsupported for the selected records',
+  SWAP_PROGRAM_MISMATCH: 'Swap program does not match the selected records',
+  SWAP_INSUFFICIENT_ALLOWANCE: 'Swap allowance is insufficient',
+  SWAP_SIMULATION_REVERTED: 'Swap simulation reverted',
+  SWAP_INVALID_SIMULATION: 'Swap simulation result is invalid',
+})
+
+export class SwapExecutionError extends Error {
+  readonly code: SwapExecutionErrorCode
+
+  constructor(code: SwapExecutionErrorCode) {
+    super(SWAP_EXECUTION_ERROR_MESSAGES[code])
+    this.name = 'SwapExecutionError'
+    this.code = code
+  }
+}
+
 export interface SwapFreshness {
   readonly maxBlockAgeSeconds?: number
   readonly maxBlockLag?: number
@@ -100,11 +138,84 @@ export interface ExactInputQuoteResult {
   readonly dexCatalogDigest: string
 }
 
+export interface PrepareExactInputSwapRequest extends ExactInputQuoteRequest {
+  readonly sender: string
+  readonly recipient: string
+  readonly slippageBps: number
+  readonly deadline: string
+}
+
+/** Alias for callers that prefer a shorter execution request name. */
+export type ExactInputSwapRequest = PrepareExactInputSwapRequest
+
+export interface ExactInputSwapPathEntry {
+  readonly tokenDeploymentId: string
+  readonly address: string
+  readonly standard: 'erc20'
+  readonly representationKind: TokenDeployment['representationKind']
+}
+
+export interface ExactInputSwapPreparation {
+  readonly preparationKind: 'evm-router-v2-exact-input'
+  readonly executionCapabilityId: string
+  readonly executionCapabilityDigest: string
+  readonly quote: ExactInputQuoteResult
+  readonly minimumAmountOut: string
+  readonly slippageBps: number
+  readonly deadline: string
+  readonly recipient: string
+  readonly path: readonly [ExactInputSwapPathEntry, ExactInputSwapPathEntry]
+  readonly transaction: {
+    readonly kind: 'evm-unsigned-transaction'
+    readonly chainId: string
+    readonly from: string
+    readonly to: string
+    readonly data: string
+    readonly value: '0'
+  }
+  readonly allowance: {
+    readonly tokenDeploymentId: string
+    readonly tokenAddress: string
+    readonly owner: string
+    readonly spender: string
+    readonly requiredAmount: string
+  }
+}
+
+export interface ExactInputSwapSimulation {
+  readonly simulationKind: 'evm-call'
+  readonly preparation: ExactInputSwapPreparation
+  readonly snapshot: ExactInputQuoteResult['snapshot']
+  readonly currentAllowance: string
+  readonly amounts: readonly [string, string]
+  readonly amountOut: string
+}
+
+/** Alias for callers that prefer the method-name result spelling. */
+export type PrepareExactInputSwapResult = ExactInputSwapPreparation
+
+/** Alias for callers that use the generic preparation name. */
+export type SwapPreparation = ExactInputSwapPreparation
+
+/** Alias for callers that prefer the method-name result spelling. */
+export type SimulateExactInputSwapResult = ExactInputSwapSimulation
+
+/** Alias for callers that use the generic simulation name. */
+export type SwapSimulation = ExactInputSwapSimulation
+
 export interface SwapClient {
   readonly quoteExactInput: (
     request: ExactInputQuoteRequest,
     options?: RpcSendOptions,
   ) => Promise<ExactInputQuoteResult>
+  readonly prepareExactInputSwap: (
+    request: PrepareExactInputSwapRequest,
+    options?: RpcSendOptions,
+  ) => Promise<ExactInputSwapPreparation>
+  readonly simulateExactInputSwap: (
+    request: PrepareExactInputSwapRequest,
+    options?: RpcSendOptions,
+  ) => Promise<ExactInputSwapSimulation>
 }
 
 interface SwapClientOptions {
@@ -310,8 +421,66 @@ const PAIR_TOKEN0_SELECTOR = '0x0dfe1681'
 const PAIR_TOKEN1_SELECTOR = '0xd21220a7'
 const PAIR_GET_RESERVES_SELECTOR = '0x0902f1ac'
 
+const ROUTER_FACTORY_SELECTOR = '0xc45a0155'
+const ROUTER_GET_AMOUNTS_OUT_SELECTOR = '0xd06ca61f'
+const ERC20_ALLOWANCE_SELECTOR = '0xdd62ed3e'
+
+interface SwapExecutionCapability {
+  readonly swapExecutionCapabilityId: string
+  readonly chainId: string
+  readonly dexDeploymentId: string
+  readonly poolDefinitionId: string
+  readonly factoryAddress: string
+  readonly routerAddress: string
+  readonly routerKind: string
+  readonly adapterKind: string
+  readonly token0DeploymentId: string
+  readonly token0Address: string
+  readonly token0Standard: 'erc20'
+  readonly token1DeploymentId: string
+  readonly token1Address: string
+  readonly token1Standard: 'erc20'
+  readonly wrappedNativeTokenDeploymentId: string
+  readonly wrappedNativeTokenAddress: string
+  readonly wrappedNativeFunctionSelector: string
+  readonly functionKind: string
+  readonly functionSignature: string
+  readonly functionSelector: string
+  readonly status: 'active'
+}
+
+interface ExecutionRequestSnapshot {
+  readonly quoteRequest: ExactInputQuoteRequest
+  readonly sender: unknown
+  readonly recipient: unknown
+  readonly slippageBps: unknown
+  readonly deadline: unknown
+}
+
+interface NormalizedExecutionRequest {
+  readonly normalized: NormalizedRequest
+  readonly sender: string
+  readonly recipient: string
+  readonly slippageBps: number
+  readonly deadline: string
+  readonly deadlineValue: bigint
+}
+
+interface PreparedExecutionContext {
+  readonly normalized: NormalizedExecutionRequest
+  readonly capability: SwapExecutionCapability
+  readonly transport: HttpJsonRpcTransport
+  readonly state: EvmState
+  readonly quote: ExactInputQuoteResult
+  readonly preparation: ExactInputSwapPreparation
+}
+
 function swapFail(code: SwapQuoteErrorCode): never {
   throw new SwapQuoteError(code)
+}
+
+function executionFail(code: SwapExecutionErrorCode): never {
+  throw new SwapExecutionError(code)
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -563,6 +732,63 @@ const uintWord = (value: string, maximum: bigint = UINT256_MAX): bigint => {
   return parsed
 }
 
+const parseExecutionHexBytes = (
+  value: unknown,
+  expectedBytes?: number,
+  code: SwapExecutionErrorCode = 'SWAP_INVALID_SIMULATION',
+): string => {
+  if (typeof value !== 'string') executionFail(code)
+  if (
+    !HEX_BYTES.test(value) ||
+    value.length % 2 !== 0 ||
+    (expectedBytes !== undefined && value.length !== expectedBytes * 2 + 2)
+  ) {
+    executionFail(code)
+  }
+  return value.toLowerCase()
+}
+
+const executionAddressWord = (
+  value: unknown,
+  code: SwapExecutionErrorCode = 'SWAP_INVALID_SIMULATION',
+): string => {
+  const bytes = parseExecutionHexBytes(value, 32, code)
+  const word = bytes.slice(2)
+  if (!/^0{24}[0-9a-f]{40}$/u.test(word)) executionFail(code)
+  return `0x${word.slice(24)}`
+}
+
+const executionUintWord = (
+  value: unknown,
+  code: SwapExecutionErrorCode = 'SWAP_INVALID_SIMULATION',
+): bigint => {
+  const bytes = parseExecutionHexBytes(value, 32, code)
+  try {
+    return BigInt(`0x${bytes.slice(2)}`)
+  } catch {
+    executionFail(code)
+  }
+}
+
+const executionUintArrayOfTwo = (
+  value: unknown,
+): readonly [bigint, bigint] => {
+  const bytes = parseExecutionHexBytes(value)
+  const payload = bytes.slice(2)
+  if (payload.length % 64 !== 0 || payload.length < 256) {
+    executionFail('SWAP_INVALID_SIMULATION')
+  }
+  const offset = BigInt(`0x${payload.slice(0, 64)}`)
+  const length = BigInt(`0x${payload.slice(64, 128)}`)
+  if (offset !== 0x20n || length !== 2n || payload.length !== 256) {
+    executionFail('SWAP_INVALID_SIMULATION')
+  }
+  return [
+    executionUintWord(`0x${payload.slice(128, 192)}`),
+    executionUintWord(`0x${payload.slice(192, 256)}`),
+  ]
+}
+
 const reserveWords = (value: unknown): Reserves => {
   const bytes = parseHexBytes(value, 96)
   const payload = bytes.slice(2)
@@ -628,12 +854,141 @@ const currentClockSeconds = (
   return value
 }
 
-const assertFreshness = (
+const EXECUTION_REQUEST_KEYS = new Set([
+  'chainId',
+  'poolDefinitionId',
+  'inputTokenDeploymentId',
+  'outputTokenDeploymentId',
+  'amountIn',
+  'freshness',
+  'sender',
+  'recipient',
+  'slippageBps',
+  'deadline',
+])
+
+const snapshotExecutionRequest = (
+  request: unknown,
+): ExecutionRequestSnapshot => {
+  if (!isRecord(request)) executionFail('SWAP_EXECUTION_INVALID_ARGUMENT')
+  if (Object.keys(request).some((key) => !EXECUTION_REQUEST_KEYS.has(key))) {
+    executionFail('SWAP_EXECUTION_INVALID_ARGUMENT')
+  }
+
+  // Copy every scalar and the shallow freshness record synchronously. The
+  // resulting quote request is independent of mutations made while RPC is in
+  // flight, while quote-field errors still come from normalizeQuoteRequest.
+  const freshness = request.freshness
+  const freshnessSnapshot = isRecord(freshness)
+    ? { ...freshness }
+    : freshness
+  const quoteRequest = {
+    chainId: request.chainId as string,
+    poolDefinitionId: request.poolDefinitionId as string,
+    inputTokenDeploymentId: request.inputTokenDeploymentId as string,
+    outputTokenDeploymentId: request.outputTokenDeploymentId as string,
+    amountIn: request.amountIn as string,
+    ...(freshnessSnapshot === undefined
+      ? {}
+      : { freshness: freshnessSnapshot }),
+  } as ExactInputQuoteRequest
+  return {
+    quoteRequest,
+    sender: request.sender,
+    recipient: request.recipient,
+    slippageBps: request.slippageBps,
+    deadline: request.deadline,
+  }
+}
+
+const normalizeExecutionAddress = (value: unknown): string => {
+  if (typeof value !== 'string' || !/^0x[0-9a-fA-F]{40}$/u.test(value)) {
+    executionFail('SWAP_EXECUTION_INVALID_ARGUMENT')
+  }
+  const normalized = value.toLowerCase()
+  if (normalized === `0x${'0'.repeat(40)}`) {
+    executionFail('SWAP_EXECUTION_INVALID_ARGUMENT')
+  }
+  return normalized
+}
+
+const normalizeExecutionSlippage = (value: unknown): number => {
+  if (
+    typeof value !== 'number' ||
+    !Number.isSafeInteger(value) ||
+    value < 0 ||
+    value > 9999
+  ) {
+    executionFail('SWAP_EXECUTION_INVALID_ARGUMENT')
+  }
+  return value
+}
+
+const parseExecutionDeadline = (
+  value: unknown,
+): { readonly source: string; readonly value: bigint } => {
+  if (typeof value !== 'string' || !UINT256_DECIMAL.test(value) || value.length > 78) {
+    executionFail('SWAP_EXECUTION_INVALID_ARGUMENT')
+  }
+  let parsed: bigint
+  try {
+    parsed = BigInt(value)
+  } catch {
+    executionFail('SWAP_EXECUTION_INVALID_ARGUMENT')
+  }
+  if (parsed <= 0n || parsed > UINT256_MAX) {
+    executionFail('SWAP_EXECUTION_INVALID_ARGUMENT')
+  }
+  return { source: value, value: parsed }
+}
+
+const normalizeExecutionRequest = (
+  request: unknown,
+  clock: (() => number) | undefined,
+): NormalizedExecutionRequest => {
+  const snapshot = snapshotExecutionRequest(request)
+  const sender = normalizeExecutionAddress(snapshot.sender)
+  const recipient = normalizeExecutionAddress(snapshot.recipient)
+  const slippageBps = normalizeExecutionSlippage(snapshot.slippageBps)
+  const deadline = parseExecutionDeadline(snapshot.deadline)
+
+  // A deadline that has already elapsed is rejected before the first RPC.
+  // The quote snapshot and completion clock are checked again after I/O.
+  const initialClock = BigInt(currentClockSeconds(clock))
+  if (deadline.value <= initialClock) {
+    executionFail('SWAP_EXECUTION_INVALID_ARGUMENT')
+  }
+
+  let normalized: NormalizedRequest
+  try {
+    normalized = normalizeQuoteRequest(snapshot.quoteRequest)
+  } catch (error) {
+    if (
+      error instanceof SwapQuoteError &&
+      (error.code === 'SWAP_UNKNOWN_POOL' ||
+        error.code === 'SWAP_UNSUPPORTED_ADAPTER' ||
+        error.code === 'SWAP_UNSUPPORTED_TOKEN' ||
+        error.code === 'SWAP_UNSUPPORTED_TOKEN_STANDARD')
+    ) {
+      executionFail('SWAP_UNSUPPORTED_EXECUTION')
+    }
+    throw error
+  }
+  return {
+    normalized,
+    sender,
+    recipient,
+    slippageBps,
+    deadline: deadline.source,
+    deadlineValue: deadline.value,
+  }
+}
+
+const assertFreshnessAtNow = (
   state: Pick<EvmState, 'initial' | 'latestAfterReads'>,
   freshness: NormalizedFreshness,
-  clock: (() => number) | undefined,
+  now: bigint,
 ): void => {
-  const now = BigInt(currentClockSeconds(clock))
   const initialAge = now - state.initial.timestamp
   if (
     initialAge < -BigInt(freshness.maxClockSkewSeconds) ||
@@ -673,6 +1028,109 @@ const assertFreshness = (
   ) {
     swapFail('SWAP_STATE_STALE')
   }
+}
+
+const assertFreshness = (
+  state: Pick<EvmState, 'initial' | 'latestAfterReads'>,
+  freshness: NormalizedFreshness,
+  clock: (() => number) | undefined,
+): void => {
+  assertFreshnessAtNow(
+    state,
+    freshness,
+    BigInt(currentClockSeconds(clock)),
+  )
+}
+
+const executionCapabilityFor = (
+  normalized: NormalizedRequest,
+): SwapExecutionCapability => {
+  const capability = EXECUTION_CAPABILITIES.find(
+    (entry) => entry.poolDefinitionId === normalized.pool.poolDefinitionId,
+  )
+  if (!capability || capability.status !== 'active') {
+    executionFail('SWAP_UNSUPPORTED_EXECUTION')
+  }
+
+  const token0 = getTokenDeployment(capability.token0DeploymentId)
+  const token1 = getTokenDeployment(capability.token1DeploymentId)
+  const wrapped = getTokenDeployment(capability.wrappedNativeTokenDeploymentId)
+  const nativeWrap = NATIVE_WRAP_DEFINITIONS.find(
+    (entry) =>
+      entry.chainId === capability.chainId &&
+      entry.wrappedTokenDeploymentId === capability.wrappedNativeTokenDeploymentId,
+  )
+  const matchesCapabilityToken = (
+    token: TokenDeployment | undefined,
+    deploymentId: string,
+    address: string,
+    standard: 'erc20',
+  ): boolean =>
+    token?.deploymentId === deploymentId &&
+    token.chainId === capability.chainId &&
+    token.address === address &&
+    token.standard === standard &&
+    token.status === 'active'
+
+  const inputMatches =
+    matchesCapabilityToken(
+      normalized.input,
+      capability.token0DeploymentId,
+      capability.token0Address,
+      capability.token0Standard,
+    ) ||
+    matchesCapabilityToken(
+      normalized.input,
+      capability.token1DeploymentId,
+      capability.token1Address,
+      capability.token1Standard,
+    )
+  const outputMatches =
+    matchesCapabilityToken(
+      normalized.output,
+      capability.token0DeploymentId,
+      capability.token0Address,
+      capability.token0Standard,
+    ) ||
+    matchesCapabilityToken(
+      normalized.output,
+      capability.token1DeploymentId,
+      capability.token1Address,
+      capability.token1Standard,
+    )
+
+  if (
+    capability.chainId !== normalized.pool.chainId ||
+    capability.dexDeploymentId !== normalized.pool.dexDeploymentId ||
+    capability.adapterKind !== SUPPORTED_QUOTE_ADAPTER ||
+    capability.functionKind !== 'exact-input-erc20-to-erc20' ||
+    capability.functionSignature !== SWAP_EXECUTION_FUNCTION_SIGNATURE ||
+    capability.functionSelector !== SWAP_EXECUTION_FUNCTION_SELECTOR ||
+    normalized.dex.status !== 'active' ||
+    normalized.dex.programAddress !== capability.factoryAddress ||
+    normalized.dex.adapterKind !== capability.adapterKind ||
+    normalized.pool.status !== 'active' ||
+    normalized.pool.adapter.kind !== capability.adapterKind ||
+    normalized.pool.adapter.feeNumerator !== '3' ||
+    normalized.pool.adapter.feeDenominator !== '1000' ||
+    normalized.pool.token0DeploymentId !== capability.token0DeploymentId ||
+    normalized.pool.token1DeploymentId !== capability.token1DeploymentId ||
+    !inputMatches ||
+    !outputMatches ||
+    !token0 ||
+    !token1 ||
+    !wrapped ||
+    wrapped.chainId !== capability.chainId ||
+    wrapped.address !== capability.wrappedNativeTokenAddress ||
+    wrapped.standard !== 'erc20' ||
+    wrapped.status !== 'active' ||
+    !nativeWrap ||
+    nativeWrap.status !== 'active' ||
+    nativeWrap.wrappedTokenDeploymentId !== capability.wrappedNativeTokenDeploymentId
+  ) {
+    executionFail('SWAP_UNSUPPORTED_EXECUTION')
+  }
+  return capability
 }
 
 const readEvmState = async (
@@ -836,6 +1294,346 @@ const quoteResult = (
   return deepFreeze(output)
 }
 
+const transportForNormalized = (
+  normalized: NormalizedRequest,
+  options: SwapClientOptions,
+): HttpJsonRpcTransport => {
+  const transport =
+    normalized.pool.chainId === DEX_CHAIN_IDS.ethereum
+      ? options.ethereum
+      : normalized.pool.chainId === DEX_CHAIN_IDS.avalancheC
+        ? options.avalanche
+        : undefined
+  if (!transport) swapFail('SWAP_UNSUPPORTED_ADAPTER')
+  return transport
+}
+
+const encodeUint256Word = (value: bigint): string =>
+  ensureUint256(value).toString(16).padStart(64, '0')
+
+const executionTokenAddress = (token: TokenDeployment): string => {
+  if (typeof token.address !== 'string' || !EVM_ADDRESS.test(token.address)) {
+    executionFail('SWAP_INVALID_SIMULATION')
+  }
+  return token.address.toLowerCase()
+}
+
+const executionGetAmountsOutData = (
+  amountIn: bigint,
+  inputAddress: string,
+  outputAddress: string,
+): string =>
+  `${ROUTER_GET_AMOUNTS_OUT_SELECTOR}${encodeUint256Word(amountIn)}${encodeUint256Word(
+    0x40n,
+  )}${encodeUint256Word(2n)}${encodeAddressArgument(
+    inputAddress,
+  )}${encodeAddressArgument(outputAddress)}`
+
+const executionSwapData = (
+  amountIn: bigint,
+  minimumAmountOut: bigint,
+  inputAddress: string,
+  outputAddress: string,
+  recipient: string,
+  deadline: bigint,
+): string =>
+  `${SWAP_EXECUTION_FUNCTION_SELECTOR}${encodeUint256Word(
+    amountIn,
+  )}${encodeUint256Word(minimumAmountOut)}${encodeUint256Word(
+    0xa0n,
+  )}${encodeAddressArgument(recipient)}${encodeUint256Word(
+    deadline,
+  )}${encodeUint256Word(2n)}${encodeAddressArgument(
+    inputAddress,
+  )}${encodeAddressArgument(outputAddress)}`
+
+const buildExecutionPreparation = (
+  execution: NormalizedExecutionRequest,
+  capability: SwapExecutionCapability,
+  quote: ExactInputQuoteResult,
+): ExactInputSwapPreparation => {
+  const inputAddress = executionTokenAddress(execution.normalized.input)
+  const outputAddress = executionTokenAddress(execution.normalized.output)
+  const quoteAmountOut = parseDecimalQuantity(quote.amountOut, 'SWAP_ARITHMETIC')
+  const minimumAmountOut = ensureUint256(
+    quoteAmountOut * BigInt(10000 - execution.slippageBps),
+    'SWAP_ARITHMETIC',
+  ) / 10000n
+  if (minimumAmountOut <= 0n) {
+    executionFail('SWAP_EXECUTION_INVALID_ARGUMENT')
+  }
+
+  const path = [
+    {
+      tokenDeploymentId: execution.normalized.input.deploymentId,
+      address: inputAddress,
+      standard: 'erc20' as const,
+      representationKind: execution.normalized.input.representationKind,
+    },
+    {
+      tokenDeploymentId: execution.normalized.output.deploymentId,
+      address: outputAddress,
+      standard: 'erc20' as const,
+      representationKind: execution.normalized.output.representationKind,
+    },
+  ] as const
+  const transaction = {
+    kind: 'evm-unsigned-transaction' as const,
+    chainId: quote.chainId,
+    from: execution.sender,
+    to: capability.routerAddress,
+    data: executionSwapData(
+      execution.normalized.amountIn,
+      minimumAmountOut,
+      inputAddress,
+      outputAddress,
+      execution.recipient,
+      execution.deadlineValue,
+    ),
+    value: '0' as const,
+  }
+  return deepFreeze({
+    preparationKind: 'evm-router-v2-exact-input' as const,
+    executionCapabilityId: capability.swapExecutionCapabilityId,
+    executionCapabilityDigest: SWAP_EXECUTION_CAPABILITIES_CONTENT_DIGEST,
+    quote,
+    minimumAmountOut: minimumAmountOut.toString(10),
+    slippageBps: execution.slippageBps,
+    deadline: execution.deadline,
+    recipient: execution.recipient,
+    path,
+    transaction,
+    allowance: {
+      tokenDeploymentId: execution.normalized.input.deploymentId,
+      tokenAddress: inputAddress,
+      owner: execution.sender,
+      spender: capability.routerAddress,
+      requiredAmount: quote.amountIn,
+    },
+  })
+}
+
+const assertExecutionDeadline = (
+  execution: NormalizedExecutionRequest,
+  quoteTimestamp: bigint,
+  completionClock: bigint,
+): void => {
+  if (
+    execution.deadlineValue <= quoteTimestamp ||
+    execution.deadlineValue <= completionClock
+  ) {
+    executionFail('SWAP_EXECUTION_INVALID_ARGUMENT')
+  }
+}
+
+const prepareExecutionContext = async (
+  execution: NormalizedExecutionRequest,
+  capability: SwapExecutionCapability,
+  transport: HttpJsonRpcTransport,
+  options: SwapClientOptions,
+  requestOptions?: RpcSendOptions,
+): Promise<PreparedExecutionContext> => {
+  // The quote path is deliberately reused verbatim: this gives preparation
+  // the existing eleven reads and the same local arithmetic/result contract.
+  const state = await readEvmState(
+    transport,
+    execution.normalized,
+    options.clock,
+    requestOptions,
+  )
+  assertFreshness(state, execution.normalized.freshness, options.clock)
+  const quote = quoteResult(
+    execution.normalized,
+    state,
+    calculateQuote(execution.normalized, state),
+  )
+  if (execution.deadlineValue <= state.initial.timestamp) {
+    executionFail('SWAP_EXECUTION_INVALID_ARGUMENT')
+  }
+
+  const inputAddress = executionTokenAddress(execution.normalized.input)
+  const outputAddress = executionTokenAddress(execution.normalized.output)
+  const selector = rpcSelector(state.initial.hash)
+  const routerCodeRaw = await rpcRequest(transport, 'eth_getCode', [
+    capability.routerAddress,
+    selector,
+  ], requestOptions)
+  const routerCode = parseExecutionHexBytes(routerCodeRaw)
+  if (routerCode.length <= 2) executionFail('SWAP_INVALID_SIMULATION')
+
+  const routerFactoryRaw = await rpcRequest(transport, 'eth_call', [
+    abiCall(capability.routerAddress, ROUTER_FACTORY_SELECTOR),
+    selector,
+  ], requestOptions)
+  const routerFactory = executionAddressWord(routerFactoryRaw)
+  if (routerFactory !== capability.factoryAddress) {
+    executionFail('SWAP_PROGRAM_MISMATCH')
+  }
+
+  const wrappedNativeRaw = await rpcRequest(transport, 'eth_call', [
+    abiCall(capability.routerAddress, capability.wrappedNativeFunctionSelector),
+    selector,
+  ], requestOptions)
+  const wrappedNative = executionAddressWord(wrappedNativeRaw)
+  if (wrappedNative !== capability.wrappedNativeTokenAddress) {
+    executionFail('SWAP_PROGRAM_MISMATCH')
+  }
+
+  const amountsOutRaw = await rpcRequest(transport, 'eth_call', [
+    abiCall(
+      capability.routerAddress,
+      executionGetAmountsOutData(
+        execution.normalized.amountIn,
+        inputAddress,
+        outputAddress,
+      ),
+    ),
+    selector,
+  ], requestOptions)
+  const amountsOut = executionUintArrayOfTwo(amountsOutRaw)
+  const quoteAmountOut = parseDecimalQuantity(quote.amountOut, 'SWAP_ARITHMETIC')
+  if (
+    amountsOut[0] !== execution.normalized.amountIn ||
+    amountsOut[1] !== quoteAmountOut
+  ) {
+    executionFail('SWAP_INVALID_SIMULATION')
+  }
+
+  const latestAfterRouterReads = blockHeader(
+    await rpcRequest(
+      transport,
+      'eth_getBlockByNumber',
+      ['latest', false],
+      requestOptions,
+    ),
+  )
+
+  // The final latest read is the freshness/reorg check for the router reads.
+  const completionClock = BigInt(currentClockSeconds(options.clock))
+  assertFreshnessAtNow(
+    {
+      initial: state.initial,
+      latestAfterReads: latestAfterRouterReads,
+    },
+    execution.normalized.freshness,
+    completionClock,
+  )
+
+  const preparation = buildExecutionPreparation(execution, capability, quote)
+  assertExecutionDeadline(
+    execution,
+    state.initial.timestamp,
+    BigInt(currentClockSeconds(options.clock)),
+  )
+  return { normalized: execution, capability, transport, state, quote, preparation }
+}
+
+const isRecognizedExecutionRevert = (error: unknown): boolean => {
+  if (!(error instanceof ErpcJsonRpcError)) return false
+  if (![3, -32000, -32015, -32603].includes(error.rpcCode)) return false
+  const message = error.message.toLowerCase()
+  return (
+    message.includes('execution reverted') ||
+    message.includes('transaction reverted') ||
+    message.includes('vm execution error') ||
+    /^revert(?:ed)?(?:\b|:)/u.test(message)
+  )
+}
+
+const simulateExecutionContext = async (
+  context: PreparedExecutionContext,
+  options: SwapClientOptions,
+  requestOptions?: RpcSendOptions,
+): Promise<ExactInputSwapSimulation> => {
+  const { normalized, capability, transport, state, preparation } = context
+  const selector = rpcSelector(state.initial.hash)
+  const inputAddress = preparation.allowance.tokenAddress
+  const allowanceData = `${ERC20_ALLOWANCE_SELECTOR}${encodeAddressArgument(
+    normalized.sender,
+  )}${encodeAddressArgument(capability.routerAddress)}`
+  const allowanceRaw = await rpcRequest(transport, 'eth_call', [
+    abiCall(inputAddress, allowanceData),
+    selector,
+  ], requestOptions)
+  const currentAllowance = executionUintWord(
+    allowanceRaw,
+    'SWAP_INSUFFICIENT_ALLOWANCE',
+  )
+  if (currentAllowance < normalized.normalized.amountIn) {
+    executionFail('SWAP_INSUFFICIENT_ALLOWANCE')
+  }
+
+  let simulationRaw: unknown
+  try {
+    simulationRaw = await rpcRequest(transport, 'eth_call', [
+      {
+        from: preparation.transaction.from,
+        to: preparation.transaction.to,
+        data: preparation.transaction.data,
+        value: '0x0',
+      },
+      selector,
+    ], requestOptions)
+  } catch (error) {
+    if (isRecognizedExecutionRevert(error)) {
+      executionFail('SWAP_SIMULATION_REVERTED')
+    }
+    throw error
+  }
+
+  const latestAfterSimulation = blockHeader(
+    await rpcRequest(
+      transport,
+      'eth_getBlockByNumber',
+      ['latest', false],
+      requestOptions,
+    ),
+  )
+  const completionClock = BigInt(currentClockSeconds(options.clock))
+  assertFreshnessAtNow(
+    { initial: state.initial, latestAfterReads: latestAfterSimulation },
+    normalized.normalized.freshness,
+    completionClock,
+  )
+
+  const amounts = executionUintArrayOfTwo(simulationRaw)
+  const quoteAmountOut = parseDecimalQuantity(
+    preparation.quote.amountOut,
+    'SWAP_ARITHMETIC',
+  )
+  const minimumAmountOut = parseDecimalQuantity(
+    preparation.minimumAmountOut,
+    'SWAP_ARITHMETIC',
+  )
+  if (
+    amounts[0] !== normalized.normalized.amountIn ||
+    amounts[1] !== quoteAmountOut ||
+    amounts[1] < minimumAmountOut
+  ) {
+    executionFail('SWAP_INVALID_SIMULATION')
+  }
+
+  // Keep the completion check immediately adjacent to the returned result so
+  // an expired deadline cannot be handed to the caller after decoding.
+  assertExecutionDeadline(
+    normalized,
+    state.initial.timestamp,
+    BigInt(currentClockSeconds(options.clock)),
+  )
+
+  return deepFreeze({
+    simulationKind: 'evm-call' as const,
+    preparation,
+    snapshot: preparation.quote.snapshot,
+    currentAllowance: currentAllowance.toString(10),
+    amounts: [
+      amounts[0].toString(10),
+      amounts[1].toString(10),
+    ] as const,
+    amountOut: amounts[1].toString(10),
+  })
+}
+
 const quoteExactInputWithTransports = async (
   request: unknown,
   options: SwapClientOptions,
@@ -845,14 +1643,7 @@ const quoteExactInputWithTransports = async (
   if (normalized.pool.adapter.kind !== SUPPORTED_QUOTE_ADAPTER) {
     swapFail('SWAP_UNSUPPORTED_ADAPTER')
   }
-  const transport =
-    normalized.pool.chainId === DEX_CHAIN_IDS.ethereum
-      ? options.ethereum
-      : normalized.pool.chainId === DEX_CHAIN_IDS.avalancheC
-        ? options.avalanche
-        : undefined
-  if (!transport) swapFail('SWAP_UNSUPPORTED_ADAPTER')
-  const selectedTransport: HttpJsonRpcTransport = transport
+  const selectedTransport = transportForNormalized(normalized, options)
   const state = await readEvmState(
     selectedTransport,
     normalized,
@@ -865,6 +1656,42 @@ const quoteExactInputWithTransports = async (
   return quoteResult(normalized, state, calculateQuote(normalized, state))
 }
 
+const prepareExactInputSwapWithTransports = async (
+  request: unknown,
+  options: SwapClientOptions,
+  requestOptions?: RpcSendOptions,
+): Promise<ExactInputSwapPreparation> => {
+  const normalized = normalizeExecutionRequest(request, options.clock)
+  const capability = executionCapabilityFor(normalized.normalized)
+  const transport = transportForNormalized(normalized.normalized, options)
+  const context = await prepareExecutionContext(
+    normalized,
+    capability,
+    transport,
+    options,
+    requestOptions,
+  )
+  return context.preparation
+}
+
+const simulateExactInputSwapWithTransports = async (
+  request: unknown,
+  options: SwapClientOptions,
+  requestOptions?: RpcSendOptions,
+): Promise<ExactInputSwapSimulation> => {
+  const normalized = normalizeExecutionRequest(request, options.clock)
+  const capability = executionCapabilityFor(normalized.normalized)
+  const transport = transportForNormalized(normalized.normalized, options)
+  const context = await prepareExecutionContext(
+    normalized,
+    capability,
+    transport,
+    options,
+    requestOptions,
+  )
+  return simulateExecutionContext(context, options, requestOptions)
+}
+
 const deepFreeze = <T>(value: T): T => {
   if (value && typeof value === 'object' && !Object.isFrozen(value)) {
     Object.freeze(value)
@@ -875,6 +1702,10 @@ const deepFreeze = <T>(value: T): T => {
   return value
 }
 
+const EXECUTION_CAPABILITIES = deepFreeze(
+  JSON.parse(SWAP_EXECUTION_CAPABILITIES_JSON) as SwapExecutionCapability[],
+)
+
 /** Internal constructor used by the configured client and package tests. */
 export const createSwapClient = (options: SwapClientOptions): SwapClient =>
   Object.freeze({
@@ -882,4 +1713,12 @@ export const createSwapClient = (options: SwapClientOptions): SwapClient =>
       request: ExactInputQuoteRequest,
       requestOptions?: RpcSendOptions,
     ) => quoteExactInputWithTransports(request, options, requestOptions),
+    prepareExactInputSwap: (
+      request: PrepareExactInputSwapRequest,
+      requestOptions?: RpcSendOptions,
+    ) => prepareExactInputSwapWithTransports(request, options, requestOptions),
+    simulateExactInputSwap: (
+      request: PrepareExactInputSwapRequest,
+      requestOptions?: RpcSendOptions,
+    ) => simulateExactInputSwapWithTransports(request, options, requestOptions),
   })
