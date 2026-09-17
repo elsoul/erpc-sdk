@@ -1,4 +1,5 @@
 import { readFile, writeFile } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
 import { describe, expect, it, vi } from 'vitest'
 
 type BridgeSdk = typeof import('../src')
@@ -18,6 +19,24 @@ type MayanSwiftV2Quote = Awaited<
   ReturnType<InstanceType<typeof bridgeSdk.MayanSwiftV2BridgeClient>['quoteExactInput']>
 >[number]
 
+type QuoteMutation =
+  | {
+      readonly kind: 'normalized-set'
+      readonly path: 'sourceSwap.required'
+      readonly value: true
+    }
+  | {
+      readonly kind: 'normalized-set'
+      readonly path: 'sourceTokenDeploymentId'
+      readonly value: 'deployment-0008' | 'deployment-0011'
+    }
+  | {
+      readonly kind: 'raw-replace'
+      readonly path: 'rawSignedQuoteJson'
+      readonly from: string
+      readonly to: string
+    }
+
 interface BridgeFixtureCase {
   readonly caseId: string
   readonly method: 'quote' | 'build' | 'status'
@@ -29,6 +48,7 @@ interface BridgeFixtureCase {
   readonly httpTrace: readonly Record<string, unknown>[]
   readonly config: Record<string, unknown> | null
   readonly quoteCaseId: string | null
+  readonly quoteMutation?: QuoteMutation
 }
 
 interface BridgeFixture {
@@ -49,11 +69,88 @@ const fixtureUrl = new URL(
   import.meta.url,
 )
 
+const FROZEN_LEGACY_FIXTURE_CASE_IDS = [
+  'quote-eth-sol-synthetic',
+  'quote-sol-eth-synthetic',
+  'build-eth-sol-synthetic',
+  'build-sol-eth-synthetic',
+  'status-eth-inprogress-synthetic',
+  'status-eth-completed-synthetic',
+  'status-sol-refunded-synthetic',
+  'status-sol-unknown-synthetic',
+  'status-eth-not-found-synthetic',
+  'quote-duplicate-key',
+  'quote-malformed-json',
+  'quote-expired',
+  'quote-mismatched-amount',
+  'quote-bad-signature-shape',
+  'quote-json-depth-limit',
+  'quote-body-size-limit',
+  'quote-unsupported-route',
+  'build-auth-required-local',
+  'build-quote-mismatch',
+  'build-evm-forwarder-violation',
+  'build-evm-selector-violation',
+  'build-evm-value-violation',
+  'build-solana-framing-violation',
+  'build-solana-fee-payer-violation',
+  'build-solana-extra-signer-violation',
+  'build-solana-swap-message-violation',
+  'build-http-auth-401',
+  'build-http-rate-limit-429',
+  'quote-redirect-rejected',
+  'quote-timeout',
+  'quote-aborted',
+  'status-invalid-evm-hash',
+  'status-invalid-provider-fields',
+  'build-eth-sol-wrong-evm-destination',
+  'build-sol-eth-wrong-solana-destination',
+  'quote-eth-sol-zero-validity-margin',
+] as const
+
 const readFixture = async (): Promise<BridgeFixture> =>
   JSON.parse(await readFile(fixtureUrl, 'utf8')) as BridgeFixture
 
 const clone = <T>(value: T): T =>
   JSON.parse(JSON.stringify(value)) as T
+
+const applyQuoteMutation = (
+  quote: MayanSwiftV2Quote,
+  mutation: QuoteMutation | undefined,
+): MayanSwiftV2Quote => {
+  if (mutation === undefined) return quote
+  if (mutation.kind === 'normalized-set') {
+    if (mutation.path === 'sourceSwap.required' && mutation.value === true) {
+      return {
+        ...quote,
+        sourceSwap: {
+          ...quote.sourceSwap,
+          required: mutation.value,
+        },
+      }
+    }
+    if (
+      mutation.path === 'sourceTokenDeploymentId' &&
+      (mutation.value === 'deployment-0008' || mutation.value === 'deployment-0011')
+    ) {
+      return {
+        ...quote,
+        sourceTokenDeploymentId: mutation.value,
+      }
+    }
+    throw new Error('unsupported normalized quote mutation')
+  }
+  if (mutation.kind === 'raw-replace' && mutation.path === 'rawSignedQuoteJson') {
+    if (!quote.rawSignedQuoteJson.includes(mutation.from)) {
+      throw new Error('raw quote mutation source was not found')
+    }
+    return {
+      ...quote,
+      rawSignedQuoteJson: quote.rawSignedQuoteJson.replace(mutation.from, mutation.to),
+    }
+  }
+  throw new Error('unsupported quote mutation')
+}
 
 const response = (
   body: string,
@@ -167,7 +264,10 @@ const runFixtureCase = async (
         }
       }
     } else if (entry.method === 'build') {
-      const quote = entry.quoteCaseId === null ? undefined : quotes.get(entry.quoteCaseId)
+      const baseQuote = entry.quoteCaseId === null ? undefined : quotes.get(entry.quoteCaseId)
+      const quote = baseQuote === undefined
+        ? undefined
+        : applyQuoteMutation(baseQuote, entry.quoteMutation)
       value = await client.buildUnsigned({
         ...(entry.request as object),
         quote,
@@ -222,6 +322,19 @@ describe('standalone Mayan Swift v2 bridge', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  it('preserves the frozen original fixture case bodies and order', async () => {
+    const fixture = await readFixture()
+    const selected = FROZEN_LEGACY_FIXTURE_CASE_IDS.map((caseId) => {
+      const entry = fixture.cases.find((candidate) => candidate.caseId === caseId)
+      expect(entry, caseId).toBeDefined()
+      return entry as BridgeFixtureCase
+    })
+    expect(selected.map((entry) => entry.caseId)).toEqual([...FROZEN_LEGACY_FIXTURE_CASE_IDS])
+    expect(
+      createHash('sha256').update(JSON.stringify(selected)).digest('hex'),
+    ).toBe('dce10a654672921bc4b26d4d14312abe81c0b93ac1de3fce48be3bd5beb7e5ee')
   })
 
   it('constructs without I/O and keeps the bridge transport separate from ERPC', () => {

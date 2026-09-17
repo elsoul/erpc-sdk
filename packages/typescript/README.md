@@ -239,13 +239,13 @@ amounts before asking the caller's wallet to manage allowance, signing, or
 broadcasting. The simulation call itself is read-only and uses only the
 configured RPC transport.
 
-## Optional Mayan Swift v2 bridge (introduced in 0.8.0)
+## Optional Mayan Swift v2 bridge
 
-The `0.8.0` API adds the Mayan Swift v2 client as an explicit standalone adapter
-for the reviewed
-issued EURC routes between Ethereum and Solana. It is not attached to the
-default `ErpcClient`; construct it separately when the external provider and
-its solver, relayer, and explorer dependencies are acceptable:
+The published `0.8.0` API provides the Mayan Swift v2 client as an explicit
+standalone adapter for the reviewed issued EURC routes between Ethereum and
+Solana. It is not attached to the default `ErpcClient`; construct it separately
+when the external provider and its solver, relayer, and explorer dependencies
+are acceptable:
 
 ```ts
 import {
@@ -295,6 +295,12 @@ set them to caller-approved base URLs to customize the provider endpoints.
 as unverified local settlement state. `builderApiKey` is a separate Mayan
 build-only key sent only to `/build`; quote and status calls do not receive it,
 and no eRPC credential is forwarded.
+
+The source tree also contains an unreleased native USDC addition for the same
+Ethereum/Solana directions. It uses Mayan's direct SWIFT route and does not add
+Jupiter or another hosted source-swap dependency. The addition is not included
+in the published `0.8.0` package; its package version and release publication
+remain future work.
 
 ## Namespaces
 

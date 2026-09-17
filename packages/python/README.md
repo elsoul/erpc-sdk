@@ -203,10 +203,10 @@ wallet_transaction = {
 The simulation result reports the canonical allowance and router amounts. The
 caller wallet controls allowance changes, signing, and broadcasting.
 
-## Optional Mayan Swift v2 bridge (introduced in 0.8.0)
+## Optional Mayan Swift v2 bridge (EURC in 0.8.0)
 
-The `0.8.0` API adds the standalone bridge adapter for the reviewed native EURC routes between
-Ethereum and Solana. It uses Mayan's configured quote, transaction-builder,
+The released `0.8.0` API includes the standalone bridge adapter for the reviewed
+native EURC routes between Ethereum and Solana. It uses Mayan's configured quote, transaction-builder,
 source-swap, solver, relayer, Wormhole, and Explorer services; normal ERPC
 configuration, keys, and headers are never forwarded to those services.
 
@@ -251,9 +251,13 @@ quote/build and the default Explorer endpoint is
 `builder_endpoint` and `explorer_endpoint` to customize them. The
 `builder_api_key` is a separate Mayan build-only key and is never an ERPC
 credential.
-The optional adapter is an external cross-chain intent flow with a Mayan
-source-side USDC conversion, including Jupiter v6 for Solana-origin orders;
-it is separate from the RPC-only swap helpers.
+
+Native USDC Ethereum mainnet and Solana mainnet directions are an unreleased
+source addition in this tree. They use direct Swift bridging with
+`sourceSwap.required` set to `False`, null router fields, and no Jupiter or
+0x source-swap dependency. Do not rely on USDC support from a published
+`0.8.0` wheel until a release explicitly includes this addition. The bridge
+adapter remains separate from the RPC-only swap helpers.
 
 Both exact wire names (`getSlot`, `eth_chainId`) and Python snake-case aliases
 (`get_slot`, `eth_chain_id`) create inert requests. Network I/O starts only

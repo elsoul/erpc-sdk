@@ -38,25 +38,37 @@ const (
 	bridgeEthereumName    = "ethereum"
 	bridgeSolanaName      = "solana"
 
-	bridgeEthereumEURCDeployment = "deployment-0011"
-	bridgeSolanaEURCDeployment   = "deployment-0013"
-	bridgeEthereumUSDCDeployment = "deployment-0008"
-	bridgeSolanaUSDCDeployment   = "deployment-0010"
-	bridgeEthereumEURCAddress    = "0x1abaea1f7c830bd89acc67ec4af516284b1bc33c"
-	bridgeSolanaEURCAddress      = "HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr"
-	bridgeEthereumUSDCAddress    = "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
-	bridgeSolanaUSDCAddress      = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
-	bridgeEthereumSwiftContract  = "0x40ffe85a28dc9993541449464d7529a922142960"
-	bridgeSolanaSwiftProgram     = "mayan34VedncxdK2XobtvWFDXQASUTBXhUVzt2kKgny"
-	bridgeEthereumForwarder      = "0x337685fdab40d39bd02028545a4ffa7d287cc3e2"
-	bridgeSolanaJupiterV6        = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4"
-	bridgeEthereumForwarderSel   = "0x30dedc57"
+	bridgeEthereumEURCDeployment   = "deployment-0011"
+	bridgeSolanaEURCDeployment     = "deployment-0013"
+	bridgeEthereumUSDCDeployment   = "deployment-0008"
+	bridgeSolanaUSDCDeployment     = "deployment-0010"
+	bridgeEthereumEURCAddress      = "0x1abaea1f7c830bd89acc67ec4af516284b1bc33c"
+	bridgeSolanaEURCAddress        = "HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr"
+	bridgeEthereumUSDCAddress      = "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
+	bridgeSolanaUSDCAddress        = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+	bridgeEthereumSwiftContract    = "0x40ffe85a28dc9993541449464d7529a922142960"
+	bridgeSolanaSwiftProgram       = "mayan34VedncxdK2XobtvWFDXQASUTBXhUVzt2kKgny"
+	bridgeEthereumForwarder        = "0x337685fdab40d39bd02028545a4ffa7d287cc3e2"
+	bridgeSolanaJupiterV6          = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4"
+	bridgeEthereumEURCForwarderSel = "0x30dedc57"
+	bridgeEthereumUSDCForwarderSel = "0xe4269fc4"
+	bridgeEthereumForwarderSel     = bridgeEthereumEURCForwarderSel
+	bridgeMayanUSDCMint            = "A9mUU4qviSctJVPJdBJWkb28deg915LYJKrzQ19ji3FM"
 )
 
 var bridgeBaseDependencies = []string{
 	"mayan-hosted-quote-api",
 	"mayan-hosted-transaction-builder",
 	"mayan-hosted-source-swap-builder",
+	"swift-auction-solvers",
+	"relayers",
+	"wormhole-guardian-messaging",
+	"mayan-explorer-indexer",
+}
+
+var bridgeDirectUSDCDependencies = []string{
+	"mayan-hosted-quote-api",
+	"mayan-hosted-transaction-builder",
 	"swift-auction-solvers",
 	"relayers",
 	"wormhole-guardian-messaging",
@@ -191,7 +203,7 @@ type normalizedBridgeConfig struct {
 	httpClient       *http.Client
 }
 
-// MayanSwiftV2QuoteRequest selects one of the two exact native EURC
+// MayanSwiftV2QuoteRequest selects one of the four exact native EURC or USDC
 // directions.
 type MayanSwiftV2QuoteRequest struct {
 	SourceChainID                string `json:"sourceChainId"`
@@ -213,8 +225,10 @@ type MayanSwiftV2SourceSwap struct {
 	IntermediateTokenStandard     string `json:"intermediateTokenStandard"`
 	IntermediateTokenDecimals     uint8  `json:"intermediateTokenDecimals"`
 	ProviderMinimumAmount         string `json:"providerMinimumAmount"`
-	RouterKind                    string `json:"routerKind"`
-	RouterAddress                 string `json:"routerAddress"`
+	// Direct USDC routes have no router. These pointers intentionally omit
+	// omitempty so their JSON keys are emitted as explicit null values.
+	RouterKind    *string `json:"routerKind"`
+	RouterAddress *string `json:"routerAddress"`
 }
 
 // MayanSwiftV2Quote is the normalized provider-signed quote.  The signature
@@ -328,6 +342,7 @@ type MayanSwiftV2StatusResult = MayanSwiftV2Status
 type BridgeClient = MayanSwiftV2BridgeClient
 
 type bridgeDirection struct {
+	asset                      string
 	capabilityID               string
 	sourceChainID              string
 	destinationChainID         string
@@ -337,18 +352,23 @@ type bridgeDirection struct {
 	destinationTokenAddress    string
 	sourceTokenStandard        string
 	destinationTokenStandard   string
+	sourceTokenName            string
+	destinationTokenName       string
 	sourceName                 string
 	destinationName            string
 	sourceProviderChainID      int
 	destinationProviderChainID int
 	sourceWormholeChainID      int
 	destinationWormholeChainID int
-	sourceEURCMint             string
-	destinationEURCMint        string
+	sourceTokenMint            string
+	destinationTokenMint       string
 	sourceUSDCDeployment       string
 	sourceUSDCAddress          string
 	sourceUSDCStandard         string
 	swiftContract              string
+	forwarderFunctionSelector  string
+	dependencies               []string
+	sourceSwapRequired         bool
 }
 
 type bridgeCapabilityRecord struct {
@@ -385,35 +405,86 @@ type bridgeCapabilityRecord struct {
 	Status                       string   `json:"status"`
 }
 
-func bridgeDirectionFacts(source, destination string) (bridgeDirection, error) {
+// bridgeDirectionFacts resolves the complete four-field route tuple.  A
+// chain-only lookup is intentionally unavailable: Ethereum<->Solana has both
+// EURC and USDC capabilities and must never select one arbitrarily.
+func bridgeDirectionFacts(source, destination, sourceTokenDeployment, destinationTokenDeployment string) (bridgeDirection, error) {
 	if source == bridgeEthereumChainID && destination == bridgeSolanaChainID {
+		isEURC := sourceTokenDeployment == bridgeEthereumEURCDeployment && destinationTokenDeployment == bridgeSolanaEURCDeployment
+		isUSDC := sourceTokenDeployment == bridgeEthereumUSDCDeployment && destinationTokenDeployment == bridgeSolanaUSDCDeployment
+		if !isEURC && !isUSDC {
+			return bridgeDirection{}, bridgeError(BridgeUnsupportedRoute)
+		}
+		asset := "eurc"
+		capabilityID := "bridge-mayan-swift-v2-eurc-eth-sol"
+		sourceAddress, destinationAddress := bridgeEthereumEURCAddress, bridgeSolanaEURCAddress
+		sourceName, destinationName := "EuroC", "EuroC"
+		sourceMint, destinationMint := "", bridgeSolanaEURCAddress
+		selector := bridgeEthereumEURCForwarderSel
+		dependencies := bridgeBaseDependencies
+		sourceSwapRequired := true
+		if isUSDC {
+			asset = "usdc"
+			capabilityID = "bridge-mayan-swift-v2-usdc-eth-sol"
+			sourceAddress, destinationAddress = bridgeEthereumUSDCAddress, bridgeSolanaUSDCAddress
+			sourceName, destinationName = "USD Coin", "USD Coin"
+			sourceMint, destinationMint = bridgeMayanUSDCMint, bridgeSolanaUSDCAddress
+			selector = bridgeEthereumUSDCForwarderSel
+			dependencies = bridgeDirectUSDCDependencies
+			sourceSwapRequired = false
+		}
 		return bridgeDirection{
-			capabilityID: "bridge-mayan-swift-v2-eurc-eth-sol", sourceChainID: source,
-			destinationChainID: destination, sourceTokenDeployment: bridgeEthereumEURCDeployment,
-			destinationTokenDeployment: bridgeSolanaEURCDeployment,
-			sourceTokenAddress:         bridgeEthereumEURCAddress, destinationTokenAddress: bridgeSolanaEURCAddress,
+			asset: asset, capabilityID: capabilityID, sourceChainID: source, destinationChainID: destination,
+			sourceTokenDeployment: sourceTokenDeployment, destinationTokenDeployment: destinationTokenDeployment,
+			sourceTokenAddress: sourceAddress, destinationTokenAddress: destinationAddress,
 			sourceTokenStandard: "erc20", destinationTokenStandard: "spl-token",
 			sourceName: bridgeEthereumName, destinationName: bridgeSolanaName,
+			sourceTokenName: sourceName, destinationTokenName: destinationName,
 			sourceProviderChainID: 1, destinationProviderChainID: 0,
 			sourceWormholeChainID: 2, destinationWormholeChainID: 1,
-			sourceEURCMint: "", destinationEURCMint: bridgeSolanaEURCAddress,
+			sourceTokenMint: sourceMint, destinationTokenMint: destinationMint,
 			sourceUSDCDeployment: bridgeEthereumUSDCDeployment, sourceUSDCAddress: bridgeEthereumUSDCAddress,
 			sourceUSDCStandard: "erc20", swiftContract: bridgeEthereumSwiftContract,
+			forwarderFunctionSelector: selector, dependencies: append([]string(nil), dependencies...),
+			sourceSwapRequired: sourceSwapRequired,
 		}, nil
 	}
 	if source == bridgeSolanaChainID && destination == bridgeEthereumChainID {
+		isEURC := sourceTokenDeployment == bridgeSolanaEURCDeployment && destinationTokenDeployment == bridgeEthereumEURCDeployment
+		isUSDC := sourceTokenDeployment == bridgeSolanaUSDCDeployment && destinationTokenDeployment == bridgeEthereumUSDCDeployment
+		if !isEURC && !isUSDC {
+			return bridgeDirection{}, bridgeError(BridgeUnsupportedRoute)
+		}
+		asset := "eurc"
+		capabilityID := "bridge-mayan-swift-v2-eurc-sol-eth"
+		sourceAddress, destinationAddress := bridgeSolanaEURCAddress, bridgeEthereumEURCAddress
+		sourceName, destinationName := "EuroC", "EuroC"
+		sourceMint, destinationMint := bridgeSolanaEURCAddress, ""
+		dependencies := append(append([]string(nil), bridgeBaseDependencies...), "jupiter-v6-source-swap")
+		sourceSwapRequired := true
+		if isUSDC {
+			asset = "usdc"
+			capabilityID = "bridge-mayan-swift-v2-usdc-sol-eth"
+			sourceAddress, destinationAddress = bridgeSolanaUSDCAddress, bridgeEthereumUSDCAddress
+			sourceName, destinationName = "USD Coin", "USD Coin"
+			sourceMint, destinationMint = bridgeSolanaUSDCAddress, bridgeMayanUSDCMint
+			dependencies = append([]string(nil), bridgeDirectUSDCDependencies...)
+			sourceSwapRequired = false
+		}
 		return bridgeDirection{
-			capabilityID: "bridge-mayan-swift-v2-eurc-sol-eth", sourceChainID: source,
-			destinationChainID: destination, sourceTokenDeployment: bridgeSolanaEURCDeployment,
-			destinationTokenDeployment: bridgeEthereumEURCDeployment,
-			sourceTokenAddress:         bridgeSolanaEURCAddress, destinationTokenAddress: bridgeEthereumEURCAddress,
+			asset: asset, capabilityID: capabilityID, sourceChainID: source, destinationChainID: destination,
+			sourceTokenDeployment: sourceTokenDeployment, destinationTokenDeployment: destinationTokenDeployment,
+			sourceTokenAddress: sourceAddress, destinationTokenAddress: destinationAddress,
 			sourceTokenStandard: "spl-token", destinationTokenStandard: "erc20",
 			sourceName: bridgeSolanaName, destinationName: bridgeEthereumName,
+			sourceTokenName: sourceName, destinationTokenName: destinationName,
 			sourceProviderChainID: 0, destinationProviderChainID: 1,
 			sourceWormholeChainID: 1, destinationWormholeChainID: 2,
-			sourceEURCMint: bridgeSolanaEURCAddress, destinationEURCMint: "",
+			sourceTokenMint: sourceMint, destinationTokenMint: destinationMint,
 			sourceUSDCDeployment: bridgeSolanaUSDCDeployment, sourceUSDCAddress: bridgeSolanaUSDCAddress,
 			sourceUSDCStandard: "spl-token", swiftContract: bridgeSolanaSwiftProgram,
+			forwarderFunctionSelector: "", dependencies: dependencies,
+			sourceSwapRequired: sourceSwapRequired,
 		}, nil
 	}
 	return bridgeDirection{}, bridgeError(BridgeUnsupportedRoute)
@@ -425,13 +496,12 @@ func bridgeOptionalString(value string) *string {
 }
 
 func expectedBridgeCapability(f bridgeDirection) bridgeCapabilityRecord {
-	dependencies := append([]string(nil), bridgeBaseDependencies...)
+	dependencies := append([]string(nil), f.dependencies...)
 	var forwarder, selector, jupiter *string
 	if f.sourceChainID == bridgeEthereumChainID {
-		forwarder, selector = bridgeOptionalString(bridgeEthereumForwarder), bridgeOptionalString(bridgeEthereumForwarderSel)
-	} else {
+		forwarder, selector = bridgeOptionalString(bridgeEthereumForwarder), bridgeOptionalString(f.forwarderFunctionSelector)
+	} else if f.asset == "eurc" {
 		jupiter = bridgeOptionalString(bridgeSolanaJupiterV6)
-		dependencies = append(dependencies, "jupiter-v6-source-swap")
 	}
 	return bridgeCapabilityRecord{
 		BridgeCapabilityID: f.capabilityID, ProviderID: "mayan-swift-v2", CapabilityKind: "external-provider-dynamic",
@@ -458,7 +528,9 @@ func bridgeCapabilityFor(f bridgeDirection) (bridgeCapabilityRecord, error) {
 		return bridgeCapabilityRecord{}, bridgeError(BridgeUnsupportedRoute)
 	}
 	for _, record := range records {
-		if record.BridgeCapabilityID == f.capabilityID && record.SourceChainID == f.sourceChainID && record.DestinationChainID == f.destinationChainID {
+		if record.BridgeCapabilityID == f.capabilityID &&
+			record.SourceChainID == f.sourceChainID && record.DestinationChainID == f.destinationChainID &&
+			record.SourceTokenDeploymentID == f.sourceTokenDeployment && record.DestinationTokenDeploymentID == f.destinationTokenDeployment {
 			return record, nil
 		}
 	}
@@ -499,12 +571,9 @@ func validateBridgeQuoteRequest(request MayanSwiftV2QuoteRequest) (MayanSwiftV2Q
 	if request.SlippageBps > 500 {
 		return MayanSwiftV2QuoteRequest{}, bridgeDirection{}, bridgeError(BridgeInvalidArgument)
 	}
-	facts, err := bridgeDirectionFacts(request.SourceChainID, request.DestinationChainID)
+	facts, err := bridgeDirectionFacts(request.SourceChainID, request.DestinationChainID, request.SourceTokenDeploymentID, request.DestinationTokenDeploymentID)
 	if err != nil {
 		return MayanSwiftV2QuoteRequest{}, bridgeDirection{}, err
-	}
-	if request.SourceTokenDeploymentID != facts.sourceTokenDeployment || request.DestinationTokenDeploymentID != facts.destinationTokenDeployment {
-		return MayanSwiftV2QuoteRequest{}, bridgeDirection{}, bridgeError(BridgeUnsupportedRoute)
 	}
 	if err := validateBridgeCapability(facts); err != nil {
 		return MayanSwiftV2QuoteRequest{}, bridgeDirection{}, err
@@ -972,7 +1041,7 @@ func bridgeProviderUint64(node *bridgeJSONNode, key string, positive bool) (stri
 	return normalizeCanonicalUint64(value, BridgeProviderInvalidResponse)
 }
 
-func bridgeProviderToken(node *bridgeJSONNode, expectedAddress, expectedStandard string, expectedChainID, expectedWormholeID int, expectedMint string) error {
+func bridgeProviderToken(node *bridgeJSONNode, expectedAddress, expectedStandard string, expectedChainID, expectedWormholeID int, expectedMint, expectedName string) error {
 	if node == nil || node.objectEntries == nil {
 		return bridgeError(BridgeProviderInvalidResponse)
 	}
@@ -989,7 +1058,7 @@ func bridgeProviderToken(node *bridgeJSONNode, expectedAddress, expectedStandard
 		return bridgeError(BridgeProviderInvalidResponse)
 	}
 	name, err := bridgeProviderString(node, "name", false)
-	if err != nil || name != "EuroC" {
+	if err != nil || name != expectedName {
 		return bridgeError(BridgeProviderInvalidResponse)
 	}
 	standard, err := bridgeProviderString(node, "standard", false)
@@ -1102,14 +1171,14 @@ func validateProviderQuote(node *bridgeJSONNode, body string, request MayanSwift
 	if err != nil {
 		return validatedBridgeProviderQuote{}, err
 	}
-	if err := bridgeProviderToken(fromToken, facts.sourceTokenAddress, providerWireStandard(facts), facts.sourceProviderChainID, facts.sourceWormholeChainID, facts.sourceEURCMint); err != nil {
+	if err := bridgeProviderToken(fromToken, facts.sourceTokenAddress, providerWireStandard(facts), facts.sourceProviderChainID, facts.sourceWormholeChainID, facts.sourceTokenMint, facts.sourceTokenName); err != nil {
 		return validatedBridgeProviderQuote{}, err
 	}
 	destinationStandard := "erc20"
 	if facts.destinationChainID == bridgeSolanaChainID {
 		destinationStandard = "spl"
 	}
-	if err := bridgeProviderToken(toToken, facts.destinationTokenAddress, destinationStandard, facts.destinationProviderChainID, facts.destinationWormholeChainID, facts.destinationEURCMint); err != nil {
+	if err := bridgeProviderToken(toToken, facts.destinationTokenAddress, destinationStandard, facts.destinationProviderChainID, facts.destinationWormholeChainID, facts.destinationTokenMint, facts.destinationTokenName); err != nil {
 		return validatedBridgeProviderQuote{}, err
 	}
 	if _, err := bridgeProviderAddress(node, "swiftInputContract", facts.sourceUSDCAddress); err != nil {
@@ -1138,20 +1207,25 @@ func validateProviderQuote(node *bridgeJSONNode, body string, request MayanSwift
 	if parseErr != nil || math.IsNaN(middleValue) || math.IsInf(middleValue, 0) || middleValue <= 0 {
 		return validatedBridgeProviderQuote{}, bridgeError(BridgeProviderInvalidResponse)
 	}
-	routerAddress := ""
-	routerKind := "provider-selected-evm"
-	if facts.sourceChainID == bridgeEthereumChainID {
+	var routerAddress, routerKind *string
+	if facts.asset == "usdc" {
+		if value, present := bridgeObjectValue(node, "evmSwapRouterAddress"); present && value != nil {
+			return validatedBridgeProviderQuote{}, bridgeError(BridgeProviderInvalidResponse)
+		}
+	} else if facts.sourceChainID == bridgeEthereumChainID {
 		providerRouter, routerErr := bridgeProviderString(node, "evmSwapRouterAddress", false)
 		if routerErr != nil {
 			return validatedBridgeProviderQuote{}, routerErr
 		}
-		routerAddress, routerErr = normalizeEVMAddress(providerRouter, BridgeProviderInvalidResponse)
+		normalizedRouter, routerErr := normalizeEVMAddress(providerRouter, BridgeProviderInvalidResponse)
 		if routerErr != nil {
 			return validatedBridgeProviderQuote{}, routerErr
 		}
+		routerAddress = bridgeOptionalString(normalizedRouter)
+		routerKind = bridgeOptionalString("provider-selected-evm")
 	} else {
-		routerKind = "jupiter-v6"
-		routerAddress = bridgeSolanaJupiterV6
+		routerAddress = bridgeOptionalString(bridgeSolanaJupiterV6)
+		routerKind = bridgeOptionalString("jupiter-v6")
 		if value, present := bridgeObjectValue(node, "evmSwapRouterAddress"); present && value != nil {
 			return validatedBridgeProviderQuote{}, bridgeError(BridgeProviderInvalidResponse)
 		}
@@ -1164,10 +1238,7 @@ func validateProviderQuote(node *bridgeJSONNode, body string, request MayanSwift
 	if err != nil || !isHexSized(signature, 130) {
 		return validatedBridgeProviderQuote{}, bridgeError(BridgeProviderInvalidResponse)
 	}
-	dependencies := append([]string(nil), bridgeBaseDependencies...)
-	if facts.sourceChainID == bridgeSolanaChainID {
-		dependencies = append(dependencies, "jupiter-v6-source-swap")
-	}
+	dependencies := append([]string(nil), facts.dependencies...)
 	return validatedBridgeProviderQuote{
 		quote: MayanSwiftV2Quote{
 			QuoteKind: "mayan-swift-v2", ProviderID: "mayan-swift-v2",
@@ -1176,7 +1247,13 @@ func validateProviderQuote(node *bridgeJSONNode, body string, request MayanSwift
 			AmountIn: effective, ExpectedAmountOut: expected, MinimumAmountOut: minimum, MinimumReceived: received,
 			Deadline: deadlineText, SlippageBps: uint64(slippage), QuoteID: strings.ToLower(quoteID), ProviderSignature: strings.ToLower(signature),
 			SourceSwap: MayanSwiftV2SourceSwap{
-				Required: true, InputTokenDeploymentID: facts.sourceTokenDeployment,
+				Required: facts.sourceSwapRequired,
+				InputTokenDeploymentID: func() string {
+					if facts.asset == "usdc" {
+						return facts.sourceUSDCDeployment
+					}
+					return facts.sourceTokenDeployment
+				}(),
 				IntermediateTokenDeploymentID: facts.sourceUSDCDeployment, IntermediateTokenAddress: facts.sourceUSDCAddress,
 				IntermediateTokenStandard: providerWireStandard(facts), IntermediateTokenDecimals: 6,
 				ProviderMinimumAmount: middle.rawNumber, RouterKind: routerKind, RouterAddress: routerAddress,
@@ -1201,6 +1278,12 @@ func isHexSized(value string, hexDigits int) bool {
 
 func cloneBridgeQuote(quote MayanSwiftV2Quote) MayanSwiftV2Quote {
 	quote.Dependencies = append([]string(nil), quote.Dependencies...)
+	if quote.SourceSwap.RouterKind != nil {
+		quote.SourceSwap.RouterKind = bridgeOptionalString(*quote.SourceSwap.RouterKind)
+	}
+	if quote.SourceSwap.RouterAddress != nil {
+		quote.SourceSwap.RouterAddress = bridgeOptionalString(*quote.SourceSwap.RouterAddress)
+	}
 	return quote
 }
 
@@ -1212,11 +1295,8 @@ func validateNormalizedBridgeQuote(quote MayanSwiftV2Quote, code BridgeErrorCode
 	if quote.QuoteKind != "mayan-swift-v2" || quote.ProviderID != "mayan-swift-v2" || quote.QuoteVerification != "provider-signed-not-locally-verified" {
 		return MayanSwiftV2Quote{}, bridgeDirection{}, bridgeError(code)
 	}
-	facts, err := bridgeDirectionFacts(quote.SourceChainID, quote.DestinationChainID)
+	facts, err := bridgeDirectionFacts(quote.SourceChainID, quote.DestinationChainID, quote.SourceTokenDeploymentID, quote.DestinationTokenDeploymentID)
 	if err != nil {
-		return MayanSwiftV2Quote{}, bridgeDirection{}, bridgeError(code)
-	}
-	if quote.SourceTokenDeploymentID != facts.sourceTokenDeployment || quote.DestinationTokenDeploymentID != facts.destinationTokenDeployment {
 		return MayanSwiftV2Quote{}, bridgeDirection{}, bridgeError(code)
 	}
 	amount, err := normalizePositiveUint64(quote.AmountIn, code)
@@ -1243,24 +1323,29 @@ func validateNormalizedBridgeQuote(quote MayanSwiftV2Quote, code BridgeErrorCode
 	if err != nil {
 		return MayanSwiftV2Quote{}, bridgeDirection{}, err
 	}
-	if !quote.SourceSwap.Required || quote.SourceSwap.InputTokenDeploymentID != facts.sourceTokenDeployment || quote.SourceSwap.IntermediateTokenDeploymentID != facts.sourceUSDCDeployment || quote.SourceSwap.IntermediateTokenAddress != facts.sourceUSDCAddress || quote.SourceSwap.IntermediateTokenStandard != providerWireStandard(facts) || quote.SourceSwap.IntermediateTokenDecimals != 6 || quote.SourceSwap.ProviderMinimumAmount == "" {
+	wantedInputDeployment := facts.sourceTokenDeployment
+	if facts.asset == "usdc" {
+		wantedInputDeployment = facts.sourceUSDCDeployment
+	}
+	if quote.SourceSwap.Required != facts.sourceSwapRequired || quote.SourceSwap.InputTokenDeploymentID != wantedInputDeployment || quote.SourceSwap.IntermediateTokenDeploymentID != facts.sourceUSDCDeployment || quote.SourceSwap.IntermediateTokenAddress != facts.sourceUSDCAddress || quote.SourceSwap.IntermediateTokenStandard != providerWireStandard(facts) || quote.SourceSwap.IntermediateTokenDecimals != 6 || quote.SourceSwap.ProviderMinimumAmount == "" {
 		return MayanSwiftV2Quote{}, bridgeDirection{}, bridgeError(code)
 	}
 	normalized := cloneBridgeQuote(quote)
 	normalized.AmountIn, normalized.ExpectedAmountOut, normalized.MinimumAmountOut, normalized.MinimumReceived, normalized.Deadline = amount, expected, minimum, received, deadline
 	normalized.QuoteID, normalized.ProviderSignature = strings.ToLower(quote.QuoteID), strings.ToLower(quote.ProviderSignature)
-	if facts.sourceChainID == bridgeEthereumChainID {
-		if quote.SourceSwap.RouterKind != "provider-selected-evm" || !isEVMAddress(quote.SourceSwap.RouterAddress) || bridgeIsZeroEVMAddress(quote.SourceSwap.RouterAddress) {
+	if facts.asset == "usdc" {
+		if quote.SourceSwap.RouterKind != nil || quote.SourceSwap.RouterAddress != nil {
 			return MayanSwiftV2Quote{}, bridgeDirection{}, bridgeError(code)
 		}
-		normalized.SourceSwap.RouterAddress = strings.ToLower(quote.SourceSwap.RouterAddress)
-	} else if quote.SourceSwap.RouterKind != "jupiter-v6" || quote.SourceSwap.RouterAddress != bridgeSolanaJupiterV6 {
+	} else if facts.sourceChainID == bridgeEthereumChainID {
+		if quote.SourceSwap.RouterKind == nil || *quote.SourceSwap.RouterKind != "provider-selected-evm" || quote.SourceSwap.RouterAddress == nil || !isEVMAddress(*quote.SourceSwap.RouterAddress) || bridgeIsZeroEVMAddress(*quote.SourceSwap.RouterAddress) {
+			return MayanSwiftV2Quote{}, bridgeDirection{}, bridgeError(code)
+		}
+		normalized.SourceSwap.RouterAddress = bridgeOptionalString(strings.ToLower(*quote.SourceSwap.RouterAddress))
+	} else if quote.SourceSwap.RouterKind == nil || *quote.SourceSwap.RouterKind != "jupiter-v6" || quote.SourceSwap.RouterAddress == nil || *quote.SourceSwap.RouterAddress != bridgeSolanaJupiterV6 {
 		return MayanSwiftV2Quote{}, bridgeDirection{}, bridgeError(code)
 	}
-	wantedDependencies := append([]string(nil), bridgeBaseDependencies...)
-	if facts.sourceChainID == bridgeSolanaChainID {
-		wantedDependencies = append(wantedDependencies, "jupiter-v6-source-swap")
-	}
+	wantedDependencies := append([]string(nil), facts.dependencies...)
 	if !reflect.DeepEqual(quote.Dependencies, wantedDependencies) || len(quote.RawSignedQuoteJSON) > bridgeMaxRawQuoteBytes || quote.RawSignedQuoteJSON == "" {
 		return MayanSwiftV2Quote{}, bridgeDirection{}, bridgeError(code)
 	}
@@ -1945,7 +2030,7 @@ func bridgeCode(err error) BridgeErrorCode {
 	return ""
 }
 
-func validateEVMBuildResult(wrapper *bridgeJSONNode, swapper string) (MayanSwiftV2UnsignedTransaction, error) {
+func validateEVMBuildResult(wrapper *bridgeJSONNode, swapper string, facts bridgeDirection) (MayanSwiftV2UnsignedTransaction, error) {
 	category, err := bridgeProviderString(wrapper, "chainCategory", false)
 	if err != nil || category != "evm" {
 		return MayanSwiftV2UnsignedTransaction{}, bridgeError(BridgeBuildInvalid)
@@ -1979,7 +2064,15 @@ func validateEVMBuildResult(wrapper *bridgeJSONNode, swapper string) (MayanSwift
 		return MayanSwiftV2UnsignedTransaction{}, bridgeError(BridgeBuildInvalid)
 	}
 	data = strings.ToLower(data)
-	if len(data) < 2+8+13*64 || len(data)%2 != 0 || len(data) < 2 || data[0:2] != "0x" || !strings.HasPrefix(data, bridgeEthereumForwarderSel) {
+	selector := facts.forwarderFunctionSelector
+	if selector == "" {
+		return MayanSwiftV2UnsignedTransaction{}, bridgeError(BridgeBuildInvalid)
+	}
+	minimumWords := 13
+	if facts.asset == "usdc" {
+		minimumWords = 10
+	}
+	if len(data) < 2+8+minimumWords*64 || len(data)%2 != 0 || len(data) < 2 || data[0:2] != "0x" || !strings.HasPrefix(data, selector) {
 		return MayanSwiftV2UnsignedTransaction{}, bridgeError(BridgeBuildInvalid)
 	}
 	for i := 2; i < len(data); i++ {
@@ -2036,7 +2129,7 @@ func validateBuildResponse(response bridgeProviderResponse, quote MayanSwiftV2Qu
 	}
 	var transaction MayanSwiftV2UnsignedTransaction
 	if facts.sourceChainID == bridgeEthereumChainID {
-		transaction, err = validateEVMBuildResult(wrapper, swapper)
+		transaction, err = validateEVMBuildResult(wrapper, swapper, facts)
 	} else {
 		transaction, err = validateSolanaBuildResult(wrapper, swapper)
 	}
@@ -2045,7 +2138,7 @@ func validateBuildResponse(response bridgeProviderResponse, quote MayanSwiftV2Qu
 	}
 	var allowance *MayanSwiftV2Allowance
 	if facts.sourceChainID == bridgeEthereumChainID {
-		allowance = &MayanSwiftV2Allowance{TokenDeploymentID: bridgeEthereumEURCDeployment, TokenAddress: bridgeEthereumEURCAddress, Owner: swapper, Spender: bridgeEthereumForwarder, RequiredAmount: quote.AmountIn}
+		allowance = &MayanSwiftV2Allowance{TokenDeploymentID: facts.sourceTokenDeployment, TokenAddress: facts.sourceTokenAddress, Owner: swapper, Spender: bridgeEthereumForwarder, RequiredAmount: quote.AmountIn}
 	}
 	return MayanSwiftV2Build{
 		BuildKind: "mayan-swift-v2-unsigned", ProviderID: "mayan-swift-v2", Quote: cloneBridgeQuote(quote),

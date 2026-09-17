@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "test_helper"
+require "digest"
 require "fileutils"
 
 class BridgeCancellationFlag
@@ -62,6 +63,20 @@ class BridgeTest < Minitest::Test
   ROOT = File.expand_path("../../..", __dir__)
   FIXTURE_PATH = File.join(ROOT, "registry", "fixtures", "mayan-swift-v2-cases.json")
   FIXTURE = JSON.parse(File.read(FIXTURE_PATH)).freeze
+  FROZEN_LEGACY_FIXTURE_CASE_IDS = %w[
+    quote-eth-sol-synthetic quote-sol-eth-synthetic build-eth-sol-synthetic
+    build-sol-eth-synthetic status-eth-inprogress-synthetic status-eth-completed-synthetic
+    status-sol-refunded-synthetic status-sol-unknown-synthetic status-eth-not-found-synthetic
+    quote-duplicate-key quote-malformed-json quote-expired quote-mismatched-amount
+    quote-bad-signature-shape quote-json-depth-limit quote-body-size-limit quote-unsupported-route
+    build-auth-required-local build-quote-mismatch build-evm-forwarder-violation
+    build-evm-selector-violation build-evm-value-violation build-solana-framing-violation
+    build-solana-fee-payer-violation build-solana-extra-signer-violation
+    build-solana-swap-message-violation build-http-auth-401 build-http-rate-limit-429
+    quote-redirect-rejected quote-timeout quote-aborted status-invalid-evm-hash
+    status-invalid-provider-fields build-eth-sol-wrong-evm-destination
+    build-sol-eth-wrong-solana-destination quote-eth-sol-zero-validity-margin
+  ].freeze
 
   def test_replays_literal_quote_build_status_and_safety_fixture
     assert_equal 1, FIXTURE.fetch("schemaVersion")
@@ -88,6 +103,16 @@ class BridgeTest < Minitest::Test
     client.close
     client.close
     assert_equal 0, calls
+  end
+
+  def test_preserves_the_frozen_legacy_fixture_cases_and_order
+    selected = FROZEN_LEGACY_FIXTURE_CASE_IDS.map do |case_id|
+      FIXTURE.fetch("cases").find { |entry| entry.fetch("caseId") == case_id }.tap do |entry|
+        raise "missing frozen bridge fixture #{case_id}" unless entry
+      end
+    end
+    assert_equal FROZEN_LEGACY_FIXTURE_CASE_IDS, selected.map { |entry| entry.fetch("caseId") }
+    assert_equal "dce10a654672921bc4b26d4d14312abe81c0b93ac1de3fce48be3bd5beb7e5ee", Digest::SHA256.hexdigest(JSON.generate(selected))
   end
 
   def test_configuration_and_errors_do_not_expose_provider_key
@@ -284,7 +309,10 @@ class BridgeTest < Minitest::Test
                 quotes[entry.fetch("caseId")] = quotes_result.first unless quotes_result.empty?
               end
             when "build"
-              request = entry.fetch("request").merge("quote" => quotes.fetch(entry.fetch("quoteCaseId")))
+              quote = apply_quote_mutation(
+                quotes.fetch(entry.fetch("quoteCaseId")), entry.fetch("quoteMutation", nil)
+              )
+              request = build_request_for_fixture(entry.fetch("request"), quote).merge("quote" => quote)
               client.build_unsigned(request)
             when "status"
               client.get_status(entry.fetch("request"))
@@ -312,6 +340,53 @@ class BridgeTest < Minitest::Test
         "headers" => headers,
         "body" => request.fetch(:body, nil)
       }
+    end
+  end
+
+  def apply_quote_mutation(quote, mutation)
+    return quote if mutation.nil?
+
+    value = JSON.parse(JSON.generate(quote))
+    case mutation.fetch("kind")
+    when "normalized-set"
+      path = mutation.fetch("path")
+      mutation_value = mutation.fetch("value")
+      if path == "sourceSwap.required" && mutation_value == true
+        value.fetch("sourceSwap")["required"] = true
+      elsif path == "sourceTokenDeploymentId" && %w[deployment-0008 deployment-0011].include?(mutation_value)
+        value["sourceTokenDeploymentId"] = mutation_value
+      else
+        raise "unsupported normalized bridge quote mutation"
+      end
+    when "raw-replace"
+      raise "unsupported raw bridge quote mutation" unless mutation.fetch("path") == "rawSignedQuoteJson"
+
+      raw = value.fetch("rawSignedQuoteJson")
+      from = mutation.fetch("from")
+      raise "raw quote mutation source was not found" unless raw.include?(from)
+
+      value["rawSignedQuoteJson"] = raw.sub(from, mutation.fetch("to"))
+    else
+      raise "unsupported bridge quote mutation"
+    end
+    value
+  end
+
+  def build_request_for_fixture(request, quote)
+    allowed = %w[swapperAddress destinationAddress refundAddress]
+    result = request.select { |key, _| allowed.include?(key) }
+    return result if result.key?("swapperAddress") && result.key?("destinationAddress")
+
+    if quote.fetch("sourceChainId") == "eip155:1"
+      result.merge(
+        "swapperAddress" => "0x2222222222222222222222222222222222222222",
+        "destinationAddress" => "So11111111111111111111111111111111111111112"
+      )
+    else
+      result.merge(
+        "swapperAddress" => "So11111111111111111111111111111111111111112",
+        "destinationAddress" => "0x3333333333333333333333333333333333333333"
+      )
     end
   end
 

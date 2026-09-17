@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import os
 import platform
@@ -23,6 +24,44 @@ from erpc_sdk.types import RequestOptions
 
 _FIXTURE_PATH = Path(__file__).parents[3] / "registry/fixtures/mayan-swift-v2-cases.json"
 _FIXTURE = json.loads(_FIXTURE_PATH.resolve().read_text(encoding="utf-8"))
+_FROZEN_LEGACY_FIXTURE_CASE_IDS = (
+    "quote-eth-sol-synthetic",
+    "quote-sol-eth-synthetic",
+    "build-eth-sol-synthetic",
+    "build-sol-eth-synthetic",
+    "status-eth-inprogress-synthetic",
+    "status-eth-completed-synthetic",
+    "status-sol-refunded-synthetic",
+    "status-sol-unknown-synthetic",
+    "status-eth-not-found-synthetic",
+    "quote-duplicate-key",
+    "quote-malformed-json",
+    "quote-expired",
+    "quote-mismatched-amount",
+    "quote-bad-signature-shape",
+    "quote-json-depth-limit",
+    "quote-body-size-limit",
+    "quote-unsupported-route",
+    "build-auth-required-local",
+    "build-quote-mismatch",
+    "build-evm-forwarder-violation",
+    "build-evm-selector-violation",
+    "build-evm-value-violation",
+    "build-solana-framing-violation",
+    "build-solana-fee-payer-violation",
+    "build-solana-extra-signer-violation",
+    "build-solana-swap-message-violation",
+    "build-http-auth-401",
+    "build-http-rate-limit-429",
+    "quote-redirect-rejected",
+    "quote-timeout",
+    "quote-aborted",
+    "status-invalid-evm-hash",
+    "status-invalid-provider-fields",
+    "build-eth-sol-wrong-evm-destination",
+    "build-sol-eth-wrong-solana-destination",
+    "quote-eth-sol-zero-validity-margin",
+)
 
 
 def _response(body: str | None, status: int) -> httpx.Response:
@@ -43,6 +82,40 @@ def _trace_entry(request: httpx.Request) -> dict[str, object]:
         "headers": headers,
         "body": request.content.decode("utf-8") if request.content else None,
     }
+
+
+def _apply_quote_mutation(
+    quote: dict[str, object], mutation: dict[str, object] | None
+) -> dict[str, object]:
+    if mutation is None:
+        return quote
+    value = cast(dict[str, object], json.loads(json.dumps(quote, separators=(",", ":"))))
+    kind = mutation.get("kind")
+    if kind == "normalized-set":
+        path = mutation.get("path")
+        mutation_value = mutation.get("value")
+        if path == "sourceSwap.required" and mutation_value is True:
+            source_swap = cast(dict[str, object], value["sourceSwap"])
+            source_swap["required"] = True
+            return value
+        if path == "sourceTokenDeploymentId" and mutation_value in {
+            "deployment-0008",
+            "deployment-0011",
+        }:
+            value["sourceTokenDeploymentId"] = mutation_value
+            return value
+        raise AssertionError("unsupported normalized bridge quote mutation")
+    if kind == "raw-replace":
+        if mutation.get("path") != "rawSignedQuoteJson":
+            raise AssertionError("unsupported raw bridge quote mutation")
+        raw = cast(str, value["rawSignedQuoteJson"])
+        source = mutation.get("from")
+        replacement = mutation.get("to")
+        if not isinstance(source, str) or not isinstance(replacement, str) or source not in raw:
+            raise AssertionError("raw quote mutation source was not found")
+        value["rawSignedQuoteJson"] = raw.replace(source, replacement, 1)
+        return value
+    raise AssertionError("unsupported bridge quote mutation")
 
 
 class _TrackingByteStream(httpx.AsyncByteStream):
@@ -120,7 +193,9 @@ async def _run_case(
             outcome: dict[str, object] = {"kind": "success", "value": value}
         elif entry["method"] == "build":
             request = dict(entry["request"])
-            request["quote"] = quotes[entry["quoteCaseId"]]
+            request["quote"] = _apply_quote_mutation(
+                quotes[entry["quoteCaseId"]], entry.get("quoteMutation")
+            )
             value = await client.build_unsigned(request)
             outcome = {"kind": "success", "value": value}
         else:
@@ -153,6 +228,20 @@ async def test_bridge_replays_literal_fixture() -> None:
         outcome, trace = await _run_case(entry, quotes)
         assert outcome == entry["expected"], entry["caseId"]
         assert trace == entry["httpTrace"], entry["caseId"]
+
+
+def test_bridge_preserves_frozen_legacy_fixture_cases_and_order() -> None:
+    selected = [
+        next(
+            entry for entry in _FIXTURE["cases"] if entry["caseId"] == case_id
+        )
+        for case_id in _FROZEN_LEGACY_FIXTURE_CASE_IDS
+    ]
+    assert [entry["caseId"] for entry in selected] == list(_FROZEN_LEGACY_FIXTURE_CASE_IDS)
+    encoded = json.dumps(selected, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    assert hashlib.sha256(encoded).hexdigest() == (
+        "dce10a654672921bc4b26d4d14312abe81c0b93ac1de3fce48be3bd5beb7e5ee"
+    )
 
 
 @pytest.mark.asyncio

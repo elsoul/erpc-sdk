@@ -94,6 +94,7 @@ versions are Rust 1.85, Python 3.11, Go 1.22, and Ruby 3.1.
 | Caller-owned direct RPC overrides (`solanaRpc`, `ethereumRpc`, `avalancheCRpc`) | Not included | Introduced in `0.8.0`; requires `0.8.0` |
 | Reviewed EVM exact-input preparation and RPC simulation | Not included | Introduced in `0.8.0`; requires `0.8.0` |
 | Optional Mayan Swift v2 native EURC bridge | Not included | Introduced in `0.8.0`; requires `0.8.0` |
+| Mayan Swift v2 native USDC bridge directions | Not included | Source addition pending publication; current `0.8.0` packages remain EURC-only |
 | Solana CLMM quotes; multi-hop routing; SDK signing/sending | Future work | Future work |
 
 The `0.7.0` column records the published history baseline. The `0.8.0` column
@@ -331,6 +332,13 @@ services. Its source-side USDC conversion and Solana-origin Jupiter v6
 dependency are visible in returned data. This is the explicit bridge-only
 external-provider exception; normal SDK swaps remain configured RPC and local
 calculation.
+
+The source checkout now contains reviewed native-USDC directions with deployment
+IDs `deployment-0008` (Ethereum) and `deployment-0010` (Solana). They use a
+direct source route with nullable router fields and no Jupiter/source-swap
+dependency. The USDC addition is unreleased; the currently published `0.8.0`
+package remains EURC-only until a future package version is explicitly
+published. The runnable example below therefore uses the current EURC API.
 
 ```ts
 import { createMayanSwiftV2BridgeClient, TOKEN_CHAIN_IDS } from '@elsoul/erpc-sdk'

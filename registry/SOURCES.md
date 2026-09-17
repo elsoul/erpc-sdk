@@ -32,6 +32,36 @@ As of 2026-09-15, the catalog is a bounded implementation seed selected from iss
 | Chainlink | <https://docs.chain.link/resources/link-token-contracts> | LINK Ethereum deployment |
 | LFJ | <https://docs.lfj.gg/lfj-dex/contracts> | JOE Avalanche deployment |
 
+## Mayan Swift v2 native USDC source packet (2026-09-17)
+
+The separate [`mayan-swift-v2-usdc-2026-09-17.json`](./evidence/mayan-swift-v2-usdc-2026-09-17.json)
+packet records the reviewed native USDC bindings and bounded provider
+observations. It adds only Ethereum mainnet and Solana mainnet directions:
+`deployment-0008` (`0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48`) and
+`deployment-0010` (`EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v`). The
+Ethereum provider mint `A9mUU4qviSctJVPJdBJWkb28deg915LYJKrzQ19ji3FM` is
+provider metadata; it is not an Ethereum token address. Solana provider
+contract, mint, and origin metadata use the native USDC mint.
+
+| Source | As of | Selected fact or role |
+| --- | --- | --- |
+| <https://developers.circle.com/stablecoins/usdc-contract-addresses> | 2026-09-17 | Native USDC Ethereum and Solana deployment facts |
+| <https://docs.mayan.finance/integration/quote-api> | 2026-09-17 | Closed quote/build request and response fields |
+| <https://docs.mayan.finance/architecture/swift> | 2026-09-17 | Swift solver, relayer, and messaging context |
+| <https://github.com/mayan-finance/swap-sdk/tree/c4c98031aaad9264d17630d7b4de0cb18688cf78> | 2026-09-17 | Pinned public SDK and address observations; no source copied |
+| <https://github.com/mayan-finance/tx-builder/tree/e966f16a155cd9091b02ef5d9b91c3f837c228ad> | 2026-09-17 | Pinned builder envelope and direct selector observations |
+
+Rydia's bounded public observations at 2026-09-17T09:04Z returned HTTP 200
+for all four exact EURC/USDC Swift V2 non-gasless quote directions. Four
+hosted keyless build observations returned HTTP 401 `UNAUTHORIZED`; no
+authenticated build or settlement evidence was captured, and the deployed
+provider revision is unknown. The direct USDC routes therefore keep the six
+dependencies `mayan-hosted-quote-api`, `mayan-hosted-transaction-builder`,
+`swift-auction-solvers`, `relayers`, `wormhole-guardian-messaging`, and
+`mayan-explorer-indexer`; the EURC source-swap builder and Jupiter dependency
+are not inherited. This is engineering evidence, not a publication or legal
+clearance claim.
+
 ## Discovery and ranking source packet (2026-09-16)
 
 The bounded primary-source index for the default RPC discovery and ranking

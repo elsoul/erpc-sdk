@@ -242,8 +242,9 @@ See the [Solana v1 guide](https://github.com/elsoul/erpc-sdk/blob/main/packages/
 
 ## Optional Mayan Swift v2 bridge (introduced in 0.8.0)
 
-The `0.8.0` API's `MayanSwiftV2BridgeClient` is an explicit standalone adapter for the reviewed
-issued EURC routes between Ethereum mainnet and Solana mainnet. It does not
+The published `0.8.0` API's `MayanSwiftV2BridgeClient` is an explicit standalone adapter for the
+reviewed issued EURC routes between Ethereum mainnet and Solana mainnet. The current source
+checkout adds unreleased native USDC routes alongside EURC. The adapter does not
 attach to `ERPC::Client`, inherit eRPC credentials or headers, or make any
 request during construction. Configure the Mayan builder and Explorer
 endpoints separately when needed:
@@ -272,14 +273,34 @@ Builds return unsigned, structurally checked provider transactions and an
 Ethereum allowance description; the SDK does not approve, sign, broadcast,
 submit, cancel, refund, or claim settlement verification. Provider source
 swaps use Mayan's disclosed internal USDC path (and Jupiter v6 for Solana
-source orders), so this optional adapter is separate from the SDK's configured
-RPC-only swap helpers. The defaults are `https://tx-builder.mayan.finance` for
+source EURC orders), while native USDC uses direct forwarding with no source
+swap or Jupiter dependency. This optional adapter is separate from the SDK's configured
+RPC-only swap helpers. Native USDC Ethereum builds use the reviewed
+`0xe4269fc4` selector. The defaults are `https://tx-builder.mayan.finance` for
 quote/build and `https://explorer-api.mayan.finance/v3` for indexed status; set
 `builder_endpoint` and `explorer_endpoint` to customize them. The
 `builder_api_key` is optional for quote and status calls, and is a separate
 Mayan build-only key required for builds unless the caller explicitly enables a
 compatible no-auth builder; it is never an eRPC credential.
 `BridgeError#code` provides stable secret-free errors.
+
+Select native USDC with its exact deployment IDs:
+
+```ruby
+quotes = bridge.quote_exact_input(
+  {
+    "sourceChainId" => ERPC::TokenChainIDs::ETHEREUM_MAINNET,
+    "destinationChainId" => ERPC::TokenChainIDs::SOLANA_MAINNET,
+    "sourceTokenDeploymentId" => "deployment-0008",
+    "destinationTokenDeploymentId" => "deployment-0010",
+    "amountIn" => "100000000",
+    "slippageBps" => 50
+  }
+)
+```
+
+The published `0.8.0` gem supports the EURC bridge only. Native USDC support is
+currently source-only and has not been published.
 
 ## Namespaces
 

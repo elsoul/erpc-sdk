@@ -78,15 +78,15 @@ export interface MayanSwiftV2QuoteRequest {
 }
 
 export interface MayanSwiftV2SourceSwap {
-  readonly required: true
+  readonly required: boolean
   readonly inputTokenDeploymentId: string
   readonly intermediateTokenDeploymentId: string
   readonly intermediateTokenAddress: string
   readonly intermediateTokenStandard: string
   readonly intermediateTokenDecimals: 6
   readonly providerMinimumAmount: string
-  readonly routerKind: 'provider-selected-evm' | 'jupiter-v6'
-  readonly routerAddress: string
+  readonly routerKind: 'provider-selected-evm' | 'jupiter-v6' | null
+  readonly routerAddress: string | null
 }
 
 export interface MayanSwiftV2Quote {
@@ -147,7 +147,7 @@ export interface MayanSwiftV2Build {
   readonly destinationChainId: string
   readonly transaction: MayanSwiftV2UnsignedTransaction
   readonly allowance: {
-    readonly tokenDeploymentId: 'deployment-0011'
+    readonly tokenDeploymentId: string
     readonly tokenAddress: string
     readonly owner: string
     readonly spender: string
@@ -290,7 +290,9 @@ const ETHEREUM_SWIFT_CONTRACT =
 const SOLANA_SWIFT_PROGRAM = 'mayan34VedncxdK2XobtvWFDXQASUTBXhUVzt2kKgny'
 const ETHEREUM_FORWARDER = '0x337685fdab40d39bd02028545a4ffa7d287cc3e2'
 const SOLANA_JUPITER_V6 = 'JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4'
-const ETHEREUM_FORWARDER_SELECTOR = '0x30dedc57'
+const ETHEREUM_EURC_FORWARDER_SELECTOR = '0x30dedc57'
+const ETHEREUM_USDC_FORWARDER_SELECTOR = '0xe4269fc4'
+const MAYAN_USDC_MINT = 'A9mUU4qviSctJVPJdBJWkb28deg915LYJKrzQ19ji3FM'
 const DEFAULT_BUILDER_ENDPOINT = 'https://tx-builder.mayan.finance'
 const DEFAULT_EXPLORER_ENDPOINT = 'https://explorer-api.mayan.finance/v3'
 const DEFAULT_TIMEOUT_MS = 30_000
@@ -311,6 +313,14 @@ const DEPENDENCIES = Object.freeze([
   'mayan-hosted-quote-api',
   'mayan-hosted-transaction-builder',
   'mayan-hosted-source-swap-builder',
+  'swift-auction-solvers',
+  'relayers',
+  'wormhole-guardian-messaging',
+  'mayan-explorer-indexer',
+])
+const DIRECT_USDC_DEPENDENCIES = Object.freeze([
+  'mayan-hosted-quote-api',
+  'mayan-hosted-transaction-builder',
   'swift-auction-solvers',
   'relayers',
   'wormhole-guardian-messaging',
@@ -432,6 +442,7 @@ const catalogTokenMatches = (
   token.status === 'active'
 
 interface DirectionFacts {
+  readonly asset: 'eurc' | 'usdc'
   readonly bridgeCapabilityId: string
   readonly sourceChainId: string
   readonly destinationChainId: string
@@ -447,27 +458,43 @@ interface DirectionFacts {
   readonly destinationWormholeChainId: number
   readonly sourceName: string
   readonly destinationName: string
-  readonly sourceEurcMint: string
-  readonly destinationEurcMint: string
+  readonly sourceTokenName: 'EuroC' | 'USD Coin'
+  readonly destinationTokenName: 'EuroC' | 'USD Coin'
+  readonly sourceTokenMint: string
+  readonly destinationTokenMint: string
   readonly sourceUsdcDeploymentId: string
   readonly sourceUsdcAddress: string
   readonly sourceUsdcStandard: string
   readonly swiftContract: string
+  readonly forwarderAddress: string | null
+  readonly forwarderFunctionSelector: string | null
 }
 
 const directionFacts = (
   sourceChainId: string,
   destinationChainId: string,
+  sourceTokenDeploymentId: string,
+  destinationTokenDeploymentId: string,
 ): DirectionFacts => {
   if (sourceChainId === ETHEREUM_CHAIN_ID && destinationChainId === SOLANA_CHAIN_ID) {
+    const isEurc =
+      sourceTokenDeploymentId === ETHEREUM_EURC_DEPLOYMENT_ID &&
+      destinationTokenDeploymentId === SOLANA_EURC_DEPLOYMENT_ID
+    const isUsdc =
+      sourceTokenDeploymentId === ETHEREUM_USDC_DEPLOYMENT_ID &&
+      destinationTokenDeploymentId === SOLANA_USDC_DEPLOYMENT_ID
+    if (!isEurc && !isUsdc) return fail('BRIDGE_UNSUPPORTED_ROUTE')
     return {
       sourceChainId,
       destinationChainId,
-      bridgeCapabilityId: 'bridge-mayan-swift-v2-eurc-eth-sol',
-      sourceTokenDeploymentId: ETHEREUM_EURC_DEPLOYMENT_ID,
-      destinationTokenDeploymentId: SOLANA_EURC_DEPLOYMENT_ID,
-      sourceTokenAddress: ETHEREUM_EURC_ADDRESS,
-      destinationTokenAddress: SOLANA_EURC_ADDRESS,
+      asset: isEurc ? 'eurc' : 'usdc',
+      bridgeCapabilityId: isEurc
+        ? 'bridge-mayan-swift-v2-eurc-eth-sol'
+        : 'bridge-mayan-swift-v2-usdc-eth-sol',
+      sourceTokenDeploymentId,
+      destinationTokenDeploymentId,
+      sourceTokenAddress: isEurc ? ETHEREUM_EURC_ADDRESS : ETHEREUM_USDC_ADDRESS,
+      destinationTokenAddress: isEurc ? SOLANA_EURC_ADDRESS : SOLANA_USDC_ADDRESS,
       sourceTokenStandard: 'erc20',
       destinationTokenStandard: 'spl-token',
       sourceProviderChainId: ETHEREUM_PROVIDER_CHAIN_ID,
@@ -476,23 +503,39 @@ const directionFacts = (
       destinationWormholeChainId: SOLANA_WORMHOLE_CHAIN_ID,
       sourceName: ETHEREUM_NAME,
       destinationName: SOLANA_NAME,
-      sourceEurcMint: '',
-      destinationEurcMint: SOLANA_EURC_ADDRESS,
+      sourceTokenName: isEurc ? 'EuroC' : 'USD Coin',
+      destinationTokenName: isEurc ? 'EuroC' : 'USD Coin',
+      sourceTokenMint: isEurc ? '' : MAYAN_USDC_MINT,
+      destinationTokenMint: isEurc ? SOLANA_EURC_ADDRESS : SOLANA_USDC_ADDRESS,
       sourceUsdcDeploymentId: ETHEREUM_USDC_DEPLOYMENT_ID,
       sourceUsdcAddress: ETHEREUM_USDC_ADDRESS,
       sourceUsdcStandard: 'erc20',
       swiftContract: ETHEREUM_SWIFT_CONTRACT,
+      forwarderAddress: ETHEREUM_FORWARDER,
+      forwarderFunctionSelector: isUsdc
+        ? ETHEREUM_USDC_FORWARDER_SELECTOR
+        : ETHEREUM_EURC_FORWARDER_SELECTOR,
     }
   }
   if (sourceChainId === SOLANA_CHAIN_ID && destinationChainId === ETHEREUM_CHAIN_ID) {
+    const isEurc =
+      sourceTokenDeploymentId === SOLANA_EURC_DEPLOYMENT_ID &&
+      destinationTokenDeploymentId === ETHEREUM_EURC_DEPLOYMENT_ID
+    const isUsdc =
+      sourceTokenDeploymentId === SOLANA_USDC_DEPLOYMENT_ID &&
+      destinationTokenDeploymentId === ETHEREUM_USDC_DEPLOYMENT_ID
+    if (!isEurc && !isUsdc) return fail('BRIDGE_UNSUPPORTED_ROUTE')
     return {
       sourceChainId,
       destinationChainId,
-      bridgeCapabilityId: 'bridge-mayan-swift-v2-eurc-sol-eth',
-      sourceTokenDeploymentId: SOLANA_EURC_DEPLOYMENT_ID,
-      destinationTokenDeploymentId: ETHEREUM_EURC_DEPLOYMENT_ID,
-      sourceTokenAddress: SOLANA_EURC_ADDRESS,
-      destinationTokenAddress: ETHEREUM_EURC_ADDRESS,
+      asset: isEurc ? 'eurc' : 'usdc',
+      bridgeCapabilityId: isEurc
+        ? 'bridge-mayan-swift-v2-eurc-sol-eth'
+        : 'bridge-mayan-swift-v2-usdc-sol-eth',
+      sourceTokenDeploymentId,
+      destinationTokenDeploymentId,
+      sourceTokenAddress: isEurc ? SOLANA_EURC_ADDRESS : SOLANA_USDC_ADDRESS,
+      destinationTokenAddress: isEurc ? ETHEREUM_EURC_ADDRESS : ETHEREUM_USDC_ADDRESS,
       sourceTokenStandard: 'spl-token',
       destinationTokenStandard: 'erc20',
       sourceProviderChainId: SOLANA_PROVIDER_CHAIN_ID,
@@ -501,12 +544,16 @@ const directionFacts = (
       destinationWormholeChainId: ETHEREUM_WORMHOLE_CHAIN_ID,
       sourceName: SOLANA_NAME,
       destinationName: ETHEREUM_NAME,
-      sourceEurcMint: SOLANA_EURC_ADDRESS,
-      destinationEurcMint: '',
+      sourceTokenName: isEurc ? 'EuroC' : 'USD Coin',
+      destinationTokenName: isEurc ? 'EuroC' : 'USD Coin',
+      sourceTokenMint: isEurc ? SOLANA_EURC_ADDRESS : SOLANA_USDC_ADDRESS,
+      destinationTokenMint: isEurc ? '' : MAYAN_USDC_MINT,
       sourceUsdcDeploymentId: SOLANA_USDC_DEPLOYMENT_ID,
       sourceUsdcAddress: SOLANA_USDC_ADDRESS,
       sourceUsdcStandard: 'spl-token',
       swiftContract: SOLANA_SWIFT_PROGRAM,
+      forwarderAddress: null,
+      forwarderFunctionSelector: null,
     }
   }
   return fail('BRIDGE_UNSUPPORTED_ROUTE')
@@ -586,13 +633,21 @@ const validateCapability = (
     sourceUsdcDecimals: 6,
     swiftContract: facts.swiftContract,
     forwarderAddress: facts.sourceChainId === ETHEREUM_CHAIN_ID ? ETHEREUM_FORWARDER : null,
-    forwarderFunctionSelector: facts.sourceChainId === ETHEREUM_CHAIN_ID ? '0x30dedc57' : null,
-    jupiterProgramAddress: facts.sourceChainId === SOLANA_CHAIN_ID ? SOLANA_JUPITER_V6 : null,
+    forwarderFunctionSelector: facts.sourceChainId === ETHEREUM_CHAIN_ID
+      ? facts.asset === 'usdc'
+        ? ETHEREUM_USDC_FORWARDER_SELECTOR
+        : ETHEREUM_EURC_FORWARDER_SELECTOR
+      : null,
+    jupiterProgramAddress: facts.sourceChainId === SOLANA_CHAIN_ID && facts.asset === 'eurc'
+      ? SOLANA_JUPITER_V6
+      : null,
     builderEndpoint: DEFAULT_BUILDER_ENDPOINT,
     explorerEndpoint: DEFAULT_EXPLORER_ENDPOINT,
-    dependencies: facts.sourceChainId === SOLANA_CHAIN_ID
-      ? [...DEPENDENCIES, 'jupiter-v6-source-swap']
-      : [...DEPENDENCIES],
+    dependencies: facts.asset === 'usdc'
+      ? [...DIRECT_USDC_DEPENDENCIES]
+      : facts.sourceChainId === SOLANA_CHAIN_ID
+        ? [...DEPENDENCIES, 'jupiter-v6-source-swap']
+        : [...DEPENDENCIES],
     status: 'active',
   }
   const actualKeys = Object.keys(capability).sort()
@@ -636,13 +691,12 @@ const validateBridgeRoute = (
   )
   const amountIn = normalizePositiveUint64(value.amountIn, 'BRIDGE_INVALID_ARGUMENT')
   const slippageBps = normalizeSlippage(value.slippageBps, 'BRIDGE_INVALID_ARGUMENT')
-  const facts = directionFacts(sourceChainId, destinationChainId)
-  if (
-    sourceTokenDeploymentId !== facts.sourceTokenDeploymentId ||
-    destinationTokenDeploymentId !== facts.destinationTokenDeploymentId
-  ) {
-    fail('BRIDGE_UNSUPPORTED_ROUTE')
-  }
+  const facts = directionFacts(
+    sourceChainId,
+    destinationChainId,
+    sourceTokenDeploymentId,
+    destinationTokenDeploymentId,
+  )
   validateCatalogDirection(facts)
   const capability = findCapability(facts)
   validateCapability(capability, facts)
@@ -1483,6 +1537,7 @@ const providerToken = (
     readonly chainId: number
     readonly wormholeChainId: number
     readonly mint: string
+    readonly name: 'EuroC' | 'USD Coin'
   },
 ): void => {
   if (!isRecord(node.value)) providerInvalid()
@@ -1492,7 +1547,7 @@ const providerToken = (
   if (mint !== expected.mint) providerInvalid()
   const realOrigin = providerString(node, 'realOriginContractAddress')
   if (!providerAddressEquals(realOrigin, expected.address)) providerInvalid()
-  if (providerString(node, 'name') !== 'EuroC') providerInvalid()
+  if (providerString(node, 'name') !== expected.name) providerInvalid()
   if (providerString(node, 'standard') !== expected.standard) providerInvalid()
   if (providerInteger(node, 'chainId') !== expected.chainId) providerInvalid()
   if (providerInteger(node, 'wChainId') !== expected.wormholeChainId) providerInvalid()
@@ -1555,14 +1610,16 @@ const validateProviderQuote = (
     standard: facts.sourceChainId === ETHEREUM_CHAIN_ID ? 'erc20' : 'spl',
     chainId: facts.sourceProviderChainId,
     wormholeChainId: facts.sourceWormholeChainId,
-    mint: facts.sourceEurcMint,
+    mint: facts.sourceTokenMint,
+    name: facts.sourceTokenName,
   })
   providerToken(destinationToken, {
     address: facts.destinationTokenAddress,
     standard: facts.destinationChainId === ETHEREUM_CHAIN_ID ? 'erc20' : 'spl',
     chainId: facts.destinationProviderChainId,
     wormholeChainId: facts.destinationWormholeChainId,
-    mint: facts.destinationEurcMint,
+    mint: facts.destinationTokenMint,
+    name: facts.destinationTokenName,
   })
 
   const sourceUsdcStandard = quoteProviderStandard(facts)
@@ -1585,9 +1642,14 @@ const validateProviderQuote = (
     providerInvalid()
   }
 
-  let routerAddress: string
-  let routerKind: 'provider-selected-evm' | 'jupiter-v6'
-  if (facts.sourceChainId === ETHEREUM_CHAIN_ID) {
+  let routerAddress: string | null
+  let routerKind: 'provider-selected-evm' | 'jupiter-v6' | null
+  const evmRouter = objectValue(node, 'evmSwapRouterAddress')
+  if (facts.asset === 'usdc') {
+    if (evmRouter !== undefined && evmRouter !== null) providerInvalid()
+    routerAddress = null
+    routerKind = null
+  } else if (facts.sourceChainId === ETHEREUM_CHAIN_ID) {
     routerAddress = normalizeEvmAddress(
       providerString(node, 'evmSwapRouterAddress'),
       'BRIDGE_PROVIDER_INVALID_RESPONSE',
@@ -1596,7 +1658,6 @@ const validateProviderQuote = (
   } else {
     routerAddress = SOLANA_JUPITER_V6
     routerKind = 'jupiter-v6'
-    const evmRouter = objectValue(node, 'evmSwapRouterAddress')
     if (evmRouter !== undefined && evmRouter !== null) providerInvalid()
   }
 
@@ -1605,9 +1666,11 @@ const validateProviderQuote = (
   const signature = providerString(node, 'signature')
   if (!EVM_SIGNATURE.test(signature)) providerInvalid()
 
-  const dependencies = facts.sourceChainId === SOLANA_CHAIN_ID
-    ? [...DEPENDENCIES, 'jupiter-v6-source-swap']
-    : [...DEPENDENCIES]
+  const dependencies = facts.asset === 'usdc'
+    ? [...DIRECT_USDC_DEPENDENCIES]
+    : facts.sourceChainId === SOLANA_CHAIN_ID
+      ? [...DEPENDENCIES, 'jupiter-v6-source-swap']
+      : [...DEPENDENCIES]
   const quote: MayanSwiftV2Quote = {
     quoteKind: 'mayan-swift-v2',
     providerId: 'mayan-swift-v2',
@@ -1624,8 +1687,10 @@ const validateProviderQuote = (
     quoteId: quoteId.toLowerCase(),
     providerSignature: signature.toLowerCase(),
     sourceSwap: {
-      required: true,
-      inputTokenDeploymentId: facts.sourceTokenDeploymentId,
+      required: facts.asset === 'eurc',
+      inputTokenDeploymentId: facts.asset === 'usdc'
+        ? facts.sourceUsdcDeploymentId
+        : facts.sourceTokenDeploymentId,
       intermediateTokenDeploymentId: facts.sourceUsdcDeploymentId,
       intermediateTokenAddress: facts.sourceUsdcAddress,
       intermediateTokenStandard: sourceUsdcStandard,
@@ -1714,10 +1779,25 @@ const validateNormalizedQuoteShape = (
   if (value.quoteKind !== 'mayan-swift-v2' || value.providerId !== 'mayan-swift-v2') fail(code)
   const sourceChainId = requireString(value.sourceChainId, code)
   const destinationChainId = requireString(value.destinationChainId, code)
-  const facts = directionFacts(sourceChainId, destinationChainId)
+  const sourceTokenDeploymentId = requireString(value.sourceTokenDeploymentId, code)
+  const destinationTokenDeploymentId = requireString(value.destinationTokenDeploymentId, code)
+  let facts: DirectionFacts
+  try {
+    facts = directionFacts(
+      sourceChainId,
+      destinationChainId,
+      sourceTokenDeploymentId,
+      destinationTokenDeploymentId,
+    )
+  } catch (error) {
+    if (error instanceof BridgeError && error.code === 'BRIDGE_UNSUPPORTED_ROUTE') {
+      return fail(code)
+    }
+    throw error
+  }
   if (
-    value.sourceTokenDeploymentId !== facts.sourceTokenDeploymentId ||
-    value.destinationTokenDeploymentId !== facts.destinationTokenDeploymentId
+    sourceTokenDeploymentId !== facts.sourceTokenDeploymentId ||
+    destinationTokenDeploymentId !== facts.destinationTokenDeploymentId
   ) fail(code)
   const amountIn = normalizePositiveUint64(value.amountIn, code)
   const expectedAmountOut = normalizePositiveUint64(value.expectedAmountOut, code)
@@ -1733,16 +1813,25 @@ const validateNormalizedQuoteShape = (
   if (!EVM_SIGNATURE.test(signature)) fail(code)
   const sourceSwap = requireRecord(value.sourceSwap, code)
   exactObjectKeys(sourceSwap, SOURCE_SWAP_KEYS, code)
-  if (sourceSwap.required !== true) fail(code)
-  if (sourceSwap.inputTokenDeploymentId !== facts.sourceTokenDeploymentId || sourceSwap.intermediateTokenDeploymentId !== facts.sourceUsdcDeploymentId) fail(code)
+  if (sourceSwap.required !== (facts.asset === 'eurc')) fail(code)
+  if (
+    sourceSwap.inputTokenDeploymentId !== (facts.asset === 'usdc'
+      ? facts.sourceUsdcDeploymentId
+      : facts.sourceTokenDeploymentId) ||
+    sourceSwap.intermediateTokenDeploymentId !== facts.sourceUsdcDeploymentId
+  ) fail(code)
   if (sourceSwap.intermediateTokenAddress !== facts.sourceUsdcAddress) fail(code)
   const providerStandard = quoteProviderStandard(facts)
   if (sourceSwap.intermediateTokenStandard !== providerStandard || sourceSwap.intermediateTokenDecimals !== 6) fail(code)
   const providerMinimumAmount = sourceSwap.providerMinimumAmount
   if (typeof providerMinimumAmount !== 'string' || providerMinimumAmount.length === 0) fail(code)
-  let normalizedRouterAddress: string
-  let normalizedRouterKind: 'provider-selected-evm' | 'jupiter-v6'
-  if (facts.sourceChainId === ETHEREUM_CHAIN_ID) {
+  let normalizedRouterAddress: string | null
+  let normalizedRouterKind: 'provider-selected-evm' | 'jupiter-v6' | null
+  if (facts.asset === 'usdc') {
+    if (sourceSwap.routerKind !== null || sourceSwap.routerAddress !== null) fail(code)
+    normalizedRouterAddress = null
+    normalizedRouterKind = null
+  } else if (facts.sourceChainId === ETHEREUM_CHAIN_ID) {
     const routerAddress = sourceSwap.routerAddress
     if (sourceSwap.routerKind !== 'provider-selected-evm' || typeof routerAddress !== 'string' || !EVM_ADDRESS.test(routerAddress) || /^0x0{40}$/iu.test(routerAddress)) return fail(code)
     normalizedRouterAddress = (routerAddress as string).toLowerCase()
@@ -1754,9 +1843,11 @@ const validateNormalizedQuoteShape = (
     normalizedRouterKind = 'jupiter-v6'
   }
   if (!Array.isArray(value.dependencies)) fail(code)
-  const wantedDependencies = facts.sourceChainId === SOLANA_CHAIN_ID
-    ? [...DEPENDENCIES, 'jupiter-v6-source-swap']
-    : [...DEPENDENCIES]
+  const wantedDependencies = facts.asset === 'usdc'
+    ? [...DIRECT_USDC_DEPENDENCIES]
+    : facts.sourceChainId === SOLANA_CHAIN_ID
+      ? [...DEPENDENCIES, 'jupiter-v6-source-swap']
+      : [...DEPENDENCIES]
   if (stableJson(value.dependencies) !== stableJson(wantedDependencies)) fail(code)
   const rawSignedQuoteJson = requireString(value.rawSignedQuoteJson, code)
   if (byteLength(rawSignedQuoteJson) > MAX_RAW_QUOTE_BYTES) fail(code)
@@ -1776,8 +1867,10 @@ const validateNormalizedQuoteShape = (
     quoteId: quoteId.toLowerCase(),
     providerSignature: signature.toLowerCase(),
     sourceSwap: {
-      required: true,
-      inputTokenDeploymentId: facts.sourceTokenDeploymentId,
+      required: facts.asset === 'eurc',
+      inputTokenDeploymentId: facts.asset === 'usdc'
+        ? facts.sourceUsdcDeploymentId
+        : facts.sourceTokenDeploymentId,
       intermediateTokenDeploymentId: facts.sourceUsdcDeploymentId,
       intermediateTokenAddress: facts.sourceUsdcAddress,
       intermediateTokenStandard: providerStandard,
@@ -1989,23 +2082,27 @@ const numericZero = (value: unknown): boolean => {
 const validateEvmBuildResult = (
   wrapper: JsonNode,
   swapperAddress: string,
+  facts: DirectionFacts,
 ): MayanEvmUnsignedTransaction => {
+  const forwarderAddress = facts.forwarderAddress ?? providerInvalid()
+  const forwarderFunctionSelector = facts.forwarderFunctionSelector ?? providerInvalid()
   if (providerString(wrapper, 'chainCategory') !== 'evm') providerInvalid()
   if (providerString(wrapper, 'quoteType') !== 'SWIFT') providerInvalid()
   if (providerBoolean(wrapper, 'gasless')) providerInvalid()
   const transaction = requiredNode(wrapper, 'transaction')
   if (!isRecord(transaction.value)) providerInvalid()
   const to = providerString(transaction, 'to')
-  if (!providerAddressEquals(to, ETHEREUM_FORWARDER)) providerInvalid()
+  if (!providerAddressEquals(to, forwarderAddress)) providerInvalid()
   const chainId = providerInteger(transaction, 'chainId')
   if (chainId !== ETHEREUM_PROVIDER_CHAIN_ID) providerInvalid()
   if (!numericZero(objectValue(transaction, 'value'))) providerInvalid()
   const data = providerString(transaction, 'data').toLowerCase()
+  const minimumWords = facts.asset === 'usdc' ? 10 : 13
   if (
     !HEX_BYTES.test(data) ||
     data.length % 2 !== 0 ||
-    !data.startsWith(ETHEREUM_FORWARDER_SELECTOR) ||
-    data.length < 2 + 8 + 13 * 64
+    !data.startsWith(forwarderFunctionSelector) ||
+    data.length < 2 + 8 + minimumWords * 64
   ) {
     providerInvalid()
   }
@@ -2013,7 +2110,7 @@ const validateEvmBuildResult = (
     kind: 'evm-unsigned-transaction',
     chainId: 'eip155:1',
     from: swapperAddress,
-    to: ETHEREUM_FORWARDER,
+    to: forwarderAddress,
     data,
     value: '0',
   }
@@ -2060,7 +2157,7 @@ const validateBuildResponse = (
   let transaction: MayanSwiftV2UnsignedTransaction
   try {
     transaction = facts.sourceChainId === ETHEREUM_CHAIN_ID
-      ? validateEvmBuildResult(wrapper, swapperAddress)
+      ? validateEvmBuildResult(wrapper, swapperAddress, facts)
       : validateSolanaBuildResult(wrapper, swapperAddress)
   } catch (error) {
     if (error instanceof BridgeError) {
@@ -2078,10 +2175,10 @@ const validateBuildResponse = (
     transaction,
     allowance: facts.sourceChainId === ETHEREUM_CHAIN_ID
       ? {
-          tokenDeploymentId: 'deployment-0011' as const,
-          tokenAddress: ETHEREUM_EURC_ADDRESS,
+          tokenDeploymentId: facts.sourceTokenDeploymentId,
+          tokenAddress: facts.sourceTokenAddress,
           owner: swapperAddress,
-          spender: ETHEREUM_FORWARDER,
+          spender: facts.forwarderAddress as string,
           requiredAmount: quote.amountIn,
         }
       : null,
