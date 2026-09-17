@@ -95,9 +95,10 @@ README](https://github.com/elsoul/erpc-sdk/blob/main/registry/README.md).
 The gem also bundles the generated token-ranking snapshot. Ranking metadata
 uses the exact `schema_version`, `metric`, `as_of`, `content_digest`,
 `status`, `coverage`, and `source_ids` fields from the registry, and all
-nested values are frozen. The current snapshot is intentionally
-`unconfigured`, so its metric and `as_of` are `nil` and each chain lookup is
-empty until a reviewed snapshot is published.
+nested values are frozen. Read the bundled metadata for the current `status`,
+`metric`, `as_of`, `content_digest`, and `coverage` before presenting a result
+as current; the metadata is the source of truth for whether rows are available
+and how much coverage they represent.
 
 ```ruby
 rankings = ERPC::TokenRankings.list_token_rankings(

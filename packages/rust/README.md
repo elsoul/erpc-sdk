@@ -236,11 +236,12 @@ use erpc_sdk::{list_token_rankings, token_chain_ids};
 let ethereum_rankings = list_token_rankings(token_chain_ids::ETHEREUM_MAINNET);
 ```
 
-When observations are published, the native metric is
-`onchain-total-supply-value-native`: values are rational atomic native units
-and quote deployment IDs identify ETH, AVAX, or SOL. A circulating market-cap
-estimate is not implied by this metric, and automatic source operations and
-publication are not active yet.
+Read the bundled ranking metadata for the current `status`, `metric`, `as-of`
+time, source IDs, and per-chain coverage before presenting a result as current;
+an empty result can reflect the requested chain or the metadata state. When
+configured, the native metric is `onchain-total-supply-value-native`: values are
+rational atomic native units and quote deployment IDs identify ETH, AVAX, or
+SOL. A circulating market-cap estimate is not implied by this metric.
 
 ## DEX catalog and exact-input quotes
 
