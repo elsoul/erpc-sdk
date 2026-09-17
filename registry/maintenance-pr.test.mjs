@@ -30,7 +30,13 @@ import {
   writeMaintenancePr,
   readTrustedState,
 } from "./maintenance-pr.mjs";
-import { PACKAGE_VERSION_PATHS, prepareRelease } from "./release-prep.mjs";
+import {
+  PACKAGE_VERSION_PATHS,
+  compareVersions,
+  inspectRelease,
+  parseStableVersion,
+  prepareRelease,
+} from "./release-prep.mjs";
 
 const config = JSON.parse(readFileSync(new URL("./observer-config.json", import.meta.url), "utf8"));
 const SOURCE_SHA = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
@@ -142,7 +148,7 @@ test("complete bootstrap writes a genuine 41-source baseline and never an empty 
   assert.notDeepEqual(payload.baseline, {});
 });
 
-test("fresh manual 0.7.1 preparation is canonicalized and rejects an extra package edit", async () => {
+test("fresh manual patch preparation is canonicalized and rejects an extra package edit", async () => {
   const previewRoot = mkdtempSync(join(tmpdir(), "erpc-maintenance-release-test-"));
   try {
     execFileSync("git", ["clone", "--local", "--no-hardlinks", process.cwd(), previewRoot], { stdio: "pipe" });
@@ -159,7 +165,17 @@ test("fresh manual 0.7.1 preparation is canonicalized and rejects an extra packa
     execFileSync("git", ["add", "registry/release-prep.mjs", "registry/ruby-lockfile.mjs", "registry/release-plan.json", "registry/observer-config.json", "registry/token-catalog.json", "CHANGELOG.md"], { cwd: previewRoot, stdio: "pipe" });
     execFileSync("git", ["-c", "user.name=Maintenance Test", "-c", "user.email=maintenance@example.invalid", "commit", "--quiet", "-m", "Add release preparation helpers"], { cwd: previewRoot, stdio: "pipe" });
     const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: previewRoot, encoding: "utf8" }).trim();
-    const report = prepareRelease({ root: previewRoot, expectedHead: head, version: "0.7.1", releaseDate: "2026-09-15" });
+    const inspection = inspectRelease({ root: previewRoot, expectedHead: head });
+    assert.ok(inspection.currentVersion);
+    const effectiveBaseline = inspection.releasedBaseline?.version ?? inspection.baselineVersion;
+    const highestVersion = compareVersions(inspection.currentVersion, effectiveBaseline) >= 0
+      ? inspection.currentVersion
+      : effectiveBaseline;
+    const parsedHighestVersion = parseStableVersion(highestVersion);
+    const candidateVersion = `${parsedHighestVersion.major}.${parsedHighestVersion.minor}.${parsedHighestVersion.patch + 1}`;
+    assert.ok(compareVersions(candidateVersion, inspection.currentVersion) > 0);
+    assert.ok(compareVersions(candidateVersion, effectiveBaseline) > 0);
+    const report = prepareRelease({ root: previewRoot, expectedHead: head, version: candidateVersion, releaseDate: "2026-09-15" });
     const artifacts = await makeArtifacts({ sourceSha: head });
     const trustedState = readTrustedState(previewRoot);
     const payload = buildMaintenancePayload({ observation: artifacts, releaseReport: report, baseSha: head, expectedSourceSha: head, catalogDigest: artifacts.receipts.catalogDigest, configDigest: artifacts.receipts.configDigest, trustedState });
