@@ -88,6 +88,29 @@ module ERPC
     end
   end
 
+  # Rebuild an error received at a public/provider boundary. An adapter can
+  # hand us a BridgeError that already carries an unsafe cause or mutable
+  # metadata, so re-raising that object is not sufficient.
+  def self.raise_safe_bridge_error(error)
+    code = begin
+      candidate = error.code
+      if candidate.is_a?(String) && BridgeErrorCode::ALL.include?(candidate)
+        candidate.dup
+      else
+        BridgeErrorCode::PROVIDER_TRANSPORT
+      end
+    rescue StandardError
+      BridgeErrorCode::PROVIDER_TRANSPORT
+    end
+    status = begin
+      candidate = error.status
+      candidate.is_a?(Integer) && candidate.between?(100, 599) ? candidate : nil
+    rescue StandardError
+      nil
+    end
+    raise BridgeError.new(code, status), cause: nil
+  end
+
   # Configuration for a standalone Mayan Swift v2 client.
   #
   # The adapter is deliberately independent from ClientConfig.  In particular,
@@ -309,7 +332,7 @@ module ERPC
       invalid unless @index == @source.length
       result
     rescue BridgeError => error
-      raise error, cause: nil
+      ERPC.raise_safe_bridge_error(error)
     rescue StandardError
       invalid
     end
@@ -851,7 +874,7 @@ module ERPC
       fail_bridge(BridgeErrorCode::PROVIDER_INVALID_RESPONSE) unless text.is_a?(String)
       StrictJsonParser.new(text).parse
     rescue BridgeError => error
-      raise error, cause: nil
+      ERPC.raise_safe_bridge_error(error)
     rescue StandardError
       fail_bridge(BridgeErrorCode::PROVIDER_INVALID_RESPONSE)
     end
@@ -1076,7 +1099,7 @@ module ERPC
       )
       [route, normalized]
     rescue BridgeError => error
-      raise error, cause: nil
+      ERPC.raise_safe_bridge_error(error)
     rescue StandardError
       fail_bridge(BridgeErrorCode::QUOTE_MISMATCH)
     end
@@ -1140,7 +1163,7 @@ module ERPC
         "quoteVerification" => "provider-signed-not-locally-verified", "rawSignedQuoteJson" => raw
       }
     rescue BridgeError => error
-      raise error, cause: nil
+      ERPC.raise_safe_bridge_error(error)
     rescue StandardError
       fail_bridge(code)
     end
@@ -1152,13 +1175,13 @@ module ERPC
       rebuilt = begin
         validate_provider_quote(root, raw, route.request, route.facts)
       rescue BridgeError => error
-        raise error, cause: nil if error.code == BridgeErrorCode::QUOTE_EXPIRED
+        ERPC.raise_safe_bridge_error(error) if error.code == BridgeErrorCode::QUOTE_EXPIRED
         fail_bridge(BridgeErrorCode::QUOTE_MISMATCH)
       end
       fail_bridge(BridgeErrorCode::QUOTE_MISMATCH) unless strict_equal?(rebuilt, quote)
       deep_dup(quote)
     rescue BridgeError => error
-      raise error, cause: nil if error.code == BridgeErrorCode::QUOTE_MISMATCH || error.code == BridgeErrorCode::QUOTE_EXPIRED
+      ERPC.raise_safe_bridge_error(error) if error.code == BridgeErrorCode::QUOTE_MISMATCH || error.code == BridgeErrorCode::QUOTE_EXPIRED
       fail_bridge(BridgeErrorCode::QUOTE_MISMATCH)
     rescue StandardError
       fail_bridge(BridgeErrorCode::QUOTE_MISMATCH)
@@ -1322,7 +1345,7 @@ module ERPC
       transaction = begin
         facts.source_chain_id == ETHEREUM_CHAIN_ID ? validate_evm_build_result(wrapper, swapper_address) : validate_solana_build_result(wrapper, swapper_address)
       rescue BridgeError => error
-        raise error, cause: nil if error.code == BridgeErrorCode::BUILD_INVALID
+        ERPC.raise_safe_bridge_error(error) if error.code == BridgeErrorCode::BUILD_INVALID
         fail_bridge(BridgeErrorCode::BUILD_INVALID)
       end
       {
@@ -1392,7 +1415,7 @@ module ERPC
       begin
         response = @http_adapter.request(method: method, url: url, headers: headers, body: body, timeout: @config.timeout)
       rescue BridgeError => error
-        raise error, cause: nil
+        ERPC.raise_safe_bridge_error(error)
       rescue MayanBridgeBodyTooLarge
         fail_bridge(BridgeErrorCode::PROVIDER_INVALID_RESPONSE)
       rescue TimeoutError, Timeout::Error

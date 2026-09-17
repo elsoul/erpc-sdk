@@ -209,6 +209,33 @@ class BridgeTest < Minitest::Test
     timeout_client&.close
   end
 
+  def test_public_bridge_errors_rebuild_pre_attached_bridge_causes
+    request = FIXTURE.fetch("cases").first.fetch("request")
+    sentinel = "bridge-prewrapped-cause-sentinel"
+    adapter_error = begin
+      begin
+        raise RuntimeError, sentinel
+      rescue RuntimeError => cause
+        raise ERPC::BridgeError.new(ERPC::BridgeErrorCode::PROVIDER_HTTP, 429), cause: cause
+      end
+    rescue ERPC::BridgeError => error
+      error
+    end
+    mutable_code = ERPC::BridgeErrorCode::PROVIDER_HTTP.dup
+    adapter_error.define_singleton_method(:code) { mutable_code }
+    adapter = Object.new
+    adapter.define_singleton_method(:request) do |**|
+      raise adapter_error
+    end
+    client = ERPC::MayanSwiftV2BridgeClient.new(http_adapter: adapter)
+    error = assert_raises(ERPC::BridgeError) { client.quote_exact_input(request) }
+    refute_same adapter_error, error
+    assert_safe_bridge_error(error, ERPC::BridgeErrorCode::PROVIDER_HTTP, sentinel, status: 429)
+    refute mutable_code.frozen?
+  ensure
+    client&.close
+  end
+
   def test_writes_actual_native_capture_only_when_requested
     output_path = ENV["ERPC_SDK_BRIDGE_PARITY_OUTPUT"]
     return if output_path.nil? || output_path.empty?
@@ -288,8 +315,9 @@ class BridgeTest < Minitest::Test
     end
   end
 
-  def assert_safe_bridge_error(error, code, sentinel)
+  def assert_safe_bridge_error(error, code, sentinel, status: :__not_checked__)
     assert_equal code, error.code
+    assert_equal status, error.status unless status == :__not_checked__
     assert_nil error.cause
     refute_includes error.message, sentinel
     refute_includes error.inspect, sentinel
