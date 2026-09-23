@@ -3,6 +3,7 @@ import { CloudCatalogClient } from './catalog'
 import { CloudCreditClient } from './credit'
 import type { RpcSendOptions } from './rpc/types'
 import { RestTransport } from './transport/rest'
+import { wrapFetch } from './transport/fetch'
 import { UsageClient } from './usage'
 import { CloudResourcesClient } from './resources'
 import { DEFAULT_TIMEOUT_MS, DEFAULT_USER_ENDPOINT } from './config'
@@ -29,7 +30,7 @@ const requireFetch = (provided?: typeof globalThis.fetch) => {
       'A Fetch API implementation is required in this runtime',
     )
   }
-  return implementation
+  return wrapFetch(implementation)
 }
 
 const cloudEndpoint = (value?: string): URL => {
