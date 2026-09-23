@@ -79,51 +79,66 @@ var bridgeDirectUSDCDependencies = []string{
 type BridgeErrorCode string
 
 const (
-	BridgeInvalidArgument         BridgeErrorCode = "BRIDGE_INVALID_ARGUMENT"
-	BridgeUnsupportedRoute        BridgeErrorCode = "BRIDGE_UNSUPPORTED_ROUTE"
-	BridgeProviderAuthRequired    BridgeErrorCode = "BRIDGE_PROVIDER_AUTH_REQUIRED"
-	BridgeProviderTransport       BridgeErrorCode = "BRIDGE_PROVIDER_TRANSPORT"
-	BridgeProviderHTTP            BridgeErrorCode = "BRIDGE_PROVIDER_HTTP"
-	BridgeProviderInvalidResponse BridgeErrorCode = "BRIDGE_PROVIDER_INVALID_RESPONSE"
-	BridgeQuoteUnavailable        BridgeErrorCode = "BRIDGE_QUOTE_UNAVAILABLE"
-	BridgeQuoteExpired            BridgeErrorCode = "BRIDGE_QUOTE_EXPIRED"
-	BridgeQuoteMismatch           BridgeErrorCode = "BRIDGE_QUOTE_MISMATCH"
-	BridgeBuildInvalid            BridgeErrorCode = "BRIDGE_BUILD_INVALID"
-	BridgeStatusNotFound          BridgeErrorCode = "BRIDGE_STATUS_NOT_FOUND"
-	BridgeTimeout                 BridgeErrorCode = "BRIDGE_TIMEOUT"
-	BridgeAborted                 BridgeErrorCode = "BRIDGE_ABORTED"
+	BridgeInvalidArgument          BridgeErrorCode = "BRIDGE_INVALID_ARGUMENT"
+	BridgeUnsupportedRoute         BridgeErrorCode = "BRIDGE_UNSUPPORTED_ROUTE"
+	BridgeProviderAuthRequired     BridgeErrorCode = "BRIDGE_PROVIDER_AUTH_REQUIRED"
+	BridgeProviderTransport        BridgeErrorCode = "BRIDGE_PROVIDER_TRANSPORT"
+	BridgeProviderHTTP             BridgeErrorCode = "BRIDGE_PROVIDER_HTTP"
+	BridgeProviderInvalidResponse  BridgeErrorCode = "BRIDGE_PROVIDER_INVALID_RESPONSE"
+	BridgeQuoteUnavailable         BridgeErrorCode = "BRIDGE_QUOTE_UNAVAILABLE"
+	BridgeQuoteExpired             BridgeErrorCode = "BRIDGE_QUOTE_EXPIRED"
+	BridgeQuoteMismatch            BridgeErrorCode = "BRIDGE_QUOTE_MISMATCH"
+	BridgeBuildInvalid             BridgeErrorCode = "BRIDGE_BUILD_INVALID"
+	BridgeLocalRPCRequired         BridgeErrorCode = "BRIDGE_LOCAL_RPC_REQUIRED"
+	BridgeSourceRPCTransport       BridgeErrorCode = "BRIDGE_SOURCE_RPC_TRANSPORT"
+	BridgeSourceRPCInvalidResponse BridgeErrorCode = "BRIDGE_SOURCE_RPC_INVALID_RESPONSE"
+	BridgeLocalPlanInvalid         BridgeErrorCode = "BRIDGE_LOCAL_PLAN_INVALID"
+	BridgeLocalBuildInvalid        BridgeErrorCode = "BRIDGE_LOCAL_BUILD_INVALID"
+	BridgeStatusNotFound           BridgeErrorCode = "BRIDGE_STATUS_NOT_FOUND"
+	BridgeTimeout                  BridgeErrorCode = "BRIDGE_TIMEOUT"
+	BridgeAborted                  BridgeErrorCode = "BRIDGE_ABORTED"
 
 	// Wire-style aliases are useful when applications share error maps with
 	// the other SDKs.
-	BRIDGE_INVALID_ARGUMENT          = BridgeInvalidArgument
-	BRIDGE_UNSUPPORTED_ROUTE         = BridgeUnsupportedRoute
-	BRIDGE_PROVIDER_AUTH_REQUIRED    = BridgeProviderAuthRequired
-	BRIDGE_PROVIDER_TRANSPORT        = BridgeProviderTransport
-	BRIDGE_PROVIDER_HTTP             = BridgeProviderHTTP
-	BRIDGE_PROVIDER_INVALID_RESPONSE = BridgeProviderInvalidResponse
-	BRIDGE_QUOTE_UNAVAILABLE         = BridgeQuoteUnavailable
-	BRIDGE_QUOTE_EXPIRED             = BridgeQuoteExpired
-	BRIDGE_QUOTE_MISMATCH            = BridgeQuoteMismatch
-	BRIDGE_BUILD_INVALID             = BridgeBuildInvalid
-	BRIDGE_STATUS_NOT_FOUND          = BridgeStatusNotFound
-	BRIDGE_TIMEOUT                   = BridgeTimeout
-	BRIDGE_ABORTED                   = BridgeAborted
+	BRIDGE_INVALID_ARGUMENT            = BridgeInvalidArgument
+	BRIDGE_UNSUPPORTED_ROUTE           = BridgeUnsupportedRoute
+	BRIDGE_PROVIDER_AUTH_REQUIRED      = BridgeProviderAuthRequired
+	BRIDGE_PROVIDER_TRANSPORT          = BridgeProviderTransport
+	BRIDGE_PROVIDER_HTTP               = BridgeProviderHTTP
+	BRIDGE_PROVIDER_INVALID_RESPONSE   = BridgeProviderInvalidResponse
+	BRIDGE_QUOTE_UNAVAILABLE           = BridgeQuoteUnavailable
+	BRIDGE_QUOTE_EXPIRED               = BridgeQuoteExpired
+	BRIDGE_QUOTE_MISMATCH              = BridgeQuoteMismatch
+	BRIDGE_BUILD_INVALID               = BridgeBuildInvalid
+	BRIDGE_LOCAL_RPC_REQUIRED          = BridgeLocalRPCRequired
+	BRIDGE_SOURCE_RPC_TRANSPORT        = BridgeSourceRPCTransport
+	BRIDGE_SOURCE_RPC_INVALID_RESPONSE = BridgeSourceRPCInvalidResponse
+	BRIDGE_LOCAL_PLAN_INVALID          = BridgeLocalPlanInvalid
+	BRIDGE_LOCAL_BUILD_INVALID         = BridgeLocalBuildInvalid
+	BRIDGE_STATUS_NOT_FOUND            = BridgeStatusNotFound
+	BRIDGE_TIMEOUT                     = BridgeTimeout
+	BRIDGE_ABORTED                     = BridgeAborted
 )
 
 var bridgeErrorMessages = map[BridgeErrorCode]string{
-	BridgeInvalidArgument:         "Bridge request is invalid",
-	BridgeUnsupportedRoute:        "Bridge route is unsupported",
-	BridgeProviderAuthRequired:    "Bridge provider authentication is required",
-	BridgeProviderTransport:       "Bridge provider transport failed",
-	BridgeProviderHTTP:            "Bridge provider HTTP request failed",
-	BridgeProviderInvalidResponse: "Bridge provider response is invalid",
-	BridgeQuoteUnavailable:        "Bridge quote is unavailable",
-	BridgeQuoteExpired:            "Bridge quote is expired",
-	BridgeQuoteMismatch:           "Bridge quote does not match the request",
-	BridgeBuildInvalid:            "Bridge provider build is invalid",
-	BridgeStatusNotFound:          "Bridge status was not found",
-	BridgeTimeout:                 "Bridge provider request timed out",
-	BridgeAborted:                 "Bridge provider request was aborted",
+	BridgeInvalidArgument:          "Bridge request is invalid",
+	BridgeUnsupportedRoute:         "Bridge route is unsupported",
+	BridgeProviderAuthRequired:     "Bridge provider authentication is required",
+	BridgeProviderTransport:        "Bridge provider transport failed",
+	BridgeProviderHTTP:             "Bridge provider HTTP request failed",
+	BridgeProviderInvalidResponse:  "Bridge provider response is invalid",
+	BridgeQuoteUnavailable:         "Bridge quote is unavailable",
+	BridgeQuoteExpired:             "Bridge quote is expired",
+	BridgeQuoteMismatch:            "Bridge quote does not match the request",
+	BridgeBuildInvalid:             "Bridge provider build is invalid",
+	BridgeLocalRPCRequired:         "Bridge local source RPC is required",
+	BridgeSourceRPCTransport:       "Bridge source RPC transport failed",
+	BridgeSourceRPCInvalidResponse: "Bridge source RPC response is invalid",
+	BridgeLocalPlanInvalid:         "Bridge local source-swap plan is invalid",
+	BridgeLocalBuildInvalid:        "Bridge local unsigned build is invalid",
+	BridgeStatusNotFound:           "Bridge status was not found",
+	BridgeTimeout:                  "Bridge provider request timed out",
+	BridgeAborted:                  "Bridge provider request was aborted",
 }
 
 // BridgeError is a secret-free, stable bridge error.  Status is zero when no
@@ -171,6 +186,9 @@ type MayanSwiftV2BridgeConfig struct {
 	// that use the non-initialism form.  They are otherwise equivalent.
 	BuilderApiKey string
 	HttpClient    *http.Client
+	// LocalBuild configures explicit local source-swap preparation and
+	// source-chain RPC construction. It never enables hosted /build fallback.
+	LocalBuild *MayanSwiftV2LocalBuildConfig
 }
 
 func (c MayanSwiftV2BridgeConfig) String() string {
@@ -186,9 +204,13 @@ func (c MayanSwiftV2BridgeConfig) String() string {
 	if c.MinimumQuoteValiditySeconds != nil {
 		minimum = strconv.FormatUint(*c.MinimumQuoteValiditySeconds, 10)
 	}
-	return fmt.Sprintf("MayanSwiftV2BridgeConfig{BuilderEndpoint:%q ExplorerEndpoint:%q BuilderAPIKey:%q AllowUnauthenticatedBuild:%t MinimumQuoteValiditySeconds:%q Timeout:%s HTTPClient:%q}",
+	local := ""
+	if c.LocalBuild != nil {
+		local = "[configured]"
+	}
+	return fmt.Sprintf("MayanSwiftV2BridgeConfig{BuilderEndpoint:%q ExplorerEndpoint:%q BuilderAPIKey:%q AllowUnauthenticatedBuild:%t MinimumQuoteValiditySeconds:%q Timeout:%s HTTPClient:%q LocalBuild:%q}",
 		c.BuilderEndpoint, c.ExplorerEndpoint, key, c.AllowUnauthenticatedBuild,
-		minimum, c.Timeout, client)
+		minimum, c.Timeout, client, local)
 }
 
 func (c MayanSwiftV2BridgeConfig) GoString() string { return c.String() }
@@ -201,6 +223,7 @@ type normalizedBridgeConfig struct {
 	quoteValidity    uint64
 	timeout          time.Duration
 	httpClient       *http.Client
+	localBuild       *MayanSwiftV2LocalBuildConfig
 }
 
 // MayanSwiftV2QuoteRequest selects one of the four exact native EURC or USDC
@@ -1524,7 +1547,11 @@ func normalizeBridgeConfig(config MayanSwiftV2BridgeConfig) (normalizedBridgeCon
 		transportCopy.DisableCompression = true
 		clientCopy.Transport = transportCopy
 	}
-	return normalizedBridgeConfig{builderEndpoint: builder, explorerEndpoint: explorer, builderAPIKey: key, allowBuild: config.AllowUnauthenticatedBuild, quoteValidity: minimum, timeout: timeout, httpClient: &clientCopy}, nil
+	localBuild, err := normalizeMayanSwiftV2LocalBuildConfig(config.LocalBuild)
+	if err != nil {
+		return normalizedBridgeConfig{}, err
+	}
+	return normalizedBridgeConfig{builderEndpoint: builder, explorerEndpoint: explorer, builderAPIKey: key, allowBuild: config.AllowUnauthenticatedBuild, quoteValidity: minimum, timeout: timeout, httpClient: &clientCopy, localBuild: localBuild}, nil
 }
 
 // MayanSwiftV2BridgeClient is an explicit opt-in provider adapter.  It is
@@ -1571,6 +1598,25 @@ func (c *MayanSwiftV2BridgeClient) ExplorerEndpoint() string {
 // Close is idempotent.  The client never closes an externally owned HTTP
 // client or its transport.
 func (c *MayanSwiftV2BridgeClient) Close() error { return nil }
+
+// PrepareSourceSwap creates a local source-swap plan without calling Mayan's
+// hosted transaction builder.
+func (c *MayanSwiftV2BridgeClient) PrepareSourceSwap(ctx context.Context, context MayanSwiftV2LocalContext) (MayanSwiftV2SourceSwapPlan, error) {
+	return localPrepareSourceSwap(ctx, c.localRuntime(), context)
+}
+
+// BuildLocalUnsigned constructs an unsigned source-chain transaction using
+// only the configured source RPC and the supplied local source-swap plan.
+func (c *MayanSwiftV2BridgeClient) BuildLocalUnsigned(ctx context.Context, request MayanSwiftV2LocalBuildRequest) (MayanSwiftV2LocalBuild, error) {
+	return localBuildLocalUnsigned(ctx, request, c.localRuntime(), c.clock)
+}
+
+func (c *MayanSwiftV2BridgeClient) localRuntime() *mayanSwiftV2LocalRuntime {
+	if c == nil {
+		return nil
+	}
+	return &mayanSwiftV2LocalRuntime{client: c, clock: c.clock}
+}
 
 type bridgeOperation uint8
 

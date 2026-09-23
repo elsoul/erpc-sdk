@@ -2,6 +2,8 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
 import { describe, expect, it, vi } from 'vitest'
 
+import { replayLocalFixtureForParity } from './bridge_local.test'
+
 type BridgeSdk = typeof import('../src')
 
 const bridgeSdk: BridgeSdk = process.env.ERPC_SDK_BRIDGE_PARITY_PACKAGE === 'dist'
@@ -107,6 +109,8 @@ const FROZEN_LEGACY_FIXTURE_CASE_IDS = [
   'build-sol-eth-wrong-solana-destination',
   'quote-eth-sol-zero-validity-margin',
 ] as const
+
+const HOSTED_FIXTURE_DIGEST = '3c414e362b518a3845e365c3c7c6f78e43984aae396be19817ddb53bb0da6283'
 
 const readFixture = async (): Promise<BridgeFixture> =>
   JSON.parse(await readFile(fixtureUrl, 'utf8')) as BridgeFixture
@@ -556,6 +560,35 @@ describe('standalone Mayan Swift v2 bridge', () => {
           String(left.caseId).localeCompare(String(right.caseId)),
         )
       }
+      // Local transport timeout cases use real abort deadlines; the legacy
+      // replay above intentionally runs under fake timers.
+      vi.useRealTimers()
+      const localCapture = await replayLocalFixtureForParity()
+      const localBehavior = {
+        prepareSourceSwap: [],
+        buildLocalUnsigned: [],
+      } as {
+        prepareSourceSwap: Record<string, unknown>[]
+        buildLocalUnsigned: Record<string, unknown>[]
+      }
+      for (const entry of localCapture.fixture.cases) {
+        const run = localCapture.runs.get(entry.caseId)
+        if (!run) throw new Error(`missing local fixture run ${entry.caseId}`)
+        expect(run.outcome, entry.caseId).toEqual(entry.expected)
+        expect(run.httpTrace, entry.caseId).toEqual(entry.httpTrace)
+        expect(run.rpcTrace, entry.caseId).toEqual(entry.rpcTrace)
+        localBehavior[entry.method].push({
+          caseId: entry.caseId,
+          outcome: run.outcome,
+          httpTrace: run.httpTrace,
+          rpcTrace: run.rpcTrace,
+        })
+      }
+      for (const rows of Object.values(localBehavior)) {
+        rows.sort((left, right) =>
+          String(left.caseId).localeCompare(String(right.caseId)),
+        )
+      }
       const runtime =
         process.env.ERPC_SDK_BRIDGE_PARITY_PACKAGE === 'dist'
           ? `typescript-built-dist-${process.version}`
@@ -563,13 +596,15 @@ describe('standalone Mayan Swift v2 bridge', () => {
       await writeFile(
         outputPath,
         `${JSON.stringify({
-          snapshotVersion: 1,
+          snapshotVersion: 2,
           snapshotKind: 'bridge-native-runtime',
           language: 'typescript',
           runtime,
           capabilityAsOfDate: BRIDGE_CAPABILITIES_AS_OF_DATE,
           capabilityDigest: BRIDGE_CAPABILITIES_CONTENT_DIGEST,
-          behavior,
+          hostedFixtureDigest: HOSTED_FIXTURE_DIGEST,
+          localFixtureDigest: localCapture.fixture.localFixtureDigest,
+          behavior: { ...behavior, ...localBehavior },
         }, null, 2)}\n`,
         'utf8',
       )

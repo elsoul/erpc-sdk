@@ -260,7 +260,7 @@ configured RPC transport.
 
 ## Optional Mayan Swift v2 bridge
 
-The published `0.8.0` API provides the Mayan Swift v2 client as an explicit
+The published `0.8.1` API provides the Mayan Swift v2 client as an explicit
 standalone adapter for the reviewed issued EURC routes between Ethereum and
 Solana. It is not attached to the default `ErpcClient`; construct it separately
 when the external provider and its solver, relayer, and explorer dependencies
@@ -316,15 +316,61 @@ Mayan authentication has three separate layers:
 | SDK policy | `buildUnsigned` requires `builderApiKey` by default; `allowUnauthenticatedBuild: true` only permits the caller's keyless HTTP attempt. |
 | Dated hosted observation | On 2026-09-17, four EURC/USDC quotes returned HTTP 200 without keys; default builds made no request, while explicit keyless `/build` attempts returned HTTP 401. This is bounded evidence, not a permanent provider requirement. |
 
-The published `0.8.0` package supports the reviewed issued EURC directions.
+The published `0.8.1` package supports the reviewed issued EURC directions.
 Native USDC direct routes are a source-tree addition and remain unreleased;
-they are not part of the published `0.8.0` package.
+they are not part of the published `0.8.1` package.
 
 The source tree also contains an unreleased native USDC addition for the same
 Ethereum/Solana directions. It uses Mayan's direct SWIFT route and does not add
 Jupiter or another hosted source-swap dependency. The addition is not included
-in the published `0.8.0` package; its package version and release publication
+in the published `0.8.1` package; its package version and release publication
 remain future work.
+
+The `0.8.1` maintenance patch updates the Workers fetch invocation boundary;
+it does not include the new native USDC or local unsigned-builder paths.
+
+### Local unsigned construction
+
+The source tree also exposes an explicit keyless construction path for the
+reviewed EURC and native USDC directions. Pass a hosted normalized quote and a
+fresh public 16-byte `orderNonce` to `prepareSourceSwap`, then pass its plan to
+`buildLocalUnsigned`:
+
+```ts
+const localClient = createMayanSwiftV2BridgeClient({
+  localBuild: {
+    sourceSwapEndpoint: 'https://price-api.mayan.finance/v3',
+    ethereumRpc: { httpUrl: 'https://your-ethereum-rpc.example' },
+    solanaRpc: { httpUrl: 'https://your-solana-rpc.example' },
+  },
+})
+
+const context = {
+  quote: quotes[0],
+  swapperAddress: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+  destinationAddress: 'HQhyrHjgq5ftgsibxdUwLvDZ5HT4c9bNuBWJMmZvTd5b',
+  orderNonce: '0x00112233445566778899aabbccddeeff',
+}
+const sourceSwapPlan = await localClient.prepareSourceSwap(context)
+const unsigned = await localClient.buildLocalUnsigned({
+  ...context,
+  sourceSwapPlan,
+})
+```
+
+`buildLocalUnsigned` requires the explicitly configured source RPC matching the
+source chain. It performs bounded read-only identity and byte preflight, keeps
+the original quote unchanged, and returns an unsigned EVM or Solana envelope.
+Local source-swap requests are anonymous and use no Mayan builder key; direct
+USDC uses `{ kind: 'none' }` and makes no source-swap request. There is no
+fallback to hosted `/build`, and the local path never creates keys, approves,
+signs, submits, broadcasts, or claims settlement. The caller owns wallet
+custody and all signing and ERPC broadcast steps described in the
+[TypeScript signing and broadcast guide](https://github.com/elsoul/erpc-sdk/blob/main/packages/typescript/docs/signing-and-broadcast.md).
+
+These local methods and native USDC routes are source-tree additions. They are
+not part of the published TypeScript `0.8.1` package; the published bridge API
+remains the hosted EURC adapter described above.
 
 ## Namespaces
 

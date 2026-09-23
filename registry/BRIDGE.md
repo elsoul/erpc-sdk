@@ -5,8 +5,9 @@ registry for native issued EURC and USDC between Ethereum mainnet and Solana
 mainnet. It is a provider integration record. It is not a CCTP burn/mint route,
 an RPC-only swap capability, a settlement guarantee, or an approval to move
 funds.
-The published `0.8.0` packages support the EURC directions; the native-USDC
-rows in this source checkout remain unreleased.
+The published `0.8.1` packages support the EURC directions and include the
+Cloudflare Workers fetch receiver fix. The native-USDC rows and local unsigned
+builders in this source checkout remain unreleased.
 
 The source is [`bridge-capabilities.json`](./bridge-capabilities.json), with
 strict shape rules in [`bridge-capabilities.schema.json`](./bridge-capabilities.schema.json)
@@ -140,6 +141,41 @@ upstream RPC operation and does not establish node-managed wallet access.
 separate from wallet keys and the ERPC API key, and it is never forwarded to
 quote, Explorer, or ERPC. See the [root wallets and signing guide](../README.md#wallets-and-signing)
 for the shared credential table and the initialized external-signer examples.
+
+## Local unsigned construction
+
+The additive local API is documented in the [shared local construction
+contract](./bridge-local-spec.md). `prepareSourceSwap` accepts the normalized
+quote, public source and destination addresses, and a caller-supplied fresh
+16-byte order nonce. `buildLocalUnsigned` consumes that plan and requires the
+matching explicitly configured source RPC. EURC uses the bounded Mayan
+source-swap response; direct USDC uses `{kind: "none"}` and performs no
+source-swap request. The local path never falls back to hosted `/build` and
+does not read provider keys, sign, approve, submit, or broadcast.
+
+Source RPC credentials belong only to the configured RPC transport and are
+never forwarded to Mayan. The [synthetic local fixture](./fixtures/mayan-swift-v2-local-build-cases.json)
+freezes 42 prepare cases and 45 build cases: seven prepare positives (including
+two credential-boundary controls), six build positives, 74 closed rejection
+rows, and a same-slot ALT active-prefix
+positive control. The [reference evidence packet](./evidence/mayan-swift-v2-local-build-2026-09-17.json)
+records the pinned oracle, exact response/RPC mocks, and qualified isolated
+source proof; it does not claim provider authorization or settlement. The
+2026-09-24 rows are synthetic regression contracts and do not extend the
+2026-09-17 live-observation label.
+
+For EURC, local preparation requires the quote and source-swap response to
+agree on the router and to use compatible exact amount representations.
+Mismatched routing or ambiguous rounding is rejected with
+`BRIDGE_LOCAL_PLAN_INVALID`; a fresh quote may help, but it is not guaranteed
+to resolve the mismatch. These observations do not establish that all current
+live quotes work or that any route settles.
+
+The local Solana EURC path currently accepts only the reviewed Whirlpool and
+Raydium account frames. A fresh public quote can still return
+`BRIDGE_LOCAL_PLAN_INVALID` when on-chain tick-array accounts move outside the
+reviewed tuple; retry alone is not guaranteed to resolve that bounded route
+limitation. Public probes are read-only and do not sign, submit, or move funds.
 
 ## Quote
 
@@ -291,11 +327,41 @@ they are never authenticated captures. EURC raw signed quotes retain the
 `114.5000` JSON number lexeme and direct USDC quotes retain `100.0000`; tests use
 these values to detect accidental reserialization or conversion.
 
+The additive [local-build fixture](./fixtures/mayan-swift-v2-local-build-cases.json)
+contains 87 source-backed synthetic cases: 42 prepares, 45 local builds, 13
+successful positive controls, and 74 explicit closed rejection or transport
+cases. Its 2026-09-24 regression rows cover full signer/ATA and Orca/Raydium
+account tuples, ALT metadata and same-slot active-prefix checks, raw and
+normalized quote binding, JSON-RPC envelope identity, streaming depth/size,
+and safe slot/height handling. The fixture digest is
+`4a9960ad4d0fcc0865f4afcd5e5403d81823f57a64bbc48039113e568b050c35`.
+RPC envelope vectors mutate only the selected response envelope or body and
+stop after its one canonical request; outgoing request traces and response
+results stay frozen. The inactive-prefix Raydium vector reaches the calibrated
+1257-byte static-message size error after inactive ALT entries are omitted.
+The two historical credential/hosted-build case IDs are positive controls: they
+use a synthetic builder key, an unused `https://unused-builder.invalid`
+endpoint, and a distinct source-RPC authorization header while issuing exactly
+one anonymous source-swap GET and zero RPC or hosted-build requests.
+It freezes rich raw quotes, anonymous EURC source-swap responses, configured RPC
+responses, deterministic public nonces, exact local plans/builds, zero-I/O
+direct-USDC preparation cases, and a quote-bound Raydium CLMM plan whose
+populated-ALT local transaction is 860 bytes; its separate valid empty-ALT
+variant is rejected at the 1232-byte boundary. Its
+contract and digest projection are defined in [bridge-local-spec.md](./bridge-local-spec.md).
+
 The new USDC evidence packet is
 [`evidence/mayan-swift-v2-usdc-2026-09-17.json`](./evidence/mayan-swift-v2-usdc-2026-09-17.json).
 It records four bounded public quote observations and four hosted keyless build
 responses with HTTP 401 on 2026-09-17T09:04Z. It contains no key or wallet
 action and does not claim an authenticated build or settlement.
+
+The local construction evidence packet is
+[`evidence/mayan-swift-v2-local-build-2026-09-17.json`](./evidence/mayan-swift-v2-local-build-2026-09-17.json).
+It records the pinned official SDK oracle, exact local source/RPC observations,
+and a qualified isolated source-program underfill proof. The proof uses
+synthetic accounts in a local VM and does not establish full Jupiter/Orca
+settlement, signing, submission, or destination settlement.
 
 [`evidence/mayan-swift-v2-2026-09-16.json`](./evidence/mayan-swift-v2-2026-09-16.json)
 records Rydia's primary sources, root's public quote observations, exact
@@ -313,12 +379,18 @@ with:
 node registry/verify-bridge-parity.mjs --snapshots /path/to/bridge-native-runtime.json
 ```
 
-The verifier requires exactly five executed native outputs and compares quote,
-build, and status outcomes plus request traces. A canonical-reference template
-is rejected as proof of native execution. Native captures and per-language
-runtime files must be generated by their package owners; this registry does
-not claim native parity until those captures exist and the independent gates
-accept them.
+The verifier requires exactly five executed native outputs for the five behavior
+groups (`quote`, `build`, `status`, `prepareSourceSwap`, and
+`buildLocalUnsigned`) and compares their outcomes plus request traces. The
+version-2 envelope carries both hosted and local fixture digests. A
+canonical-reference template is rejected as proof of native execution. Native
+captures and per-language runtime files must be generated by their package
+owners; this registry does not claim native parity until those captures exist
+and the independent gates accept them.
+
+Version 1 hosted-only snapshots are rejected by default. Use the explicit
+`--allow-legacy-v1` verifier flag or `{allowLegacyV1: true}` export option only
+for a deliberate hosted compatibility read; CI does not pass that opt-in.
 
 The provider, auction solvers, relayers, Wormhole Guardians, and Explorer
 indexer are external dependencies for direct USDC. The EURC source-swap builder

@@ -514,6 +514,16 @@ type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) { return f(request) }
 
+func goHostedFixtureDigest(t *testing.T) string {
+	t.Helper()
+	data, err := os.ReadFile(goBridgeFixturePath())
+	if err != nil {
+		t.Fatalf("read hosted bridge fixture for digest: %v", err)
+	}
+	digest := sha256.Sum256(data)
+	return hex.EncodeToString(digest[:])
+}
+
 func TestMayanSwiftV2BridgeDeepCopiesRouterPointersAcrossBuild(t *testing.T) {
 	fixture := loadGoBridgeFixture(t)
 	var quoteCase, buildCase *goBridgeFixtureCase
@@ -608,7 +618,7 @@ func TestMayanSwiftV2BridgeWritesNativeParityCapture(t *testing.T) {
 	}
 	fixture := loadGoBridgeFixture(t)
 	quotes := goBridgeCaptureBaseQuotes(t, fixture)
-	behavior := map[string][]map[string]any{"quote": {}, "build": {}, "status": {}}
+	behavior := map[string][]map[string]any{"quote": {}, "build": {}, "status": {}, "prepareSourceSwap": {}, "buildLocalUnsigned": {}}
 	for _, fixtureCase := range fixture.Cases {
 		captured := make([]goBridgeCapturedRequest, 0, 1)
 		cancel := func() {}
@@ -659,14 +669,20 @@ func TestMayanSwiftV2BridgeWritesNativeParityCapture(t *testing.T) {
 	for _, cases := range behavior {
 		sort.Slice(cases, func(i, j int) bool { return cases[i]["caseId"].(string) < cases[j]["caseId"].(string) })
 	}
+	localBehavior, localFixtureDigest := goLocalFixtureBehavior(t)
+	for method, cases := range localBehavior {
+		behavior[method] = cases
+	}
 	snapshot := map[string]any{
-		"snapshotVersion":    1,
-		"snapshotKind":       "bridge-native-runtime",
-		"language":           "go",
-		"runtime":            "go-" + runtime.Version(),
-		"capabilityAsOfDate": bridgeCapabilitiesAsOfDate,
-		"capabilityDigest":   bridgeCapabilitiesContentDigest,
-		"behavior":           behavior,
+		"snapshotVersion":     2,
+		"snapshotKind":        "bridge-native-runtime",
+		"language":            "go",
+		"runtime":             "go-" + runtime.Version(),
+		"capabilityAsOfDate":  bridgeCapabilitiesAsOfDate,
+		"capabilityDigest":    bridgeCapabilitiesContentDigest,
+		"hostedFixtureDigest": goHostedFixtureDigest(t),
+		"localFixtureDigest":  localFixtureDigest,
+		"behavior":            behavior,
 	}
 	data, err := json.MarshalIndent(snapshot, "", "  ")
 	if err != nil {

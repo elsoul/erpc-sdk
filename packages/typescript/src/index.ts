@@ -121,6 +121,7 @@ export {
   type MayanEvmUnsignedTransaction,
   type MayanSolanaUnsignedTransaction,
   type MayanSwiftV2BridgeConfig,
+  type MayanSwiftV2LocalBuildConfig,
   type MayanSwiftV2Build,
   type MayanSwiftV2BuildRequest,
   type MayanSwiftV2BuildUnsignedRequest,
@@ -135,6 +136,24 @@ export {
   type MayanSwiftV2StatusResult,
   type MayanSwiftV2UnsignedTransaction,
 } from './bridge'
+export {
+  type MayanSwiftV2LocalBuild,
+  type MayanSwiftV2LocalBuildRequest,
+  type MayanSwiftV2LocalBuildValidation,
+  type MayanSwiftV2LocalConstruction,
+  type MayanSwiftV2LocalContext,
+  type MayanSwiftV2LocalEvmRpcEvidence,
+  type MayanSwiftV2LocalSolanaRpcEvidence,
+  type MayanSwiftV2LocalSolanaRpcLookupTableEvidence,
+  type MayanSwiftV2LocalSourceRpcEvidence,
+  type MayanSwiftV2LocalSourceSwapInstruction,
+  type MayanSwiftV2LocalSourceSwapInstructionAccount,
+  type MayanSwiftV2LocalSourceSwapEvmRouter,
+  type MayanSwiftV2LocalSourceSwapSolanaJupiter,
+  type MayanSwiftV2LocalSourceSwapNone,
+  type MayanSwiftV2LocalSourceSwapPlan,
+  type MayanSwiftV2SourceSwapPlan,
+} from './bridge_local'
 export {
   BRIDGE_CAPABILITIES_AS_OF_DATE,
   BRIDGE_CAPABILITIES_CONTENT_DIGEST,

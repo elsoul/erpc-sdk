@@ -6,6 +6,7 @@ import registry from "./bridge-capabilities.json" with { type: "json" };
 import schema from "./bridge-capabilities.schema.json" with { type: "json" };
 import tokenCatalog from "./token-catalog.json" with { type: "json" };
 import fixture from "./fixtures/mayan-swift-v2-cases.json" with { type: "json" };
+import localFixture from "./fixtures/mayan-swift-v2-local-build-cases.json" with { type: "json" };
 import {
   BRIDGE_CAPABILITIES,
   BRIDGE_CAPABILITIES_CONTENT_DIGEST,
@@ -25,12 +26,15 @@ import {
 import { LANGUAGES, renderLanguage } from "./generate-bridge-capabilities.mjs";
 import {
   BEHAVIOR_KEYS,
+  LOCAL_BEHAVIOR_KEYS,
   PARITY_LANGUAGES,
   SNAPSHOT_KIND,
+  SNAPSHOT_BEHAVIOR_KEYS,
   SNAPSHOT_VERSION,
   BridgeParityError,
   buildExpectedSnapshot,
   stableJson,
+  validateLocalFixtures,
   validateFixtures,
   verifySnapshots,
 } from "./verify-bridge-parity.mjs";
@@ -173,10 +177,15 @@ test("synthetic fixtures cover both directions, provider bodies, exact raw lexem
   const expected = buildExpectedSnapshot();
   assert.equal(expected.snapshotVersion, SNAPSHOT_VERSION);
   assert.equal(expected.snapshotKind, SNAPSHOT_KIND);
-  assert.deepEqual(Object.keys(expected.behavior), BEHAVIOR_KEYS);
+  assert.deepEqual(Object.keys(expected.behavior), SNAPSHOT_BEHAVIOR_KEYS);
   assert.ok(expected.behavior.quote.length >= 10);
   assert.ok(expected.behavior.build.length >= 10);
   assert.ok(expected.behavior.status.length >= 5);
+  assert.equal(validateLocalFixtures(localFixture), true);
+  assert.equal(localFixture.cases.length, 87);
+  assert.deepEqual(LOCAL_BEHAVIOR_KEYS.map((method) => expected.behavior[method].length), [42, 45]);
+  assert.ok(localFixture.cases.some((entry) => entry.mutation?.kind === "rpc-envelope-set" && entry.mutation.path === "id"));
+  assert.ok(localFixture.cases.some((entry) => entry.caseId === "build-usdc-solana-alt-same-slot-active-prefix" && entry.expected.kind === "success"));
   const quote = fixture.cases.find((entry) => entry.caseId === "quote-eth-sol-synthetic");
   assert.equal(quote.source, "synthetic");
   assert.match(quote.expected.value[0].rawSignedQuoteJson, /"minMiddleAmount":114\.5000/u);

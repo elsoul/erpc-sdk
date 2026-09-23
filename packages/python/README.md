@@ -220,9 +220,9 @@ See the [common wallets and signing guidance](https://github.com/elsoul/erpc-sdk
 and the [TypeScript signing and broadcast guide](https://github.com/elsoul/erpc-sdk/blob/main/packages/typescript/docs/signing-and-broadcast.md)
 for initialized external-signer examples.
 
-## Optional Mayan Swift v2 bridge (EURC in 0.8.0)
+## Optional Mayan Swift v2 bridge (EURC in 0.8.1)
 
-The released `0.8.0` API includes the standalone bridge adapter for the reviewed
+The released `0.8.1` API includes the standalone bridge adapter for the reviewed
 native EURC routes between Ethereum and Solana. It uses Mayan's configured quote, transaction-builder,
 source-swap, solver, relayer, Wormhole, and Explorer services; normal ERPC
 configuration, keys, and headers are never forwarded to those services.
@@ -296,8 +296,40 @@ Native USDC Ethereum mainnet and Solana mainnet directions are an unreleased
 source addition in this tree. They use direct Swift bridging with
 `sourceSwap.required` set to `False`, null router fields, and no Jupiter or
 0x source-swap dependency. Do not rely on USDC support from a published
-`0.8.0` wheel until a release explicitly includes this addition. The bridge
-adapter remains separate from the RPC-only swap helpers.
+`0.8.1` wheel until a release explicitly includes this addition. The published
+`0.8.1` Worker patch does not include the new native USDC or local-builder
+additions in this tree; those remain unpublished. The bridge adapter remains
+separate from the RPC-only swap helpers.
+
+### Local unsigned construction
+
+`prepare_source_swap` and `build_local_unsigned` are explicit local operations
+for the same four reviewed routes. Preparation returns a hash-bound source
+swap plan; direct USDC returns `{ "kind": "none" }` without source-swap I/O.
+Local builds require a matching caller-configured `ethereum_rpc` or
+`solana_rpc` endpoint under `local_build` and use read-only chain/code or
+blockhash/lookup-table checks. There is no public-RPC fallback and no fallback
+to Mayan `/build`; configured RPC headers stay on that RPC and never flow to
+Mayan source-swap requests.
+
+Local builds return unsigned transaction bytes with structural construction
+evidence. The SDK does not create keys, load wallet secrets, sign, approve,
+submit, broadcast, or claim provider-signature or settlement verification.
+
+### Local unsigned construction
+
+`prepare_source_swap` and `build_local_unsigned` are explicit local operations
+for the same four reviewed routes. Preparation returns a hash-bound source
+swap plan; direct USDC returns `{ "kind": "none" }` without source-swap I/O.
+Local builds require a matching caller-configured `ethereum_rpc` or
+`solana_rpc` endpoint under `local_build` and use read-only chain/code or
+blockhash/lookup-table checks. There is no public-RPC fallback and no fallback
+to Mayan `/build`; configured RPC headers stay on that RPC and never flow to
+Mayan source-swap requests.
+
+Local builds return unsigned transaction bytes with structural construction
+evidence. The SDK does not create keys, load wallet secrets, sign, approve,
+submit, broadcast, or claim provider-signature or settlement verification.
 
 Both exact wire names (`getSlot`, `eth_chainId`) and Python snake-case aliases
 (`get_slot`, `eth_chain_id`) create inert requests. Network I/O starts only

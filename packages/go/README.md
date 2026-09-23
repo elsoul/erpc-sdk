@@ -7,7 +7,7 @@ account information, usage, and Cloud APIs.
 ## Install
 
 ```bash
-go get github.com/elsoul/erpc-sdk/packages/go@v0.8.0
+go get github.com/elsoul/erpc-sdk/packages/go@v0.8.1
 ```
 
 Go 1.22 or later is supported.
@@ -356,9 +356,9 @@ See the [common wallets and signing boundary](https://github.com/elsoul/erpc-sdk
 and the [TypeScript signing and broadcast guide](https://github.com/elsoul/erpc-sdk/blob/main/packages/typescript/docs/signing-and-broadcast.md)
 for the shared transaction handoff and initialized external-signer examples.
 
-## Optional Mayan Swift v2 bridge (EURC in 0.8.0; USDC source addition unreleased)
+## Optional Mayan Swift v2 bridge (EURC in 0.8.1; USDC source addition and local builders unreleased)
 
-The `0.8.0` API's `NewMayanSwiftV2BridgeClient` creates a standalone, explicit opt-in adapter for
+The published `0.8.1` API's `NewMayanSwiftV2BridgeClient` creates a standalone, explicit opt-in adapter for
 native issued EURC between Ethereum and Solana. It calls the configured Mayan
 builder for quotes and unsigned source transactions, and the configured
 Explorer endpoint for read-only indexed status. It does not use `Client` or
@@ -413,7 +413,7 @@ if err != nil {
 _ = quotes
 ```
 
-The published `0.8.0` package binds both reviewed directions to the issued
+The published `0.8.1` package binds both reviewed directions to the issued
 EURC catalog records and discloses Mayan's internal source USDC conversion.
 Solana source EURC quotes also disclose the provider's Jupiter v6 source-swap
 dependency; this is provider output, not a hosted Jupiter route in the normal
@@ -429,14 +429,74 @@ Use the exact four-field route tuple to select it. Direct USDC quotes set
 and intermediate fields, and emit `routerKind` and `routerAddress` as JSON
 `null`. They use the direct Swift dependency set without Jupiter or hosted 0x
 source-swap dependencies; Ethereum builds use selector `0xe4269fc4` and expose
-an allowance for the matched USDC deployment. This addition is not included
-in the published `0.8.0` package until a release explicitly includes it.
+an allowance for the matched USDC deployment. The published `0.8.1` Worker
+patch does not include this native USDC addition; a future release must
+explicitly include it.
 
 Because direct USDC router fields are nullable, Go represents
 `MayanSwiftV2SourceSwap.RouterKind` and `.RouterAddress` as `*string`. The JSON
 keys remain present with `null` for direct routes; existing EURC values remain
 non-null. Consumers using the previous non-null source type must handle nil
 pointers before using this unreleased addition.
+
+### Local unsigned construction (unreleased)
+
+The unreleased native EURC and USDC local path separates source-swap
+preparation from unsigned transaction construction. Configure the matching
+source-chain RPC under `LocalBuild`; the RPC URL and its explicit headers stay
+caller-owned. `PrepareSourceSwap` makes an anonymous EURC source-swap request
+when the route needs one, while direct USDC returns `{kind: "none"}` without
+source-swap I/O. `BuildLocalUnsigned` validates the quote, context, plan, and
+configured source RPC evidence, then constructs the unsigned EVM or Solana
+transaction locally. It never falls back to the hosted `/build` endpoint. The
+published `0.8.1` Worker patch does not include this local builder path.
+
+The caller supplies public source and destination addresses and a fresh public
+32-hex-digit nonce for each order. The nonce is order data, never a private
+key. The SDK does not load wallets, sign, approve, submit, broadcast, or claim
+settlement verification; hand the returned transaction to the caller's
+external signer and chain RPC when the caller is ready.
+
+```go
+bridge, err := erpc.NewMayanSwiftV2BridgeClient(erpc.MayanSwiftV2BridgeConfig{
+	LocalBuild: &erpc.MayanSwiftV2LocalBuildConfig{
+		EthereumRPC: &erpc.RPCEndpointConfig{HTTPURL: "https://your-ethereum-rpc.example"},
+	},
+})
+if err != nil {
+	panic(err)
+}
+defer bridge.Close()
+
+quote := quotes[0] // an existing MayanSwiftV2Quote from QuoteExactInput
+localContext := erpc.MayanSwiftV2LocalContext{
+	Quote:              quote,
+	SwapperAddress:     "0x1111111111111111111111111111111111111111",
+	DestinationAddress: "11111111111111111111111111111111",
+	OrderNonce:         "0x0123456789abcdef0123456789abcdef", // fresh per order
+}
+plan, err := bridge.PrepareSourceSwap(ctx, localContext)
+if err != nil {
+	panic(err)
+}
+unsigned, err := bridge.BuildLocalUnsigned(ctx, erpc.MayanSwiftV2LocalBuildRequest{
+	Quote:              quote,
+	SwapperAddress:     localContext.SwapperAddress,
+	DestinationAddress: localContext.DestinationAddress,
+	OrderNonce:         localContext.OrderNonce,
+	SourceSwapPlan:     plan,
+})
+if err != nil {
+	panic(err)
+}
+_ = unsigned // review and pass to an external signer
+```
+
+Use an Ethereum RPC and EVM addresses for an Ethereum-source quote, or a
+Solana RPC and canonical base58 addresses for a Solana-source quote. The
+local build evidence records the selected chain and reviewed code/account
+bytes; it does not audit contracts, authenticate the provider signature, or
+prove settlement.
 
 ## License
 

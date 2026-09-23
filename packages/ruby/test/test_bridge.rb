@@ -278,15 +278,19 @@ class BridgeTest < Minitest::Test
       }
     end
     behavior.each_value { |entries| entries.sort_by! { |entry| entry.fetch("caseId") } }
+    require_relative "test_bridge_local" unless defined?(BridgeLocalTest)
+    local_behavior = BridgeLocalTest.native_capture_behavior
     package_kind = ENV["ERPC_SDK_BRIDGE_PARITY_PACKAGE"] == "dist" ? "built-gem" : "source"
     snapshot = {
-      "snapshotVersion" => 1,
+      "snapshotVersion" => 2,
       "snapshotKind" => "bridge-native-runtime",
       "language" => "ruby",
       "runtime" => "ruby-#{package_kind}-#{RUBY_VERSION}",
       "capabilityAsOfDate" => ERPC::BRIDGE_CAPABILITIES_AS_OF_DATE,
       "capabilityDigest" => ERPC::BRIDGE_CAPABILITIES_CONTENT_DIGEST,
-      "behavior" => behavior
+      "hostedFixtureDigest" => "3c414e362b518a3845e365c3c7c6f78e43984aae396be19817ddb53bb0da6283",
+      "localFixtureDigest" => BridgeLocalTest::FIXTURE_LOCAL_DIGEST,
+      "behavior" => behavior.merge(local_behavior)
     }
     FileUtils.mkdir_p(File.dirname(output_path))
     File.write(output_path, JSON.pretty_generate(snapshot) + "\n")

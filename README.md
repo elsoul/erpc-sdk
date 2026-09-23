@@ -17,6 +17,10 @@
   Built for Developers. Ready for AI Agents.</strong>
 </p>
 
+The current published `0.8.1` line includes the Cloudflare Workers fetch
+receiver fix. It does not include the unreleased native-USDC bridge or local
+unsigned builders; those remain source-checkout work under separate review.
+
 With an eRPC API key, one client provides eRPC-backed access to Solana,
 Ethereum, Avalanche C/P/X-chain, price data, indexed data, leader and validator
 data, analytics, subscriptions, and account balance information. Direct RPC
@@ -27,11 +31,11 @@ reads do not require an eRPC API key.
 
 | Language | Package | Version availability |
 | --- | --- | --- |
-| TypeScript | [`@elsoul/erpc-sdk`](https://www.npmjs.com/package/@elsoul/erpc-sdk) | `0.8.0` release line |
-| Rust | [`erpc-sdk`](https://crates.io/crates/erpc-sdk) | `0.8.0` release line |
-| Python | [`erpc-sdk`](https://pypi.org/project/erpc-sdk/) | `0.8.0` release line |
-| Go | [`github.com/elsoul/erpc-sdk/packages/go`](https://pkg.go.dev/github.com/elsoul/erpc-sdk/packages/go) | `0.8.0` release line |
-| Ruby | [`erpc-sdk`](https://rubygems.org/gems/erpc-sdk) | `0.8.0` release line |
+| TypeScript | [`@elsoul/erpc-sdk`](https://www.npmjs.com/package/@elsoul/erpc-sdk) | `0.8.1` release line |
+| Rust | [`erpc-sdk`](https://crates.io/crates/erpc-sdk) | `0.8.1` release line |
+| Python | [`erpc-sdk`](https://pypi.org/project/erpc-sdk/) | `0.8.1` release line |
+| Go | [`github.com/elsoul/erpc-sdk/packages/go`](https://pkg.go.dev/github.com/elsoul/erpc-sdk/packages/go) | `0.8.1` release line |
+| Ruby | [`erpc-sdk`](https://rubygems.org/gems/erpc-sdk) | `0.8.1` release line |
 
 The package registries expose live version badges for [npm](https://img.shields.io/npm/v/%40elsoul%2Ferpc-sdk.svg), [crates.io](https://img.shields.io/crates/v/erpc-sdk.svg), [PyPI](https://img.shields.io/pypi/v/erpc-sdk.svg), [Go](https://pkg.go.dev/badge/github.com/elsoul/erpc-sdk/packages/go.svg), and [RubyGems](https://img.shields.io/gem/v/erpc-sdk.svg); the [latest GitHub release](https://github.com/elsoul/erpc-sdk/releases/latest) is the shared release record.
 
@@ -70,7 +74,7 @@ python -m pip install erpc-sdk
 Go:
 
 ```bash
-go get github.com/elsoul/erpc-sdk/packages/go@v0.8.0
+go get github.com/elsoul/erpc-sdk/packages/go@v0.8.1
 ```
 
 Ruby:
@@ -85,6 +89,10 @@ See the package guides for [TypeScript](packages/typescript/README.md),
 versions are Rust 1.85, Python 3.11, Go 1.22, and Ruby 3.1.
 
 ## Availability
+
+The current published baseline is `0.8.1`. It carries the Workers fetch
+receiver fix while the native-USDC bridge and local unsigned builders remain
+unreleased source-checkout work.
 
 | Capability | `0.7.0` package | `0.8.0` package |
 | --- | --- | --- |
@@ -105,8 +113,8 @@ the package registry badges and the [latest GitHub release](https://github.com/e
 
 The direct RPC configuration introduced in `0.8.0` lets a caller route selected
 chain JSON-RPC traffic to a dedicated node without an eRPC API key. A package
-consumer needs `0.8.0` for this API; source checkout examples remain available
-while release publication is being verified.
+consumer needs the current published `0.8.1` line for this API; source-checkout
+examples remain available for reviewed unreleased work.
 
 | Config field | Direct namespace(s) |
 | --- | --- |
@@ -228,8 +236,9 @@ and [the pinned transaction-builder authentication section](https://github.com/m
 | ERPC SDK local policy | Default `buildUnsigned` without `builderApiKey` fails locally; `allowUnauthenticatedBuild: true` permits a keyless HTTP attempt at the configured endpoint, including the default endpoint | Local default guard is separate from provider authorization |
 | Current hosted service check | Quotes remain keyless; provider build authorization is decided by Mayan | At `2026-09-17T11:27:34.223Z`, four EURC/USDC quotes returned HTTP 200, default builds made zero network requests, and explicit anonymous builds reached `/build` and returned HTTP 401 `UNAUTHORIZED`; no authenticated build or settlement evidence was captured |
 
-The published `0.8.0` bridge supports native EURC. The reviewed native-USDC
-source addition remains unreleased. `builderApiKey` is a Mayan service key and
+The published `0.8.1` bridge supports native EURC and includes the Workers fetch
+receiver fix. The reviewed native-USDC and local-builder additions remain
+unreleased. `builderApiKey` is a Mayan service key and
 is separate from wallet keys and the ERPC API key; it is sent only to Mayan
 `/build`.
 
@@ -401,9 +410,19 @@ calculation.
 The source checkout now contains reviewed native-USDC directions with deployment
 IDs `deployment-0008` (Ethereum) and `deployment-0010` (Solana). They use a
 direct source route with nullable router fields and no Jupiter/source-swap
-dependency. The USDC addition is unreleased; the currently published `0.8.0`
-package remains EURC-only until a future package version is explicitly
-published. The runnable example below therefore uses the current EURC API.
+dependency. The USDC and local-builder additions are unreleased; the currently
+published `0.8.1` package remains EURC-only. The runnable example below
+therefore uses the current EURC API.
+
+The source checkout also defines additive local unsigned construction for all
+four reviewed routes. `prepareSourceSwap` accepts a normalized quote, public
+source and destination addresses, and a caller-supplied 16-byte order nonce;
+`buildLocalUnsigned` then requires the matching explicitly configured source
+RPC. EURC source swaps use the bounded Mayan source route, while direct USDC
+uses no source-swap request. Local construction never falls back to hosted
+`/build`, reads provider keys, signs, approves, or broadcasts. See the
+[local construction contract](registry/bridge-local-spec.md), [local fixture](registry/fixtures/mayan-swift-v2-local-build-cases.json),
+and [reference evidence](registry/evidence/mayan-swift-v2-local-build-2026-09-17.json).
 
 ```ts
 import { createMayanSwiftV2BridgeClient, TOKEN_CHAIN_IDS } from '@elsoul/erpc-sdk'

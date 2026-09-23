@@ -629,7 +629,7 @@ jobs:
           test "${#GEM_PACKAGES[@]}" -eq 1
           GEM_PACKAGE="${GEM_PACKAGES[0]}"
           test -f "$GEM_PACKAGE"
-          GEM_HOME="$DEX_GEM_HOME" GEM_PATH="$DEX_GEM_HOME" gem install --local "$GEM_PACKAGE" --no-document
+          GEM_HOME="$DEX_GEM_HOME" GEM_PATH="$DEX_GEM_HOME:$DEV_GEM_PATHS" gem install --local "$GEM_PACKAGE" --no-document
           mapfile -t TEST_FILES < <(find "$GITHUB_WORKSPACE/packages/ruby/test" -maxdepth 1 -type f -name 'test_*.rb' -print | sort)
           test "${#TEST_FILES[@]}" -gt 0
           env -u RUBYOPT -u RUBYLIB -u BUNDLE_GEMFILE \

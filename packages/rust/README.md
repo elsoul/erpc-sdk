@@ -39,7 +39,7 @@ the consumer-lock-only workaround
 `cargo +1.85.0 update -p yoke-derive@0.8.3 --precise 0.8.2`, keep the
 application's `Cargo.lock`, and verify with `--locked` (for example,
 `cargo +1.85.0 check --locked`). The tested pair is `yoke 0.8.3` with
-`yoke-derive 0.8.2`; the published `erpc-sdk 0.8.0` crate was verified on Rust
+`yoke-derive 0.8.2`; the historical published `erpc-sdk 0.8.0` crate was verified on Rust
 1.85 with this consumer lock. This guidance changes consumer
 dependency selection only; an untouched fresh lock compiles on stable Rust
 1.93. Do not copy the SDK lock, broadly downgrade
@@ -395,14 +395,16 @@ policy. The SDK does not sign, send, create approvals, or choose an unlimited
 allowance policy; the caller's wallet controls allowance changes and
 broadcasting.
 
-### Optional Mayan Swift v2 bridge (EURC in 0.8.0; USDC source addition unreleased)
+### Optional Mayan Swift v2 bridge (EURC in 0.8.1; USDC source addition unreleased)
 
 `MayanSwiftV2BridgeClient` is a separate, explicit client. The published
-`erpc-sdk 0.8.0` package supports the two reviewed native issued EURC
+`erpc-sdk 0.8.1` package supports the two reviewed native issued EURC
 directions: Ethereum (`deployment-0011`) and Solana (`deployment-0013`). This
 source tree also contains the reviewed native USDC directions, Ethereum
 (`deployment-0008`) and Solana (`deployment-0010`); that USDC addition is
-unreleased and is not included in the published 0.8.0 package. These are
+unreleased and is not included in the published 0.8.1 package. The 0.8.1
+Workers patch also does not include the native USDC or local-builder additions.
+These are
 external-provider intent routes, rather than Circle CCTP or RPC-only swap
 routes.
 
@@ -480,6 +482,65 @@ Rust represents the nullable router fields as `Option<String>`, so consumers
 whose source types currently use non-null strings must handle `None` before
 using the unreleased USDC addition. Existing EURC router values remain
 unchanged.
+
+### Local unsigned construction (source-tree addition)
+
+The source tree also exposes `prepare_source_swap` and
+`build_local_unsigned` for the reviewed four-route local construction path.
+Pass a normalized quote, public source and destination addresses, and a fresh
+16-byte public `order_nonce` to preparation, then pass the returned plan to the
+local builder with an explicitly configured source-chain RPC:
+
+```rust,no_run
+# use erpc_sdk::{
+#     MayanSwiftV2BridgeClient, MayanSwiftV2BridgeConfig,
+#     MayanSwiftV2LocalBuildConfig, MayanSwiftV2LocalBuildRequest,
+#     MayanSwiftV2LocalContext, RpcEndpointConfig,
+# };
+# async fn example(
+#     quote: erpc_sdk::MayanSwiftV2Quote,
+#     swapper_address: String,
+#     destination_address: String,
+#     order_nonce: String,
+# ) -> erpc_sdk::BridgeResult<()> {
+let bridge = MayanSwiftV2BridgeClient::new(
+    MayanSwiftV2BridgeConfig::new().with_local_build(
+        MayanSwiftV2LocalBuildConfig::new().with_ethereum_rpc(
+            RpcEndpointConfig::new("https://your-ethereum-rpc.example"),
+        ),
+    ),
+)?;
+let context = MayanSwiftV2LocalContext {
+    quote,
+    swapper_address,
+    destination_address,
+    order_nonce,
+};
+let source_swap_plan = bridge.prepare_source_swap(context.clone()).await?;
+let unsigned = bridge
+    .build_local_unsigned(MayanSwiftV2LocalBuildRequest {
+        quote: context.quote.clone(),
+        swapper_address: context.swapper_address.clone(),
+        destination_address: context.destination_address.clone(),
+        order_nonce: context.order_nonce.clone(),
+        source_swap_plan,
+    })
+    .await?;
+assert_eq!(unsigned.construction.mode, "local");
+# Ok(())
+# }
+```
+
+The matching `solana_rpc` field is required for Solana-source routes. EURC
+preparation makes one anonymous request to `source_swap_endpoint`; direct
+USDC uses `{ kind: "none" }` and makes no source-swap request. Local builds
+perform bounded read-only source RPC checks and construct unsigned EVM or
+Solana bytes locally. They never fall back to hosted `/build`, read service or
+wallet keys, sign, approve, submit, broadcast, or claim settlement. The
+returned public addresses identify the account that an external signer must
+authorize; service API keys and RPC headers authenticate services and are not
+signer keys. See the [root wallets and signing guidance](https://github.com/elsoul/erpc-sdk/blob/main/README.md#wallets-and-signing)
+and the [TypeScript example](https://github.com/elsoul/erpc-sdk/blob/main/packages/typescript/docs/signing-and-broadcast.md) for signer and broadcast responsibility.
 
 Quotes preserve the provider's signed JSON object, including unknown fields and
 numeric lexemes, for the builder. Build output is structurally checked and

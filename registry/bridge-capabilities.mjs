@@ -72,6 +72,11 @@ export const BRIDGE_ERROR_MESSAGES = Object.freeze({
   BRIDGE_STATUS_NOT_FOUND: "Bridge status was not found",
   BRIDGE_TIMEOUT: "Bridge provider request timed out",
   BRIDGE_ABORTED: "Bridge provider request was aborted",
+  BRIDGE_LOCAL_RPC_REQUIRED: "Bridge local source RPC is required",
+  BRIDGE_SOURCE_RPC_TRANSPORT: "Bridge source RPC transport failed",
+  BRIDGE_SOURCE_RPC_INVALID_RESPONSE: "Bridge source RPC response is invalid",
+  BRIDGE_LOCAL_PLAN_INVALID: "Bridge local source-swap plan is invalid",
+  BRIDGE_LOCAL_BUILD_INVALID: "Bridge local unsigned build is invalid",
 });
 
 export const BRIDGE_DEPENDENCIES = Object.freeze([
