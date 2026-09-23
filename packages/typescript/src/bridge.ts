@@ -8,6 +8,18 @@ import {
   getTokenDeployment,
   type TokenDeployment,
 } from './token_catalog'
+import type { RpcEndpointConfig } from './config'
+import {
+  buildLocalUnsigned as buildLocalUnsignedRequest,
+  prepareSourceSwap as prepareSourceSwapRequest,
+} from './bridge_local'
+import type {
+  MayanSwiftV2LocalBuild,
+  MayanSwiftV2LocalBuildRequest,
+  MayanSwiftV2LocalRuntimeConfig,
+  MayanSwiftV2LocalContext,
+  MayanSwiftV2SourceSwapPlan,
+} from './bridge_local'
 
 export type BridgeErrorCode =
   | 'BRIDGE_INVALID_ARGUMENT'
@@ -20,6 +32,11 @@ export type BridgeErrorCode =
   | 'BRIDGE_QUOTE_EXPIRED'
   | 'BRIDGE_QUOTE_MISMATCH'
   | 'BRIDGE_BUILD_INVALID'
+  | 'BRIDGE_LOCAL_RPC_REQUIRED'
+  | 'BRIDGE_SOURCE_RPC_TRANSPORT'
+  | 'BRIDGE_SOURCE_RPC_INVALID_RESPONSE'
+  | 'BRIDGE_LOCAL_PLAN_INVALID'
+  | 'BRIDGE_LOCAL_BUILD_INVALID'
   | 'BRIDGE_STATUS_NOT_FOUND'
   | 'BRIDGE_TIMEOUT'
   | 'BRIDGE_ABORTED'
@@ -37,6 +54,11 @@ export const BRIDGE_ERROR_MESSAGES: Readonly<
   BRIDGE_QUOTE_EXPIRED: 'Bridge quote is expired',
   BRIDGE_QUOTE_MISMATCH: 'Bridge quote does not match the request',
   BRIDGE_BUILD_INVALID: 'Bridge provider build is invalid',
+  BRIDGE_LOCAL_RPC_REQUIRED: 'Bridge local source RPC is required',
+  BRIDGE_SOURCE_RPC_TRANSPORT: 'Bridge source RPC transport failed',
+  BRIDGE_SOURCE_RPC_INVALID_RESPONSE: 'Bridge source RPC response is invalid',
+  BRIDGE_LOCAL_PLAN_INVALID: 'Bridge local source-swap plan is invalid',
+  BRIDGE_LOCAL_BUILD_INVALID: 'Bridge local unsigned build is invalid',
   BRIDGE_STATUS_NOT_FOUND: 'Bridge status was not found',
   BRIDGE_TIMEOUT: 'Bridge provider request timed out',
   BRIDGE_ABORTED: 'Bridge provider request was aborted',
@@ -62,6 +84,13 @@ export interface MayanSwiftV2BridgeConfig {
   readonly minimumQuoteValiditySeconds?: number
   readonly timeoutMs?: number
   readonly fetch?: typeof globalThis.fetch
+  readonly localBuild?: MayanSwiftV2LocalBuildConfig
+}
+
+export interface MayanSwiftV2LocalBuildConfig {
+  readonly sourceSwapEndpoint?: string
+  readonly ethereumRpc?: RpcEndpointConfig
+  readonly solanaRpc?: RpcEndpointConfig
 }
 
 export interface BridgeRequestOptions {
@@ -191,6 +220,14 @@ export interface MayanSwiftV2BridgeClient {
     request: MayanSwiftV2StatusRequest,
     options?: BridgeRequestOptions,
   ): Promise<MayanSwiftV2Status>
+  prepareSourceSwap(
+    context: MayanSwiftV2LocalContext,
+    options?: BridgeRequestOptions,
+  ): Promise<MayanSwiftV2SourceSwapPlan>
+  buildLocalUnsigned(
+    request: MayanSwiftV2LocalBuildRequest,
+    options?: BridgeRequestOptions,
+  ): Promise<MayanSwiftV2LocalBuild>
   close(): void
 }
 
@@ -229,6 +266,7 @@ interface NormalizedBridgeConfig {
   readonly minimumQuoteValiditySeconds: number
   readonly timeoutMs: number
   readonly fetch: typeof globalThis.fetch
+  readonly localBuild?: MayanSwiftV2LocalBuildConfig
 }
 
 interface BridgeCapability {
@@ -1060,6 +1098,7 @@ const CONFIG_KEYS = new Set([
   'minimumQuoteValiditySeconds',
   'timeoutMs',
   'fetch',
+  'localBuild',
 ])
 
 const endpointWithPath = (base: URL, path: string): URL =>
@@ -1172,6 +1211,15 @@ const normalizeBridgeConfig = (
   const timeoutMs = timeoutMsValue as number
   const implementation = value.fetch ?? globalThis.fetch
   if (typeof implementation !== 'function') fail('BRIDGE_INVALID_ARGUMENT')
+  let localBuild: MayanSwiftV2LocalBuildConfig | undefined
+  if (value.localBuild !== undefined) {
+    const localBuildValue = requireRecord(value.localBuild, 'BRIDGE_INVALID_ARGUMENT')
+    const localBuildKeys = new Set(['sourceSwapEndpoint', 'ethereumRpc', 'solanaRpc'])
+    if (Object.keys(localBuildValue).some((key) => !localBuildKeys.has(key))) {
+      fail('BRIDGE_INVALID_ARGUMENT')
+    }
+    localBuild = localBuildValue as MayanSwiftV2LocalBuildConfig
+  }
   return Object.freeze({
     builderEndpoint,
     explorerEndpoint,
@@ -1180,6 +1228,7 @@ const normalizeBridgeConfig = (
     minimumQuoteValiditySeconds,
     timeoutMs,
     fetch: implementation as typeof globalThis.fetch,
+    ...(localBuild === undefined ? {} : { localBuild }),
   })
 }
 
@@ -2068,7 +2117,9 @@ const validateRawQuoteForBuild = (
     if (error instanceof BridgeError && error.code === 'BRIDGE_QUOTE_EXPIRED') throw error
     return fail('BRIDGE_QUOTE_MISMATCH')
   }
-  if (stableJson(rebuilt.quote) !== stableJson(quote)) fail('BRIDGE_QUOTE_MISMATCH')
+  if (stableJson(rebuilt.quote) !== stableJson(quote)) {
+    fail('BRIDGE_QUOTE_MISMATCH')
+  }
   return deepFreeze(quote)
 }
 
@@ -2380,6 +2431,48 @@ export class MayanSwiftV2BridgeClient implements MayanSwiftV2BridgeClient {
     )
     const parsed = await providerJson(response, 'status')
     return statusFromResponse(parsed, normalized)
+  }
+
+  async prepareSourceSwap(
+    context: MayanSwiftV2LocalContext,
+    options?: BridgeRequestOptions,
+  ): Promise<MayanSwiftV2SourceSwapPlan> {
+    return prepareSourceSwapRequest(context, this.#localRuntime(), options)
+  }
+
+  async buildLocalUnsigned(
+    request: MayanSwiftV2LocalBuildRequest,
+    options?: BridgeRequestOptions,
+  ): Promise<MayanSwiftV2LocalBuild> {
+    return buildLocalUnsignedRequest(request, this.#localRuntime(), options)
+  }
+
+  #localRuntime(): MayanSwiftV2LocalRuntimeConfig {
+    return {
+      localBuild: this.#config.localBuild,
+      fetch: this.#config.fetch,
+      timeoutMs: this.#config.timeoutMs,
+      minimumQuoteValiditySeconds: this.#config.minimumQuoteValiditySeconds,
+      validateQuote: (quote, invalidCode) => {
+        try {
+          const { route, normalizedQuote } = buildRouteFromQuote(quote)
+          const validationQuote = /[ \t\r\n]$/u.test(normalizedQuote.rawSignedQuoteJson)
+            ? {
+                ...normalizedQuote,
+                rawSignedQuoteJson: normalizedQuote.rawSignedQuoteJson.replace(/[ \t\r\n]+$/gu, ''),
+              }
+            : normalizedQuote
+          validateRawQuoteForBuild(validationQuote, route, this.#config)
+          return quote
+        } catch (error) {
+          if (error instanceof BridgeError && error.code === 'BRIDGE_QUOTE_EXPIRED') {
+            throw error
+          }
+          return fail(invalidCode)
+        }
+      },
+      fail,
+    }
   }
 
   close(): void {

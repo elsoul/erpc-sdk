@@ -299,6 +299,36 @@ source addition in this tree. They use direct Swift bridging with
 `0.8.0` wheel until a release explicitly includes this addition. The bridge
 adapter remains separate from the RPC-only swap helpers.
 
+### Local unsigned construction
+
+`prepare_source_swap` and `build_local_unsigned` are explicit local operations
+for the same four reviewed routes. Preparation returns a hash-bound source
+swap plan; direct USDC returns `{ "kind": "none" }` without source-swap I/O.
+Local builds require a matching caller-configured `ethereum_rpc` or
+`solana_rpc` endpoint under `local_build` and use read-only chain/code or
+blockhash/lookup-table checks. There is no public-RPC fallback and no fallback
+to Mayan `/build`; configured RPC headers stay on that RPC and never flow to
+Mayan source-swap requests.
+
+Local builds return unsigned transaction bytes with structural construction
+evidence. The SDK does not create keys, load wallet secrets, sign, approve,
+submit, broadcast, or claim provider-signature or settlement verification.
+
+### Local unsigned construction
+
+`prepare_source_swap` and `build_local_unsigned` are explicit local operations
+for the same four reviewed routes. Preparation returns a hash-bound source
+swap plan; direct USDC returns `{ "kind": "none" }` without source-swap I/O.
+Local builds require a matching caller-configured `ethereum_rpc` or
+`solana_rpc` endpoint under `local_build` and use read-only chain/code or
+blockhash/lookup-table checks. There is no public-RPC fallback and no fallback
+to Mayan `/build`; configured RPC headers stay on that RPC and never flow to
+Mayan source-swap requests.
+
+Local builds return unsigned transaction bytes with structural construction
+evidence. The SDK does not create keys, load wallet secrets, sign, approve,
+submit, broadcast, or claim provider-signature or settlement verification.
+
 Both exact wire names (`getSlot`, `eth_chainId`) and Python snake-case aliases
 (`get_slot`, `eth_chain_id`) create inert requests. Network I/O starts only
 when `send()` is awaited. `request()` restricts calls to the namespace catalog;

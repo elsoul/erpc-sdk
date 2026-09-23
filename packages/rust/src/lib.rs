@@ -4,6 +4,7 @@
 mod account;
 mod avalanche;
 mod bridge;
+mod bridge_local;
 mod cloud;
 mod config;
 pub mod dex_catalog;
@@ -31,10 +32,18 @@ pub use bridge::{
     BridgeClient, BridgeError, BridgeErrorCode, BridgeResult, MayanEvmUnsignedTransaction,
     MayanSolanaUnsignedTransaction, MayanSwiftV2Allowance, MayanSwiftV2BridgeClient,
     MayanSwiftV2BridgeConfig, MayanSwiftV2Build, MayanSwiftV2BuildRequest, MayanSwiftV2BuildResult,
-    MayanSwiftV2BuildUnsignedRequest, MayanSwiftV2BuildValidation, MayanSwiftV2Quote,
-    MayanSwiftV2QuoteRequest, MayanSwiftV2QuoteResult, MayanSwiftV2SourceSwap, MayanSwiftV2Status,
-    MayanSwiftV2StatusRequest, MayanSwiftV2StatusResult, MayanSwiftV2UnsignedTransaction,
-    create_mayan_swift_v2_bridge_client,
+    MayanSwiftV2BuildUnsignedRequest, MayanSwiftV2BuildValidation, MayanSwiftV2LocalBuildConfig,
+    MayanSwiftV2Quote, MayanSwiftV2QuoteRequest, MayanSwiftV2QuoteResult, MayanSwiftV2SourceSwap,
+    MayanSwiftV2Status, MayanSwiftV2StatusRequest, MayanSwiftV2StatusResult,
+    MayanSwiftV2UnsignedTransaction, create_mayan_swift_v2_bridge_client,
+};
+pub use bridge_local::{
+    MayanSwiftV2LocalBuild, MayanSwiftV2LocalBuildRequest, MayanSwiftV2LocalBuildValidation,
+    MayanSwiftV2LocalConstruction, MayanSwiftV2LocalContext, MayanSwiftV2LocalEvmRpcEvidence,
+    MayanSwiftV2LocalSolanaRpcEvidence, MayanSwiftV2LocalSolanaRpcLookupTableEvidence,
+    MayanSwiftV2LocalSourceRpcEvidence, MayanSwiftV2LocalSourceSwapInstruction,
+    MayanSwiftV2LocalSourceSwapInstructionAccount, MayanSwiftV2LocalSourceSwapPlan,
+    MayanSwiftV2SourceSwapPlan,
 };
 pub use cloud::{
     CloudCatalogClient, CloudCredit, CloudCreditAlertLevel, CloudCreditClient, CloudOffering,

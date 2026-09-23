@@ -326,6 +326,49 @@ Jupiter or another hosted source-swap dependency. The addition is not included
 in the published `0.8.0` package; its package version and release publication
 remain future work.
 
+### Local unsigned construction
+
+The source tree also exposes an explicit keyless construction path for the
+reviewed EURC and native USDC directions. Pass a hosted normalized quote and a
+fresh public 16-byte `orderNonce` to `prepareSourceSwap`, then pass its plan to
+`buildLocalUnsigned`:
+
+```ts
+const localClient = createMayanSwiftV2BridgeClient({
+  localBuild: {
+    sourceSwapEndpoint: 'https://price-api.mayan.finance/v3',
+    ethereumRpc: { httpUrl: 'https://your-ethereum-rpc.example' },
+    solanaRpc: { httpUrl: 'https://your-solana-rpc.example' },
+  },
+})
+
+const context = {
+  quote: quotes[0],
+  swapperAddress: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+  destinationAddress: 'HQhyrHjgq5ftgsibxdUwLvDZ5HT4c9bNuBWJMmZvTd5b',
+  orderNonce: '0x00112233445566778899aabbccddeeff',
+}
+const sourceSwapPlan = await localClient.prepareSourceSwap(context)
+const unsigned = await localClient.buildLocalUnsigned({
+  ...context,
+  sourceSwapPlan,
+})
+```
+
+`buildLocalUnsigned` requires the explicitly configured source RPC matching the
+source chain. It performs bounded read-only identity and byte preflight, keeps
+the original quote unchanged, and returns an unsigned EVM or Solana envelope.
+Local source-swap requests are anonymous and use no Mayan builder key; direct
+USDC uses `{ kind: 'none' }` and makes no source-swap request. There is no
+fallback to hosted `/build`, and the local path never creates keys, approves,
+signs, submits, broadcasts, or claims settlement. The caller owns wallet
+custody and all signing and ERPC broadcast steps described in the
+[TypeScript signing and broadcast guide](https://github.com/elsoul/erpc-sdk/blob/main/packages/typescript/docs/signing-and-broadcast.md).
+
+These local methods and native USDC routes are source-tree additions. They are
+not part of the published TypeScript `0.8.0` package; the published bridge API
+remains the hosted EURC adapter described above.
+
 ## Namespaces
 
 | Namespace | Purpose |

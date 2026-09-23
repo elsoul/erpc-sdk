@@ -20,7 +20,19 @@ const cjs = require('../dist/index.cjs')
 if (packageJson.name !== '@elsoul/erpc-sdk' || packageJson.private === true) {
   throw new Error('Publishable package identity check failed')
 }
-for (const field of ['dependencies', 'optionalDependencies', 'peerDependencies']) {
+const approvedDependencies = {
+  '@noble/curves': '1.9.7',
+  '@noble/hashes': '1.8.0',
+}
+const runtimeDependencies = packageJson.dependencies ?? {}
+if (
+  JSON.stringify(Object.keys(runtimeDependencies).sort()) !==
+  JSON.stringify(Object.keys(approvedDependencies).sort()) ||
+  Object.entries(approvedDependencies).some(([name, version]) => runtimeDependencies[name] !== version)
+) {
+  throw new Error('Runtime dependency allowlist check failed')
+}
+for (const field of ['optionalDependencies', 'peerDependencies']) {
   if (Object.keys(packageJson[field] ?? {}).length > 0) {
     throw new Error(`Unexpected runtime dependency field: ${field}`)
   }
@@ -33,6 +45,7 @@ if (
   typeof esm.CloudCreditClient !== 'function' ||
   typeof esm.CloudResourcesClient !== 'function' ||
   typeof esm.UsageClient !== 'function' ||
+  typeof esm.createMayanSwiftV2BridgeClient !== 'function' ||
   esm.DEFAULT_AVALANCHE_ENDPOINT !== 'https://ava-rpc.erpc.global'
 ) {
   throw new Error('ESM export check failed')
@@ -132,6 +145,19 @@ if (client.avalanche?.rpc?.endpoint !== 'https://ava-rpc.erpc.global/ava') {
   throw new Error('Avalanche client export check failed')
 }
 client.close()
+const bridge = esm.createMayanSwiftV2BridgeClient({
+  fetch: async () => new Response('{}'),
+})
+if (
+  typeof bridge.prepareSourceSwap !== 'function' ||
+  typeof bridge.buildLocalUnsigned !== 'function'
+) {
+  throw new Error('Local bridge method export check failed')
+}
+bridge.close()
+if (typeof cjs.createMayanSwiftV2BridgeClient !== 'function') {
+  throw new Error('CommonJS bridge export check failed')
+}
 if (esm.ETHEREUM_RPC_METHODS.length !== 53) {
   throw new Error('Ethereum method catalog check failed')
 }

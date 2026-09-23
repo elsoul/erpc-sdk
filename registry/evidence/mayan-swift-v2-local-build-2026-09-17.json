@@ -1,0 +1,412 @@
+{
+  "evidenceVersion": 1,
+  "kind": "mayan-swift-v2-local-build-reference-evidence",
+  "recordedAsOf": "2026-09-17",
+  "scope": "Bounded oracle evidence for local unsigned construction of native EURC and native USDC on Ethereum mainnet and Solana mainnet.",
+  "boundary": "Reference-only engineering evidence. The official SDK was used only as a byte-construction oracle with public synthetic addresses and deterministic cloned-quote memo values. This packet contains no wallet key, signature, approval, submission, broadcast, live-funds, authenticated build, settlement, provider authorization, or ERPC native-parity claim. The temporary capture directories referenced below are historical labels and are unavailable after the 2026-09-17 capture; the 2026-09-24 additions are synthetic registry regressions.",
+  "canonicalRegistry": {
+    "path": "registry/bridge-capabilities.json",
+    "asOfDate": "2026-09-17",
+    "capabilityDigest": "691a77498c5ff876dadc437a8265d8288ec51cbc1d44f8beacb746626bf5b98d",
+    "capabilityIds": [
+      "bridge-mayan-swift-v2-eurc-eth-sol",
+      "bridge-mayan-swift-v2-eurc-sol-eth",
+      "bridge-mayan-swift-v2-usdc-eth-sol",
+      "bridge-mayan-swift-v2-usdc-sol-eth"
+    ]
+  },
+  "hostedFixture": {
+    "path": "registry/fixtures/mayan-swift-v2-cases.json",
+    "sha256": "3c414e362b518a3845e365c3c7c6f78e43984aae396be19817ddb53bb0da6283",
+    "semantic51CaseSha256": "843748ff68a12d32b0fee400093b9f25eed0f8100bc4082de5d693a9cd6db53a",
+    "preserved": true
+  },
+  "localFixture": {
+    "path": "registry/fixtures/mayan-swift-v2-local-build-cases.json",
+    "sha256": "5e84faea7b968aabc03a04fb9d6bfdc9fac3b5b625090227e7ea6b8828b51901",
+    "localFixtureDigest": "19b1a9d601e7dedaf4e5ad8f8cbe9c7aec0d2b1f2f625b56eea53c48b16ee2d1",
+    "caseCount": 87,
+    "positivePrepareCases": 5,
+    "positiveBuildCases": 6,
+    "rejectionCases": 76,
+    "historicalOracleCaseCount": 39,
+    "historicalOracleRecordedAsOf": "2026-09-17"
+  },
+  "referenceOracle": {
+    "status": "PASS_REFERENCE_ONLY",
+    "referenceCommit": "c4c98031aaad9264d17630d7b4de0cb18688cf78",
+    "officialSdkVersion": "15.2.2",
+    "referenceDirectory": "historical temporary oracle directory (unavailable after capture)",
+    "capturePath": "historical temporary local-capture-4.json (unavailable after capture)",
+    "captureSha256": "6bce7cf0aa0b81ed026e89caa196569e12109bd423cf00f4979a03f115eb0130",
+    "captureRequests": 6,
+    "captureStatuses": [
+      200,
+      200,
+      200,
+      200,
+      200,
+      200
+    ],
+    "apiKeysSupplied": false,
+    "walletKeysRead": 0,
+    "signatures": 0,
+    "broadcasts": 0,
+    "simulations": 0,
+    "syntheticAddresses": {
+      "ethereum": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "solana": "HQhyrHjgq5ftgsibxdUwLvDZ5HT4c9bNuBWJMmZvTd5b"
+    },
+    "nonceByRoute": {
+      "eurc-ethereum-to-solana": "0x00112233445566778899aabbccddeeff",
+      "eurc-solana-to-ethereum": "0x102132435465768798a9bacbdcedfe0f",
+      "usdc-ethereum-to-solana": "0x112233445566778899aabbccddeeff00",
+      "usdc-solana-to-ethereum": "0x2233445566778899aabbccddeeff0011"
+    },
+    "oracleRule": "Each nonce is set as memoHex only on a cloned quote so official random32 equals quoteId16||nonce16; production quote JSON remains unchanged.",
+    "rows": [
+      {
+        "route": "eurc-ethereum-to-solana",
+        "capabilityId": "bridge-mayan-swift-v2-eurc-eth-sol",
+        "quoteId": "0x7cc392912037d3040fc65db5596858a3",
+        "rawQuoteSha256": "5e914957de7c12b0fa93e462ebe1ef1ca5875736915acdc63c98694c7c9c4189",
+        "sourceSwapResponseSha256": "fc5eb0fe7cab5c2ca73d10e9ffa2b130cba5668f34e908708ddc94ccab6fdfab",
+        "minimumIntermediateAmount": "114748855",
+        "orderHash": "0x2b829e91e9aecd4a43d5c1345feda1bc4e6b6ecb538684ead21ce04d9e0f6cbc",
+        "quoteBindingHash": "8307b90ff89eb633da5bc04ff4ee38344b431e4ebb8c3ee9b9e9fe2c0909ea5d",
+        "planHash": "de31f6a691edaeab5a1c5dfa68ab6c9a88f98fefdfc1142f28d555d77258d473",
+        "unsigned": {
+          "kind": "evm-unsigned",
+          "method": "swapAndForwardERC20",
+          "selector": "0x30dedc57",
+          "calldataBytes": 1412,
+          "value": "0x00",
+          "chainId": "1"
+        }
+      },
+      {
+        "route": "eurc-solana-to-ethereum",
+        "capabilityId": "bridge-mayan-swift-v2-eurc-sol-eth",
+        "quoteId": "0x7e6a3fd367955cb68aed7f9186424652",
+        "rawQuoteSha256": "047db28e92de32eb1b59241001ebb21cfea629f8641ba4380f7972de16b5ebb3",
+        "sourceSwapResponseSha256": "b39e5e0d54107c7a676e104172d2f22204f8b288888076d3cc7d51945892e905",
+        "minimumIntermediateAmount": "114758249",
+        "orderHash": "0xc42deeea9cac160a58f83d57a274dcdb41c75c7863b2f412008bd87dfab2fbae",
+        "quoteBindingHash": "2280b04a7693dae7fba7094b29c7277d254f8d81e5269a6f508da2836c90d547",
+        "planHash": "542ed79ebf23963e462bb63df875914fbb1b6572fcce4c0d914cb0c92c7df193",
+        "unsigned": {
+          "kind": "solana-v0-unsigned",
+          "bytes": 856,
+          "instructions": 6,
+          "providerLookupTables": 1,
+          "finalLookupTables": 2,
+          "requiredSignatures": 1,
+          "allSignaturesZero": true
+        }
+      },
+      {
+        "route": "usdc-ethereum-to-solana",
+        "capabilityId": "bridge-mayan-swift-v2-usdc-eth-sol",
+        "quoteId": "0x1c11090b4ddd2356d726cd593a5affa8",
+        "rawQuoteSha256": "63b3f1912376d5b340a21fc0560567a50a7843002a39cb9ef607d2da7c149bcc",
+        "sourceSwapResponseSha256": null,
+        "minimumIntermediateAmount": "100000000",
+        "orderHash": "0xf78980cd6cd800fe0cf692058ec5992a59836377be6409c37160af8bd2150c34",
+        "quoteBindingHash": "1093d5de92ac16736a345ec3bb4f01b41b4cafd28df42b45ef1e93404634613a",
+        "planHash": "b40fabbbfb6f394310c16618abd6ac868d7f2792dd1c37e880e637906099b5a6",
+        "unsigned": {
+          "kind": "evm-unsigned",
+          "method": "forwardERC20",
+          "selector": "0xe4269fc4",
+          "calldataBytes": 932,
+          "value": "0x00",
+          "chainId": "1"
+        }
+      },
+      {
+        "route": "usdc-solana-to-ethereum",
+        "capabilityId": "bridge-mayan-swift-v2-usdc-sol-eth",
+        "quoteId": "0x3d29586c5b13cbf2daa9e55ce2cac420",
+        "rawQuoteSha256": "e0c448b74adaeab8452054d6a0c944fdd43ac4a882d8d0fcc3c1f3e21906cb7a",
+        "sourceSwapResponseSha256": null,
+        "minimumIntermediateAmount": "100000000",
+        "orderHash": "0xe998b14a54b10adf08a02d94377a5ee74d6bf867684341088d6b8fed21299eae",
+        "quoteBindingHash": "e1fbf6a789a347eaad942464f5c86109b0a07a306b8f587cd2e1a9d7bb35fa0c",
+        "planHash": "90b9a992e4926b6f4a754b76f66e74ef058357c5f12a52accd1fda4336c9dd03",
+        "unsigned": {
+          "kind": "solana-v0-unsigned",
+          "bytes": 590,
+          "instructions": 4,
+          "providerLookupTables": 0,
+          "finalLookupTables": 1,
+          "requiredSignatures": 1,
+          "allSignaturesZero": true
+        }
+      },
+      {
+        "route": "eurc-solana-to-ethereum-raydium",
+        "capabilityId": "bridge-mayan-swift-v2-eurc-sol-eth",
+        "quoteId": "0x445566778899aabbccddeeff00112233",
+        "rawQuoteSha256": "d269ebc1c7e03ddef6b10f601db845b8f711eb5f4906fc3e190f466d579e050b",
+        "sourceSwapResponseSha256": "e930059cdebd89d7222cb95e9791401c3a083bb77bf345096dfc95e99a11bce6",
+        "minimumIntermediateAmount": "114758249",
+        "orderHash": "0x34703f51a3fb49a1fe41788959d8f2bc68d576cd8c418fdb93d9da5db03b8715",
+        "quoteBindingHash": "47802aa93011a064f558ab4b8e013f48dfe1fc7dd81b3f5edf8d04e41ea092fa",
+        "planHash": "ddd5ac84e75d14575519cbe803a73b1673af29293465ff5b3fd62ddffc9cf517",
+        "providerAlt": "CzGXBtzCo3SfE1y9erkwa7t7ffT7q3GskAeAp9o3JV3S",
+        "unsigned": {
+          "kind": "solana-v0-unsigned",
+          "bytes": 860,
+          "transactionSha256": "7b945926dbc0b1124f5fbc429735aa80d5a57ba8fe60486d5d50776823a60448",
+          "instructions": 6,
+          "providerLookupTables": 1,
+          "activeLookupTables": 2,
+          "requiredSignatures": 1,
+          "allSignaturesZero": true
+        }
+      }
+    ],
+    "sourceRpcEvidence": {
+      "ethereum": {
+        "rpcChainId": "0x1",
+        "code": [
+          {
+            "address": "0x337685fdab40d39bd02028545a4ffa7d287cc3e2",
+            "keccak256": "0xb0f42a5e56d1dbfc5cc640c605c24152166bf2e08d68ce85affaf7b7d2fdd7ac"
+          },
+          {
+            "address": "0x40ffe85a28dc9993541449464d7529a922142960",
+            "keccak256": "0xd31ab2df76bbd6e5bcd710799964f29c03ebdaf9d8fac02ed6c907c6aa2fe324"
+          },
+          {
+            "address": "0xa929c559e5e6537359680f39cb4e3708e1a14dd1",
+            "keccak256": "0x881d4feedb636f36bc1bf2a40e65088653490ac02711c628aced65d5a68624c7"
+          }
+        ],
+        "directUsdcCodeOrder": "Forwarder, Swift; EURC adds router third"
+      },
+      "solana": {
+        "genesisHash": "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d",
+        "blockhashContextSlot": "447809892",
+        "accountContextSlot": "447809892",
+        "recentBlockhash": "EU6eJ2A74DchZ5vnBSkMuZCVQWhJLjW6sxaSfrkP1bsA",
+        "lastValidBlockHeight": "425851218",
+        "lookupTables": [
+          {
+            "address": "Ff3yi1meWQQ19VPZMzGg6H8JQQeRudiV7QtVtyzJyoht",
+            "dataSha256": "fc97ad0ffc2b3cac864f950ff99a32b5c03dbd207cdab85e2eebe5653c1aefb8"
+          },
+          {
+            "address": "9fhMmHvNqELzbHEhpLTFQhFjPiF49MAcLsQjY8cHnoH9",
+            "dataSha256": "4d63e02584089767268a87ee1d281f8558e10305b9b2a2af4d832446d6c4f3b4"
+          }
+        ]
+      }
+    },
+    "rpcRequestHeaders": {
+      "accept": "application/json",
+      "content-type": "application/json"
+    }
+  },
+  "implementationEvidence": {
+    "oracleScript": "registry/reference-mayan-local-build.mjs",
+    "localSpec": "registry/bridge-local-spec.md",
+    "fixture": "registry/fixtures/mayan-swift-v2-local-build-cases.json",
+    "nativeParity": "PENDING five package-owner native captures against the local fixture",
+    "sourceCopyBoundary": "No Mayan SDK, web3, ethers, tx-builder source, ABI bundle, or runtime dependency is distributed by this evidence packet",
+    "artifactAvailability": "The 2026-09-17 temporary oracle and capture paths are historical and unavailable; do not treat them as current live proof.",
+    "sharedRegressionContract": {
+      "recordedAsOf": "2026-09-24",
+      "fixtureCaseCount": 87,
+      "addedSyntheticCaseCount": 48,
+      "negativeCaseCount": 76,
+      "activePrefixPositiveCase": "build-usdc-solana-alt-same-slot-active-prefix",
+      "inactivePrefixBoundaryCase": "build-eurc-solana-raydium-same-slot-inactive-index",
+      "inactivePrefixBoundaryOutcome": "BRIDGE_LOCAL_BUILD_INVALID at the calibrated 1232-byte limit after inactive ALT entries are omitted",
+      "altVectorDiagnostics": [
+        {"caseId":"build-usdc-solana-alt-type-discriminator","base":"rpc-solana-accounts-fixed","offset":"u32le@0","change":"tag=2"},
+        {"caseId":"build-usdc-solana-alt-deactivated","base":"rpc-solana-accounts-fixed","offset":"u64le@4","change":"deactivation=0"},
+        {"caseId":"build-usdc-solana-alt-authority-layout","base":"rpc-solana-accounts-fixed","offset":"u8@21","change":"authorityOption=2"},
+        {"caseId":"build-usdc-solana-alt-future-extension","base":"rpc-solana-accounts-fixed","offset":"u64le@12","change":"lastExtendedSlot=context+1"},
+        {"caseId":"build-usdc-solana-alt-start-index-out-of-range","base":"rpc-solana-accounts-fixed","offset":"u8@20","change":"lastExtendedStartIndex=255"},
+        {"caseId":"build-eurc-solana-raydium-same-slot-inactive-index","base":"rpc-solana-accounts-raydium","offset":"u64le@12,u8@20","change":"both tables context slot and startIndex=0"}
+      ],
+      "fixtureDigest": "19b1a9d601e7dedaf4e5ad8f8cbe9c7aec0d2b1f2f625b56eea53c48b16ee2d1",
+      "scope": "Steiner F1-F7 shared rejection and boundary descriptors; native captures remain pending"
+    }
+  },
+  "euOssPlanning": {
+    "applicability": "UNDETERMINED",
+    "companyLegalRole": "UNDETERMINED",
+    "productClassification": "UNDETERMINED",
+    "supportCommitments": "UNDETERMINED",
+    "complianceStatus": "UNDETERMINED",
+    "primarySourcesAndAsOf": [
+      {
+        "url": "https://digital-strategy.ec.europa.eu/en/policies/cra-open-source",
+        "asOf": "2026-07-31"
+      },
+      {
+        "url": "https://digital-strategy.ec.europa.eu/en/policies/cra-reporting",
+        "asOf": "2026-09-11"
+      },
+      {
+        "url": "https://eur-lex.europa.eu/eli/reg/2024/2847/oj",
+        "asOf": "2024-11-20"
+      }
+    ],
+    "evidence": [
+      "The local construction contract uses bounded public-data primitives and does not add a signing or custody surface.",
+      "The official Mayan SDK, ethers, and web3.js installations are temporary oracle inputs only; they are not runtime dependencies or distribution authorization."
+    ],
+    "gaps": [
+      "Final dependency, license, SBOM, minimum-runtime, artifact, vulnerability, and support reviews remain open.",
+      "Provider terms, deployed versions, source-swap authorization, and settlement remain unverified.",
+      "No legal certification, CE declaration, regulatory filing, public vulnerability disclosure, or release activation is established."
+    ],
+    "owner": "TBD — human legal/commercial owner assignment required; implementation report to Rydia",
+    "dueDate": "TBD — human assignment required",
+    "nextReview": "2026-10-15 or earlier on a material dependency, provider, security, or release event",
+    "boundary": "Planning evidence only; no self-issued legal compliance or CE certification and no standing authority for filings, disclosures, or live effects."
+  },
+  "svmProof": {
+    "status": "PASS_ERPC_TYPESCRIPT_ISOLATED_SOURCE_ONLY",
+    "path": "/private/tmp/erpc-keyless-implementation/erpc-svm-proof/full-source-result.json",
+    "resultSha256": "c7e74e782cb10d1a5a0ae19ff4de6b3fa6bbebd466b1c79a806366c57296ebda",
+    "snapshotSlot": 447831455,
+    "simulationUnixTime": 1789659625,
+    "soldersVersion": "0.29.0",
+    "syntheticLocalWalletBalances": true,
+    "signatureVerificationDisabledInLocalVM": true,
+    "walletKeysRead": 0,
+    "signaturesProduced": 0,
+    "mainnetTransactionsSubmitted": 0,
+    "destinationSettlementTested": false,
+    "reference": "ERPC TypeScript built-dist source transaction; recentBlockhash replaced with local VM hash",
+    "underfillMutation": "only final init_order amountInMin changed to u64 maximum for forced rejection",
+    "programs": [
+      {
+        "programId": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+        "deploymentSlot": null,
+        "elfBytes": 105032,
+        "elfSha256": "6804554e69fd3a58caa191dc4a58f4c67223d30ca28ab8987f39fc18d2f7374d"
+      },
+      {
+        "programId": "D8C8iW6zmoKg5TRr8nQ7h14TMWqQX8FiBdj2ju5MF3wa",
+        "programData": "5VeCd7QKVbtHzfReKZCN3PGBXXE4LcgGbW3pJBVnFMjd",
+        "deploymentSlot": "373814760",
+        "elfBytes": 7296,
+        "elfSha256": "361711aaef59ea5051851502607e5afedcb42ac3decdef5af07932cca207fc4c"
+      },
+      {
+        "programId": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "programData": "3gvYRKWyXRR9xKWe1ZjPhLY5ZJRN7KDB4rFZFGoJfFk2",
+        "deploymentSlot": "419472000",
+        "elfBytes": 108600,
+        "elfSha256": "8190d3f7ceb6cb7a7a8d8924bff89f9f611e15ce1f806f2b6237f3311a98f697"
+      },
+      {
+        "programId": "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
+        "programData": "4Ec7ZxZS6Sbdg5UGSLHbAnM7GQHp2eFd4KYWRexAipQT",
+        "deploymentSlot": "447706804",
+        "elfBytes": 2892224,
+        "elfSha256": "b019147b18ce4f4dd689272c136c192a33e468a6cca7be2c8bacac74607ac7ec"
+      },
+      {
+        "programId": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
+        "programData": "CtXfPzz36dH5Ws4UYKZvrQ1Xqzn42ecDW6y8NKuiN8nD",
+        "deploymentSlot": "440170207",
+        "elfBytes": 10485715,
+        "elfSha256": "610b1e394973bd1b86de8afc983524bd21dea177e87bfae75ec289d4c350f9ae"
+      },
+      {
+        "programId": "mayan34VedncxdK2XobtvWFDXQASUTBXhUVzt2kKgny",
+        "programData": "BxrqnZ1VQ42HBgcQcjxX52Rtd7iSqbQqpcU5v8Z2goPc",
+        "deploymentSlot": "432030758",
+        "elfBytes": 778728,
+        "elfSha256": "01640d60a772f7e49b31d0f4edf5f71f47d6e6e8b2861b616bd2af37406b4815"
+      },
+      {
+        "programId": "5VtQHnhs2pfVEr68qQsbTRwKh4JV5GTu9mBHgHFxpHeQ",
+        "programData": "8mR5FeH4FVF7SmrkysxtnDyEehFRJrzYsuTAQNH5tHDM",
+        "deploymentSlot": "435726317",
+        "elfBytes": 368992,
+        "elfSha256": "3c97593adfe84cb623984daa14ba606fdb0f61022c0ff951000b48fa148a6da9"
+      }
+    ],
+    "rows": [
+      {
+        "asset": "eurc",
+        "forcedUnderfill": false,
+        "success": true,
+        "error": null,
+        "computeUnits": 99658,
+        "instructionCount": 6,
+        "sourceTokenBalanceBefore": "100000000",
+        "simulatedSourceTokenBalanceAfter": "0"
+      },
+      {
+        "asset": "eurc",
+        "forcedUnderfill": true,
+        "success": false,
+        "error": "TransactionErrorInstructionError((5, Tagged(InstructionErrorCustom(6025))))",
+        "computeUnits": 93871,
+        "instructionCount": 6,
+        "sourceTokenBalanceBefore": "100000000",
+        "simulatedSourceTokenBalanceAfter": null
+      },
+      {
+        "asset": "usdc",
+        "forcedUnderfill": false,
+        "success": true,
+        "error": null,
+        "computeUnits": 47570,
+        "instructionCount": 4,
+        "sourceTokenBalanceBefore": "100000000",
+        "simulatedSourceTokenBalanceAfter": "0"
+      },
+      {
+        "asset": "usdc",
+        "forcedUnderfill": true,
+        "success": false,
+        "error": "TransactionErrorInstructionError((3, Tagged(InstructionErrorCustom(6025))))",
+        "computeUnits": 41783,
+        "instructionCount": 4,
+        "sourceTokenBalanceBefore": "100000000",
+        "simulatedSourceTokenBalanceAfter": null
+      }
+    ],
+    "qualification": "Actual ERPC TypeScript built-dist source transaction instructions were executed with real deployed source programs in isolated LiteSVM, using synthetic source accounts and local signature verification disabled. This proves source instruction execution and init minimum underfill behavior only; it does not prove Jupiter/Orca end-to-end settlement, wallet signing, submission, or destination settlement."
+  },
+  "rpcContract": {
+    "frozenRequestHeaders": {
+      "accept": "application/json",
+      "content-type": "application/json"
+    },
+    "credentialBoundary": "Only the explicitly configured source RPC receives its own headers; no RPC header or ERPC key flows to Mayan source-swap HTTP."
+  },
+  "raydiumBoundary": {
+    "sourceResponsePath": "/private/tmp/erpc-eurc-keyless-research/solana-to-ethereum-source-swap-response.json",
+    "reboundResponseSha256": "e930059cdebd89d7222cb95e9791401c3a083bb77bf345096dfc95e99a11bce6",
+    "providerAlt": "CzGXBtzCo3SfE1y9erkwa7t7ffT7q3GskAeAp9o3JV3S",
+    "emptyAltDataSha256": "e6249b0f8c66ca4879f4f2e8fd43327a330cd8fa22794a6e0bb85667067018d1",
+    "orcaNoAltObservedBytes": 1191,
+    "raydiumNoAltObservedBytes": 1257,
+    "maximumSolanaTransactionBytes": 1232,
+    "expectedBuildCode": "BRIDGE_LOCAL_BUILD_INVALID",
+    "qualification": "The Orca 1191-byte no-ALT construction remains valid; this explicit Raydium 25-account route is the reviewed >1232-byte boundary with valid empty active ALT metadata, so the local builder rejects only on final serialized size."
+  },
+  "raydiumPositive": {
+    "sourceResponsePath": "/private/tmp/erpc-eurc-keyless-research/solana-to-ethereum-source-swap-response.json",
+    "reboundResponseSha256": "e930059cdebd89d7222cb95e9791401c3a083bb77bf345096dfc95e99a11bce6",
+    "providerAlt": "CzGXBtzCo3SfE1y9erkwa7t7ffT7q3GskAeAp9o3JV3S",
+    "providerAltDataSha256": "9606f01748c3cbb4adc3266cf0b2ef0b6ed2ec93fd69d6bb40848c90f9c6093b",
+    "sourceOutput": "114832183",
+    "swiftMinimum": "114758249",
+    "buildBytes": 860,
+    "buildTransactionSha256": "7b945926dbc0b1124f5fbc429735aa80d5a57ba8fe60486d5d50776823a60448",
+    "buildInstructionCount": 6,
+    "qualification": "This is a synthetic quote-bound native local build using the reviewed Raydium CLMM route, actual active ALT contents, and deterministic public addresses. It is not live quote, signing, submission, or settlement evidence.",
+    "emptyAltDataSha256": "e6249b0f8c66ca4879f4f2e8fd43327a330cd8fa22794a6e0bb85667067018d1"
+  }
+}

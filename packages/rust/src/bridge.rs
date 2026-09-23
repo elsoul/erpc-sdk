@@ -21,6 +21,7 @@ use tokio_util::sync::CancellationToken;
 use url::Url;
 
 use crate::{
+    config::RpcEndpointConfig,
     generated::bridge_capabilities::{
         BRIDGE_CAPABILITIES_AS_OF_DATE, BRIDGE_CAPABILITIES_CONTENT_DIGEST,
         BRIDGE_CAPABILITIES_JSON,
@@ -108,6 +109,16 @@ pub enum BridgeErrorCode {
     Timeout,
     /// The caller cancelled the provider request.
     Aborted,
+    /// A local build needs a configured source-chain RPC endpoint.
+    LocalRpcRequired,
+    /// The configured source-chain RPC failed to respond.
+    SourceRpcTransport,
+    /// The configured source-chain RPC response is invalid.
+    SourceRpcInvalidResponse,
+    /// A local source-swap plan is invalid.
+    LocalPlanInvalid,
+    /// A local unsigned build is invalid.
+    LocalBuildInvalid,
 }
 
 impl BridgeErrorCode {
@@ -137,6 +148,16 @@ impl BridgeErrorCode {
     pub const BRIDGE_TIMEOUT: Self = Self::Timeout;
     /// Stable spelling for [`Self::Aborted`].
     pub const BRIDGE_ABORTED: Self = Self::Aborted;
+    /// Stable spelling for [`Self::LocalRpcRequired`].
+    pub const BRIDGE_LOCAL_RPC_REQUIRED: Self = Self::LocalRpcRequired;
+    /// Stable spelling for [`Self::SourceRpcTransport`].
+    pub const BRIDGE_SOURCE_RPC_TRANSPORT: Self = Self::SourceRpcTransport;
+    /// Stable spelling for [`Self::SourceRpcInvalidResponse`].
+    pub const BRIDGE_SOURCE_RPC_INVALID_RESPONSE: Self = Self::SourceRpcInvalidResponse;
+    /// Stable spelling for [`Self::LocalPlanInvalid`].
+    pub const BRIDGE_LOCAL_PLAN_INVALID: Self = Self::LocalPlanInvalid;
+    /// Stable spelling for [`Self::LocalBuildInvalid`].
+    pub const BRIDGE_LOCAL_BUILD_INVALID: Self = Self::LocalBuildInvalid;
 
     /// Returns the stable wire/error code string.
     #[must_use]
@@ -155,6 +176,11 @@ impl BridgeErrorCode {
             Self::StatusNotFound => "BRIDGE_STATUS_NOT_FOUND",
             Self::Timeout => "BRIDGE_TIMEOUT",
             Self::Aborted => "BRIDGE_ABORTED",
+            Self::LocalRpcRequired => "BRIDGE_LOCAL_RPC_REQUIRED",
+            Self::SourceRpcTransport => "BRIDGE_SOURCE_RPC_TRANSPORT",
+            Self::SourceRpcInvalidResponse => "BRIDGE_SOURCE_RPC_INVALID_RESPONSE",
+            Self::LocalPlanInvalid => "BRIDGE_LOCAL_PLAN_INVALID",
+            Self::LocalBuildInvalid => "BRIDGE_LOCAL_BUILD_INVALID",
         }
     }
 
@@ -173,6 +199,11 @@ impl BridgeErrorCode {
             Self::StatusNotFound => "Bridge status was not found",
             Self::Timeout => "Bridge provider request timed out",
             Self::Aborted => "Bridge provider request was aborted",
+            Self::LocalRpcRequired => "Bridge local source RPC is required",
+            Self::SourceRpcTransport => "Bridge source RPC transport failed",
+            Self::SourceRpcInvalidResponse => "Bridge source RPC response is invalid",
+            Self::LocalPlanInvalid => "Bridge local source-swap plan is invalid",
+            Self::LocalBuildInvalid => "Bridge local unsigned build is invalid",
         }
     }
 }
@@ -221,14 +252,75 @@ impl Error for BridgeError {}
 /// Result type used by the standalone Mayan bridge client.
 pub type BridgeResult<T> = std::result::Result<T, BridgeError>;
 
-fn bridge_error(code: BridgeErrorCode) -> BridgeError {
+pub(crate) fn bridge_error(code: BridgeErrorCode) -> BridgeError {
     BridgeError { code, status: None }
 }
 
-fn bridge_error_status(code: BridgeErrorCode, status: u16) -> BridgeError {
+pub(crate) fn bridge_error_status(code: BridgeErrorCode, status: u16) -> BridgeError {
     BridgeError {
         code,
         status: Some(status),
+    }
+}
+
+/// Configuration for local Mayan source-swap preparation and unsigned builds.
+#[derive(Clone)]
+pub struct MayanSwiftV2LocalBuildConfig {
+    /// Anonymous Mayan source-swap endpoint used for EURC preparation.
+    pub source_swap_endpoint: String,
+    /// Caller-owned Ethereum RPC used by Ethereum-source local builds.
+    pub ethereum_rpc: Option<RpcEndpointConfig>,
+    /// Caller-owned Solana RPC used by Solana-source local builds.
+    pub solana_rpc: Option<RpcEndpointConfig>,
+}
+
+impl Default for MayanSwiftV2LocalBuildConfig {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl MayanSwiftV2LocalBuildConfig {
+    /// Creates local-build configuration with Mayan's documented source-swap endpoint.
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            source_swap_endpoint: "https://price-api.mayan.finance/v3".to_owned(),
+            ethereum_rpc: None,
+            solana_rpc: None,
+        }
+    }
+
+    /// Overrides the anonymous source-swap endpoint.
+    #[must_use]
+    pub fn with_source_swap_endpoint(mut self, endpoint: impl Into<String>) -> Self {
+        self.source_swap_endpoint = endpoint.into();
+        self
+    }
+
+    /// Configures the caller-owned Ethereum RPC used by local builds.
+    #[must_use]
+    pub fn with_ethereum_rpc(mut self, endpoint: impl Into<RpcEndpointConfig>) -> Self {
+        self.ethereum_rpc = Some(endpoint.into());
+        self
+    }
+
+    /// Configures the caller-owned Solana RPC used by local builds.
+    #[must_use]
+    pub fn with_solana_rpc(mut self, endpoint: impl Into<RpcEndpointConfig>) -> Self {
+        self.solana_rpc = Some(endpoint.into());
+        self
+    }
+}
+
+impl fmt::Debug for MayanSwiftV2LocalBuildConfig {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("MayanSwiftV2LocalBuildConfig")
+            .field("source_swap_endpoint", &self.source_swap_endpoint)
+            .field("ethereum_rpc", &self.ethereum_rpc)
+            .field("solana_rpc", &self.solana_rpc)
+            .finish()
     }
 }
 
@@ -241,6 +333,7 @@ pub struct MayanSwiftV2BridgeConfig {
     allow_unauthenticated_build: bool,
     minimum_quote_validity_seconds: u64,
     timeout: Duration,
+    local_build: Option<MayanSwiftV2LocalBuildConfig>,
 }
 
 impl Default for MayanSwiftV2BridgeConfig {
@@ -260,6 +353,7 @@ impl MayanSwiftV2BridgeConfig {
             allow_unauthenticated_build: false,
             minimum_quote_validity_seconds: DEFAULT_MINIMUM_QUOTE_VALIDITY_SECONDS,
             timeout: DEFAULT_TIMEOUT,
+            local_build: None,
         }
     }
 
@@ -304,6 +398,13 @@ impl MayanSwiftV2BridgeConfig {
         self.timeout = timeout;
         self
     }
+
+    /// Configures explicit local source-swap preparation and unsigned builds.
+    #[must_use]
+    pub fn with_local_build(mut self, local_build: MayanSwiftV2LocalBuildConfig) -> Self {
+        self.local_build = Some(local_build);
+        self
+    }
 }
 
 impl fmt::Debug for MayanSwiftV2BridgeConfig {
@@ -325,6 +426,7 @@ impl fmt::Debug for MayanSwiftV2BridgeConfig {
                 &self.minimum_quote_validity_seconds,
             )
             .field("timeout", &self.timeout)
+            .field("local_build", &self.local_build)
             .finish()
     }
 }
@@ -571,31 +673,31 @@ pub type MayanSwiftV2StatusResult = MayanSwiftV2Status;
 pub type BridgeClient = MayanSwiftV2BridgeClient;
 
 #[derive(Clone, Debug)]
-struct JsonNode {
-    value: Value,
-    start: usize,
-    end: usize,
-    object_entries: Option<HashMap<String, JsonNode>>,
-    array_items: Option<Vec<JsonNode>>,
-    raw_number: Option<String>,
+pub(crate) struct JsonNode {
+    pub(crate) value: Value,
+    pub(crate) start: usize,
+    pub(crate) end: usize,
+    pub(crate) object_entries: Option<HashMap<String, JsonNode>>,
+    pub(crate) array_items: Option<Vec<JsonNode>>,
+    pub(crate) raw_number: Option<String>,
 }
 
-struct ProviderResponse {
-    text: String,
-    root: JsonNode,
+pub(crate) struct ProviderResponse {
+    pub(crate) text: String,
+    pub(crate) root: JsonNode,
 }
 
-struct StrictJsonParser<'a> {
+pub(crate) struct StrictJsonParser<'a> {
     source: &'a str,
     index: usize,
 }
 
 impl<'a> StrictJsonParser<'a> {
-    fn new(source: &'a str) -> Self {
+    pub(crate) fn new(source: &'a str) -> Self {
         Self { source, index: 0 }
     }
 
-    fn parse(mut self) -> BridgeResult<JsonNode> {
+    pub(crate) fn parse(mut self) -> BridgeResult<JsonNode> {
         self.skip_whitespace();
         let value = self.value(0)?;
         self.skip_whitespace();
@@ -865,19 +967,19 @@ impl<'a> StrictJsonParser<'a> {
     }
 }
 
-fn object_entry<'a>(node: &'a JsonNode, key: &str) -> Option<&'a JsonNode> {
+pub(crate) fn object_entry<'a>(node: &'a JsonNode, key: &str) -> Option<&'a JsonNode> {
     node.object_entries.as_ref()?.get(key)
 }
 
-fn object_value<'a>(node: &'a JsonNode, key: &str) -> Option<&'a Value> {
+pub(crate) fn object_value<'a>(node: &'a JsonNode, key: &str) -> Option<&'a Value> {
     Some(&object_entry(node, key)?.value)
 }
 
-fn required_node<'a>(node: &'a JsonNode, key: &str) -> BridgeResult<&'a JsonNode> {
+pub(crate) fn required_node<'a>(node: &'a JsonNode, key: &str) -> BridgeResult<&'a JsonNode> {
     object_entry(node, key).ok_or_else(|| bridge_error(BridgeErrorCode::ProviderInvalidResponse))
 }
 
-fn parse_provider_response(text: String) -> BridgeResult<ProviderResponse> {
+pub(crate) fn parse_provider_response(text: String) -> BridgeResult<ProviderResponse> {
     let root = StrictJsonParser::new(&text).parse()?;
     Ok(ProviderResponse { text, root })
 }
@@ -920,42 +1022,42 @@ struct BridgeCapability {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum BridgeAsset {
+pub(crate) enum BridgeAsset {
     Eurc,
     Usdc,
 }
 
 #[derive(Clone, Debug)]
-struct DirectionFacts {
-    asset: BridgeAsset,
-    bridge_capability_id: &'static str,
-    source_chain_id: &'static str,
-    destination_chain_id: &'static str,
-    source_token_deployment_id: &'static str,
-    destination_token_deployment_id: &'static str,
-    source_token_address: &'static str,
-    destination_token_address: &'static str,
-    source_token_standard: &'static str,
-    destination_token_standard: &'static str,
-    source_provider_chain_name: &'static str,
-    destination_provider_chain_name: &'static str,
-    source_provider_chain_id: u8,
-    destination_provider_chain_id: u8,
-    source_wormhole_chain_id: u8,
-    destination_wormhole_chain_id: u8,
-    source_usdc_deployment_id: &'static str,
-    source_usdc_address: &'static str,
-    source_usdc_standard: &'static str,
-    swift_contract: &'static str,
-    source_token_name: &'static str,
-    destination_token_name: &'static str,
-    source_token_mint: &'static str,
-    destination_token_mint: &'static str,
-    source_swap_required: bool,
+pub(crate) struct DirectionFacts {
+    pub(crate) asset: BridgeAsset,
+    pub(crate) bridge_capability_id: &'static str,
+    pub(crate) source_chain_id: &'static str,
+    pub(crate) destination_chain_id: &'static str,
+    pub(crate) source_token_deployment_id: &'static str,
+    pub(crate) destination_token_deployment_id: &'static str,
+    pub(crate) source_token_address: &'static str,
+    pub(crate) destination_token_address: &'static str,
+    pub(crate) source_token_standard: &'static str,
+    pub(crate) destination_token_standard: &'static str,
+    pub(crate) source_provider_chain_name: &'static str,
+    pub(crate) destination_provider_chain_name: &'static str,
+    pub(crate) source_provider_chain_id: u8,
+    pub(crate) destination_provider_chain_id: u8,
+    pub(crate) source_wormhole_chain_id: u8,
+    pub(crate) destination_wormhole_chain_id: u8,
+    pub(crate) source_usdc_deployment_id: &'static str,
+    pub(crate) source_usdc_address: &'static str,
+    pub(crate) source_usdc_standard: &'static str,
+    pub(crate) swift_contract: &'static str,
+    pub(crate) source_token_name: &'static str,
+    pub(crate) destination_token_name: &'static str,
+    pub(crate) source_token_mint: &'static str,
+    pub(crate) destination_token_mint: &'static str,
+    pub(crate) source_swap_required: bool,
 }
 
 #[allow(clippy::too_many_lines)]
-fn direction_facts(
+pub(crate) fn direction_facts(
     source_chain_id: &str,
     destination_chain_id: &str,
     source_token_deployment_id: &str,
@@ -1299,6 +1401,7 @@ fn normalize_bridge_config(
         minimum_quote_validity_seconds: config.minimum_quote_validity_seconds,
         timeout: config.timeout,
         http_client,
+        local_build: config.local_build,
     })
 }
 
@@ -1310,6 +1413,7 @@ struct NormalizedBridgeConfig {
     minimum_quote_validity_seconds: u64,
     timeout: Duration,
     http_client: Client,
+    local_build: Option<MayanSwiftV2LocalBuildConfig>,
 }
 
 #[derive(Clone, Copy)]
@@ -1514,18 +1618,64 @@ impl MayanSwiftV2BridgeClient {
         status_from_response(&response, &normalized)
     }
 
+    /// Prepares a local, read-only source-swap plan for a reviewed quote.
+    pub async fn prepare_source_swap(
+        &self,
+        context: crate::bridge_local::MayanSwiftV2LocalContext,
+    ) -> BridgeResult<crate::bridge_local::MayanSwiftV2SourceSwapPlan> {
+        crate::bridge_local::prepare_source_swap(self, context, None).await
+    }
+
+    /// Prepares a local source-swap plan with optional cancellation.
+    pub async fn prepare_source_swap_with(
+        &self,
+        context: crate::bridge_local::MayanSwiftV2LocalContext,
+        cancellation: Option<&CancellationToken>,
+    ) -> BridgeResult<crate::bridge_local::MayanSwiftV2SourceSwapPlan> {
+        crate::bridge_local::prepare_source_swap(self, context, cancellation).await
+    }
+
+    /// Builds a local unsigned transaction from a reviewed quote and plan.
+    pub async fn build_local_unsigned(
+        &self,
+        request: crate::bridge_local::MayanSwiftV2LocalBuildRequest,
+    ) -> BridgeResult<crate::bridge_local::MayanSwiftV2LocalBuild> {
+        crate::bridge_local::build_local_unsigned(self, request, None).await
+    }
+
+    /// Builds a local unsigned transaction with optional cancellation.
+    pub async fn build_local_unsigned_with(
+        &self,
+        request: crate::bridge_local::MayanSwiftV2LocalBuildRequest,
+        cancellation: Option<&CancellationToken>,
+    ) -> BridgeResult<crate::bridge_local::MayanSwiftV2LocalBuild> {
+        crate::bridge_local::build_local_unsigned(self, request, cancellation).await
+    }
+
     /// Closes no external resources; this client owns no caller HTTP client.
     pub fn close(&self) {}
 
+    pub(crate) fn local_build_config(&self) -> Option<&MayanSwiftV2LocalBuildConfig> {
+        self.config.local_build.as_ref()
+    }
+
+    pub(crate) fn local_timeout(&self) -> Duration {
+        self.config.timeout
+    }
+
+    pub(crate) fn local_minimum_quote_validity_seconds(&self) -> u64 {
+        self.config.minimum_quote_validity_seconds
+    }
+
     #[cfg(test)]
     #[allow(dead_code)]
-    fn with_clock(mut self, clock: fn() -> u64) -> Self {
+    pub(crate) fn with_clock(mut self, clock: fn() -> u64) -> Self {
         self.clock = Some(clock);
         self
     }
 
     #[cfg(test)]
-    fn now_seconds(&self) -> BridgeResult<u64> {
+    pub(crate) fn now_seconds(&self) -> BridgeResult<u64> {
         if let Some(clock) = self.clock {
             return Ok(clock());
         }
@@ -1534,7 +1684,7 @@ impl MayanSwiftV2BridgeClient {
 
     #[cfg(not(test))]
     #[allow(clippy::unused_self)]
-    fn now_seconds(&self) -> BridgeResult<u64> {
+    pub(crate) fn now_seconds(&self) -> BridgeResult<u64> {
         current_wall_clock()
     }
 
@@ -1650,7 +1800,7 @@ fn percent_encode_path_segment(value: &str) -> String {
     encoded
 }
 
-fn is_evm_address(value: &str) -> bool {
+pub(crate) fn is_evm_address(value: &str) -> bool {
     let bytes = value.as_bytes();
     bytes.len() == 42
         && bytes[0] == b'0'
@@ -1662,14 +1812,17 @@ fn is_zero_evm_address(value: &str) -> bool {
     is_evm_address(value) && value[2..].bytes().all(|byte| byte == b'0')
 }
 
-fn normalize_evm_address(value: &str, code: BridgeErrorCode) -> BridgeResult<String> {
+pub(crate) fn normalize_evm_address(value: &str, code: BridgeErrorCode) -> BridgeResult<String> {
     if !is_evm_address(value) || is_zero_evm_address(value) {
         return Err(bridge_error(code));
     }
     Ok(format!("0x{}", value[2..].to_ascii_lowercase()))
 }
 
-fn normalize_positive_uint64(value: &str, code: BridgeErrorCode) -> BridgeResult<(String, u64)> {
+pub(crate) fn normalize_positive_uint64(
+    value: &str,
+    code: BridgeErrorCode,
+) -> BridgeResult<(String, u64)> {
     if value.is_empty()
         || value.len() > UINT64_DECIMAL_MAX_LENGTH
         || !value.bytes().all(|byte| byte.is_ascii_digit())
@@ -1825,7 +1978,7 @@ fn build_request_body(
     ))
 }
 
-fn encode_base58(bytes: &[u8]) -> String {
+pub(crate) fn encode_base58(bytes: &[u8]) -> String {
     let zeroes = bytes.iter().take_while(|byte| **byte == 0).count();
     if zeroes == bytes.len() {
         return "1".repeat(zeroes);
@@ -1850,7 +2003,7 @@ fn encode_base58(bytes: &[u8]) -> String {
     result
 }
 
-fn decode_base58(value: &str, expected_bytes: usize) -> Result<Vec<u8>, ()> {
+pub(crate) fn decode_base58(value: &str, expected_bytes: usize) -> Result<Vec<u8>, ()> {
     if value.is_empty() || value.len() > expected_bytes.saturating_mul(2) {
         return Err(());
     }
@@ -1894,7 +2047,7 @@ fn base64_digit(value: u8) -> Option<u8> {
         .and_then(|value| u8::try_from(value).ok())
 }
 
-fn decode_base64(value: &str) -> Result<Vec<u8>, ()> {
+pub(crate) fn decode_base64(value: &str) -> Result<Vec<u8>, ()> {
     if value.is_empty() || value.len() % 4 != 0 {
         return Err(());
     }
@@ -1938,7 +2091,7 @@ fn decode_base64(value: &str) -> Result<Vec<u8>, ()> {
     Ok(decoded)
 }
 
-fn encode_base64(bytes: &[u8]) -> String {
+pub(crate) fn encode_base64(bytes: &[u8]) -> String {
     let mut encoded = String::with_capacity(bytes.len().div_ceil(3) * 4);
     for chunk in bytes.chunks(3) {
         let first = chunk[0];
@@ -2497,7 +2650,7 @@ fn quote_from_response(
 }
 
 #[allow(clippy::too_many_lines)]
-fn validate_normalized_quote_shape(
+pub(crate) fn validate_normalized_quote_shape(
     quote: &MayanSwiftV2Quote,
 ) -> BridgeResult<(MayanSwiftV2Quote, DirectionFacts)> {
     if quote.quote_kind != "mayan-swift-v2"
@@ -2619,7 +2772,7 @@ fn validate_normalized_quote_shape(
     Ok((normalized, facts))
 }
 
-fn validate_raw_quote_for_build(
+pub(crate) fn validate_raw_quote_for_build(
     quote: &MayanSwiftV2Quote,
     request: &MayanSwiftV2QuoteRequest,
     facts: &DirectionFacts,
@@ -2849,6 +3002,8 @@ mod tests {
     };
 
     const FIXTURE: &str = include_str!("../../../registry/fixtures/mayan-swift-v2-cases.json");
+    const LOCAL_FIXTURE: &str =
+        include_str!("../../../registry/fixtures/mayan-swift-v2-local-build-cases.json");
     const FIXED_CLOCK: u64 = 1_789_600_000;
     const FROZEN_LEGACY_FIXTURE_CASE_IDS: &[&str] = &[
         "quote-eth-sol-synthetic",
@@ -3527,6 +3682,8 @@ mod tests {
             ("quote".to_owned(), Value::Array(Vec::new())),
             ("build".to_owned(), Value::Array(Vec::new())),
             ("status".to_owned(), Value::Array(Vec::new())),
+            ("prepareSourceSwap".to_owned(), Value::Array(Vec::new())),
+            ("buildLocalUnsigned".to_owned(), Value::Array(Vec::new())),
         ]);
         assert_eq!(
             sha256_hex(&frozen_cases_json()),
@@ -3566,8 +3723,17 @@ mod tests {
                 .expect("behavior array")
                 .sort_by(|left, right| left["caseId"].as_str().cmp(&right["caseId"].as_str()));
         }
+        let local_fixture: Value =
+            serde_json::from_str(LOCAL_FIXTURE).expect("local bridge fixture is valid JSON");
+        assert_eq!(
+            local_fixture["localFixtureDigest"],
+            "19b1a9d601e7dedaf4e5ad8f8cbe9c7aec0d2b1f2f625b56eea53c48b16ee2d1"
+        );
+        let local_behavior =
+            crate::bridge_local::native_fixture::replay_local_fixture(&local_fixture).await;
+        behavior.extend(local_behavior);
         let snapshot = json!({
-            "snapshotVersion": 1,
+            "snapshotVersion": 2,
             "snapshotKind": "bridge-native-runtime",
             "language": "rust",
             "runtime": concat!(
@@ -3577,6 +3743,8 @@ mod tests {
             ),
             "capabilityAsOfDate": BRIDGE_CAPABILITIES_AS_OF_DATE,
             "capabilityDigest": BRIDGE_CAPABILITIES_CONTENT_DIGEST,
+            "hostedFixtureDigest": "3c414e362b518a3845e365c3c7c6f78e43984aae396be19817ddb53bb0da6283",
+            "localFixtureDigest": local_fixture["localFixtureDigest"],
             "behavior": behavior,
         });
         let output = Path::new(&output);

@@ -438,6 +438,64 @@ keys remain present with `null` for direct routes; existing EURC values remain
 non-null. Consumers using the previous non-null source type must handle nil
 pointers before using this unreleased addition.
 
+### Local unsigned construction (unreleased)
+
+The unreleased native EURC and USDC local path separates source-swap
+preparation from unsigned transaction construction. Configure the matching
+source-chain RPC under `LocalBuild`; the RPC URL and its explicit headers stay
+caller-owned. `PrepareSourceSwap` makes an anonymous EURC source-swap request
+when the route needs one, while direct USDC returns `{kind: "none"}` without
+source-swap I/O. `BuildLocalUnsigned` validates the quote, context, plan, and
+configured source RPC evidence, then constructs the unsigned EVM or Solana
+transaction locally. It never falls back to the hosted `/build` endpoint.
+
+The caller supplies public source and destination addresses and a fresh public
+32-hex-digit nonce for each order. The nonce is order data, never a private
+key. The SDK does not load wallets, sign, approve, submit, broadcast, or claim
+settlement verification; hand the returned transaction to the caller's
+external signer and chain RPC when the caller is ready.
+
+```go
+bridge, err := erpc.NewMayanSwiftV2BridgeClient(erpc.MayanSwiftV2BridgeConfig{
+	LocalBuild: &erpc.MayanSwiftV2LocalBuildConfig{
+		EthereumRPC: &erpc.RPCEndpointConfig{HTTPURL: "https://your-ethereum-rpc.example"},
+	},
+})
+if err != nil {
+	panic(err)
+}
+defer bridge.Close()
+
+quote := quotes[0] // an existing MayanSwiftV2Quote from QuoteExactInput
+localContext := erpc.MayanSwiftV2LocalContext{
+	Quote:              quote,
+	SwapperAddress:     "0x1111111111111111111111111111111111111111",
+	DestinationAddress: "11111111111111111111111111111111",
+	OrderNonce:         "0x0123456789abcdef0123456789abcdef", // fresh per order
+}
+plan, err := bridge.PrepareSourceSwap(ctx, localContext)
+if err != nil {
+	panic(err)
+}
+unsigned, err := bridge.BuildLocalUnsigned(ctx, erpc.MayanSwiftV2LocalBuildRequest{
+	Quote:              quote,
+	SwapperAddress:     localContext.SwapperAddress,
+	DestinationAddress: localContext.DestinationAddress,
+	OrderNonce:         localContext.OrderNonce,
+	SourceSwapPlan:     plan,
+})
+if err != nil {
+	panic(err)
+}
+_ = unsigned // review and pass to an external signer
+```
+
+Use an Ethereum RPC and EVM addresses for an Ethereum-source quote, or a
+Solana RPC and canonical base58 addresses for a Solana-source quote. The
+local build evidence records the selected chain and reviewed code/account
+bytes; it does not audit contracts, authenticate the provider signature, or
+prove settlement.
+
 ## License
 
 MIT

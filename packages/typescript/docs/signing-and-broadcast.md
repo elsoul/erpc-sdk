@@ -30,6 +30,18 @@ accepts both the public DEX preparation transaction (whose chain ID is a
 runtime string) and a narrowed Mayan EVM transaction; the helpers still enforce
 Ethereum mainnet at runtime.
 
+The source tree also has a keyless local Mayan path: call
+`prepareSourceSwap({ quote, swapperAddress, destinationAddress, orderNonce })`,
+then call `buildLocalUnsigned({ quote, swapperAddress, destinationAddress,
+orderNonce, sourceSwapPlan })`. Configure the source chain's `localBuild`
+endpoint explicitly. The builder performs read-only source RPC checks and
+constructs the unsigned envelope locally; the source RPC is separate from the
+anonymous Mayan source-swap request and from the ERPC broadcast transport.
+Direct native USDC has no source-swap request. These local methods and native
+USDC routes are unreleased source-tree additions; published SDK `0.8.0`
+contains the hosted EURC adapter, whose `buildUnsigned` retains its separate
+Mayan key guard.
+
 The helpers take an already reviewed envelope and do nothing until the caller
 invokes them. The EVM helper uses the same selected RPC URL for the external
 provider's nonce, fee, and gas reads and for the ERPC transport, then broadcasts

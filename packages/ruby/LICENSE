@@ -19,3 +19,74 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+-------------------------------------------------------------------------------
+Upstream Mayan Finance source notice
+
+The following notice is retained for the local bridge construction boundary
+reviewed from Mayan Finance swap-sdk commit
+c4c98031aaad9264d17630d7b4de0cb18688cf78 (SHA-256:
+a5b74ba954fd256feffa4c25251a0cbbfb7002af43278e3e4e6268a2e8208865).
+Adapted local path: packages/ruby/lib/erpc_sdk/bridge_local.rb. The Ruby
+implementation adds bounded serialization, hashing, validation, and read-only
+transport integration; no signing or custody code is included.
+
+Third-party MIT notice: pinned Mayan source commit
+c4c98031aaad9264d17630d7b4de0cb18688cf78
+(source LICENSE SHA-256: a5b74ba954fd256feffa4c25251a0cbbfb7002af43278e3e4e6268a2e8208865)
+
+The MIT License (MIT)
+Copyright (c) 2022-2026 Mayan Finance
+
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+-------------------------------------------------------------------------------
+Official npm Mayan swap-sdk 15.2.2 oracle notice
+
+The following notice is retained for reference-only vectors from the official
+npm @mayanfinance/swap-sdk 15.2.2 package (SHA-256:
+3333053878e484331d629fb35ba704b0a635f26b9d81d9c5d51ab2d5817f4744).
+Reference-only oracle source: installed package utilities used to freeze
+cross-language vectors; it is not a Ruby runtime dependency.
+
+Third-party MIT notice: npm oracle @mayanfinance/swap-sdk 15.2.2
+(oracle LICENSE SHA-256: 3333053878e484331d629fb35ba704b0a635f26b9d81d9c5d51ab2d5817f4744)
+
+The MIT License (MIT)
+Copyright (c) 2019-2020 Hugo Di Francesco
+
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

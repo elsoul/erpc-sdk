@@ -20,7 +20,17 @@ from collections.abc import Mapping
 from contextlib import suppress
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Final, Literal, NoReturn, NotRequired, TypeAlias, TypedDict, TypeVar, cast
+from typing import (
+    TYPE_CHECKING,
+    Final,
+    Literal,
+    NoReturn,
+    NotRequired,
+    TypeAlias,
+    TypedDict,
+    TypeVar,
+    cast,
+)
 from urllib.parse import quote as url_quote
 from urllib.parse import urlsplit, urlunsplit
 
@@ -33,6 +43,13 @@ from ._bridge_capabilities_data import (
 )
 from .token_catalog import get_token_deployment
 from .types import DEFAULT_REQUEST_OPTIONS, RequestOptions
+
+if TYPE_CHECKING:
+    from .bridge_local import (
+        LocalRuntime,
+        MayanSwiftV2LocalBuild,
+        MayanSwiftV2SourceSwapPlan,
+    )
 
 
 class BridgeErrorCode(StrEnum):
@@ -51,6 +68,11 @@ class BridgeErrorCode(StrEnum):
     STATUS_NOT_FOUND = "BRIDGE_STATUS_NOT_FOUND"
     TIMEOUT = "BRIDGE_TIMEOUT"
     ABORTED = "BRIDGE_ABORTED"
+    LOCAL_RPC_REQUIRED = "BRIDGE_LOCAL_RPC_REQUIRED"
+    SOURCE_RPC_TRANSPORT = "BRIDGE_SOURCE_RPC_TRANSPORT"
+    SOURCE_RPC_INVALID_RESPONSE = "BRIDGE_SOURCE_RPC_INVALID_RESPONSE"
+    LOCAL_PLAN_INVALID = "BRIDGE_LOCAL_PLAN_INVALID"
+    LOCAL_BUILD_INVALID = "BRIDGE_LOCAL_BUILD_INVALID"
 
     BRIDGE_INVALID_ARGUMENT = INVALID_ARGUMENT
     BRIDGE_UNSUPPORTED_ROUTE = UNSUPPORTED_ROUTE
@@ -65,6 +87,11 @@ class BridgeErrorCode(StrEnum):
     BRIDGE_STATUS_NOT_FOUND = STATUS_NOT_FOUND
     BRIDGE_TIMEOUT = TIMEOUT
     BRIDGE_ABORTED = ABORTED
+    BRIDGE_LOCAL_RPC_REQUIRED = LOCAL_RPC_REQUIRED
+    BRIDGE_SOURCE_RPC_TRANSPORT = SOURCE_RPC_TRANSPORT
+    BRIDGE_SOURCE_RPC_INVALID_RESPONSE = SOURCE_RPC_INVALID_RESPONSE
+    BRIDGE_LOCAL_PLAN_INVALID = LOCAL_PLAN_INVALID
+    BRIDGE_LOCAL_BUILD_INVALID = LOCAL_BUILD_INVALID
 
 
 BRIDGE_ERROR_MESSAGES: Final[dict[BridgeErrorCode, str]] = {
@@ -81,6 +108,11 @@ BRIDGE_ERROR_MESSAGES: Final[dict[BridgeErrorCode, str]] = {
     BridgeErrorCode.STATUS_NOT_FOUND: "Bridge status was not found",
     BridgeErrorCode.TIMEOUT: "Bridge provider request timed out",
     BridgeErrorCode.ABORTED: "Bridge provider request was aborted",
+    BridgeErrorCode.LOCAL_RPC_REQUIRED: "Bridge local source RPC is required",
+    BridgeErrorCode.SOURCE_RPC_TRANSPORT: "Bridge source RPC transport failed",
+    BridgeErrorCode.SOURCE_RPC_INVALID_RESPONSE: "Bridge source RPC response is invalid",
+    BridgeErrorCode.LOCAL_PLAN_INVALID: "Bridge local source-swap plan is invalid",
+    BridgeErrorCode.LOCAL_BUILD_INVALID: "Bridge local unsigned build is invalid",
 }
 
 
@@ -94,6 +126,14 @@ class BridgeError(Exception):
         self.code = code
         self.status = status
         super().__init__(BRIDGE_ERROR_MESSAGES[code])
+
+
+class MayanSwiftV2LocalBuildConfig(TypedDict, total=False):
+    """Optional local-construction endpoint and source-RPC configuration."""
+
+    source_swap_endpoint: str
+    ethereum_rpc: object
+    solana_rpc: object
 
 
 @dataclass(frozen=True, repr=False, slots=True)
@@ -111,6 +151,7 @@ class MayanSwiftV2BridgeConfig:
     minimum_quote_validity_seconds: int = 60
     timeout: int | float = 30
     http_client: httpx.AsyncClient | None = None
+    local_build: Mapping[str, object] | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -138,6 +179,22 @@ class MayanSwiftV2BridgeConfig:
             _fail(BridgeErrorCode.INVALID_ARGUMENT)
         if self.http_client is not None and not hasattr(self.http_client, "send"):
             _fail(BridgeErrorCode.INVALID_ARGUMENT)
+        if self.local_build is not None:
+            if not isinstance(self.local_build, Mapping) or any(
+                not isinstance(key, str)
+                or key
+                not in {
+                    "source_swap_endpoint",
+                    "sourceSwapEndpoint",
+                    "ethereum_rpc",
+                    "ethereumRpc",
+                    "solana_rpc",
+                    "solanaRpc",
+                }
+                for key in self.local_build
+            ):
+                _fail(BridgeErrorCode.INVALID_ARGUMENT)
+            object.__setattr__(self, "local_build", dict(self.local_build))
         object.__setattr__(
             self, "minimum_quote_validity_seconds", self.minimum_quote_validity_seconds
         )
@@ -153,7 +210,8 @@ class MayanSwiftV2BridgeConfig:
             f"builder_api_key={key!r}, "
             f"allow_unauthenticated_build={self.allow_unauthenticated_build!r}, "
             f"minimum_quote_validity_seconds={self.minimum_quote_validity_seconds!r}, "
-            f"timeout={self.timeout!r}, http_client={client!r})"
+            f"timeout={self.timeout!r}, http_client={client!r}, "
+            f"local_build={'[configured]' if self.local_build is not None else None!r})"
         )
 
 
@@ -363,6 +421,8 @@ _CONFIG_KEYS = {
     "minimumQuoteValiditySeconds",
     "timeoutMs",
     "httpClient",
+    "local_build",
+    "localBuild",
 }
 _QUOTE_KEYS: Final[tuple[str, ...]] = (
     "quoteKind",
@@ -1802,6 +1862,7 @@ class _NormalizedBridgeConfig:
     timeout: float
     http_client: httpx.AsyncClient
     owns_http_client: bool
+    local_build: Mapping[str, object] | None
 
 
 def _normalize_api_key(value: object) -> str | None:
@@ -1888,6 +1949,7 @@ def _config_from_value(
             "allowUnauthenticatedBuild": "allow_unauthenticated_build",
             "minimumQuoteValiditySeconds": "minimum_quote_validity_seconds",
             "httpClient": "http_client",
+            "localBuild": "local_build",
         }
         for old, new in aliases.items():
             if old in source:
@@ -2045,6 +2107,7 @@ class MayanSwiftV2BridgeClient:
             timeout=public_config.timeout,
             http_client=client,
             owns_http_client=owns,
+            local_build=public_config.local_build,
         )
         self._closed = False
 
@@ -2253,6 +2316,36 @@ class MayanSwiftV2BridgeClient:
         root = _parse_provider_response(text)
         return _status_from_response(root, text, normalized)
 
+    async def prepare_source_swap(
+        self,
+        context: object,
+        options: RequestOptions = DEFAULT_REQUEST_OPTIONS,
+    ) -> MayanSwiftV2SourceSwapPlan:
+        """Prepare a local source-swap plan without invoking hosted ``/build``."""
+
+        from .bridge_local import prepare_source_swap
+
+        return await prepare_source_swap(
+            context,
+            self._local_runtime(),
+            _request_options(options),
+        )
+
+    async def build_local_unsigned(
+        self,
+        request: object,
+        options: RequestOptions = DEFAULT_REQUEST_OPTIONS,
+    ) -> MayanSwiftV2LocalBuild:
+        """Construct a local unsigned transaction using configured source RPC."""
+
+        from .bridge_local import build_local_unsigned
+
+        return await build_local_unsigned(
+            request,
+            self._local_runtime(),
+            _request_options(options),
+        )
+
     async def close(self) -> None:
         """Close an internally created HTTP client; caller clients remain open."""
 
@@ -2261,6 +2354,16 @@ class MayanSwiftV2BridgeClient:
         self._closed = True
         if self._config.owns_http_client:
             await self._config.http_client.aclose()
+
+    def _local_runtime(self) -> LocalRuntime:
+        from .bridge_local import LocalRuntime
+
+        return LocalRuntime(
+            local_build=self._config.local_build,
+            http_client=self._config.http_client,
+            timeout=self._config.timeout,
+            minimum_quote_validity_seconds=self._config.minimum_quote_validity_seconds,
+        )
 
     async def __aenter__(self) -> MayanSwiftV2BridgeClient:
         return self
@@ -2294,6 +2397,7 @@ __all__ = [
     "MayanSolanaUnsignedTransaction",
     "MayanSwiftV2BridgeClient",
     "MayanSwiftV2BridgeConfig",
+    "MayanSwiftV2LocalBuildConfig",
     "MayanSwiftV2Build",
     "MayanSwiftV2BuildRequest",
     "MayanSwiftV2BuildResult",

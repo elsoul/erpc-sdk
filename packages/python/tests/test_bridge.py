@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import importlib.util
 import json
 import os
 import platform
@@ -349,6 +350,45 @@ async def test_bridge_cancellation_covers_a_stalled_response_body_and_closes_it(
 
 
 @pytest.mark.asyncio
+async def test_hosted_raw_quote_trailing_whitespace_remains_rejected() -> None:
+    quote_case = next(
+        entry for entry in _FIXTURE["cases"] if entry["caseId"] == "quote-eth-sol-synthetic"
+    )
+    build_case = next(
+        entry for entry in _FIXTURE["cases"] if entry["caseId"] == "build-eth-sol-synthetic"
+    )
+    body = cast(str, quote_case["providerBody"])
+    calls: list[httpx.Request] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        return httpx.Response(200, content=body.encode("utf-8"))
+
+    http_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    client = create_mayan_swift_v2_bridge_client(
+        {
+            "allowUnauthenticatedBuild": True,
+            "minimumQuoteValiditySeconds": 0,
+        },
+        http_client=http_client,
+    )
+    previous_time = bridge_module.time.time
+    bridge_module.time.time = lambda: float(quote_case["nowSeconds"])
+    try:
+        quotes = await client.quote_exact_input(quote_case["request"])
+        quote = dict(quotes[0])
+        quote["rawSignedQuoteJson"] = cast(str, quote["rawSignedQuoteJson"]) + "\n"
+        with pytest.raises(BridgeError) as raised:
+            await client.build_unsigned({**build_case["request"], "quote": quote})
+        assert raised.value.code.value == "BRIDGE_QUOTE_MISMATCH"
+        assert len(calls) == 1
+    finally:
+        bridge_module.time.time = previous_time
+        await client.close()
+        await http_client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_bridge_writes_native_capture_when_requested() -> None:
     output_path = os.environ.get("ERPC_SDK_BRIDGE_PARITY_OUTPUT")
     if not output_path:
@@ -362,14 +402,44 @@ async def test_bridge_writes_native_capture_when_requested() -> None:
         )
     for rows in behavior.values():
         rows.sort(key=lambda row: cast(str, row["caseId"]))
+    helper_spec = importlib.util.spec_from_file_location(
+        "_erpc_sdk_bridge_local_test_helpers",
+        Path(__file__).with_name("test_bridge_local.py"),
+    )
+    if helper_spec is None or helper_spec.loader is None:
+        raise AssertionError("unable to load local bridge fixture helpers")
+    helper_module = importlib.util.module_from_spec(helper_spec)
+    helper_spec.loader.exec_module(helper_module)
+    local_fixture, local_runs = await helper_module.replay_local_fixture_for_capture()
+    local_behavior: dict[str, list[dict[str, object]]] = {
+        "prepareSourceSwap": [],
+        "buildLocalUnsigned": [],
+    }
+    for entry in cast(list[dict[str, object]], local_fixture["cases"]):
+        outcome, http_trace, rpc_trace = local_runs[cast(str, entry["caseId"])]
+        assert outcome == entry["expected"], entry["caseId"]
+        assert http_trace == entry["httpTrace"], entry["caseId"]
+        assert rpc_trace == entry["rpcTrace"], entry["caseId"]
+        local_behavior[cast(str, entry["method"])].append(
+            {
+                "caseId": entry["caseId"],
+                "outcome": outcome,
+                "httpTrace": http_trace,
+                "rpcTrace": rpc_trace,
+            }
+        )
+    for rows in local_behavior.values():
+        rows.sort(key=lambda row: cast(str, row["caseId"]))
     snapshot = {
-        "snapshotVersion": 1,
+        "snapshotVersion": 2,
         "snapshotKind": "bridge-native-runtime",
         "language": "python",
         "runtime": f"python-{platform.python_version()}",
         "capabilityAsOfDate": BRIDGE_CAPABILITIES_AS_OF_DATE,
         "capabilityDigest": BRIDGE_CAPABILITIES_CONTENT_DIGEST,
-        "behavior": behavior,
+        "hostedFixtureDigest": "3c414e362b518a3845e365c3c7c6f78e43984aae396be19817ddb53bb0da6283",
+        "localFixtureDigest": local_fixture["localFixtureDigest"],
+        "behavior": {**behavior, **local_behavior},
     }
     Path(output_path).write_text(
         json.dumps(snapshot, ensure_ascii=False, separators=(",", ":")),

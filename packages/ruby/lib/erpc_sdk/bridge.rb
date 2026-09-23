@@ -30,6 +30,11 @@ module ERPC
     STATUS_NOT_FOUND = "BRIDGE_STATUS_NOT_FOUND"
     TIMEOUT = "BRIDGE_TIMEOUT"
     ABORTED = "BRIDGE_ABORTED"
+    LOCAL_RPC_REQUIRED = "BRIDGE_LOCAL_RPC_REQUIRED"
+    SOURCE_RPC_TRANSPORT = "BRIDGE_SOURCE_RPC_TRANSPORT"
+    SOURCE_RPC_INVALID_RESPONSE = "BRIDGE_SOURCE_RPC_INVALID_RESPONSE"
+    LOCAL_PLAN_INVALID = "BRIDGE_LOCAL_PLAN_INVALID"
+    LOCAL_BUILD_INVALID = "BRIDGE_LOCAL_BUILD_INVALID"
 
     BRIDGE_INVALID_ARGUMENT = INVALID_ARGUMENT
     BRIDGE_UNSUPPORTED_ROUTE = UNSUPPORTED_ROUTE
@@ -44,6 +49,11 @@ module ERPC
     BRIDGE_STATUS_NOT_FOUND = STATUS_NOT_FOUND
     BRIDGE_TIMEOUT = TIMEOUT
     BRIDGE_ABORTED = ABORTED
+    BRIDGE_LOCAL_RPC_REQUIRED = LOCAL_RPC_REQUIRED
+    BRIDGE_SOURCE_RPC_TRANSPORT = SOURCE_RPC_TRANSPORT
+    BRIDGE_SOURCE_RPC_INVALID_RESPONSE = SOURCE_RPC_INVALID_RESPONSE
+    BRIDGE_LOCAL_PLAN_INVALID = LOCAL_PLAN_INVALID
+    BRIDGE_LOCAL_BUILD_INVALID = LOCAL_BUILD_INVALID
 
     ALL = [
       INVALID_ARGUMENT,
@@ -58,7 +68,12 @@ module ERPC
       BUILD_INVALID,
       STATUS_NOT_FOUND,
       TIMEOUT,
-      ABORTED
+      ABORTED,
+      LOCAL_RPC_REQUIRED,
+      SOURCE_RPC_TRANSPORT,
+      SOURCE_RPC_INVALID_RESPONSE,
+      LOCAL_PLAN_INVALID,
+      LOCAL_BUILD_INVALID
     ].freeze
   end
 
@@ -75,7 +90,12 @@ module ERPC
     BridgeErrorCode::BUILD_INVALID => "Bridge provider build is invalid",
     BridgeErrorCode::STATUS_NOT_FOUND => "Bridge status was not found",
     BridgeErrorCode::TIMEOUT => "Bridge provider request timed out",
-    BridgeErrorCode::ABORTED => "Bridge provider request was aborted"
+    BridgeErrorCode::ABORTED => "Bridge provider request was aborted",
+    BridgeErrorCode::LOCAL_RPC_REQUIRED => "Bridge local source RPC is required",
+    BridgeErrorCode::SOURCE_RPC_TRANSPORT => "Bridge source RPC transport failed",
+    BridgeErrorCode::SOURCE_RPC_INVALID_RESPONSE => "Bridge source RPC response is invalid",
+    BridgeErrorCode::LOCAL_PLAN_INVALID => "Bridge local source-swap plan is invalid",
+    BridgeErrorCode::LOCAL_BUILD_INVALID => "Bridge local unsigned build is invalid"
   }.freeze
 
   class BridgeError < Error
@@ -122,7 +142,7 @@ module ERPC
 
     attr_reader :builder_endpoint, :explorer_endpoint, :builder_api_key,
                 :allow_unauthenticated_build, :minimum_quote_validity_seconds,
-                :timeout, :http_adapter
+                :timeout, :http_adapter, :local_build
 
     def initialize(builder_endpoint: DEFAULT_BUILDER_ENDPOINT,
                    explorer_endpoint: DEFAULT_EXPLORER_ENDPOINT,
@@ -131,6 +151,7 @@ module ERPC
                    minimum_quote_validity_seconds: 60,
                    timeout: DEFAULT_TIMEOUT,
                    http_adapter: nil,
+                   local_build: nil,
                    **aliases)
       if aliases.key?(:builderEndpoint)
         builder_endpoint = aliases.delete(:builderEndpoint)
@@ -162,6 +183,9 @@ module ERPC
       if aliases.key?(:httpAdapter)
         http_adapter = aliases.delete(:httpAdapter)
       end
+      if aliases.key?(:localBuild)
+        local_build = aliases.delete(:localBuild)
+      end
       fail_bridge(BridgeErrorCode::INVALID_ARGUMENT) unless aliases.empty?
 
       @builder_endpoint = normalize_endpoint(builder_endpoint)
@@ -180,11 +204,31 @@ module ERPC
       if !http_adapter.nil? && !http_adapter.respond_to?(:request)
         fail_bridge(BridgeErrorCode::INVALID_ARGUMENT)
       end
+      if !local_build.nil?
+        unless local_build.is_a?(Hash) && local_build.keys.all? { |key| key.is_a?(String) || key.is_a?(Symbol) }
+          fail_bridge(BridgeErrorCode::INVALID_ARGUMENT)
+        end
+        allowed_local = %w[sourceSwapEndpoint source_swap_endpoint ethereumRpc ethereum_rpc solanaRpc solana_rpc]
+        fail_bridge(BridgeErrorCode::INVALID_ARGUMENT) unless local_build.keys.all? { |key| allowed_local.include?(key.to_s) }
+        local_build = local_build.each_with_object({}) do |(key, value), copy|
+          normalized_key = {
+            "sourceSwapEndpoint" => :source_swap_endpoint,
+            "source_swap_endpoint" => :source_swap_endpoint,
+            "ethereumRpc" => :ethereum_rpc,
+            "ethereum_rpc" => :ethereum_rpc,
+            "solanaRpc" => :solana_rpc,
+            "solana_rpc" => :solana_rpc
+          }.fetch(key.to_s)
+          fail_bridge(BridgeErrorCode::INVALID_ARGUMENT) if copy.key?(normalized_key)
+          copy[normalized_key] = value
+        end
+      end
 
       @allow_unauthenticated_build = allow_unauthenticated_build
       @minimum_quote_validity_seconds = minimum_quote_validity_seconds
       @timeout = timeout.to_f
       @http_adapter = http_adapter
+      @local_build = local_build
       freeze
     end
 
@@ -196,7 +240,8 @@ module ERPC
         "builder_api_key=#{key.inspect} " \
         "allow_unauthenticated_build=#{allow_unauthenticated_build.inspect} " \
         "minimum_quote_validity_seconds=#{minimum_quote_validity_seconds.inspect} " \
-        "timeout=#{timeout.inspect} http_adapter=#{adapter.inspect}>"
+        "timeout=#{timeout.inspect} http_adapter=#{adapter.inspect} " \
+        "local_build=#{local_build.nil? ? nil : '[configured]'}>"
     end
 
     alias to_s inspect
@@ -684,7 +729,8 @@ module ERPC
             allow_unauthenticated_build: value.allow_unauthenticated_build,
             minimum_quote_validity_seconds: value.minimum_quote_validity_seconds,
             timeout: value.timeout,
-            http_adapter: injected_adapter
+            http_adapter: injected_adapter,
+            local_build: value.local_build
           )
         end
       elsif value.is_a?(Hash)
@@ -696,7 +742,8 @@ module ERPC
           "allowUnauthenticatedBuild" => :allow_unauthenticated_build,
           "minimumQuoteValiditySeconds" => :minimum_quote_validity_seconds,
           "timeoutMs" => :timeout_ms,
-          "httpAdapter" => :http_adapter
+          "httpAdapter" => :http_adapter,
+          "localBuild" => :local_build
         }
         normalized = {}
         source.each do |key, item|

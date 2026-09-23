@@ -405,6 +405,16 @@ dependency. The USDC addition is unreleased; the currently published `0.8.0`
 package remains EURC-only until a future package version is explicitly
 published. The runnable example below therefore uses the current EURC API.
 
+The source checkout also defines additive local unsigned construction for all
+four reviewed routes. `prepareSourceSwap` accepts a normalized quote, public
+source and destination addresses, and a caller-supplied 16-byte order nonce;
+`buildLocalUnsigned` then requires the matching explicitly configured source
+RPC. EURC source swaps use the bounded Mayan source route, while direct USDC
+uses no source-swap request. Local construction never falls back to hosted
+`/build`, reads provider keys, signs, approves, or broadcasts. See the
+[local construction contract](registry/bridge-local-spec.md), [local fixture](registry/fixtures/mayan-swift-v2-local-build-cases.json),
+and [reference evidence](registry/evidence/mayan-swift-v2-local-build-2026-09-17.json).
+
 ```ts
 import { createMayanSwiftV2BridgeClient, TOKEN_CHAIN_IDS } from '@elsoul/erpc-sdk'
 

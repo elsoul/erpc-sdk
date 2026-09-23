@@ -8,7 +8,8 @@ price REST and server-sent events, account usage, and scoped Cloud reads.
 gem install erpc-sdk
 ```
 
-Ruby 3.1 or newer is required. The gem has no runtime dependencies.
+Ruby 3.1 or newer is required. Local Mayan unsigned construction uses the
+approved native `digest-keccak` 0.0.7 runtime dependency.
 
 ## Quick start
 
@@ -303,6 +304,42 @@ quotes = bridge.quote_exact_input(
 
 The published `0.8.0` gem supports the EURC bridge only. Native USDC support is
 currently source-only and has not been published.
+
+### Local unsigned Mayan construction
+
+The source checkout also exposes explicit keyless local construction for the
+four reviewed native EURC and USDC routes. It keeps the hosted quote unchanged,
+fetches the EURC source-swap instructions when required, reads only the
+matching caller-configured source RPC, and returns an unsigned EVM or Solana
+transaction. It never loads keys, signs, approves, submits, or falls back to
+the hosted `/build` endpoint.
+
+```ruby
+bridge = ERPC::MayanSwiftV2BridgeClient.new(
+  local_build: {
+    source_swap_endpoint: "https://price-api.mayan.finance/v3",
+    ethereum_rpc: ERPC::RpcEndpointConfig.new(
+      http_url: "https://ethereum.example/rpc",
+      headers: { "authorization" => "Bearer node-token" }
+    )
+  }
+)
+
+context = {
+  "quote" => quote,
+  "swapperAddress" => "0x1111111111111111111111111111111111111111",
+  "destinationAddress" => "HQhyrHjgq5ftgsibxdUwLvDZ5HT4c9bNuBWJMmZvTd5b",
+  "orderNonce" => "0x00112233445566778899aabbccddeeff"
+}
+plan = bridge.prepare_source_swap(context)
+unsigned = bridge.build_local_unsigned(context.merge("sourceSwapPlan" => plan))
+```
+
+`orderNonce` is caller-supplied public entropy and must be a fresh lowercase
+`0x` plus 32 hexadecimal digits. A local build requires the configured RPC for
+the source chain; RPC headers stay on that RPC request and are never forwarded
+to Mayan. The returned validation fields describe structural construction and
+do not claim provider-signature verification, signing, or settlement.
 
 ## Wallets, signing, and Mayan authentication
 

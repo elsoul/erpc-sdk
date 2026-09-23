@@ -2,6 +2,10 @@
   "name": "@elsoul/erpc-sdk",
   "version": "0.8.0",
   "description": "Type-safe multi-network TypeScript SDK for ERPC",
+  "dependencies": {
+    "@noble/curves": "1.9.7",
+    "@noble/hashes": "1.8.0"
+  },
   "keywords": [
     "avalanche",
     "erpc",

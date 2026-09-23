@@ -481,6 +481,65 @@ whose source types currently use non-null strings must handle `None` before
 using the unreleased USDC addition. Existing EURC router values remain
 unchanged.
 
+### Local unsigned construction (source-tree addition)
+
+The source tree also exposes `prepare_source_swap` and
+`build_local_unsigned` for the reviewed four-route local construction path.
+Pass a normalized quote, public source and destination addresses, and a fresh
+16-byte public `order_nonce` to preparation, then pass the returned plan to the
+local builder with an explicitly configured source-chain RPC:
+
+```rust,no_run
+# use erpc_sdk::{
+#     MayanSwiftV2BridgeClient, MayanSwiftV2BridgeConfig,
+#     MayanSwiftV2LocalBuildConfig, MayanSwiftV2LocalBuildRequest,
+#     MayanSwiftV2LocalContext, RpcEndpointConfig,
+# };
+# async fn example(
+#     quote: erpc_sdk::MayanSwiftV2Quote,
+#     swapper_address: String,
+#     destination_address: String,
+#     order_nonce: String,
+# ) -> erpc_sdk::BridgeResult<()> {
+let bridge = MayanSwiftV2BridgeClient::new(
+    MayanSwiftV2BridgeConfig::new().with_local_build(
+        MayanSwiftV2LocalBuildConfig::new().with_ethereum_rpc(
+            RpcEndpointConfig::new("https://your-ethereum-rpc.example"),
+        ),
+    ),
+)?;
+let context = MayanSwiftV2LocalContext {
+    quote,
+    swapper_address,
+    destination_address,
+    order_nonce,
+};
+let source_swap_plan = bridge.prepare_source_swap(context.clone()).await?;
+let unsigned = bridge
+    .build_local_unsigned(MayanSwiftV2LocalBuildRequest {
+        quote: context.quote.clone(),
+        swapper_address: context.swapper_address.clone(),
+        destination_address: context.destination_address.clone(),
+        order_nonce: context.order_nonce.clone(),
+        source_swap_plan,
+    })
+    .await?;
+assert_eq!(unsigned.construction.mode, "local");
+# Ok(())
+# }
+```
+
+The matching `solana_rpc` field is required for Solana-source routes. EURC
+preparation makes one anonymous request to `source_swap_endpoint`; direct
+USDC uses `{ kind: "none" }` and makes no source-swap request. Local builds
+perform bounded read-only source RPC checks and construct unsigned EVM or
+Solana bytes locally. They never fall back to hosted `/build`, read service or
+wallet keys, sign, approve, submit, broadcast, or claim settlement. The
+returned public addresses identify the account that an external signer must
+authorize; service API keys and RPC headers authenticate services and are not
+signer keys. See the [root wallets and signing guidance](https://github.com/elsoul/erpc-sdk/blob/main/README.md#wallets-and-signing)
+and the [TypeScript example](https://github.com/elsoul/erpc-sdk/blob/main/packages/typescript/docs/signing-and-broadcast.md) for signer and broadcast responsibility.
+
 Quotes preserve the provider's signed JSON object, including unknown fields and
 numeric lexemes, for the builder. Build output is structurally checked and
 marked as locally unverified for quote signatures, transaction semantics, and
