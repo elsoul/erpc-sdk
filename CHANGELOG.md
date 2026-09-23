@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.8.1 — 2026-09-24
+
+- Fix TypeScript Fetch API invocation in receiver-sensitive runtimes such as Cloudflare Workers for default and provided fetch implementations across JSON-RPC, REST, Cloud, and the existing Mayan client.
+
 ## 0.8.0 — 2026-09-17
 
 - Add caller-owned direct JSON-RPC endpoint overrides for Solana, Ethereum, and Avalanche C-Chain across TypeScript, Rust, Python, Go, and Ruby, with exact URL preservation, scoped HTTP headers, explicit WebSocket endpoints, and keyless operation for overridden chains.

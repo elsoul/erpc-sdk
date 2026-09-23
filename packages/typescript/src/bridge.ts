@@ -8,6 +8,7 @@ import {
   getTokenDeployment,
   type TokenDeployment,
 } from './token_catalog'
+import { wrapFetch } from './transport/fetch'
 
 export type BridgeErrorCode =
   | 'BRIDGE_INVALID_ARGUMENT'
@@ -1125,7 +1126,7 @@ const normalizeBridgeConfig = (
     allowUnauthenticatedBuild,
     minimumQuoteValiditySeconds,
     timeoutMs,
-    fetch: implementation as typeof globalThis.fetch,
+    fetch: wrapFetch(implementation as typeof globalThis.fetch),
   })
 }
 
