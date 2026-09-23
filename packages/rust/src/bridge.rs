@@ -3727,7 +3727,7 @@ mod tests {
             serde_json::from_str(LOCAL_FIXTURE).expect("local bridge fixture is valid JSON");
         assert_eq!(
             local_fixture["localFixtureDigest"],
-            "19b1a9d601e7dedaf4e5ad8f8cbe9c7aec0d2b1f2f625b56eea53c48b16ee2d1"
+            "4a9960ad4d0fcc0865f4afcd5e5403d81823f57a64bbc48039113e568b050c35"
         );
         let local_behavior =
             crate::bridge_local::native_fixture::replay_local_fixture(&local_fixture).await;

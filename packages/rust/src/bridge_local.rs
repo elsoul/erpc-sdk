@@ -4719,9 +4719,28 @@ pub(crate) mod native_fixture {
             let Some(endpoint) = local.get(key).filter(|value| !value.is_null()) else {
                 continue;
             };
-            let _ = endpoint;
+            let endpoint_object = endpoint.as_object().expect("RPC endpoint config");
+            let _configured_http_url = endpoint_object
+                .get("httpUrl")
+                .and_then(Value::as_str)
+                .expect("configured RPC URL");
+            let headers = endpoint_object
+                .get("headers")
+                .and_then(Value::as_object)
+                .map(|headers| {
+                    headers
+                        .iter()
+                        .map(|(name, value)| {
+                            (
+                                name.clone(),
+                                value.as_str().expect("configured RPC header").to_owned(),
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
             if let Some(server) = rpc_server {
-                let rpc = RpcEndpointConfig::new(server.uri());
+                let rpc = RpcEndpointConfig::new(server.uri()).with_headers(headers);
                 config = if key == "ethereumRpc" {
                     config.with_ethereum_rpc(rpc)
                 } else {
@@ -4768,6 +4787,23 @@ pub(crate) mod native_fixture {
         let expected = expected.as_array().expect("source trace array");
         assert_eq!(requests.len(), expected.len(), "source request count");
         for (request, expected) in requests.iter().zip(expected) {
+            let request_url = request.url.to_string();
+            let request_body = String::from_utf8_lossy(&request.body);
+            for sentinel in [
+                "synthetic-builder-api-key",
+                "synthetic-source-rpc-credential",
+                "unused-builder.invalid",
+                "source-rpc.invalid",
+            ] {
+                assert!(!request_url.contains(sentinel));
+                assert!(!request_body.contains(sentinel));
+                assert!(
+                    request
+                        .headers
+                        .iter()
+                        .all(|(_, value)| !value.to_str().unwrap_or_default().contains(sentinel))
+                );
+            }
             assert_eq!(request.method.as_str(), expected["method"]);
             let expected_url = Url::parse(expected["url"].as_str().expect("source URL"))
                 .expect("source expected URL");
@@ -4906,19 +4942,21 @@ pub(crate) mod native_fixture {
         let event = mutation(case, "transport")
             .and_then(|value| value.get("event"))
             .and_then(Value::as_str);
-        let invalid_transport_guard = matches!(
-            event,
-            Some("credential-forwarding" | "hosted-build-attempt")
-        );
-        let source_endpoint = if invalid_transport_guard {
-            Some("invalid local source endpoint")
-        } else {
-            source_server
-                .as_ref()
-                .map(|(_, endpoint)| endpoint.as_str())
-        };
+        let source_endpoint = source_server
+            .as_ref()
+            .map(|(_, endpoint)| endpoint.as_str());
         let config = local_config(fixture, case, source_endpoint, rpc_server.as_ref());
+        let fixture_config = case["config"].as_object().expect("fixture config");
         let mut bridge_config = MayanSwiftV2BridgeConfig::new().with_local_build(config);
+        if let Some(endpoint) = fixture_config
+            .get("builderEndpoint")
+            .and_then(Value::as_str)
+        {
+            bridge_config = bridge_config.with_builder_endpoint(endpoint);
+        }
+        if let Some(key) = fixture_config.get("builderApiKey").and_then(Value::as_str) {
+            bridge_config = bridge_config.with_builder_api_key(key);
+        }
         if event == Some("source-swap-timeout") || event == Some("rpc-timeout") {
             bridge_config = bridge_config.with_timeout(Duration::from_millis(5));
         }

@@ -260,7 +260,7 @@ configured RPC transport.
 
 ## Optional Mayan Swift v2 bridge
 
-The published `0.8.0` API provides the Mayan Swift v2 client as an explicit
+The published `0.8.1` API provides the Mayan Swift v2 client as an explicit
 standalone adapter for the reviewed issued EURC routes between Ethereum and
 Solana. It is not attached to the default `ErpcClient`; construct it separately
 when the external provider and its solver, relayer, and explorer dependencies
@@ -316,15 +316,18 @@ Mayan authentication has three separate layers:
 | SDK policy | `buildUnsigned` requires `builderApiKey` by default; `allowUnauthenticatedBuild: true` only permits the caller's keyless HTTP attempt. |
 | Dated hosted observation | On 2026-09-17, four EURC/USDC quotes returned HTTP 200 without keys; default builds made no request, while explicit keyless `/build` attempts returned HTTP 401. This is bounded evidence, not a permanent provider requirement. |
 
-The published `0.8.0` package supports the reviewed issued EURC directions.
+The published `0.8.1` package supports the reviewed issued EURC directions.
 Native USDC direct routes are a source-tree addition and remain unreleased;
-they are not part of the published `0.8.0` package.
+they are not part of the published `0.8.1` package.
 
 The source tree also contains an unreleased native USDC addition for the same
 Ethereum/Solana directions. It uses Mayan's direct SWIFT route and does not add
 Jupiter or another hosted source-swap dependency. The addition is not included
-in the published `0.8.0` package; its package version and release publication
+in the published `0.8.1` package; its package version and release publication
 remain future work.
+
+The `0.8.1` maintenance patch updates the Workers fetch invocation boundary;
+it does not include the new native USDC or local unsigned-builder paths.
 
 ### Local unsigned construction
 
@@ -366,7 +369,7 @@ custody and all signing and ERPC broadcast steps described in the
 [TypeScript signing and broadcast guide](https://github.com/elsoul/erpc-sdk/blob/main/packages/typescript/docs/signing-and-broadcast.md).
 
 These local methods and native USDC routes are source-tree additions. They are
-not part of the published TypeScript `0.8.0` package; the published bridge API
+not part of the published TypeScript `0.8.1` package; the published bridge API
 remains the hosted EURC adapter described above.
 
 ## Namespaces

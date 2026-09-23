@@ -303,8 +303,6 @@ const LOCAL_TRANSPORT_MUTATION_EVENTS = Object.freeze([
   "rpc-transport-error",
   "rpc-timeout",
   "rpc-abort",
-  "credential-forwarding",
-  "hosted-build-attempt",
 ]);
 const LOCAL_CONTEXT_MUTATION_PATHS = Object.freeze([
   "sourceChainId",
@@ -948,6 +946,13 @@ function validateLocalFixtureCase(entry, index, ids, quoteMap, sourceSwapMap, rp
   validateLocalOutcome(entry.expected, entry.method, `${label}.expected`);
   validateTrace(entry.httpTrace, `${label}.httpTrace`, { allowQuery: true });
   validateTrace(entry.rpcTrace, `${label}.rpcTrace`, { allowQuery: true });
+  if (entry.config?.builderApiKey !== undefined) {
+    if (entry.method !== "prepareSourceSwap" || entry.expected.kind !== "success" || entry.mutation !== null || entry.sourceSwapMockIds.length !== 1 || entry.httpTrace.length !== 1 || entry.rpcTrace.length !== 0) fail(`${label} credential boundary control must be a positive anonymous source-swap prepare`);
+    if (entry.config.builderApiKey !== "synthetic-builder-api-key" || entry.config.builderEndpoint !== "https://unused-builder.invalid") fail(`${label} credential boundary sentinels are invalid`);
+    const rpcHeaders = entry.config.localBuild?.ethereumRpc?.headers;
+    if (!isRecord(rpcHeaders) || rpcHeaders.authorization !== "synthetic-source-rpc-credential") fail(`${label} source RPC credential sentinel is invalid`);
+    if (entry.httpTrace[0].headers.authorization !== undefined || entry.httpTrace[0].headers["x-api-key"] !== undefined || entry.httpTrace[0].body !== null) fail(`${label} source-swap trace contains a credential or body`);
+  }
   if (entry.mutation === null && entry.expected.kind !== "success") fail(`${label}.mutation is required for a rejection case`);
   if (entry.mutation !== null) validateLocalMutation(entry.mutation, `${label}.mutation`);
   if (entry.mutation?.kind === "rpc-envelope-set" && (entry.method !== "buildLocalUnsigned" || entry.rpcMockIds.length !== 1 || entry.rpcTrace.length !== 1 || entry.expected.kind !== "sdk-error" || entry.expected.code !== "BRIDGE_SOURCE_RPC_INVALID_RESPONSE")) fail(`${label}.rpc-envelope-set must reject on the first selected response`);
@@ -955,6 +960,7 @@ function validateLocalFixtureCase(entry, index, ids, quoteMap, sourceSwapMap, rp
   if (entry.mutation?.kind === "rpc-response-set" && entry.mutation.path.startsWith("getLatestBlockhash.") && (entry.rpcMockIds.length !== 2 || entry.rpcTrace.length !== 2)) fail(`${label} blockhash response mutation must stop before account fetch`);
   if (entry.mutation !== null && entry.expected.kind === "success") fail(`${label}.mutation is only for rejection cases`);
   if (entry.config !== null && !isRecord(entry.config)) fail(`${label}.config must be an object or null`);
+  if (entry.config?.localBuild !== undefined && (!isRecord(entry.config.localBuild) || Object.keys(entry.config.localBuild).some((key) => !["sourceSwapEndpoint", "ethereumRpc", "solanaRpc"].includes(key)))) fail(`${label}.config.localBuild keys are invalid`);
 }
 
 export function localFixtureProjection(value = localFixture) {
@@ -1184,10 +1190,13 @@ function verifyLegacySnapshots(snapshots, registry = canonicalRegistry, tokenCat
   return { snapshotVersion: LEGACY_SNAPSHOT_VERSION, snapshotKind: SNAPSHOT_KIND, capabilityAsOfDate: registry.asOfDate, capabilityDigest: computeDigest(registry.capabilities), languages: results, status: "ok" };
 }
 
-export function verifySnapshots(snapshots, registry = canonicalRegistry, tokenCatalog = canonicalTokenCatalog, sourceFixture = fixture, sourceLocalFixture = localFixture) {
+export function verifySnapshots(snapshots, registry = canonicalRegistry, tokenCatalog = canonicalTokenCatalog, sourceFixture = fixture, sourceLocalFixture = localFixture, { allowLegacyV1 = false } = {}) {
   if (!isRecord(snapshots)) fail("snapshots must be an object keyed by language");
   const versions = Object.values(snapshots).map((snapshot) => snapshot?.snapshotVersion);
-  if (versions.length > 0 && versions.every((version) => version === LEGACY_SNAPSHOT_VERSION)) return verifyLegacySnapshots(snapshots, registry, tokenCatalog, sourceFixture);
+  if (versions.length > 0 && versions.every((version) => version === LEGACY_SNAPSHOT_VERSION)) {
+    if (allowLegacyV1 !== true) fail("snapshot version 1 requires explicit allowLegacyV1 opt-in");
+    return verifyLegacySnapshots(snapshots, registry, tokenCatalog, sourceFixture);
+  }
   if (versions.some((version) => version === LEGACY_SNAPSHOT_VERSION)) fail("snapshots must use one snapshot version");
   validateBridgeCapabilities(registry, { tokenCatalog });
   const expected = {
@@ -1242,7 +1251,7 @@ async function readSnapshots(source) {
 }
 
 function parseArguments(argumentsList) {
-  const options = { help: false, json: false, snapshots: null };
+  const options = { help: false, json: false, allowLegacyV1: false, snapshots: null };
   for (let index = 0; index < argumentsList.length; index += 1) {
     const argument = argumentsList[index];
     if (argument === "--help") {
@@ -1251,6 +1260,9 @@ function parseArguments(argumentsList) {
     } else if (argument === "--json") {
       if (options.json) fail("--json may be provided only once");
       options.json = true;
+    } else if (argument === "--allow-legacy-v1") {
+      if (options.allowLegacyV1) fail("--allow-legacy-v1 may be provided only once");
+      options.allowLegacyV1 = true;
     } else if (argument === "--snapshots") {
       if (options.snapshots !== null) fail("--snapshots may be provided only once");
       options.snapshots = argumentsList[++index];
@@ -1260,7 +1272,7 @@ function parseArguments(argumentsList) {
   }
   if (!options.help && options.snapshots === null) options.snapshots = process.env.ERPC_SDK_BRIDGE_PARITY_OUTPUT ?? null;
   if (!options.help && options.snapshots === null) fail("--snapshots or ERPC_SDK_BRIDGE_PARITY_OUTPUT is required");
-  if (options.help && (options.snapshots !== null || options.json)) fail("--help cannot be combined with other options");
+  if (options.help && (options.snapshots !== null || options.json || options.allowLegacyV1)) fail("--help cannot be combined with other options");
   return options;
 }
 
@@ -1268,6 +1280,7 @@ function usage() {
   return [
     "Usage:",
     "  node registry/verify-bridge-parity.mjs --snapshots <file>",
+    "  node registry/verify-bridge-parity.mjs --allow-legacy-v1 --snapshots <file>",
     "  ERPC_SDK_BRIDGE_PARITY_OUTPUT=<file> node registry/verify-bridge-parity.mjs",
     "",
     "The verifier requires exactly one executed native capture for TypeScript, Rust, Python, Go, and Ruby.",
@@ -1280,7 +1293,7 @@ export async function run(argumentsList = process.argv.slice(2)) {
     process.stdout.write(`${usage()}\n`);
     return;
   }
-  const result = verifySnapshots(await readSnapshots(options.snapshots));
+  const result = verifySnapshots(await readSnapshots(options.snapshots), undefined, undefined, undefined, undefined, { allowLegacyV1: options.allowLegacyV1 });
   process.stdout.write(`${options.json ? JSON.stringify(result) : `bridge parity: ${result.status} (${result.languages.length} languages)`}\n`);
 }
 

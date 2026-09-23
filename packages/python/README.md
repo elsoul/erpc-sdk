@@ -220,9 +220,9 @@ See the [common wallets and signing guidance](https://github.com/elsoul/erpc-sdk
 and the [TypeScript signing and broadcast guide](https://github.com/elsoul/erpc-sdk/blob/main/packages/typescript/docs/signing-and-broadcast.md)
 for initialized external-signer examples.
 
-## Optional Mayan Swift v2 bridge (EURC in 0.8.0)
+## Optional Mayan Swift v2 bridge (EURC in 0.8.1)
 
-The released `0.8.0` API includes the standalone bridge adapter for the reviewed
+The released `0.8.1` API includes the standalone bridge adapter for the reviewed
 native EURC routes between Ethereum and Solana. It uses Mayan's configured quote, transaction-builder,
 source-swap, solver, relayer, Wormhole, and Explorer services; normal ERPC
 configuration, keys, and headers are never forwarded to those services.
@@ -296,8 +296,10 @@ Native USDC Ethereum mainnet and Solana mainnet directions are an unreleased
 source addition in this tree. They use direct Swift bridging with
 `sourceSwap.required` set to `False`, null router fields, and no Jupiter or
 0x source-swap dependency. Do not rely on USDC support from a published
-`0.8.0` wheel until a release explicitly includes this addition. The bridge
-adapter remains separate from the RPC-only swap helpers.
+`0.8.1` wheel until a release explicitly includes this addition. The published
+`0.8.1` Worker patch does not include the new native USDC or local-builder
+additions in this tree; those remain unpublished. The bridge adapter remains
+separate from the RPC-only swap helpers.
 
 ### Local unsigned construction
 

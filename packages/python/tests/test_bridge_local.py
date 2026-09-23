@@ -202,8 +202,7 @@ def _mutate_rpc_mock(
         if path in {"id", "jsonrpc"}:
             payload[cast(str, path)] = mutation.get("value")
         elif path == "version":
-            payload.pop("jsonrpc", None)
-            payload["version"] = mutation.get("value")
+            payload["jsonrpc"] = mutation.get("value")
         elif path == "depth":
             depth = mutation.get("value")
             if not isinstance(depth, str | int) or isinstance(depth, bool):
@@ -313,13 +312,18 @@ async def _run_case(
     )
     caller_cancel = asyncio.Event()
     fetch_calls = 0
+    unexpected_request = False
 
     async def handler(request: httpx.Request) -> httpx.Response:
-        nonlocal fetch_calls
+        nonlocal fetch_calls, unexpected_request
         fetch_calls += 1
-        if transport_event in {"credential-forwarding", "hosted-build-attempt"}:
-            raise BridgeError(BridgeErrorCode.LOCAL_PLAN_INVALID)
         trace = _trace_entry(request)
+        serialized_trace = json.dumps(trace, ensure_ascii=False, separators=(",", ":"))
+        assert "/build" not in str(trace["url"])
+        assert "tx-builder.mayan.finance" not in str(trace["url"])
+        if request.method == "GET":
+            assert "synthetic-builder-api-key" not in serialized_trace
+            assert "synthetic-source-rpc-credential" not in serialized_trace
         if request.method == "GET":
             http_trace.append(trace)
         else:
@@ -353,6 +357,7 @@ async def _run_case(
                     mock = item
                     break
         if mock is None:
+            unexpected_request = True
             raise RuntimeError("unexpected local provider request")
         response = cast(dict[str, object], mock["response"])
         return httpx.Response(
@@ -362,11 +367,6 @@ async def _run_case(
         )
 
     config = _mutate_config(cast(dict[str, object], entry["config"]), mutation)
-    local_build = config.get("localBuild")
-    if isinstance(local_build, dict) and "altValidation" in local_build:
-        local_build = dict(local_build)
-        local_build.pop("altValidation", None)
-        config["localBuild"] = local_build
     config["minimumQuoteValiditySeconds"] = 0
     if transport_event in {"source-swap-timeout", "rpc-timeout"}:
         config["timeoutMs"] = 5
@@ -409,8 +409,18 @@ async def _run_case(
         bridge_local_module.time.time = original_time
         await client.close()
         await http_client.aclose()
-    if transport_event in {"credential-forwarding", "hosted-build-attempt"}:
-        assert fetch_calls > 0
+    configured = config.get("builderApiKey") == "synthetic-builder-api-key"
+    if configured:
+        assert fetch_calls == 1
+        assert len(http_trace) == 1
+        assert http_trace[0]["method"] == "GET"
+        assert http_trace[0]["headers"] == {"accept": "application/json"}
+        assert rpc_trace == []
+        serialized_http = json.dumps(http_trace, ensure_ascii=False, separators=(",", ":"))
+        assert "synthetic-builder-api-key" not in serialized_http
+        assert "synthetic-source-rpc-credential" not in serialized_http
+        assert "unused-builder.invalid" not in serialized_http
+    assert not unexpected_request
     return outcome, http_trace, rpc_trace
 
 
@@ -444,7 +454,7 @@ async def test_replays_local_source_swap_and_unsigned_build_fixture() -> None:
     assert fixture["schemaVersion"] == 1
     assert fixture["fixtureKind"] == "mayan-swift-v2-local-build-fixtures"
     assert fixture["localFixtureDigest"] == (
-        "19b1a9d601e7dedaf4e5ad8f8cbe9c7aec0d2b1f2f625b56eea53c48b16ee2d1"
+        "4a9960ad4d0fcc0865f4afcd5e5403d81823f57a64bbc48039113e568b050c35"
     )
     for entry in cast(list[dict[str, object]], fixture["cases"]):
         outcome, http_trace, rpc_trace = runs[cast(str, entry["caseId"])]

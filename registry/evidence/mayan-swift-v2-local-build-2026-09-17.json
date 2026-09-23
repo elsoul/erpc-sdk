@@ -23,12 +23,12 @@
   },
   "localFixture": {
     "path": "registry/fixtures/mayan-swift-v2-local-build-cases.json",
-    "sha256": "5e84faea7b968aabc03a04fb9d6bfdc9fac3b5b625090227e7ea6b8828b51901",
-    "localFixtureDigest": "19b1a9d601e7dedaf4e5ad8f8cbe9c7aec0d2b1f2f625b56eea53c48b16ee2d1",
+    "sha256": "196e713247552c973c8186baa47006bde97a92c127c7579b09d976c323062341",
+    "localFixtureDigest": "4a9960ad4d0fcc0865f4afcd5e5403d81823f57a64bbc48039113e568b050c35",
     "caseCount": 87,
-    "positivePrepareCases": 5,
+    "positivePrepareCases": 7,
     "positiveBuildCases": 6,
-    "rejectionCases": 76,
+    "rejectionCases": 74,
     "historicalOracleCaseCount": 39,
     "historicalOracleRecordedAsOf": "2026-09-17"
   },
@@ -219,10 +219,14 @@
       "recordedAsOf": "2026-09-24",
       "fixtureCaseCount": 87,
       "addedSyntheticCaseCount": 48,
-      "negativeCaseCount": 76,
+      "negativeCaseCount": 74,
       "activePrefixPositiveCase": "build-usdc-solana-alt-same-slot-active-prefix",
       "inactivePrefixBoundaryCase": "build-eurc-solana-raydium-same-slot-inactive-index",
       "inactivePrefixBoundaryOutcome": "BRIDGE_LOCAL_BUILD_INVALID at the calibrated 1232-byte limit after inactive ALT entries are omitted",
+      "positiveBoundaryControls": [
+        {"caseId":"prepare-eurc-credential-forwarding","mutation":null,"sourceRpcHeaders":{"authorization":"synthetic-source-rpc-credential"},"builderApiKey":"synthetic-builder-api-key","builderEndpoint":"https://unused-builder.invalid","sourceRequests":1,"rpcRequests":0,"hostedBuildRequests":0},
+        {"caseId":"prepare-eurc-hosted-build-forbidden","mutation":null,"sourceRpcHeaders":{"authorization":"synthetic-source-rpc-credential"},"builderApiKey":"synthetic-builder-api-key","builderEndpoint":"https://unused-builder.invalid","sourceRequests":1,"rpcRequests":0,"hostedBuildRequests":0}
+      ],
       "altVectorDiagnostics": [
         {"caseId":"build-usdc-solana-alt-type-discriminator","base":"rpc-solana-accounts-fixed","offset":"u32le@0","change":"tag=2"},
         {"caseId":"build-usdc-solana-alt-deactivated","base":"rpc-solana-accounts-fixed","offset":"u64le@4","change":"deactivation=0"},
@@ -231,7 +235,7 @@
         {"caseId":"build-usdc-solana-alt-start-index-out-of-range","base":"rpc-solana-accounts-fixed","offset":"u8@20","change":"lastExtendedStartIndex=255"},
         {"caseId":"build-eurc-solana-raydium-same-slot-inactive-index","base":"rpc-solana-accounts-raydium","offset":"u64le@12,u8@20","change":"both tables context slot and startIndex=0"}
       ],
-      "fixtureDigest": "19b1a9d601e7dedaf4e5ad8f8cbe9c7aec0d2b1f2f625b56eea53c48b16ee2d1",
+      "fixtureDigest": "4a9960ad4d0fcc0865f4afcd5e5403d81823f57a64bbc48039113e568b050c35",
       "scope": "Steiner F1-F7 shared rejection and boundary descriptors; native captures remain pending"
     }
   },

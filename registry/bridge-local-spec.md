@@ -210,6 +210,12 @@ input amount and protected output. Both Orca and Raydium variants remain
 bounded source-swap observations; they do not imply a complete Jupiter or DEX
 support guarantee.
 
+The local Solana EURC implementation accepts only the reviewed account frames.
+On-chain Whirlpool tick-array movement can make a fresh valid quote fail the
+full-tuple guard with `BRIDGE_LOCAL_PLAN_INVALID`; retry alone is not
+guaranteed to resolve that bounded limitation. This is a runtime support
+boundary, not permission to discover or admit a new DEX frame.
+
 The tuple is closed over every account position and flag. The source swapper
 is the only signer, its payer flag is read-only, the trader EURC and USDC ATAs
 are writable non-signers, and the ATA owner meta at position 2 is a read-only
@@ -454,17 +460,18 @@ does not require an artificial 1233-byte transaction.
 ## Shared local fixture and oracle
 
 `fixtures/mayan-swift-v2-local-build-cases.json` is a synthetic, source-backed
-fixture. It contains 42 prepare cases and 45 build cases: the original five
-prepare positives and five build positives, 76 closed rejection rows, and one
+fixture. It contains 42 prepare cases and 45 build cases: seven prepare
+positives (including two credential-boundary controls), six build positives,
+74 closed rejection rows, and one
 same-slot ALT active-prefix positive control. The original 39 case IDs and ten
 positive byte oracles are retained byte-for-byte. The fixture has deterministic
-digest `19b1a9d601e7dedaf4e5ad8f8cbe9c7aec0d2b1f2f625b56eea53c48b16ee2d1`.
+digest `4a9960ad4d0fcc0865f4afcd5e5403d81823f57a64bbc48039113e568b050c35`.
 It carries rich
 raw quotes, exact source-swap response bodies, raw ALT/blockhash RPC mocks,
 deterministic public addresses/nonces, and rejection cases covering route,
 quote, nonce, plan replay, source-swap bytes/program/accounts/signers/amounts,
 RPC identity/failure/malformed accounts/ALT/blockhash, timeout/abort, size and
-fee caps, credential forwarding, `/build` access, and direct-USDC zero-I/O.
+fee caps, and direct-USDC zero-I/O.
 The existing hosted fixture remains byte-identical and is referenced only by
 its frozen SHA-256 `3c414e362b518a3845e365c3c7c6f78e43984aae396be19817ddb53bb0da6283`
 and semantic 51-case digest
@@ -476,6 +483,15 @@ directory. It may perform bounded anonymous quote/source-swap/read-RPC capture
 for fixture creation, or replay frozen responses. It never calls `/build`,
 reads keys, signs, simulates, submits, or broadcasts. It sets `memoHex` only on
 an oracle quote clone; production quote parsing never sees that field.
+
+`prepare-eurc-credential-forwarding` and
+`prepare-eurc-hosted-build-forbidden` are positive boundary controls retained
+under their historical IDs. They execute the same valid Ethereum EURC source
+GET and return the same plan bytes as the canonical prepare case while carrying
+`builderApiKey: "synthetic-builder-api-key"`, unused
+`builderEndpoint: "https://unused-builder.invalid"`, and a distinct configured
+source-RPC authorization header. The source trace remains anonymous and there
+are zero RPC or hosted-build requests.
 
 The oracle output is evidence of the pinned SDK's byte construction, not proof
 of the ERPC implementation, provider authorization, or settlement. Native
@@ -537,8 +553,7 @@ executable flags, or `getMultipleAccounts.value[0]`/`.data[0]` for
 for `rpc-envelope-set`; plan nonce/hash/minimum/source-swap fields
 for `plan-set`; and the three local-build endpoint fields for `config-set`.
 Transport events are `source-swap-timeout`, `source-swap-abort`,
-`rpc-transport-error`, `rpc-timeout`, `rpc-abort`, `credential-forwarding`,
-and `hosted-build-attempt`. A descriptor is data for fixture runners; no
+`rpc-transport-error`, `rpc-timeout`, and `rpc-abort`. A descriptor is data for fixture runners; no
 runner may branch on case IDs.
 
 `rpc-envelope-set` is a closed descriptor with exactly
@@ -580,6 +595,11 @@ to `snapshotVersion: 2`, and adds `hostedFixtureDigest` and
 `prepareSourceSwap`, and `buildLocalUnsigned`. All five languages must provide
 actual native outputs for all five behavior keys; a canonical expected object or
 fixture-driver label is not execution evidence.
+
+The verifier and CI require snapshot version 2 by default. Version 1 contains
+only hosted behavior and is rejected unless the caller explicitly opts in with
+the CLI `--allow-legacy-v1` flag or the exported `verifySnapshots` option
+`{allowLegacyV1: true}`. Legacy opt-in does not establish local parity.
 
 ## Error and boundary contract
 

@@ -243,9 +243,11 @@ See the [Solana v1 guide](https://github.com/elsoul/erpc-sdk/blob/main/packages/
 
 ## Optional Mayan Swift v2 bridge (introduced in 0.8.0)
 
-The published `0.8.0` API's `MayanSwiftV2BridgeClient` is an explicit standalone adapter for the
+The published `0.8.1` API's `MayanSwiftV2BridgeClient` is an explicit standalone adapter for the
 reviewed issued EURC routes between Ethereum mainnet and Solana mainnet. The current source
-checkout adds unreleased native USDC routes alongside EURC. The adapter does not
+checkout contains unreleased native USDC and local-builder additions alongside EURC. The
+published `0.8.1` Worker patch does not include those native USDC or local-builder additions.
+The adapter does not
 attach to `ERPC::Client`, inherit eRPC credentials or headers, or make any
 request during construction. Configure the Mayan builder and Explorer
 endpoints separately when needed:
@@ -302,8 +304,8 @@ quotes = bridge.quote_exact_input(
 )
 ```
 
-The published `0.8.0` gem supports the EURC bridge only. Native USDC support is
-currently source-only and has not been published.
+The published `0.8.1` gem supports the EURC bridge only. Native USDC and local-builder
+support are currently source-only and have not been published.
 
 ### Local unsigned Mayan construction
 

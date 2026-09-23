@@ -68,6 +68,7 @@ module ERPC
     UINT64_MAX = (1 << 64) - 1
     MAX_SAFE_INTEGER = (1 << 53) - 1
     RESPONSE_DISPOSAL_TIMEOUT = 0.05
+    STREAM_QUEUE_CAPACITY = 8
     EVM_ADDRESS = /\A0x[0-9a-fA-F]{40}\z/.freeze
     HEX_BYTES = /\A0x(?:[0-9a-fA-F]{2})*\z/.freeze
     UINT64 = /\A(?:0|[1-9][0-9]*)\z/.freeze
@@ -939,20 +940,66 @@ module ERPC
       Timeout.timeout(local_remaining(deadline), Timeout::Error) { yield }
     end
 
+    def dispose_queued_local_responses(queue)
+      loop do
+        event, value = queue.pop(true)
+        dispose_local_response(value) if event == :response
+      rescue ThreadError
+        break
+      end
+    end
+
+    def perform_local_adapter_request(client, options, deadline, request)
+      queue = Queue.new
+      worker = Thread.new do
+        begin
+          queue << [:response, client.instance_variable_get(:@http_adapter).request(**request)]
+        rescue Exception => error # rubocop:disable Lint/RescueException
+          queue << [:error, error]
+        end
+      end
+      completed = false
+      begin
+        loop do
+          check_aborted(client, options)
+          local_remaining(deadline)
+          event, value = begin
+            queue.pop(true)
+          rescue ThreadError
+            sleep(0.001)
+            next
+          end
+          completed = true
+          if event == :response
+            return value
+          end
+          ERPC.raise_safe_bridge_error(value) if value.is_a?(BridgeError)
+          raise value
+        end
+      ensure
+        unless completed
+          worker.kill
+          worker.join(RESPONSE_DISPOSAL_TIMEOUT)
+          dispose_queued_local_responses(queue)
+        else
+          worker.join(RESPONSE_DISPOSAL_TIMEOUT)
+        end
+      end
+    end
+
     def source_swap_request(client, url, options)
       deadline = local_deadline(client.config.timeout)
       response = nil
       begin
         check_aborted(client, options)
-        response = local_with_deadline(deadline) do
-          client.instance_variable_get(:@http_adapter).request(
-            method: :get,
-            url: url,
-            headers: { "accept" => "application/json" },
-            body: nil,
-            timeout: local_remaining(deadline)
-          )
-        end
+        response = perform_local_adapter_request(
+          client, options, deadline,
+          method: :get,
+          url: url,
+          headers: { "accept" => "application/json" },
+          body: nil,
+          timeout: local_remaining(deadline)
+        )
         check_aborted(client, options)
         status = response_status(response)
         fail_local(BridgeErrorCode::PROVIDER_TRANSPORT) unless status.is_a?(Integer)
@@ -1052,8 +1099,17 @@ module ERPC
     end
 
     def read_response_chunks(response, queue)
+      produced_bytes = 0
+      enqueue = lambda do |chunk|
+        raise LocalResponseInvalidEncoding unless chunk.is_a?(String)
+
+        produced_bytes += chunk.bytesize
+        raise LocalResponseTooLarge if produced_bytes > MAX_RESPONSE_BYTES
+
+        queue.push([:chunk, chunk])
+      end
       if response.respond_to?(:read_body)
-        response.read_body { |chunk| queue << [:chunk, chunk] }
+        response.read_body { |chunk| enqueue.call(chunk) }
       else
         body = response_body_source(response)
         if body.respond_to?(:read) && !body.is_a?(String)
@@ -1061,12 +1117,12 @@ module ERPC
             chunk = body.read(16_384)
             break if chunk.nil? || chunk.empty?
 
-            queue << [:chunk, chunk]
+            enqueue.call(chunk)
           end
         elsif body.respond_to?(:each) && !body.is_a?(String)
-          body.each { |chunk| queue << [:chunk, chunk] }
+          body.each { |chunk| enqueue.call(chunk) }
         else
-          queue << [:chunk, body]
+          enqueue.call(body)
         end
       end
       queue << [:done, nil]
@@ -1090,7 +1146,7 @@ module ERPC
       streaming = response.respond_to?(:read_body)
       source = streaming ? response : response_body_source(response)
       if streaming || (source.respond_to?(:read) && !source.is_a?(String)) || (source.respond_to?(:each) && !source.is_a?(String))
-        queue = Queue.new
+        queue = SizedQueue.new(STREAM_QUEUE_CAPACITY)
         reader = Thread.new { read_response_chunks(response, queue) }
         completed = false
         begin
@@ -1283,15 +1339,14 @@ module ERPC
       deadline = local_deadline(client.config.timeout)
       response = nil
       begin
-        response = local_with_deadline(deadline) do
-          client.instance_variable_get(:@http_adapter).request(
-            method: :post,
-            url: endpoint.http_url,
-            headers: headers,
-            body: body,
-            timeout: local_remaining(deadline)
-          )
-        end
+        response = perform_local_adapter_request(
+          client, options, deadline,
+          method: :post,
+          url: endpoint.http_url,
+          headers: headers,
+          body: body,
+          timeout: local_remaining(deadline)
+        )
         check_aborted(client, options)
         status = response_status(response)
         fail_local(BridgeErrorCode::SOURCE_RPC_TRANSPORT) unless status.is_a?(Integer) && status.between?(200, 299)

@@ -39,7 +39,7 @@ the consumer-lock-only workaround
 `cargo +1.85.0 update -p yoke-derive@0.8.3 --precise 0.8.2`, keep the
 application's `Cargo.lock`, and verify with `--locked` (for example,
 `cargo +1.85.0 check --locked`). The tested pair is `yoke 0.8.3` with
-`yoke-derive 0.8.2`; the published `erpc-sdk 0.8.0` crate was verified on Rust
+`yoke-derive 0.8.2`; the historical published `erpc-sdk 0.8.0` crate was verified on Rust
 1.85 with this consumer lock. This guidance changes consumer
 dependency selection only; an untouched fresh lock compiles on stable Rust
 1.93. Do not copy the SDK lock, broadly downgrade
@@ -395,14 +395,16 @@ policy. The SDK does not sign, send, create approvals, or choose an unlimited
 allowance policy; the caller's wallet controls allowance changes and
 broadcasting.
 
-### Optional Mayan Swift v2 bridge (EURC in 0.8.0; USDC source addition unreleased)
+### Optional Mayan Swift v2 bridge (EURC in 0.8.1; USDC source addition unreleased)
 
 `MayanSwiftV2BridgeClient` is a separate, explicit client. The published
-`erpc-sdk 0.8.0` package supports the two reviewed native issued EURC
+`erpc-sdk 0.8.1` package supports the two reviewed native issued EURC
 directions: Ethereum (`deployment-0011`) and Solana (`deployment-0013`). This
 source tree also contains the reviewed native USDC directions, Ethereum
 (`deployment-0008`) and Solana (`deployment-0010`); that USDC addition is
-unreleased and is not included in the published 0.8.0 package. These are
+unreleased and is not included in the published 0.8.1 package. The 0.8.1
+Workers patch also does not include the native USDC or local-builder additions.
+These are
 external-provider intent routes, rather than Circle CCTP or RPC-only swap
 routes.
 

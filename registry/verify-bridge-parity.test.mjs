@@ -94,6 +94,10 @@ test("parity requires exactly five native runtimes and rejects reference-only sn
   duplicateCase.typescript.behavior.status.push(clone(duplicateCase.typescript.behavior.status[0]));
   assert.throws(() => verifySnapshots(duplicateCase), /parity mismatch/u);
 
+  const missingLocalBehavior = nativeSnapshots();
+  delete missingLocalBehavior.typescript.behavior.prepareSourceSwap;
+  assert.throws(() => verifySnapshots(missingLocalBehavior), /behavior keys/u);
+
   assert.equal(stableJson(nativeSnapshots().typescript.behavior), stableJson(nativeSnapshots().ruby.behavior));
 });
 
@@ -143,9 +147,8 @@ test("normalized source-token tampering is covered for EURC and USDC without pro
 
 test("local fixture keeps closed rejection descriptors and v2 parity metadata", () => {
   assert.equal(localFixture.cases.length, 87);
-  assert.equal(localFixture.cases.filter((entry) => entry.expected.kind === "success" && entry.method === "prepareSourceSwap").length, 5);
+  assert.equal(localFixture.cases.filter((entry) => entry.expected.kind === "success" && entry.method === "prepareSourceSwap").length, 7);
   assert.equal(localFixture.cases.filter((entry) => entry.expected.kind === "success" && entry.method === "buildLocalUnsigned").length, 6);
-  assert.ok(localFixture.cases.some((entry) => entry.mutation?.kind === "transport" && entry.mutation.event === "hosted-build-attempt"));
   assert.ok(localFixture.cases.some((entry) => entry.mutation?.kind === "boundary"));
   assert.ok(localFixture.cases.some((entry) => entry.mutation?.kind === "rpc-envelope-set" && entry.mutation.path === "jsonrpc"));
   const envelopeCases = localFixture.cases.filter((entry) => entry.mutation?.kind === "rpc-envelope-set");
@@ -155,6 +158,9 @@ test("local fixture keeps closed rejection descriptors and v2 parity metadata", 
   assert.ok(localFixture.cases.some((entry) => entry.mutation?.path === "swapInstruction.accounts[13].pubkey"));
   assert.ok(localFixture.cases.some((entry) => entry.caseId === "build-usdc-solana-alt-same-slot-active-prefix" && entry.expected.kind === "success"));
   assert.ok(localFixture.cases.some((entry) => entry.caseId === "build-eurc-solana-raydium-same-slot-inactive-index" && entry.expected.code === "BRIDGE_LOCAL_BUILD_INVALID"));
+  const unsupportedLocalConfig = clone(localFixture);
+  unsupportedLocalConfig.cases.find((entry) => entry.caseId === "build-usdc-solana-alt-same-slot-active-prefix").config.localBuild.altValidation = "test-only";
+  assert.throws(() => validateLocalFixtures(unsupportedLocalConfig), /localBuild keys/u);
   const raydiumPrepare = localFixture.cases.find((entry) => entry.caseId === "prepare-eurc-solana-to-ethereum-raydium");
   const raydiumBuild = localFixture.cases.find((entry) => entry.caseId === "build-eurc-solana-to-ethereum-raydium");
   const sizeBoundary = localFixture.cases.find((entry) => entry.caseId === "build-solana-final-size-cap");
@@ -184,12 +190,13 @@ test("local fixture keeps closed rejection descriptors and v2 parity metadata", 
   assert.throws(() => verifySnapshots(changed), /parity mismatch/u);
 });
 
-test("legacy v1 snapshots remain verifiable during the transition", () => {
+test("legacy v1 snapshots require explicit opt-in", () => {
   const expected = buildExpectedLegacySnapshot();
   const snapshots = Object.fromEntries(PARITY_LANGUAGES.map((language) => [language, {
     ...clone(expected),
     language,
     runtime: `native-${language}-legacy-test`,
   }]));
-  assert.equal(verifySnapshots(snapshots).snapshotVersion, 1);
+  assert.throws(() => verifySnapshots(snapshots), /allowLegacyV1 opt-in/u);
+  assert.equal(verifySnapshots(snapshots, undefined, undefined, undefined, undefined, { allowLegacyV1: true }).snapshotVersion, 1);
 });

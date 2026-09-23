@@ -4,6 +4,7 @@ require_relative "test_helper"
 require "base64"
 require "digest"
 require "json"
+require "socket"
 
 class LocalFixtureCancellation
   def initialize
@@ -32,10 +33,9 @@ class LocalFixtureAdapter
   end
 
   def request(**request)
-    if %w[credential-forwarding hosted-build-attempt].include?(@event)
-      raise ERPC::BridgeError.new(ERPC::BridgeErrorCode::LOCAL_PLAN_INVALID), cause: RuntimeError.new("fixture event injected")
-    end
     @requests << request
+    sentinels = %w[synthetic-builder-api-key unused-builder.invalid synthetic-source-rpc-credential]
+    raise "fixture sentinel leaked" if sentinels.any? { |sentinel| request.to_json.include?(sentinel) }
     if @event == "rpc-transport-error"
       raise RuntimeError, "fixture rpc transport"
     end
@@ -165,16 +165,39 @@ end
 class LocalControlledAdapter
   attr_reader :requests
 
-  def initialize(response, delay: 0)
+  def initialize(response, delay: 0, before_return: nil)
     @response = response
     @delay = delay
+    @before_return = before_return
     @requests = []
   end
 
   def request(**request)
     @requests << request
     sleep(@delay) if @delay.positive?
+    @before_return&.call
     @response
+  end
+end
+
+class LocalFloodResponse
+  attr_reader :status, :produced, :close_count
+
+  def initialize
+    @status = 200
+    @produced = 0
+    @close_count = 0
+  end
+
+  def read_body
+    1024.times do
+      @produced += 1
+      yield("x" * 4096)
+    end
+  end
+
+  def close
+    @close_count += 1
   end
 end
 
@@ -182,7 +205,7 @@ class BridgeLocalTest < Minitest::Test
   ROOT = File.expand_path("../../..", __dir__)
   FIXTURE_PATH = File.join(ROOT, "registry", "fixtures", "mayan-swift-v2-local-build-cases.json")
   FIXTURE = JSON.parse(File.read(FIXTURE_PATH)).freeze
-  FIXTURE_LOCAL_DIGEST = "19b1a9d601e7dedaf4e5ad8f8cbe9c7aec0d2b1f2f625b56eea53c48b16ee2d1"
+  FIXTURE_LOCAL_DIGEST = "4a9960ad4d0fcc0865f4afcd5e5403d81823f57a64bbc48039113e568b050c35"
 
   def self.native_capture_behavior
     runs, = new("native-capture").send(:replay_cases)
@@ -207,7 +230,7 @@ class BridgeLocalTest < Minitest::Test
       assert_equal entry.fetch("httpTrace"), http_trace, entry.fetch("caseId")
       assert_equal entry.fetch("rpcTrace"), rpc_trace, entry.fetch("caseId")
     end
-    assert_equal 5, plans.length
+    assert_equal 7, plans.length
   end
 
   def test_direct_usdc_preparation_performs_no_source_io
@@ -427,6 +450,82 @@ class BridgeLocalTest < Minitest::Test
     pending_client&.close
   end
 
+  def test_stream_producer_is_bounded_and_default_adapter_abort_is_prompt
+    entry = FIXTURE.fetch("cases").find { |item| item.fetch("caseId") == "prepare-eurc-ethereum-to-solana" }
+    quote = quote_for(entry.fetch("quoteId"))
+    context = context_for(entry, quote)
+    source_body = FIXTURE.fetch("sourceSwapMocks").find { |mock| mock.fetch("mockId") == entry.fetch("sourceSwapMockIds").fetch(0) }.fetch("response").fetch("body")
+
+    flood_response = LocalFloodResponse.new
+    flood_client = ERPC::MayanSwiftV2BridgeClient.new(
+      timeout: 1.0,
+      minimum_quote_validity_seconds: 0,
+      http_adapter: LocalControlledAdapter.new(flood_response)
+    )
+    flood_client.instance_variable_set(:@clock, -> { quote.fetch("deadline").to_i - 1 })
+    error = assert_raises(ERPC::BridgeError) { flood_client.prepare_source_swap(context) }
+    assert_equal ERPC::BridgeErrorCode::PROVIDER_INVALID_RESPONSE, error.code
+    assert_operator flood_response.produced, :<=, (ERPC::MayanSwiftV2BridgeLocal::MAX_RESPONSE_BYTES / 4096) + 1
+    assert_operator flood_response.close_count, :>, 0
+
+    server = TCPServer.new("127.0.0.1", 0)
+    started = Queue.new
+    worker = Thread.new do
+      socket = server.accept
+      loop do
+        line = socket.gets
+        break if line.nil? || line == "\r\n"
+      end
+      socket.write("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: #{source_body.bytesize}\r\nConnection: close\r\n\r\n")
+      socket.write(source_body.byteslice(0, 1))
+      started << true
+      sleep(0.3)
+      begin
+        socket.write(source_body.byteslice(1, source_body.bytesize - 1))
+      rescue Errno::EPIPE, Errno::ECONNRESET
+        nil
+      end
+      socket.close
+    end
+    cancellation = LocalFixtureCancellation.new
+    endpoint = "http://127.0.0.1:#{server.addr[1]}"
+    default_client = ERPC::MayanSwiftV2BridgeClient.new(
+      local_build: { source_swap_endpoint: endpoint },
+      timeout: 1.0,
+      minimum_quote_validity_seconds: 0
+    )
+    default_client.instance_variable_set(:@clock, -> { quote.fetch("deadline").to_i - 1 })
+    canceller = Thread.new { started.pop; sleep(0.02); cancellation.cancel! }
+    started_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    error = assert_raises(ERPC::BridgeError) { default_client.prepare_source_swap(context, cancellation) }
+    elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started_at
+    assert_equal ERPC::BridgeErrorCode::ABORTED, error.code
+    assert_operator elapsed, :<, 0.2
+  ensure
+    canceller&.join
+    worker&.join
+    server&.close
+    flood_client&.close
+    default_client&.close
+  end
+
+  def test_abort_after_adapter_response_completion_disposes_unconsumed_response
+    entry = FIXTURE.fetch("cases").find { |item| item.fetch("caseId") == "prepare-eurc-ethereum-to-solana" }
+    quote = quote_for(entry.fetch("quoteId"))
+    context = context_for(entry, quote)
+    source_body = FIXTURE.fetch("sourceSwapMocks").find { |mock| mock.fetch("mockId") == entry.fetch("sourceSwapMockIds").fetch(0) }.fetch("response").fetch("body")
+    cancellation = LocalFixtureCancellation.new
+    response = LocalControlledResponse.new(status: 200, body: source_body)
+    adapter = LocalControlledAdapter.new(response, before_return: -> { cancellation.cancel!; Thread.pass })
+    client = ERPC::MayanSwiftV2BridgeClient.new(timeout: 0.2, minimum_quote_validity_seconds: 0, http_adapter: adapter)
+    client.instance_variable_set(:@clock, -> { quote.fetch("deadline").to_i - 1 })
+    error = assert_raises(ERPC::BridgeError) { client.prepare_source_swap(context, cancellation) }
+    assert_equal ERPC::BridgeErrorCode::ABORTED, error.code
+    assert_operator response.close_count, :>, 0
+  ensure
+    client&.close
+  end
+
   private
 
   def quote_for(quote_id)
@@ -445,7 +544,6 @@ class BridgeLocalTest < Minitest::Test
 
   def client_for(entry, adapter, mutation: nil)
     config = deep_clone(entry.fetch("config"))
-    config.fetch("localBuild", {}).delete("altValidation") if config["localBuild"].is_a?(Hash)
     if mutation && mutation["kind"] == "config-set"
       set_path(config, mutation.fetch("path"), mutation.fetch("value"))
     end
@@ -554,8 +652,7 @@ class BridgeLocalTest < Minitest::Test
       when "id", "jsonrpc"
         response[path] = mutation.fetch("value")
       when "version"
-        response.delete("jsonrpc")
-        response["version"] = mutation.fetch("value")
+        response["jsonrpc"] = mutation.fetch("value")
       when "depth"
         depth = Integer(mutation.fetch("value"))
         nested = response.fetch("result")

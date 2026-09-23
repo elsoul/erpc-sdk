@@ -417,6 +417,12 @@ func goLocalConfig(t *testing.T, raw map[string]any, transport http.RoundTripper
 	config := MayanSwiftV2BridgeConfig{HTTPClient: &http.Client{Transport: transport}, Timeout: timeout}
 	zeroValidity := uint64(0)
 	config.MinimumQuoteValiditySeconds = &zeroValidity
+	if value, ok := raw["builderEndpoint"].(string); ok {
+		config.BuilderEndpoint = value
+	}
+	if value, ok := raw["builderApiKey"].(string); ok {
+		config.BuilderAPIKey = value
+	}
 	localValue, ok := raw["localBuild"].(map[string]any)
 	if !ok {
 		config.LocalBuild = &MayanSwiftV2LocalBuildConfig{}
@@ -428,14 +434,31 @@ func goLocalConfig(t *testing.T, raw map[string]any, transport http.RoundTripper
 	}
 	if value, present := localValue["ethereumRpc"]; present && value != nil {
 		endpoint := goLocalMap(t, value)
-		localConfig.EthereumRPC = &RPCEndpointConfig{HTTPURL: goLocalString(t, endpoint["httpUrl"], "ethereumRpc.httpUrl")}
+		localConfig.EthereumRPC = &RPCEndpointConfig{HTTPURL: goLocalString(t, endpoint["httpUrl"], "ethereumRpc.httpUrl"), Headers: goLocalHeaders(t, endpoint["headers"], "ethereumRpc.headers")}
 	}
 	if value, present := localValue["solanaRpc"]; present && value != nil {
 		endpoint := goLocalMap(t, value)
-		localConfig.SolanaRPC = &RPCEndpointConfig{HTTPURL: goLocalString(t, endpoint["httpUrl"], "solanaRpc.httpUrl")}
+		localConfig.SolanaRPC = &RPCEndpointConfig{HTTPURL: goLocalString(t, endpoint["httpUrl"], "solanaRpc.httpUrl"), Headers: goLocalHeaders(t, endpoint["headers"], "solanaRpc.headers")}
 	}
 	config.LocalBuild = localConfig
 	return config
+}
+
+func goLocalHeaders(t *testing.T, value any, field string) http.Header {
+	t.Helper()
+	if value == nil {
+		return nil
+	}
+	object := goLocalMap(t, value)
+	headers := make(http.Header, len(object))
+	for name, rawValue := range object {
+		text, ok := rawValue.(string)
+		if !ok {
+			t.Fatalf("local fixture header %s is not a string: %#v", field, rawValue)
+		}
+		headers.Set(name, text)
+	}
+	return headers
 }
 
 func goLocalTraceRequest(request *http.Request, body *string) goLocalCapturedRequest {
@@ -463,6 +486,18 @@ func goLocalTrace(captured []goLocalCapturedRequest) []map[string]any {
 		result = append(result, row)
 	}
 	return result
+}
+
+func goLocalHeadersEqual(actual, expected map[string]string) bool {
+	if len(actual) != len(expected) {
+		return false
+	}
+	for name, value := range expected {
+		if actual[strings.ToLower(name)] != value {
+			return false
+		}
+	}
+	return true
 }
 
 func goLocalRPCParts(body string) (method string, params any, ok bool) {
@@ -532,10 +567,8 @@ func goLocalRunCase(t *testing.T, fixture goLocalFixture, entry goLocalFixtureCa
 		baseContext, cancel = context.WithCancel(baseContext)
 		defer cancel()
 	}
+	unexpectedRequest := false
 	transport := roundTripFunc(func(request *http.Request) (*http.Response, error) {
-		if transportEvent == "credential-forwarding" || transportEvent == "hosted-build-attempt" {
-			return nil, localError(BridgeLocalPlanInvalid)
-		}
 		var bodyBytes []byte
 		if request.Body != nil {
 			var err error
@@ -555,6 +588,51 @@ func goLocalRunCase(t *testing.T, fixture goLocalFixture, entry goLocalFixtureCa
 		} else {
 			capturedRPC = append(capturedRPC, trace)
 		}
+		var matched *goLocalMock
+		if request.Method == http.MethodGet {
+			for _, mock := range sourceMocks {
+				if mock.Request.Method != "" && mock.Request.Method != request.Method || mock.Request.URL != request.URL.String() {
+					continue
+				}
+				if !goLocalHeadersEqual(trace.Headers, mock.Request.Headers) || (mock.Request.Body == nil) != (trace.Body == nil) || mock.Request.Body != nil && trace.Body != nil && *mock.Request.Body != *trace.Body {
+					unexpectedRequest = true
+					return nil, errors.New("unexpected source swap request")
+				}
+				copyMock := mock
+				matched = &copyMock
+				break
+			}
+		} else {
+			method, params, ok := goLocalRPCParts(string(bodyBytes))
+			if !ok {
+				unexpectedRequest = true
+				return nil, errors.New("invalid RPC request")
+			}
+			for _, mock := range rpcMocks {
+				if mock.Request.Method != "" && mock.Request.Method != request.Method || mock.Request.URL != request.URL.String() || mock.Request.Body == nil {
+					continue
+				}
+				expectedMethod, expectedParams, expectedOK := goLocalRPCParts(*mock.Request.Body)
+				if !expectedOK {
+					continue
+				}
+				actualJSON, _ := json.Marshal(params)
+				expectedJSON, _ := json.Marshal(expectedParams)
+				if expectedMethod == method && string(actualJSON) == string(expectedJSON) {
+					if !goLocalHeadersEqual(trace.Headers, mock.Request.Headers) {
+						unexpectedRequest = true
+						return nil, errors.New("unexpected RPC headers")
+					}
+					copyMock := mock
+					matched = &copyMock
+					break
+				}
+			}
+		}
+		if matched == nil {
+			unexpectedRequest = true
+			return nil, errors.New("unexpected request")
+		}
 		if transportEvent == "source-swap-timeout" || transportEvent == "rpc-timeout" {
 			<-request.Context().Done()
 			return nil, request.Context().Err()
@@ -569,32 +647,7 @@ func goLocalRunCase(t *testing.T, fixture goLocalFixture, entry goLocalFixtureCa
 			<-request.Context().Done()
 			return nil, request.Context().Err()
 		}
-		if request.Method == http.MethodGet {
-			for _, mock := range sourceMocks {
-				if mock.Request.URL == request.URL.String() {
-					return goLocalResponse(mock), nil
-				}
-			}
-			return nil, errors.New("unexpected source swap request")
-		}
-		method, params, ok := goLocalRPCParts(string(bodyBytes))
-		if !ok {
-			return nil, errors.New("invalid RPC request")
-		}
-		for _, mock := range rpcMocks {
-			if mock.Request.URL != request.URL.String() || mock.Request.Body == nil {
-				continue
-			}
-			expectedMethod, expectedParams, expectedOK := goLocalRPCParts(*mock.Request.Body)
-			if expectedOK {
-				actualJSON, _ := json.Marshal(params)
-				expectedJSON, _ := json.Marshal(expectedParams)
-				if expectedMethod == method && string(actualJSON) == string(expectedJSON) {
-					return goLocalResponse(mock), nil
-				}
-			}
-		}
-		return nil, errors.New("unexpected RPC request")
+		return goLocalResponse(*matched), nil
 	})
 	configRaw := entry.Config
 	if entry.Mutation != nil && entry.Mutation["kind"] == "config-set" {
@@ -645,6 +698,9 @@ func goLocalRunCase(t *testing.T, fixture goLocalFixture, entry goLocalFixtureCa
 			plan = mutatedPlan
 		}
 		value, callErr = client.BuildLocalUnsigned(baseContext, MayanSwiftV2LocalBuildRequest{Quote: quote, SwapperAddress: contextValue.SwapperAddress, DestinationAddress: contextValue.DestinationAddress, OrderNonce: contextValue.OrderNonce, SourceSwapPlan: plan})
+	}
+	if unexpectedRequest {
+		t.Fatalf("unexpected request was issued for %s", entry.CaseID)
 	}
 	return goBridgeOutcome(value, callErr), goLocalTrace(capturedHTTP), goLocalTrace(capturedRPC)
 }
@@ -714,7 +770,7 @@ func goLocalFixtureBehavior(t *testing.T) (map[string][]map[string]any, string) 
 
 func TestMayanSwiftV2LocalFixtures(t *testing.T) {
 	fixture := loadGoLocalFixture(t)
-	if fixture.LocalFixtureDigest != "19b1a9d601e7dedaf4e5ad8f8cbe9c7aec0d2b1f2f625b56eea53c48b16ee2d1" {
+	if fixture.LocalFixtureDigest != "4a9960ad4d0fcc0865f4afcd5e5403d81823f57a64bbc48039113e568b050c35" {
 		t.Fatalf("local fixture digest = %s", fixture.LocalFixtureDigest)
 	}
 	prepareCount, buildCount := 0, 0
@@ -726,7 +782,20 @@ func TestMayanSwiftV2LocalFixtures(t *testing.T) {
 			buildCount++
 		}
 	}
-	if len(fixture.Cases) != 87 || prepareCount != 42 || buildCount != 45 {
+	successCount, rejectionCount, prepareSuccess, buildSuccess := 0, 0, 0, 0
+	for _, entry := range fixture.Cases {
+		if entry.Expected["kind"] == "success" {
+			successCount++
+			if entry.Method == "prepareSourceSwap" {
+				prepareSuccess++
+			} else if entry.Method == "buildLocalUnsigned" {
+				buildSuccess++
+			}
+		} else {
+			rejectionCount++
+		}
+	}
+	if len(fixture.Cases) != 87 || prepareCount != 42 || buildCount != 45 || successCount != 13 || rejectionCount != 74 || prepareSuccess != 7 || buildSuccess != 6 {
 		t.Fatalf("local fixture counts = total %d, prepare %d, build %d", len(fixture.Cases), prepareCount, buildCount)
 	}
 	quotes := goLocalBaseQuotes(t, fixture)

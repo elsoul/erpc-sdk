@@ -297,13 +297,9 @@ const runLocalCase = async (
     ? mutation.event
     : null
   const callerAbort = new AbortController()
-  let fetchCalls = 0
+  const configured = mutateConfig(entry.config, mutation)
 
   const fetch: typeof globalThis.fetch = async (input, init) => {
-    fetchCalls += 1
-    if (transportEvent === 'credential-forwarding' || transportEvent === 'hosted-build-attempt') {
-      throw new BridgeError('BRIDGE_LOCAL_PLAN_INVALID')
-    }
     const method = String(init?.method ?? 'GET').toUpperCase()
     const url = String(input)
     const trace = {
@@ -343,16 +339,7 @@ const runLocalCase = async (
     return response(mock)
   }
 
-  const configured = mutateConfig(entry.config, mutation)
-  const localBuildConfig = configured.localBuild
-  const localConfig = localBuildConfig !== null && typeof localBuildConfig === 'object'
-    ? {
-        ...configured,
-        localBuild: Object.fromEntries(
-          Object.entries(localBuildConfig).filter(([key]) => key !== 'altValidation'),
-        ),
-      }
-    : configured
+  const localConfig = configured
   const client = createMayanSwiftV2BridgeClient({
     ...localConfig,
     fetch,
@@ -391,8 +378,19 @@ const runLocalCase = async (
     Date.now = originalDateNow
     client.close()
   }
-  if (transportEvent === 'credential-forwarding' || transportEvent === 'hosted-build-attempt') {
-    expect(fetchCalls, entry.caseId).toBeGreaterThan(0)
+  const builderApiKey = typeof configured.builderApiKey === 'string'
+    ? configured.builderApiKey
+    : undefined
+  if (builderApiKey !== undefined) {
+    for (const request of httpTrace) {
+      expect(request.method, entry.caseId).toBe('GET')
+      expect(request.headers, entry.caseId).toEqual({ accept: 'application/json' })
+      expect(request.body, entry.caseId).toBeNull()
+      expect(String(request.url), entry.caseId).not.toContain(builderApiKey)
+      expect(String(request.url), entry.caseId).not.toContain(String(configured.builderEndpoint ?? ''))
+    }
+    expect(httpTrace.every((request) => !String(request.url).endsWith('/build')), entry.caseId).toBe(true)
+    if (entry.method === 'prepareSourceSwap') expect(rpcTrace, entry.caseId).toEqual([])
   }
   return { outcome, httpTrace, rpcTrace }
 }
