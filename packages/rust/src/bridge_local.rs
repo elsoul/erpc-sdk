@@ -4716,11 +4716,16 @@ pub(crate) mod native_fixture {
             .unwrap_or_else(|| "https://price-api.mayan.finance/v3".to_owned());
         let mut config = MayanSwiftV2LocalBuildConfig::new().with_source_swap_endpoint(source);
         for key in ["ethereumRpc", "solanaRpc"] {
+            if mutation(case, "config-set").is_some_and(|mutation| {
+                mutation["path"] == format!("localBuild.{key}") && mutation["value"].is_null()
+            }) {
+                continue;
+            }
             let Some(endpoint) = local.get(key).filter(|value| !value.is_null()) else {
                 continue;
             };
             let endpoint_object = endpoint.as_object().expect("RPC endpoint config");
-            let _configured_http_url = endpoint_object
+            let configured_http_url = endpoint_object
                 .get("httpUrl")
                 .and_then(Value::as_str)
                 .expect("configured RPC URL");
@@ -4739,13 +4744,14 @@ pub(crate) mod native_fixture {
                         .collect::<Vec<_>>()
                 })
                 .unwrap_or_default();
-            if let Some(server) = rpc_server {
-                let rpc = RpcEndpointConfig::new(server.uri()).with_headers(headers);
-                config = if key == "ethereumRpc" {
-                    config.with_ethereum_rpc(rpc)
-                } else {
-                    config.with_solana_rpc(rpc)
-                };
+            let rpc_url = rpc_server
+                .map(MockServer::uri)
+                .unwrap_or_else(|| configured_http_url.to_owned());
+            let rpc = RpcEndpointConfig::new(rpc_url).with_headers(headers);
+            config = if key == "ethereumRpc" {
+                config.with_ethereum_rpc(rpc)
+            } else {
+                config.with_solana_rpc(rpc)
             }
         }
         config
