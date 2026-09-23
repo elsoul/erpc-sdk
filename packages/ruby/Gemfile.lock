@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    erpc-sdk (0.8.0)
+    erpc-sdk (0.8.1)
       digest-keccak (= 0.0.7)
 
 GEM

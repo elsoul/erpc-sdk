@@ -1,4 +1,5 @@
 import { ErpcConfigError } from './errors'
+import { wrapFetch } from './transport/fetch'
 
 export const DEFAULT_ENDPOINT = 'https://edge.erpc.global'
 export const DEFAULT_AVALANCHE_ENDPOINT = 'https://ava-rpc.erpc.global'
@@ -55,7 +56,7 @@ const requireFetch = (provided?: typeof globalThis.fetch) => {
       'A Fetch API implementation is required in this runtime',
     )
   }
-  return implementation
+  return wrapFetch(implementation)
 }
 
 const normalizeLegacyEndpoint = (endpoint: URL): URL => {

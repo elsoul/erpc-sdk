@@ -20,6 +20,7 @@ import type {
   MayanSwiftV2LocalContext,
   MayanSwiftV2SourceSwapPlan,
 } from './bridge_local'
+import { wrapFetch } from './transport/fetch'
 
 export type BridgeErrorCode =
   | 'BRIDGE_INVALID_ARGUMENT'
@@ -1227,7 +1228,7 @@ const normalizeBridgeConfig = (
     allowUnauthenticatedBuild,
     minimumQuoteValiditySeconds,
     timeoutMs,
-    fetch: implementation as typeof globalThis.fetch,
+    fetch: wrapFetch(implementation as typeof globalThis.fetch),
     ...(localBuild === undefined ? {} : { localBuild }),
   })
 }
