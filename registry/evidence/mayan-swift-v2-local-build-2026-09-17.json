@@ -23,7 +23,7 @@
   },
   "localFixture": {
     "path": "registry/fixtures/mayan-swift-v2-local-build-cases.json",
-    "sha256": "196e713247552c973c8186baa47006bde97a92c127c7579b09d976c323062341",
+    "sha256": "878e21ba3d3caef39545b7a98bce53d60ab35a1fed9cdf541f01dd14dcd55c37",
     "localFixtureDigest": "4a9960ad4d0fcc0865f4afcd5e5403d81823f57a64bbc48039113e568b050c35",
     "caseCount": 87,
     "positivePrepareCases": 7,
