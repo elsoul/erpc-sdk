@@ -8,6 +8,7 @@ module ERPC
     ETHEREUM_MAINNET = TokenCatalogData::TOKEN_CHAIN_IDS.fetch(:ethereum)
     SOLANA_MAINNET = TokenCatalogData::TOKEN_CHAIN_IDS.fetch(:solana)
     AVALANCHE_C_MAINNET = TokenCatalogData::TOKEN_CHAIN_IDS.fetch(:avalanche_c)
+    BASE_MAINNET = TokenCatalogData::TOKEN_CHAIN_IDS.fetch(:base)
   end
 
   # Offline access to the generated token and deployment catalog.
@@ -54,7 +55,11 @@ module ERPC
         address = deployment[:address]
         next unless address.is_a?(String) && !address.empty?
 
-        evm_chain = [TokenChainIDs::ETHEREUM_MAINNET, TokenChainIDs::AVALANCHE_C_MAINNET].include?(deployment.fetch(:chain_id))
+        evm_chain = [
+          TokenChainIDs::ETHEREUM_MAINNET,
+          TokenChainIDs::AVALANCHE_C_MAINNET,
+          TokenChainIDs::BASE_MAINNET
+        ].include?(deployment.fetch(:chain_id))
         normalized = evm_chain ? address.downcase : address
         key = [deployment.fetch(:chain_id), normalized].freeze
         indexed[key] ||= deployment
@@ -147,11 +152,16 @@ module ERPC
 
       def known_chain_id?(chain_id)
         chain_id.is_a?(String) &&
-          [TokenChainIDs::ETHEREUM_MAINNET, TokenChainIDs::SOLANA_MAINNET, TokenChainIDs::AVALANCHE_C_MAINNET].include?(chain_id)
+          [
+            TokenChainIDs::ETHEREUM_MAINNET,
+            TokenChainIDs::SOLANA_MAINNET,
+            TokenChainIDs::AVALANCHE_C_MAINNET,
+            TokenChainIDs::BASE_MAINNET
+          ].include?(chain_id)
       end
 
       def evm_chain_id?(chain_id)
-        chain_id == TokenChainIDs::ETHEREUM_MAINNET || chain_id == TokenChainIDs::AVALANCHE_C_MAINNET
+        [TokenChainIDs::ETHEREUM_MAINNET, TokenChainIDs::AVALANCHE_C_MAINNET, TokenChainIDs::BASE_MAINNET].include?(chain_id)
       end
 
       def stable_currency?(value)

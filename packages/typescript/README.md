@@ -1,20 +1,27 @@
 # `@elsoul/erpc-sdk`
 
 Official type-safe TypeScript client for [ERPC](https://erpc.global). Use one
-client and an API key for Solana, Ethereum, Avalanche C/P/X chains, price data,
-indexed data, leader and validator data, analytics, subscriptions, and account
-information. Caller-owned direct endpoints can be selected for Solana,
-Ethereum, and Avalanche C-Chain JSON-RPC.
+client and an API key for Base, Solana, Ethereum, Avalanche C/P/X chains, price
+data, indexed data, leader and validator data, analytics, subscriptions, and
+account information. Base is exposed as a read-only JSON-RPC facade; caller-owned
+direct endpoints can be selected for Base, Solana, Ethereum, and Avalanche
+C-Chain JSON-RPC.
+
+The Base facade documented below is a `0.9.0` source candidate. The currently
+published `0.8.1` npm package does not include it; use the reviewed `0.9.0`
+candidate artifact or this source checkout until that version is published.
 
 ## Install
 
 ```bash
-npm install @elsoul/erpc-sdk
-# or: pnpm add @elsoul/erpc-sdk
+# Once 0.9.0 is published:
+npm install @elsoul/erpc-sdk@0.9.0
+# or: pnpm add @elsoul/erpc-sdk@0.9.0
+# Before publication, use the reviewed candidate tarball or this source checkout.
 ```
 
-The package has no runtime dependencies and includes ESM, CommonJS, and
-TypeScript declarations. Node.js 20 or later is supported.
+The package includes its ESM, CommonJS, and TypeScript declarations. Node.js 20
+or later is supported.
 
 ## Quick start
 
@@ -29,8 +36,9 @@ const erpc = createErpcClient({ apiKey })
 const slot = await erpc.solana.rpc.getSlot().send()
 const chainId = await erpc.ethereum.rpc.eth_chainId().send()
 const avalancheChainId = await erpc.avalanche.rpc.eth_chainId().send()
+const baseChainId = await erpc.base.rpc.eth_chainId().send()
 
-console.log({ slot, chainId, avalancheChainId })
+console.log({ slot, chainId, avalancheChainId, baseChainId })
 erpc.close()
 ```
 
@@ -84,11 +92,51 @@ const erpc = createErpcClient({
 })
 ```
 
-`solanaRpc`, `ethereumRpc`, and `avalancheCRpc` select direct Solana, Ethereum,
-and Avalanche C-Chain JSON-RPC transports. Without an API key, non-overridden
-chains and ERPC REST, native, and index services fail locally. The
+`solanaRpc`, `ethereumRpc`, `avalancheCRpc`, and `baseRpc` select direct Solana,
+Ethereum, Avalanche C-Chain, and Base JSON-RPC transports. `baseRpc` accepts
+only an HTTP URL and scoped HTTP headers because the Base facade has no
+WebSocket or subscription surface. Without an API key, non-overridden chains
+and ERPC REST, native, and index services fail locally. The
 `RpcEndpointConfig.headers` field applies to direct HTTP requests only; those
 headers are never sent on WSS connections.
+
+## Base read-only RPC (`0.9.0` candidate)
+
+The `0.9.0` candidate API-key client uses `https://base.erpc.global/` at the
+root JSON-RPC path.
+The first check for a Base connection should be `eth_chainId()` and must return
+`0x2105` (Base mainnet):
+
+```ts
+const baseChainId = await erpc.base.rpc.eth_chainId().send()
+const ethBalance = await erpc.base.rpc
+  .eth_getBalance('0x0000000000000000000000000000000000000000', 'latest')
+  .send()
+const result = await erpc.base.rpc.eth_call(
+  { to: '0x0000000000000000000000000000000000000000', data: '0x' },
+  'latest',
+).send()
+```
+
+For a keyless caller-owned endpoint, use `baseRpc`. Its URL path and query are
+sent exactly as configured, and its headers stay scoped to Base:
+
+```ts
+const erpc = createErpcClient({
+  baseRpc: {
+    httpUrl: process.env.ERPC_BASE_RPC_URL!,
+    headers: { authorization: 'Bearer node-token' },
+  },
+})
+
+const chainId = await erpc.base.rpc.eth_chainId().send()
+```
+
+The Base client exposes only `rpc`; the inner read-only facade has exactly
+`endpoint`, `eth_chainId`, `eth_getBalance`, and `eth_call`. It does not provide
+raw, batch, subscription, signing, or broadcast methods. `baseEndpoint` is the
+authenticated API-key endpoint override; `baseRpc` takes precedence over it and
+over global headers.
 
 ## Wallets, signing, and broadcast
 

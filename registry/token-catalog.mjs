@@ -5,6 +5,7 @@ export const TOKEN_CHAIN_IDS = Object.freeze({
   ethereum: "eip155:1",
   solana: "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
   avalancheC: "eip155:43114",
+  base: "eip155:8453",
 });
 
 const ALLOWED_CHAIN_IDS = new Set(Object.values(TOKEN_CHAIN_IDS));
@@ -45,7 +46,7 @@ const ASSET_KINDS = new Set(["native", "issued", "wrapped", "bridged", "unclassi
 const STABLE_CURRENCIES = new Set(["USD", "EUR", "JPY"]);
 const STANDARDS = new Set(["native", "erc20", "spl-token", "spl-token-2022"]);
 const STATUSES = new Set(["active", "legacy", "winding-down", "retired"]);
-const EVM_CHAINS = new Set(["eip155:1", "eip155:43114"]);
+const EVM_CHAINS = new Set([TOKEN_CHAIN_IDS.ethereum, TOKEN_CHAIN_IDS.avalancheC, TOKEN_CHAIN_IDS.base]);
 const SOLANA_CHAIN = TOKEN_CHAIN_IDS.solana;
 const BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 const OUTPUT_PATHS = Object.freeze({
@@ -344,7 +345,7 @@ export function validateCatalog(catalog) {
     exactKeys(alias, ALIAS_KEYS, `aliases[${index}]`);
     nonEmptyString(alias.namespace, `aliases[${index}].namespace`);
     if (!Object.hasOwn(TOKEN_CHAIN_IDS, alias.namespace)) {
-      fail(`aliases[${index}].namespace must be one of ethereum, solana, avalancheC`);
+      fail(`aliases[${index}].namespace must be one of ${Object.keys(TOKEN_CHAIN_IDS).join(", ")}`);
     }
     nonEmptyString(alias.name, `aliases[${index}].name`);
     if (!/^[A-Z][A-Z0-9_]*$/u.test(alias.name)) fail(`aliases[${index}].name must be uppercase ASCII with optional underscores`);
@@ -647,10 +648,11 @@ function renderTypeScript(catalog) {
     `export const TOKEN_CATALOG_VERSION = ${q(catalog.catalogVersion)} as const;`,
     `export const TOKEN_CATALOG_AS_OF_DATE = ${q(catalog.manualAsOf)} as const;`,
     `export const TOKEN_CATALOG_CONTENT_DIGEST = ${q(catalog.contentDigest)} as const;`,
-    `export const TOKEN_CHAIN_IDS = deepFreeze(${tsValue({ ethereumMainnet: TOKEN_CHAIN_IDS.ethereum, solanaMainnet: TOKEN_CHAIN_IDS.solana, avalancheCMainnet: TOKEN_CHAIN_IDS.avalancheC })}) as {`,
-    "  readonly ethereumMainnet: \"eip155:1\";",
-    "  readonly solanaMainnet: \"solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp\";",
-    "  readonly avalancheCMainnet: \"eip155:43114\";",
+    `export const TOKEN_CHAIN_IDS = deepFreeze(${tsValue({ ethereumMainnet: TOKEN_CHAIN_IDS.ethereum, solanaMainnet: TOKEN_CHAIN_IDS.solana, avalancheCMainnet: TOKEN_CHAIN_IDS.avalancheC, baseMainnet: TOKEN_CHAIN_IDS.base })}) as {`,
+    `  readonly ethereumMainnet: ${q(TOKEN_CHAIN_IDS.ethereum)};`,
+    `  readonly solanaMainnet: ${q(TOKEN_CHAIN_IDS.solana)};`,
+    `  readonly avalancheCMainnet: ${q(TOKEN_CHAIN_IDS.avalancheC)};`,
+    `  readonly baseMainnet: ${q(TOKEN_CHAIN_IDS.base)};`,
     "};",
     "export type TokenChainId = (typeof TOKEN_CHAIN_IDS)[keyof typeof TOKEN_CHAIN_IDS];",
     "",
@@ -780,6 +782,7 @@ function renderRust(catalog) {
     `    pub const ETHEREUM_MAINNET: super::TokenChainId = ${rustString(TOKEN_CHAIN_IDS.ethereum)};`,
     `    pub const SOLANA_MAINNET: super::TokenChainId = ${rustString(TOKEN_CHAIN_IDS.solana)};`,
     `    pub const AVALANCHE_C_MAINNET: super::TokenChainId = ${rustString(TOKEN_CHAIN_IDS.avalancheC)};`,
+    `    pub const BASE_MAINNET: super::TokenChainId = ${rustString(TOKEN_CHAIN_IDS.base)};`,
     "}",
     "",
     "pub mod tokens {",
@@ -790,6 +793,7 @@ function renderRust(catalog) {
     `    ("ethereum", ${rustString(TOKEN_CHAIN_IDS.ethereum)}),`,
     `    ("solana", ${rustString(TOKEN_CHAIN_IDS.solana)}),`,
     `    ("avalancheC", ${rustString(TOKEN_CHAIN_IDS.avalancheC)}),`,
+    `    ("base", ${rustString(TOKEN_CHAIN_IDS.base)}),`,
     "];",
     "",
     "pub static TOKEN_ASSETS: &[TokenAsset] = &[",
@@ -916,6 +920,7 @@ function renderPython(catalog) {
     `    "ethereum": ${q(TOKEN_CHAIN_IDS.ethereum)},`,
     `    "solana": ${q(TOKEN_CHAIN_IDS.solana)},`,
     `    "avalancheC": ${q(TOKEN_CHAIN_IDS.avalancheC)},`,
+    `    "base": ${q(TOKEN_CHAIN_IDS.base)},`,
     "})",
     "",
     ...groupDefinitions,
@@ -1139,12 +1144,14 @@ function renderGo(catalog) {
     `const TokenEthereumChainID TokenChainID = ${goString(TOKEN_CHAIN_IDS.ethereum)}`,
     `const TokenSolanaChainID TokenChainID = ${goString(TOKEN_CHAIN_IDS.solana)}`,
     `const TokenAvalancheCChainID TokenChainID = ${goString(TOKEN_CHAIN_IDS.avalancheC)}`,
+    `const TokenBaseChainID TokenChainID = ${goString(TOKEN_CHAIN_IDS.base)}`,
     "",
     "func TokenChainIDs() map[string]TokenChainID {",
     "    return map[string]TokenChainID{",
     `        "ethereum": TokenEthereumChainID,`,
     `        "solana": TokenSolanaChainID,`,
     `        "avalancheC": TokenAvalancheCChainID,`,
+    `        "base": TokenBaseChainID,`,
     "    }",
     "}",
     "",
@@ -1175,9 +1182,9 @@ function renderGo(catalog) {
     lines.push("}", "");
   }
   lines.push("type TokenAliasGroups struct {");
-  for (const group of ["ethereum", "solana", "avalancheC"]) lines.push(`    ${identifier(group, "go")} ${groupTypeName(group)}`);
+  for (const group of ["ethereum", "solana", "avalancheC", "base"]) if (groups[group]) lines.push(`    ${identifier(group, "go")} ${groupTypeName(group)}`);
   lines.push("}", "", "func TokenAliasIDs() TokenAliasGroups {", "    return TokenAliasGroups{");
-  for (const group of ["ethereum", "solana", "avalancheC"]) {
+  for (const group of ["ethereum", "solana", "avalancheC", "base"]) if (groups[group]) {
     const entries = groups[group] ?? [];
     lines.push(`        ${identifier(group, "go")}: ${groupTypeName(group)}{`);
     for (const entry of entries) lines.push(`            ${entry.property}: ${aliasConstName(group, entry.property)},`);
@@ -1211,7 +1218,7 @@ function renderRuby(catalog) {
     return `{ ${Object.entries(value).map(([key, child]) => `${rubyKey(key)} ${rubyValue(child)}`).join(", ")} }`;
   };
   const tokenGroups = [];
-  for (const group of ["ethereum", "solana", "avalanche_c"]) {
+  for (const group of ["ethereum", "solana", "avalanche_c", "base"]) {
     const constant = group === "avalanche_c" ? "AvalancheC" : group[0].toUpperCase() + group.slice(1);
     const entries = groups[group] ?? [];
     tokenGroups.push(`    ${constant} = ${rubyValue(Object.fromEntries(entries.map((entry) => [entry.property, entry.deploymentId])))}.freeze`);
@@ -1230,7 +1237,7 @@ function renderRuby(catalog) {
     `    TOKEN_CATALOG_VERSION = ${rubyString(catalog.catalogVersion)}`,
     `    TOKEN_CATALOG_AS_OF_DATE = ${rubyString(catalog.manualAsOf)}`,
     `    TOKEN_CATALOG_CONTENT_DIGEST = ${rubyString(catalog.contentDigest)}`,
-    `    TOKEN_CHAIN_IDS = ${rubyValue({ ethereum: TOKEN_CHAIN_IDS.ethereum, solana: TOKEN_CHAIN_IDS.solana, avalanche_c: TOKEN_CHAIN_IDS.avalancheC })}.freeze`,
+    `    TOKEN_CHAIN_IDS = ${rubyValue({ ethereum: TOKEN_CHAIN_IDS.ethereum, solana: TOKEN_CHAIN_IDS.solana, avalanche_c: TOKEN_CHAIN_IDS.avalancheC, base: TOKEN_CHAIN_IDS.base })}.freeze`,
     "",
     "    TOKEN_ASSETS = [",
   ];
@@ -1283,4 +1290,4 @@ export const VERSION = CATALOG.catalogVersion;
 export const AS_OF_DATE = CATALOG.manualAsOf;
 export const CONTENT_DIGEST = CATALOG.contentDigest;
 export const RUNTIME_FIELDS = Object.freeze([...RUNTIME_DEPLOYMENT_KEYS]);
-export const ALIAS_GROUPS = Object.freeze(["ethereum", "solana", "avalancheC"]);
+export const ALIAS_GROUPS = Object.freeze(["ethereum", "solana", "avalancheC", "base"]);

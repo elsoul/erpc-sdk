@@ -58,18 +58,20 @@ type TokenAlias struct {
 
 func tokenString(value string) *string { copied := value; return &copied }
 
-const TOKEN_CATALOG_VERSION = "1.0.0"
-const TOKEN_CATALOG_AS_OF_DATE = "2026-09-15"
-const TOKEN_CATALOG_CONTENT_DIGEST = "28318f4f6a6bc2cdeef51368eeb17c86685c6f12d1723b0b4dd27f7e54d7235d"
+const TOKEN_CATALOG_VERSION = "1.1.0"
+const TOKEN_CATALOG_AS_OF_DATE = "2026-09-26"
+const TOKEN_CATALOG_CONTENT_DIGEST = "cca180df1846def0ec98f4e55b84cc46614c60d7a8c4a91c66dc9715c710ba73"
 const TokenEthereumChainID TokenChainID = "eip155:1"
 const TokenSolanaChainID TokenChainID = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
 const TokenAvalancheCChainID TokenChainID = "eip155:43114"
+const TokenBaseChainID TokenChainID = "eip155:8453"
 
 func TokenChainIDs() map[string]TokenChainID {
 	return map[string]TokenChainID{
 		"ethereum":   TokenEthereumChainID,
 		"solana":     TokenSolanaChainID,
 		"avalancheC": TokenAvalancheCChainID,
+		"base":       TokenBaseChainID,
 	}
 }
 
@@ -637,6 +639,24 @@ func TokenDeployments() []TokenDeployment {
 			Address: tokenString("JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN"), Status: TokenStatus("active"), ReplacedByDeploymentID: nil,
 		},
 		{
+			DeploymentID: "deployment-0061", AssetID: "asset-0001", Name: "Ether", RepresentationKind: TokenRepresentationKind("native"),
+			StableCurrency: nil, UnderlyingAssetID: nil, EconomicReferenceAssetID: nil,
+			ChainID: TokenChainID("eip155:8453"), Symbol: "ETH", Decimals: 18, Standard: TokenStandard("native"),
+			Address: nil, Status: TokenStatus("active"), ReplacedByDeploymentID: nil,
+		},
+		{
+			DeploymentID: "deployment-0062", AssetID: "asset-0007", Name: "USD Coin", RepresentationKind: TokenRepresentationKind("issued"),
+			StableCurrency: tokenString("USD"), UnderlyingAssetID: nil, EconomicReferenceAssetID: nil,
+			ChainID: TokenChainID("eip155:8453"), Symbol: "USDC", Decimals: 6, Standard: TokenStandard("erc20"),
+			Address: tokenString("0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"), Status: TokenStatus("active"), ReplacedByDeploymentID: nil,
+		},
+		{
+			DeploymentID: "deployment-0063", AssetID: "asset-0008", Name: "Euro Coin", RepresentationKind: TokenRepresentationKind("issued"),
+			StableCurrency: tokenString("EUR"), UnderlyingAssetID: nil, EconomicReferenceAssetID: nil,
+			ChainID: TokenChainID("eip155:8453"), Symbol: "EURC", Decimals: 6, Standard: TokenStandard("erc20"),
+			Address: tokenString("0x60a3e35cc302bfa44cb288bc5a4f316fdb1adb42"), Status: TokenStatus("active"), ReplacedByDeploymentID: nil,
+		},
+		{
 			DeploymentID: "discovered-token-054d80a64e1f36a756129763ca2f1e7a140b50b04c83876ff01dd5fd497a74c5", AssetID: "discovered-token-054d80a64e1f36a756129763ca2f1e7a140b50b04c83876ff01dd5fd497a74c5", Name: "Unclassified token at 0x0f5d2fb29fb7d3cfee444a200298f468908cc942", RepresentationKind: TokenRepresentationKind("unclassified"),
 			StableCurrency: nil, UnderlyingAssetID: nil, EconomicReferenceAssetID: nil,
 			ChainID: TokenChainID("eip155:1"), Symbol: "0x0f5d2fb29fb7d3cfee444a200298f468908cc942", Decimals: 18, Standard: TokenStandard("erc20"),
@@ -718,6 +738,9 @@ func TokenAliases() []TokenAlias {
 		{Namespace: "avalancheC", Name: "USDC_E", DeploymentID: TokenAvalancheCUSDC_E},
 		{Namespace: "avalancheC", Name: "USDT", DeploymentID: TokenAvalancheCUSDT},
 		{Namespace: "avalancheC", Name: "WAVAX", DeploymentID: TokenAvalancheCWAVAX},
+		{Namespace: "base", Name: "ETH", DeploymentID: TokenBaseETH},
+		{Namespace: "base", Name: "EURC", DeploymentID: TokenBaseEURC},
+		{Namespace: "base", Name: "USDC", DeploymentID: TokenBaseUSDC},
 		{Namespace: "ethereum", Name: "AAVE", DeploymentID: TokenEthereumAAVE},
 		{Namespace: "ethereum", Name: "AUSD", DeploymentID: TokenEthereumAUSD},
 		{Namespace: "ethereum", Name: "DAI", DeploymentID: TokenEthereumDAI},
@@ -794,6 +817,12 @@ type TokenAvalancheCAliases struct {
 	WAVAX                       string
 }
 
+type TokenBaseAliases struct {
+	ETH  string
+	EURC string
+	USDC string
+}
+
 type TokenEthereumAliases struct {
 	AAVE                        string
 	AUSD                        string
@@ -857,6 +886,7 @@ type TokenAliasGroups struct {
 	Ethereum   TokenEthereumAliases
 	Solana     TokenSolanaAliases
 	AvalancheC TokenAvalancheCAliases
+	Base       TokenBaseAliases
 }
 
 func TokenAliasIDs() TokenAliasGroups {
@@ -937,6 +967,11 @@ func TokenAliasIDs() TokenAliasGroups {
 			USDT:                        TokenAvalancheCUSDT,
 			WAVAX:                       TokenAvalancheCWAVAX,
 		},
+		Base: TokenBaseAliases{
+			ETH:  TokenBaseETH,
+			EURC: TokenBaseEURC,
+			USDC: TokenBaseUSDC,
+		},
 	}
 }
 
@@ -957,6 +992,9 @@ const TokenAvalancheCUSDC = "deployment-0009"
 const TokenAvalancheCUSDC_E = "deployment-0018"
 const TokenAvalancheCUSDT = "deployment-0015"
 const TokenAvalancheCWAVAX = "deployment-0004"
+const TokenBaseETH = "deployment-0061"
+const TokenBaseEURC = "deployment-0063"
+const TokenBaseUSDC = "deployment-0062"
 const TokenEthereumAAVE = "deployment-0056"
 const TokenEthereumAUSD = "deployment-0034"
 const TokenEthereumDAI = "deployment-0019"

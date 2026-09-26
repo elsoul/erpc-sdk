@@ -3,6 +3,7 @@ import { wrapFetch } from './transport/fetch'
 
 export const DEFAULT_ENDPOINT = 'https://edge.erpc.global'
 export const DEFAULT_AVALANCHE_ENDPOINT = 'https://ava-rpc.erpc.global'
+export const DEFAULT_BASE_ENDPOINT = 'https://base.erpc.global'
 export const DEFAULT_ACCOUNT_ENDPOINT = 'https://solana-rpc.erpc.global'
 export const DEFAULT_USER_ENDPOINT = 'https://user-api.erpc.global'
 export const DEFAULT_TIMEOUT_MS = 30_000
@@ -13,10 +14,21 @@ export interface RpcEndpointConfig {
   readonly webSocketUrl?: string
 }
 
+/** Caller-owned Base HTTP JSON-RPC endpoint. Base has no WebSocket facade. */
+export interface BaseRpcEndpointConfig {
+  readonly headers?: Readonly<Record<string, string>>
+  readonly httpUrl: string
+}
+
 export interface ResolvedRpcEndpointConfig {
   readonly headers: Readonly<Record<string, string>>
   readonly httpUrl: URL
   readonly webSocketUrl?: URL
+}
+
+interface ResolvedBaseRpcEndpointConfig {
+  readonly headers: Readonly<Record<string, string>>
+  readonly httpUrl: URL
 }
 
 export interface ErpcClientConfig {
@@ -24,6 +36,8 @@ export interface ErpcClientConfig {
   readonly apiKey?: string
   readonly avalancheEndpoint?: string
   readonly avalancheCRpc?: RpcEndpointConfig
+  readonly baseEndpoint?: string
+  readonly baseRpc?: BaseRpcEndpointConfig
   readonly endpoint?: string
   readonly ethereumRpc?: RpcEndpointConfig
   readonly fetch?: typeof globalThis.fetch
@@ -39,6 +53,8 @@ export interface ResolvedErpcClientConfig {
   readonly apiKey?: string
   readonly avalancheEndpoint: URL
   readonly avalancheCRpc?: ResolvedRpcEndpointConfig
+  readonly baseEndpoint: URL
+  readonly baseRpc?: ResolvedBaseRpcEndpointConfig
   readonly endpoint: URL
   readonly ethereumRpc?: ResolvedRpcEndpointConfig
   readonly fetch: typeof globalThis.fetch
@@ -148,6 +164,18 @@ const resolveRpcEndpoint = (
   }
 }
 
+const resolveBaseRpcEndpoint = (
+  value: unknown,
+): ResolvedBaseRpcEndpointConfig => {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new ErpcConfigError('baseRpc must define an HTTP(S) URL')
+  }
+  const config = value as Record<string, unknown>
+  const httpUrl = parseDirectUrl(config.httpUrl, 'baseRpc.httpUrl', 'HTTP(S)')
+  const headers = directHeaders(config.headers, 'baseRpc')
+  return { headers, httpUrl }
+}
+
 export const resolveConfig = (
   config: ErpcClientConfig,
 ): ResolvedErpcClientConfig => {
@@ -168,8 +196,11 @@ export const resolveConfig = (
   const avalancheCRpc = config.avalancheCRpc === undefined
     ? undefined
     : resolveRpcEndpoint(config.avalancheCRpc, 'avalancheCRpc')
+  const baseRpc = config.baseRpc === undefined
+    ? undefined
+    : resolveBaseRpcEndpoint(config.baseRpc)
   const hasDirectRpc =
-    solanaRpc !== undefined || ethereumRpc !== undefined || avalancheCRpc !== undefined
+    solanaRpc !== undefined || ethereumRpc !== undefined || avalancheCRpc !== undefined || baseRpc !== undefined
   if (!configuredApiKey && !hasDirectRpc) {
     throw new ErpcConfigError('apiKey must not be empty')
   }
@@ -177,12 +208,16 @@ export const resolveConfig = (
 
   let endpoint: URL
   let avalancheEndpoint: URL
+  let baseEndpoint: URL
   let accountEndpoint: URL
   let userEndpoint: URL
   try {
     endpoint = normalizeLegacyEndpoint(new URL(config.endpoint ?? DEFAULT_ENDPOINT))
     avalancheEndpoint = normalizeLegacyEndpoint(new URL(
       config.avalancheEndpoint ?? DEFAULT_AVALANCHE_ENDPOINT,
+    ))
+    baseEndpoint = normalizeLegacyEndpoint(new URL(
+      config.baseEndpoint ?? DEFAULT_BASE_ENDPOINT,
     ))
     accountEndpoint = normalizeLegacyEndpoint(new URL(
       config.accountEndpoint ?? DEFAULT_ACCOUNT_ENDPOINT,
@@ -200,6 +235,9 @@ export const resolveConfig = (
     avalancheEndpoint.protocol !== 'http:'
   ) {
     throw new ErpcConfigError('avalancheEndpoint must use HTTP or HTTPS')
+  }
+  if (baseEndpoint.protocol !== 'https:' && baseEndpoint.protocol !== 'http:') {
+    throw new ErpcConfigError('baseEndpoint must use HTTP or HTTPS')
   }
   if (
     accountEndpoint.protocol !== 'https:' &&
@@ -222,6 +260,7 @@ export const resolveConfig = (
   return {
     accountEndpoint,
     avalancheEndpoint,
+    baseEndpoint,
     endpoint,
     fetch: requireFetch(config.fetch),
     headers: config.headers ?? {},
@@ -229,6 +268,7 @@ export const resolveConfig = (
     userEndpoint,
     ...(apiKey === undefined ? {} : { apiKey }),
     ...(avalancheCRpc === undefined ? {} : { avalancheCRpc }),
+    ...(baseRpc === undefined ? {} : { baseRpc }),
     ...(ethereumRpc === undefined ? {} : { ethereumRpc }),
     ...(solanaRpc === undefined ? {} : { solanaRpc }),
     ...(config.webSocket === undefined

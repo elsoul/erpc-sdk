@@ -6,6 +6,7 @@ import test from "node:test";
 
 import {
   DEFAULT_DISCOVERY_CONFIG,
+  DISCOVERY_CHAINS,
   EVM_DISCOVERY_SELECTORS,
   SOLANA_DISCOVERY_LAYOUTS,
   TOKEN_CHAIN_IDS,
@@ -133,6 +134,12 @@ function fakeRpc({ batchedSolana = false, solanaPoolCount = null, evmPairCount =
 
 test("discovery config and deterministic address-only IDs are stable", async () => {
   assert.equal(validateDiscoveryConfig(DEFAULT_DISCOVERY_CONFIG), true);
+  assert.deepEqual(DISCOVERY_CHAINS, {
+    ethereum: TOKEN_CHAIN_IDS.ethereum,
+    avalancheC: TOKEN_CHAIN_IDS.avalancheC,
+    solana: TOKEN_CHAIN_IDS.solana,
+  });
+  assert.equal(Object.hasOwn(DISCOVERY_CHAINS, "base"), false);
   assert.equal(DEFAULT_DISCOVERY_CONFIG.limits.maxAdmissionTokens, 8);
   assert.equal(DEFAULT_DISCOVERY_CONFIG.limits.maxAdmissionPools, 8);
   assert.equal(DEFAULT_DISCOVERY_CONFIG.admission.tokenPolicy, "qualified-pool-dependencies");

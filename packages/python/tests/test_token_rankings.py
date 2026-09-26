@@ -70,6 +70,11 @@ _NATIVE_QUOTE_DEPLOYMENTS = {
     TOKEN_CHAIN_IDS["avalancheC"]: "deployment-0003",
     TOKEN_CHAIN_IDS["solana"]: "deployment-0005",
 }
+_RANKING_CHAIN_IDS = (
+    TOKEN_CHAIN_IDS["ethereum"],
+    TOKEN_CHAIN_IDS["solana"],
+    TOKEN_CHAIN_IDS["avalancheC"],
+)
 
 
 def _row_json(row: TokenRanking) -> dict[str, Any]:
@@ -182,13 +187,15 @@ def test_generated_ranking_schema_and_nested_values_are_immutable() -> None:
 
 
 def test_list_token_rankings_is_an_exact_offline_immutable_lookup() -> None:
-    for chain_id in TOKEN_CHAIN_IDS.values():
+    for chain_id in _RANKING_CHAIN_IDS:
         expected = tuple(row for row in TOKEN_RANKINGS if row.chain_id == chain_id)
         actual = list_token_rankings(chain_id)
         assert actual == expected
         assert isinstance(actual, tuple)
         if actual:
             assert actual[0] is next(row for row in TOKEN_RANKINGS if row.chain_id == chain_id)
+
+    assert list_token_rankings(TOKEN_CHAIN_IDS["base"]) == ()
 
     empty = list_token_rankings("")
     unknown = list_token_rankings("unknown:chain")
@@ -222,7 +229,7 @@ def test_captures_native_ranking_parity_from_the_installed_wheel_when_requested(
         )
 
     behavior_inputs = [
-        *erpc_sdk.TOKEN_CHAIN_IDS.values(),
+        *_RANKING_CHAIN_IDS,
         "",
         "unknown:chain",
         "constructor",

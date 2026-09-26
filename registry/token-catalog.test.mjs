@@ -8,9 +8,13 @@ import test from "node:test";
 import {
   CATALOG,
   OUTPUTS,
+  TOKEN_CHAIN_IDS,
   compareHistory,
   computeDigest,
+  getNativeDeployment,
+  lookupDeployment,
   renderLanguage,
+  resolveAlias,
   validateCatalog,
 } from "./token-catalog.mjs";
 import {
@@ -41,7 +45,7 @@ function seedEthereumEthAlias(catalog) {
 }
 
 function isEvm(chainId) {
-  return chainId === "eip155:1" || chainId === "eip155:43114";
+  return chainId === "eip155:1" || chainId === "eip155:43114" || chainId === "eip155:8453";
 }
 
 function identityKey(deployment) {
@@ -169,13 +173,29 @@ test("canonical schema is strict and documents every source field", async () => 
   assert.equal(schema.$defs.asset.additionalProperties, false);
   assert.equal(schema.$defs.deployment.additionalProperties, false);
   assert.equal(schema.$defs.alias.additionalProperties, false);
-  assert.deepEqual(schema.$defs.alias.properties.namespace.enum, ["ethereum", "solana", "avalancheC"]);
+  assert.deepEqual(schema.$defs.alias.properties.namespace.enum, ["ethereum", "solana", "avalancheC", "base"]);
   assert.ok(schema.$defs.asset.properties.representationKind.enum.includes("unclassified"));
   assert.equal(schema.$defs.asset.allOf[0].if.properties.representationKind.const, "unclassified");
   assert.equal(schema.$defs.asset.allOf[0].then.properties.stableCurrency.const, null);
   assert.equal(schema.$defs.asset.allOf[0].then.properties.underlyingAssetId.const, null);
   assert.equal(schema.$defs.asset.allOf[0].then.properties.economicReferenceAssetId.const, null);
   assert.deepEqual(schema.$defs.deployment.properties.status.enum, ["active", "legacy", "winding-down", "retired"]);
+});
+
+test("Base catalog entries preserve native identity and normalize EVM addresses", () => {
+  assert.equal(TOKEN_CHAIN_IDS.base, "eip155:8453");
+  assert.equal(CATALOG.assets.length, 49);
+  assert.equal(CATALOG.deployments.length, 73);
+  assert.equal(CATALOG.aliases.length, 73);
+  const native = getNativeDeployment(TOKEN_CHAIN_IDS.base);
+  assert.equal(native?.deploymentId, "deployment-0061");
+  assert.equal(native?.address, null);
+  assert.equal(resolveAlias("base", "ETH")?.deploymentId, "deployment-0061");
+  assert.equal(resolveAlias("base", "USDC")?.deploymentId, "deployment-0062");
+  assert.equal(resolveAlias("base", "EURC")?.deploymentId, "deployment-0063");
+  assert.equal(lookupDeployment(TOKEN_CHAIN_IDS.base, "0x833589FCD6EDB6E08F4C7C32D4F71B54BDA02913")?.deploymentId, "deployment-0062");
+  assert.equal(lookupDeployment(TOKEN_CHAIN_IDS.base, "0x60A3E35CC302BFA44CB288BC5A4F316FDB1ADB42")?.deploymentId, "deployment-0063");
+  assert.equal(lookupDeployment(TOKEN_CHAIN_IDS.base, null), null);
 });
 
 test("runtime records contain all required fields while omitting per-record provenance", () => {

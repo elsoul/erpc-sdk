@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -78,6 +79,9 @@ func TestTokenCatalogContainsCompleteGeneratedRecords(t *testing.T) {
 	}
 	if len(aliases) != len(source.Aliases) || len(aliases) == 0 {
 		t.Fatalf("alias count = %d, want non-empty source count %d", len(aliases), len(source.Aliases))
+	}
+	if len(assets) != 49 || len(deployments) != 73 || len(aliases) != 73 {
+		t.Fatalf("catalog counts = assets:%d deployments:%d aliases:%d, want 49/73/73", len(assets), len(deployments), len(aliases))
 	}
 	if TOKEN_CATALOG_VERSION != source.CatalogVersion || TOKEN_CATALOG_AS_OF_DATE != source.ManualAsOf || TOKEN_CATALOG_CONTENT_DIGEST != source.ContentDigest {
 		t.Fatalf("catalog metadata = (%s, %s, %s), want source (%s, %s, %s)", TOKEN_CATALOG_VERSION, TOKEN_CATALOG_AS_OF_DATE, TOKEN_CATALOG_CONTENT_DIGEST, source.CatalogVersion, source.ManualAsOf, source.ContentDigest)
@@ -186,7 +190,7 @@ func TestTokenCatalogContainsCompleteGeneratedRecords(t *testing.T) {
 	}
 
 	aliasGroups := reflect.ValueOf(TokenAliasIDs())
-	groupFields := map[string]string{"ethereum": "Ethereum", "solana": "Solana", "avalancheC": "AvalancheC"}
+	groupFields := map[string]string{"ethereum": "Ethereum", "solana": "Solana", "avalancheC": "AvalancheC", "base": "Base"}
 	for _, sourceAlias := range source.Aliases {
 		var alias TokenAlias
 		found := false
@@ -275,7 +279,7 @@ func TestTokenCatalogFindsAmbiguousSymbolsAndPreservesIdentity(t *testing.T) {
 		t.Fatal("EURCV deployments on Ethereum and Solana should share one asset identity")
 	}
 
-	for _, chainID := range []string{TokenChainEthereumMainnet, TokenChainSolanaMainnet, TokenChainAvalancheCMainnet} {
+	for _, chainID := range []string{TokenChainEthereumMainnet, TokenChainSolanaMainnet, TokenChainAvalancheCMainnet, TokenChainBaseMainnet} {
 		matches := FindTokenDeploymentsBySymbol(chainID, "USDC")
 		if len(matches) == 0 {
 			t.Fatalf("USDC has no deployment on %s", chainID)
@@ -393,7 +397,7 @@ func TestTokenCatalogAddressAndNativeLookups(t *testing.T) {
 		t.Fatal("mutated Solana address unexpectedly matched")
 	}
 
-	for _, chainID := range []string{TokenChainEthereumMainnet, TokenChainSolanaMainnet, TokenChainAvalancheCMainnet} {
+	for _, chainID := range []string{TokenChainEthereumMainnet, TokenChainSolanaMainnet, TokenChainAvalancheCMainnet, TokenChainBaseMainnet} {
 		native, ok := NativeTokenDeployment(chainID)
 		if !ok {
 			t.Fatalf("native deployment missing for %s", chainID)
@@ -407,6 +411,68 @@ func TestTokenCatalogAddressAndNativeLookups(t *testing.T) {
 	}
 	if _, ok := NativeTokenDeployment("eip155:999"); ok {
 		t.Fatal("unknown chain returned a native deployment")
+	}
+}
+
+func TestTokenCatalogBaseRecordsKeepIDsAliasesAndAddressNormalization(t *testing.T) {
+	base := TokenChainBaseMainnet
+
+	baseETH, ok := TokenDeploymentByID("deployment-0061")
+	if !ok {
+		t.Fatal("Base ETH deployment is missing")
+	}
+	if baseETH.AssetID != "asset-0001" || string(baseETH.ChainID) != base || baseETH.Symbol != "ETH" || baseETH.Decimals != 18 || baseETH.Standard != TokenStandardNative || baseETH.Address != nil {
+		t.Fatalf("Base ETH = %#v, want asset-0001/native18/null on %s", baseETH, base)
+	}
+	if native, ok := NativeTokenDeployment(base); !ok || native.DeploymentID != baseETH.DeploymentID {
+		t.Fatalf("Base native deployment = %#v/%t, want %q", native, ok, baseETH.DeploymentID)
+	}
+
+	baseUSDC, ok := TokenDeploymentByID("deployment-0062")
+	if !ok {
+		t.Fatal("Base USDC deployment is missing")
+	}
+	if baseUSDC.AssetID != "asset-0007" || string(baseUSDC.ChainID) != base || baseUSDC.Symbol != "USDC" || baseUSDC.Decimals != 6 || baseUSDC.Standard != TokenStandardERC20 || baseUSDC.Address == nil || *baseUSDC.Address != "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913" {
+		t.Fatalf("Base USDC = %#v, want asset-0007/ERC-20/6 with canonical address", baseUSDC)
+	}
+
+	baseEURC, ok := TokenDeploymentByID("deployment-0063")
+	if !ok {
+		t.Fatal("Base EURC deployment is missing")
+	}
+	if baseEURC.AssetID != "asset-0008" || string(baseEURC.ChainID) != base || baseEURC.Symbol != "EURC" || baseEURC.Decimals != 6 || baseEURC.Standard != TokenStandardERC20 || baseEURC.Address == nil || *baseEURC.Address != "0x60a3e35cc302bfa44cb288bc5a4f316fdb1adb42" {
+		t.Fatalf("Base EURC = %#v, want asset-0008/ERC-20/6 with canonical address", baseEURC)
+	}
+
+	aliases := TokenAliasIDs().Base
+	if aliases.ETH != baseETH.DeploymentID || aliases.USDC != baseUSDC.DeploymentID || aliases.EURC != baseEURC.DeploymentID {
+		t.Fatalf("Base aliases = %#v, want ETH:%q USDC:%q EURC:%q", aliases, baseETH.DeploymentID, baseUSDC.DeploymentID, baseEURC.DeploymentID)
+	}
+	for _, symbol := range []string{"ETH", "USDC", "EURC"} {
+		matches := FindTokenDeploymentsBySymbol(base, symbol)
+		if len(matches) != 1 || matches[0].Symbol != symbol {
+			t.Fatalf("Base %s symbol lookup = %#v, want one match", symbol, matches)
+		}
+	}
+
+	for _, deployment := range []TokenDeployment{baseUSDC, baseEURC} {
+		if deployment.Address == nil {
+			t.Fatalf("Base %s has no address", deployment.Symbol)
+		}
+		mixedCase := "0x" + strings.ToUpper((*deployment.Address)[2:])
+		got, ok := FindTokenDeploymentByAddress(base, mixedCase)
+		if !ok || got.DeploymentID != deployment.DeploymentID {
+			t.Fatalf("Base mixed-case %s lookup = %#v/%t, want %q", deployment.Symbol, got, ok, deployment.DeploymentID)
+		}
+	}
+	if _, ok := FindTokenDeploymentByAddress(base, ""); ok {
+		t.Fatal("Base empty address unexpectedly matched native ETH")
+	}
+	if _, ok := FindTokenDeploymentByAddress(base, "0x"+strings.Repeat("0", 40)); ok {
+		t.Fatal("Base zero EVM address unexpectedly matched")
+	}
+	if _, ok := FindTokenDeploymentByAddress("eip155:999", *baseUSDC.Address); ok {
+		t.Fatal("unknown chain Base address unexpectedly matched")
 	}
 }
 
@@ -504,6 +570,287 @@ func TestTokenCatalogChainTypesComposeWithPublicAPIs(t *testing.T) {
 	if got := ListTokenDeployments(filter); len(got) == 0 {
 		t.Fatal("generated chain ID map value does not compose with list filter")
 	}
+	if matches := FindTokenDeploymentsBySymbol(TokenBaseChainID, "USDC"); len(matches) != 1 || matches[0].DeploymentID != TokenBaseUSDC {
+		t.Fatalf("generated Base chain constant does not compose with symbol lookup: %#v", matches)
+	}
+}
+
+func TestTokenCatalogParityCapture(t *testing.T) {
+	outputPath := os.Getenv("ERPC_SDK_TOKEN_CATALOG_PARITY_OUTPUT")
+	if outputPath == "" {
+		return
+	}
+
+	chainIDs := TokenChainIDs()
+	snapshot := map[string]any{
+		"snapshotVersion": 1,
+		"snapshotKind":    "native-runtime",
+		"language":        "go",
+		"runtime":         "go-native-runtime-" + runtime.Version() + "-" + runtime.GOOS + "-" + runtime.GOARCH + "-github.com/elsoul/erpc-sdk/packages/go",
+		"metadata": map[string]any{
+			"version":       TOKEN_CATALOG_VERSION,
+			"asOfDate":      TOKEN_CATALOG_AS_OF_DATE,
+			"contentDigest": TOKEN_CATALOG_CONTENT_DIGEST,
+			"chainIds":      chainIDs,
+		},
+		"assets":      goTokenCatalogAssetsJSON(TokenAssets()),
+		"deployments": goTokenCatalogDeploymentsJSON(TokenDeployments()),
+		"aliases":     goTokenCatalogAliasesJSON(TokenAliases()),
+		"behavior":    goTokenCatalogBehavior(chainIDs),
+	}
+
+	data, err := json.MarshalIndent(snapshot, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(outputPath), 0o755); err != nil {
+		t.Fatalf("create token catalog parity output directory: %v", err)
+	}
+	if err := os.WriteFile(outputPath, append(data, '\n'), 0o644); err != nil {
+		t.Fatalf("write token catalog parity output: %v", err)
+	}
+}
+
+func goTokenCatalogAssetsJSON(records []TokenAsset) []map[string]any {
+	result := make([]map[string]any, 0, len(records))
+	for _, record := range records {
+		result = append(result, map[string]any{
+			"assetId":                  record.AssetID,
+			"name":                     record.Name,
+			"representationKind":       record.RepresentationKind,
+			"stableCurrency":           goTokenCatalogOptionalString(record.StableCurrency),
+			"underlyingAssetId":        goTokenCatalogOptionalString(record.UnderlyingAssetID),
+			"economicReferenceAssetId": goTokenCatalogOptionalString(record.EconomicReferenceAssetID),
+		})
+	}
+	return result
+}
+
+func goTokenCatalogDeploymentsJSON(records []TokenDeployment) []map[string]any {
+	result := make([]map[string]any, 0, len(records))
+	for _, record := range records {
+		result = append(result, map[string]any{
+			"deploymentId":             record.DeploymentID,
+			"assetId":                  record.AssetID,
+			"name":                     record.Name,
+			"representationKind":       record.RepresentationKind,
+			"stableCurrency":           goTokenCatalogOptionalString(record.StableCurrency),
+			"underlyingAssetId":        goTokenCatalogOptionalString(record.UnderlyingAssetID),
+			"economicReferenceAssetId": goTokenCatalogOptionalString(record.EconomicReferenceAssetID),
+			"chainId":                  record.ChainID,
+			"symbol":                   record.Symbol,
+			"decimals":                 record.Decimals,
+			"standard":                 record.Standard,
+			"address":                  goTokenCatalogOptionalString(record.Address),
+			"status":                   record.Status,
+			"replacedByDeploymentId":   goTokenCatalogOptionalString(record.ReplacedByDeploymentID),
+		})
+	}
+	return result
+}
+
+func goTokenCatalogAliasesJSON(records []TokenAlias) []map[string]any {
+	result := make([]map[string]any, 0, len(records))
+	for _, record := range records {
+		result = append(result, map[string]any{
+			"namespace":    record.Namespace,
+			"name":         record.Name,
+			"deploymentId": record.DeploymentID,
+		})
+	}
+	return result
+}
+
+func goTokenCatalogOptionalString(value *string) any {
+	if value == nil {
+		return nil
+	}
+	return *value
+}
+
+func goTokenCatalogBehavior(chainIDs map[string]TokenChainID) map[string]any {
+	assets := TokenAssets()
+	deployments := TokenDeployments()
+	aliases := TokenAliases()
+
+	lookupAssets := make([]map[string]any, 0, len(assets)+1)
+	for _, asset := range assets {
+		got, ok := TokenAssetByID(asset.AssetID)
+		var result any
+		if ok {
+			result = got.AssetID
+		}
+		lookupAssets = append(lookupAssets, map[string]any{"input": asset.AssetID, "result": result})
+	}
+	lookupAssets = append(lookupAssets, map[string]any{"input": "__unknown_asset__", "result": nil})
+
+	lookupDeployments := make([]map[string]any, 0, len(deployments)+1)
+	for _, deployment := range deployments {
+		got, ok := TokenDeploymentByID(deployment.DeploymentID)
+		var result any
+		if ok {
+			result = got.DeploymentID
+		}
+		lookupDeployments = append(lookupDeployments, map[string]any{"input": deployment.DeploymentID, "result": result})
+	}
+	lookupDeployments = append(lookupDeployments, map[string]any{"input": "__unknown_deployment__", "result": nil})
+
+	nativeDeployments := make([]map[string]any, 0, len(chainIDs)+1)
+	for _, name := range []string{"ethereum", "solana", "avalancheC", "base"} {
+		chainID := chainIDs[name]
+		got, ok := NativeTokenDeployment(chainID)
+		var result any
+		if ok {
+			result = got.DeploymentID
+		}
+		nativeDeployments = append(nativeDeployments, map[string]any{"chainId": chainID, "result": result})
+	}
+	nativeDeployments = append(nativeDeployments, map[string]any{"chainId": "unknown:chain", "result": nil})
+
+	symbolKeys := make(map[string]struct{}, len(deployments))
+	for _, deployment := range deployments {
+		symbolKeys[string(deployment.ChainID)+"\x00"+deployment.Symbol] = struct{}{}
+	}
+	sortedSymbolKeys := make([]string, 0, len(symbolKeys))
+	for key := range symbolKeys {
+		sortedSymbolKeys = append(sortedSymbolKeys, key)
+	}
+	sort.Strings(sortedSymbolKeys)
+	symbols := make([]map[string]any, 0, len(sortedSymbolKeys)+2)
+	for _, key := range sortedSymbolKeys {
+		parts := strings.SplitN(key, "\x00", 2)
+		matches := FindTokenDeploymentsBySymbol(parts[0], parts[1])
+		symbols = append(symbols, map[string]any{
+			"chainId": chainIDsOrString(parts[0]),
+			"symbol":  parts[1],
+			"result":  goTokenCatalogDeploymentIDs(matches),
+		})
+	}
+	symbols = append(symbols,
+		map[string]any{"chainId": TokenChainEthereumMainnet, "symbol": "__unknown_symbol__", "result": []string{}},
+		map[string]any{"chainId": "unknown:chain", "symbol": "USDC", "result": []string{}},
+	)
+
+	addresses := make([]map[string]any, 0)
+	for _, deployment := range deployments {
+		if deployment.Address == nil {
+			continue
+		}
+		address := *deployment.Address
+		got, ok := FindTokenDeploymentByAddress(string(deployment.ChainID), address)
+		var result any
+		if ok {
+			result = got.DeploymentID
+		}
+		addresses = append(addresses, map[string]any{"chainId": deployment.ChainID, "address": address, "result": result})
+		if isEVMTokenChain(string(deployment.ChainID)) {
+			mixedCase := "0x" + strings.ToUpper(address[2:])
+			got, ok := FindTokenDeploymentByAddress(string(deployment.ChainID), mixedCase)
+			result = nil
+			if ok {
+				result = got.DeploymentID
+			}
+			addresses = append(addresses, map[string]any{"chainId": deployment.ChainID, "address": mixedCase, "result": result})
+		}
+	}
+	addresses = append(addresses,
+		map[string]any{"chainId": TokenChainEthereumMainnet, "address": "0x" + strings.Repeat("0", 40), "result": nil},
+		map[string]any{"chainId": TokenChainEthereumMainnet, "address": "not-an-address", "result": nil},
+		map[string]any{"chainId": TokenChainSolanaMainnet, "address": "not-a-solana-address", "result": nil},
+		map[string]any{"chainId": "unknown:chain", "address": "0x0000000000000000000000000000000000000001", "result": nil},
+	)
+
+	groups := TokenAliasIDs()
+	aliasBehavior := make([]map[string]any, 0, len(aliases)+2)
+	for _, alias := range aliases {
+		aliasBehavior = append(aliasBehavior, map[string]any{
+			"namespace": alias.Namespace,
+			"name":      alias.Name,
+			"result":    goTokenCatalogAliasResult(groups, alias),
+		})
+	}
+	aliasBehavior = append(aliasBehavior,
+		map[string]any{"namespace": "ethereum", "name": "__UNKNOWN_ALIAS__", "result": nil},
+		map[string]any{"namespace": "unknown", "name": "USDC", "result": nil},
+	)
+
+	listCases := []struct {
+		chainID        string
+		stableCurrency string
+	}{
+		{},
+		{chainID: chainIDs["ethereum"]},
+		{chainID: chainIDs["solana"]},
+		{chainID: chainIDs["avalancheC"]},
+		{chainID: chainIDs["base"]},
+		{stableCurrency: "USD"},
+		{stableCurrency: "EUR"},
+		{stableCurrency: "JPY"},
+		{chainID: TokenChainEthereumMainnet, stableCurrency: "USD"},
+		{chainID: TokenChainSolanaMainnet, stableCurrency: "EUR"},
+		{chainID: "unknown:chain"},
+		{stableCurrency: "unknown"},
+	}
+	lists := make([]map[string]any, 0, len(listCases))
+	for _, selected := range listCases {
+		matches := ListTokenDeployments(TokenDeploymentFilter{ChainID: selected.chainID, StableCurrency: selected.stableCurrency})
+		lists = append(lists, map[string]any{
+			"chainId":        nullableString(selected.chainID),
+			"stableCurrency": nullableString(selected.stableCurrency),
+			"result":         goTokenCatalogDeploymentIDs(matches),
+		})
+	}
+
+	return map[string]any{
+		"lookupAsset":      lookupAssets,
+		"lookupDeployment": lookupDeployments,
+		"nativeDeployment": nativeDeployments,
+		"symbol":           symbols,
+		"address":          addresses,
+		"alias":            aliasBehavior,
+		"list":             lists,
+	}
+}
+
+func goTokenCatalogDeploymentIDs(records []TokenDeployment) []string {
+	result := make([]string, 0, len(records))
+	for _, record := range records {
+		result = append(result, record.DeploymentID)
+	}
+	sort.Strings(result)
+	return result
+}
+
+func goTokenCatalogAliasResult(groups TokenAliasGroups, alias TokenAlias) any {
+	groupName, ok := map[string]string{
+		"ethereum":   "Ethereum",
+		"solana":     "Solana",
+		"avalancheC": "AvalancheC",
+		"base":       "Base",
+	}[alias.Namespace]
+	if !ok {
+		return nil
+	}
+	group := reflect.ValueOf(groups).FieldByName(groupName)
+	if !group.IsValid() {
+		return nil
+	}
+	constant := group.FieldByName(alias.Name)
+	if !constant.IsValid() || constant.Kind() != reflect.String {
+		return nil
+	}
+	return constant.String()
+}
+
+func nullableString(value string) any {
+	if value == "" {
+		return nil
+	}
+	return value
+}
+
+func chainIDsOrString(value string) any {
+	return value
 }
 
 func tokenStringValue(value *string) string {

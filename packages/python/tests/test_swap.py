@@ -39,6 +39,11 @@ from erpc_sdk import (
 
 _ROOT = Path(__file__).resolve().parents[3]
 _FIXTURE_PATH = _ROOT / "registry" / "fixtures" / "swap-quote-cases.json"
+_DEX_TOKEN_CHAIN_IDS = (
+    TOKEN_CHAIN_IDS["ethereum"],
+    TOKEN_CHAIN_IDS["solana"],
+    TOKEN_CHAIN_IDS["avalancheC"],
+)
 
 
 def _load_fixture(*, required: bool = False) -> dict[str, Any] | None:
@@ -421,7 +426,7 @@ def _lookup_behavior() -> dict[str, list[dict[str, Any]]]:
             }
         )
     filters: list[dict[str, str]] = [{}]
-    filters.extend({"chainId": chain_id} for chain_id in TOKEN_CHAIN_IDS.values())
+    filters.extend({"chainId": chain_id} for chain_id in _DEX_TOKEN_CHAIN_IDS)
     filters.extend(
         {"tokenDeploymentId": token_id}
         for pool in POOL_DEFINITIONS
@@ -519,7 +524,11 @@ async def test_captures_native_dex_parity_only_when_output_is_configured() -> No
             "version": TOKEN_CATALOG_VERSION,
             "asOfDate": TOKEN_CATALOG_AS_OF_DATE,
             "contentDigest": TOKEN_CATALOG_CONTENT_DIGEST,
-            "chainIds": dict(TOKEN_CHAIN_IDS),
+            "chainIds": {
+                "ethereum": TOKEN_CHAIN_IDS["ethereum"],
+                "solana": TOKEN_CHAIN_IDS["solana"],
+                "avalancheC": TOKEN_CHAIN_IDS["avalancheC"],
+            },
         },
         "dexMetadata": {
             "version": DEX_CATALOG_VERSION,

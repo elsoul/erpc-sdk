@@ -3,9 +3,15 @@
 use std::{env, fs, path::Path};
 
 use erpc_sdk::{
-    TOKEN_CHAIN_IDS, TOKEN_RANKINGS, TOKEN_RANKINGS_METADATA, TokenRanking, list_token_rankings,
+    TOKEN_RANKINGS, TOKEN_RANKINGS_METADATA, TokenRanking, list_token_rankings, token_chain_ids,
 };
 use serde_json::{Value, json};
+
+const SUBSYSTEM_CHAIN_IDS: [&str; 3] = [
+    token_chain_ids::ETHEREUM_MAINNET,
+    token_chain_ids::SOLANA_MAINNET,
+    token_chain_ids::AVALANCHE_C_MAINNET,
+];
 
 fn canonical_decimal(value: &str, allow_zero: bool) -> bool {
     !value.is_empty()
@@ -93,10 +99,10 @@ fn generated_rankings_expose_schema_safe_immutable_data() {
 
 #[test]
 fn list_rankings_is_offline_exact_and_growth_safe() {
-    for (_, chain_id) in TOKEN_CHAIN_IDS {
+    for chain_id in SUBSYSTEM_CHAIN_IDS {
         let expected: Vec<_> = TOKEN_RANKINGS
             .iter()
-            .filter(|ranking| ranking.chain_id == *chain_id)
+            .filter(|ranking| ranking.chain_id == chain_id)
             .map(runtime_ranking)
             .collect();
         let actual: Vec<_> = list_token_rankings(chain_id)
@@ -105,6 +111,8 @@ fn list_rankings_is_offline_exact_and_growth_safe() {
             .collect();
         assert_eq!(actual, expected);
     }
+
+    assert!(list_token_rankings(token_chain_ids::BASE_MAINNET).is_empty());
 
     for chain_id in ["", "unknown:chain", "constructor", "toString", "__proto__"] {
         assert!(list_token_rankings(chain_id).is_empty());
@@ -117,9 +125,8 @@ fn captures_native_ranking_parity_when_requested() {
         return;
     };
 
-    let behavior_inputs: Vec<&str> = TOKEN_CHAIN_IDS
-        .iter()
-        .map(|(_, chain_id)| *chain_id)
+    let behavior_inputs: Vec<&str> = SUBSYSTEM_CHAIN_IDS
+        .into_iter()
         .chain(["", "unknown:chain", "constructor", "toString", "__proto__"])
         .collect();
     let behavior = behavior_inputs

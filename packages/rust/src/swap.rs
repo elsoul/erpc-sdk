@@ -2359,9 +2359,7 @@ mod tests {
             get_dex_deployment, get_native_wrap_definition, get_pool_definition,
             list_pool_definitions,
         },
-        token_catalog::{
-            TOKEN_CHAIN_IDS, TOKEN_DEPLOYMENTS, TokenRepresentationKind, TokenStandard,
-        },
+        token_catalog::{TOKEN_DEPLOYMENTS, TokenRepresentationKind, TokenStandard},
     };
 
     #[test]
@@ -3343,7 +3341,7 @@ mod tests {
 
     fn build_snapshot(behavior: &Map<String, Value>) -> Value {
         let mut chain_ids = Map::new();
-        for (name, chain) in TOKEN_CHAIN_IDS {
+        for (name, chain) in DEX_CHAIN_IDS {
             chain_ids.insert((*name).to_owned(), json!(chain));
         }
         json!({

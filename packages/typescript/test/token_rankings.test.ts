@@ -22,6 +22,14 @@ interface CaptureSdk {
   readonly listTokenRankings: (chainId: string) => readonly CaptureRecord[]
 }
 
+const RANKING_CHAINS = [
+  TOKEN_CHAIN_IDS.ethereumMainnet,
+  TOKEN_CHAIN_IDS.solanaMainnet,
+  TOKEN_CHAIN_IDS.avalancheCMainnet,
+] as const
+const BASE_CHAIN_ID = (TOKEN_CHAIN_IDS as unknown as Record<string, string>)
+  .baseMainnet
+
 const jsonClone = <T>(value: T): T =>
   JSON.parse(JSON.stringify(value)) as T
 
@@ -81,7 +89,14 @@ describe('offline token rankings', () => {
       expect(ranking.valueDenominator).toMatch(/^[1-9][0-9]*$/u)
     }
 
-    for (const chainId of Object.values(TOKEN_CHAIN_IDS)) {
+    expect(TOKEN_RANKINGS_METADATA.coverage.map(({ chainId }) => chainId)).toEqual(
+      expect.arrayContaining([...RANKING_CHAINS]),
+    )
+    expect(TOKEN_RANKINGS_METADATA.coverage.map(({ chainId }) => chainId)).not.toContain(
+      BASE_CHAIN_ID,
+    )
+
+    for (const chainId of RANKING_CHAINS) {
       expect(listTokenRankings(chainId)).toBe(
         TOKEN_RANKINGS_BY_CHAIN[chainId] ?? listTokenRankings(''),
       )
@@ -109,7 +124,7 @@ describe('offline token rankings', () => {
 
     const sdk = await loadCaptureSdk()
     const behaviorInputs = [
-      ...Object.values(sdk.TOKEN_CHAIN_IDS),
+      ...RANKING_CHAINS,
       '',
       'unknown:chain',
       'constructor',

@@ -51,6 +51,10 @@ export {
   type ErpcSolanaClient,
 } from './client'
 export {
+  type BaseReadRpcClient,
+  type ErpcBaseClient,
+} from './rpc/base'
+export {
   SwapExecutionError,
   SWAP_EXECUTION_ERROR_MESSAGES,
   SwapQuoteError,
@@ -162,9 +166,11 @@ export {
 export {
   DEFAULT_ACCOUNT_ENDPOINT,
   DEFAULT_AVALANCHE_ENDPOINT,
+  DEFAULT_BASE_ENDPOINT,
   DEFAULT_ENDPOINT,
   DEFAULT_TIMEOUT_MS,
   DEFAULT_USER_ENDPOINT,
+  type BaseRpcEndpointConfig,
   type ErpcClientConfig,
   type ResolvedRpcEndpointConfig,
   type RpcEndpointConfig,

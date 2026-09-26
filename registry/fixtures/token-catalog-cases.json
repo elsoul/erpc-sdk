@@ -3,10 +3,13 @@
   "description": "Deterministic in-memory cases for the growing token catalog validator, renderer, and history guard.",
   "seedSentinels": {
     "assetIds": ["asset-0001", "asset-0007"],
-    "deploymentIds": ["deployment-0001", "deployment-0008"],
+    "deploymentIds": ["deployment-0001", "deployment-0008", "deployment-0061", "deployment-0062", "deployment-0063"],
     "aliases": [
       { "namespace": "ethereum", "name": "ETH", "deploymentId": "deployment-0001" },
-      { "namespace": "ethereum", "name": "USDC", "deploymentId": "deployment-0008" }
+      { "namespace": "ethereum", "name": "USDC", "deploymentId": "deployment-0008" },
+      { "namespace": "base", "name": "ETH", "deploymentId": "deployment-0061" },
+      { "namespace": "base", "name": "USDC", "deploymentId": "deployment-0062" },
+      { "namespace": "base", "name": "EURC", "deploymentId": "deployment-0063" }
     ]
   },
   "codegen": [
@@ -37,6 +40,10 @@
     {
       "name": "evm-address-normalization",
       "expect": "lowercase canonical storage and case-insensitive lookup"
+    },
+    {
+      "name": "base-catalog-identity",
+      "expect": "Base uses eip155:8453, three additive deployment IDs, native null address, and exact aliases"
     },
     {
       "name": "solana-address-identity",
@@ -141,7 +148,7 @@
     {
       "name": "alias-unknown-namespace",
       "operation": "setUnknownAliasNamespace",
-      "expectError": "namespace must be one of ethereum, solana, avalancheC"
+      "expectError": "namespace must be one of ethereum, solana, avalancheC, base"
     },
     {
       "name": "alias-wrong-chain",

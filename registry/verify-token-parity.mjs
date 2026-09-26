@@ -14,7 +14,9 @@ const CHAIN_IDS = Object.freeze({
   ethereum: "eip155:1",
   solana: "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
   avalancheC: "eip155:43114",
+  base: "eip155:8453",
 });
+const EVM_CHAIN_IDS = new Set([CHAIN_IDS.ethereum, CHAIN_IDS.avalancheC, CHAIN_IDS.base]);
 const RUNTIME_ASSET_KEYS = Object.freeze([
   "assetId",
   "name",
@@ -207,7 +209,7 @@ function expectedBehavior(catalog) {
       address: deployment.address,
       result: deployment.deploymentId,
     });
-    if (deployment.chainId === CHAIN_IDS.ethereum || deployment.chainId === CHAIN_IDS.avalancheC) {
+    if (EVM_CHAIN_IDS.has(deployment.chainId)) {
       behavior.address.push({
         chainId: deployment.chainId,
         address: `0x${deployment.address.slice(2).toUpperCase()}`,

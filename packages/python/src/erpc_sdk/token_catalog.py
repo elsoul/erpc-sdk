@@ -40,6 +40,7 @@ class TokenChainIds:
     ETHEREUM_MAINNET: Final[TokenChainId] = "eip155:1"
     SOLANA_MAINNET: Final[TokenChainId] = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
     AVALANCHE_C_MAINNET: Final[TokenChainId] = "eip155:43114"
+    BASE_MAINNET: Final[TokenChainId] = "eip155:8453"
 
     def __init__(self) -> None:
         raise TypeError("TokenChainIds is a constants namespace")
@@ -49,6 +50,7 @@ _EVM_CHAIN_IDS: Final[frozenset[str]] = frozenset(
     {
         TokenChainIds.ETHEREUM_MAINNET,
         TokenChainIds.AVALANCHE_C_MAINNET,
+        TokenChainIds.BASE_MAINNET,
     }
 )
 _KNOWN_CHAIN_IDS: Final[frozenset[str]] = frozenset(
@@ -56,6 +58,7 @@ _KNOWN_CHAIN_IDS: Final[frozenset[str]] = frozenset(
         TokenChainIds.ETHEREUM_MAINNET,
         TokenChainIds.SOLANA_MAINNET,
         TokenChainIds.AVALANCHE_C_MAINNET,
+        TokenChainIds.BASE_MAINNET,
     }
 )
 _STABLE_CURRENCIES: Final[frozenset[str]] = frozenset({"USD", "EUR", "JPY"})

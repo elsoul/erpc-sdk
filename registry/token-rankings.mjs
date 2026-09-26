@@ -392,6 +392,7 @@ export function replayTokenRankings(input, options = {}) {
   const deployments = deploymentMap(catalog);
   for (const item of extracted.candidates) {
     const row = normalizeCandidate(item, metric, catalog, options);
+    if (!row.error && !CHAIN_SET.has(row.chainId)) continue;
     if (row.error) {
       const id = row.deploymentId ?? item?.deploymentId ?? item?.tokenDeploymentId;
       const deployment = deployments.get(id);
@@ -416,8 +417,8 @@ export function replayTokenRankings(input, options = {}) {
     sources.add(source);
   }
   const assets = assetMap(catalog);
-  const eligibleRows = catalog.deployments.filter((entry) => eligible(entry, assets) && (!options.chainId || entry.chainId === options.chainId));
-  const allRows = catalog.deployments.filter((entry) => !options.chainId || entry.chainId === options.chainId);
+  const eligibleRows = catalog.deployments.filter((entry) => CHAIN_SET.has(entry.chainId) && eligible(entry, assets) && (!options.chainId || entry.chainId === options.chainId));
+  const allRows = catalog.deployments.filter((entry) => CHAIN_SET.has(entry.chainId) && (!options.chainId || entry.chainId === options.chainId));
   for (const deployment of allRows) {
     const key = deployment.chainId + "\0" + deployment.deploymentId;
     if (seen.has(key) || unranked.some((entry) => entry.chainId + "\0" + entry.deploymentId === key)) continue;

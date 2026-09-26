@@ -11,6 +11,7 @@ import {
   createAvalancheClient,
   type AvalancheClient,
 } from './rpc/avalanche'
+import { createBaseClient, type ErpcBaseClient } from './rpc/base'
 import {
   createEthereumClient,
   type EthereumClient,
@@ -41,6 +42,7 @@ export interface ErpcAvalancheClient extends AvalancheClient {
 export interface ErpcClient {
   readonly account: AccountClient
   readonly avalanche: ErpcAvalancheClient
+  readonly base: ErpcBaseClient
   readonly ethereum: ErpcEthereumClient
   readonly price: PriceClient
   readonly solana: ErpcSolanaClient
@@ -137,6 +139,12 @@ export const createErpcClient = (config: ErpcClientConfig): ErpcClient => {
       : createLegacyHttp(endpointWithPath(resolved.avalancheEndpoint, '/ava'))
     : createDirectHttp(resolved.avalancheCRpc)
 
+  const baseTransport = resolved.baseRpc === undefined
+    ? resolved.apiKey === undefined
+      ? createUnavailableHttp('base')
+      : createLegacyHttp(resolved.baseEndpoint)
+    : createDirectHttp(resolved.baseRpc)
+
   const avalancheNativeTransport = resolved.apiKey === undefined
     ? createUnavailableHttp('avalanche.native')
     : createLegacyHttp(endpointWithPath(resolved.avalancheEndpoint, '/ava'))
@@ -231,6 +239,7 @@ export const createErpcClient = (config: ErpcClientConfig): ErpcClient => {
     solana,
     ethereum,
     avalanche,
+    base: createBaseClient(baseTransport),
     price: new PriceClient(priceTransport),
     account: new AccountClient(accountTransport),
     swap,
