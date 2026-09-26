@@ -23,9 +23,14 @@ unsigned builders; those remain source-checkout work under separate review.
 
 With an eRPC API key, one client provides eRPC-backed access to Solana,
 Ethereum, Avalanche C/P/X-chain, price data, indexed data, leader and validator
-data, analytics, subscriptions, and account balance information. Direct RPC
-overrides introduced in `0.8.0` and offline token, DEX/pool, and ranking catalog
-reads do not require an eRPC API key.
+data, analytics, subscriptions, and account balance information. The
+source-checkout TypeScript client also exposes a Base read-only JSON-RPC facade
+with the verified default endpoint `https://base.erpc.global`; its
+`baseEndpoint` option overrides that authenticated endpoint, while `baseRpc`
+uses an exact caller-owned URL with scoped headers and no global eRPC API key.
+The other four language clients expose Base through the shared offline token
+catalog only. Direct RPC overrides introduced in `0.8.0` and offline token,
+DEX/pool, and ranking catalog reads do not require an eRPC API key.
 
 ## Packages
 
@@ -56,8 +61,8 @@ npm install @elsoul/erpc-sdk
 # or: bun add @elsoul/erpc-sdk
 ```
 
-The TypeScript package has no runtime dependencies and includes ESM, CommonJS,
-and TypeScript declarations.
+The TypeScript package includes ESM, CommonJS, and TypeScript declarations. Its
+runtime dependencies are `@noble/curves` and `@noble/hashes`.
 
 Rust:
 
@@ -121,6 +126,7 @@ examples remain available for reviewed unreleased work.
 | `solanaRpc` | `erpc.solana.rpc`, `erpc.solana.das`, `erpc.solana.history`, `erpc.solana.leaders`, `erpc.solana.analytics`, and `erpc.solana.subscriptions` |
 | `ethereumRpc` | `erpc.ethereum.rpc`, `erpc.ethereum.subscriptions`, and Ethereum EVM quote reads |
 | `avalancheCRpc` | `erpc.avalanche.rpc`, `erpc.avalanche.subscriptions`, and C-Chain EVM quote reads |
+| `baseRpc` | Source-checkout TypeScript `erpc.base` read-only JSON-RPC (`endpoint`, `eth_chainId`, `eth_getBalance`, and `eth_call`); unreleased |
 
 Extended Solana methods depend on the methods and limits supported by the
 chosen dedicated RPC provider.
@@ -244,9 +250,9 @@ is separate from wallet keys and the ERPC API key; it is sent only to Mayan
 
 ## Offline token catalog
 
-The published `0.7.0` packages include a bounded, source-backed token catalog
-across Ethereum, Solana, and Avalanche C-Chain. Catalog reads are local: they
-do not create a client, need an API key, or access a network.
+The source checkout includes a bounded, source-backed token catalog across
+Ethereum, Solana, Avalanche C-Chain, and Base Mainnet. Catalog reads are local:
+they do not create a client, need an API key, or access a network.
 
 The public TypeScript names use the chain-qualified constants below. Alias
 values are opaque deployment IDs; returned deployments keep their lifecycle
@@ -264,6 +270,7 @@ import {
 const ethereumUsdc = getTokenDeployment(tokens.ethereum.USDC)
 const solanaUsdc = getTokenDeployment(tokens.solana.USDC)
 const avalancheUsdc = getTokenDeployment(tokens.avalancheC.USDC)
+const baseEurc = getTokenDeployment(tokens.base.EURC)
 
 const usdOnEthereum = findTokenDeploymentsBySymbol(
   TOKEN_CHAIN_IDS.ethereumMainnet,
@@ -279,6 +286,7 @@ const jpyOnAvalanche = findTokenDeploymentsBySymbol(
 )
 
 console.log({ ethereumUsdc, solanaUsdc, avalancheUsdc })
+console.log({ baseEurc })
 console.log({ usdOnEthereum, eurOnSolana, jpyOnAvalanche })
 ```
 
@@ -291,7 +299,9 @@ All five SDKs expose the corresponding offline list/lookup APIs and catalog
 metadata; they do not call a runtime vendor service, RPC endpoint, or current
 clock for these reads.
 
-These catalog and quote exports are included in the published `0.7.0` package.
+The existing catalog and quote exports are included in the published `0.7.0`
+package; the Base additions described here remain source-checkout work pending
+release.
 
 ## DEX catalog and RPC-only quotes
 

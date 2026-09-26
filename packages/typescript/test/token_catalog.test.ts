@@ -22,7 +22,13 @@ const chains = [
   TOKEN_CHAIN_IDS.ethereumMainnet,
   TOKEN_CHAIN_IDS.solanaMainnet,
   TOKEN_CHAIN_IDS.avalancheCMainnet,
+  (TOKEN_CHAIN_IDS as unknown as Record<string, string>).baseMainnet as TokenChainId,
 ] as const
+const baseChainId = chains[3]
+const baseTokens = (tokens as unknown as Record<
+  string,
+  Readonly<Record<string, string>>
+>).base ?? {}
 
 describe('offline token catalog', () => {
   it('exports the generated chain IDs and immutable grouped aliases', () => {
@@ -33,6 +39,7 @@ describe('offline token catalog', () => {
       ethereumMainnet: 'eip155:1',
       solanaMainnet: 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp',
       avalancheCMainnet: 'eip155:43114',
+      baseMainnet: 'eip155:8453',
     })
     expect(Object.isFrozen(TOKEN_CHAIN_IDS)).toBe(true)
     expect(Object.isFrozen(TOKEN_ALIASES)).toBe(true)
@@ -40,6 +47,7 @@ describe('offline token catalog', () => {
     expect(Object.isFrozen(tokens.ethereum)).toBe(true)
     expect(Object.isFrozen(tokens.solana)).toBe(true)
     expect(Object.isFrozen(tokens.avalancheC)).toBe(true)
+    expect(Object.isFrozen(baseTokens)).toBe(true)
 
     const tokenGroups = tokens as unknown as Record<
       string,
@@ -62,9 +70,17 @@ describe('offline token catalog', () => {
     expect(tokens.solana.WSOL).toBe('deployment-0006')
     expect(tokens.ethereum.USDC).toBe('deployment-0008')
     expect(tokens.avalancheC.USDC).toBe('deployment-0009')
+    expect(baseTokens).toEqual({
+      ETH: 'deployment-0061',
+      EURC: 'deployment-0063',
+      USDC: 'deployment-0062',
+    })
   })
 
   it('cross-links every deployment to a complete flattened asset record', () => {
+    expect(TOKEN_ASSETS).toHaveLength(49)
+    expect(TOKEN_DEPLOYMENTS).toHaveLength(73)
+    expect(TOKEN_ALIASES).toHaveLength(73)
     expect(TOKEN_ASSETS.length).toBeGreaterThan(0)
     expect(TOKEN_DEPLOYMENTS.length).toBeGreaterThan(0)
 
@@ -160,6 +176,61 @@ describe('offline token catalog', () => {
     expect(eurcvEthereum).toBeDefined()
     expect(eurcvSolana).toBeDefined()
     expect(eurcvEthereum?.assetId).toBe(eurcvSolana?.assetId)
+  })
+
+  it('includes the three Base records with native and mixed-case EVM lookups', () => {
+    const baseChain = baseChainId
+    const baseEth = getTokenDeployment(baseTokens.ETH ?? '')
+    const baseUsdc = getTokenDeployment(baseTokens.USDC ?? '')
+    const baseEurc = getTokenDeployment(baseTokens.EURC ?? '')
+
+    expect(baseEth).toMatchObject({
+      deploymentId: 'deployment-0061',
+      assetId: 'asset-0001',
+      chainId: baseChain,
+      symbol: 'ETH',
+      decimals: 18,
+      standard: 'native',
+      address: null,
+      status: 'active',
+    })
+    expect(baseUsdc).toMatchObject({
+      deploymentId: 'deployment-0062',
+      assetId: 'asset-0007',
+      chainId: baseChain,
+      symbol: 'USDC',
+      decimals: 6,
+      standard: 'erc20',
+      address: '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913',
+      status: 'active',
+    })
+    expect(baseEurc).toMatchObject({
+      deploymentId: 'deployment-0063',
+      assetId: 'asset-0008',
+      chainId: baseChain,
+      symbol: 'EURC',
+      decimals: 6,
+      standard: 'erc20',
+      address: '0x60a3e35cc302bfa44cb288bc5a4f316fdb1adb42',
+      status: 'active',
+    })
+    expect(getNativeTokenDeployment(baseChain)).toBe(baseEth)
+    expect(findTokenDeploymentsBySymbol(baseChain, 'ETH')).toEqual([baseEth])
+    expect(findTokenDeploymentsBySymbol(baseChain, 'USDC')).toEqual([baseUsdc])
+    expect(findTokenDeploymentsBySymbol(baseChain, 'EURC')).toEqual([baseEurc])
+    expect(
+      findTokenDeploymentByAddress(
+        baseChain,
+        '0x833589FCD6EDB6E08F4C7C32D4F71B54BDA02913',
+      ),
+    ).toBe(baseUsdc)
+    expect(
+      findTokenDeploymentByAddress(
+        baseChain,
+        '0x60A3E35CC302BFA44CB288BC5A4F316FDB1ADB42',
+      ),
+    ).toBe(baseEurc)
+    expect(findTokenDeploymentByAddress(baseChain, '0x' + '0'.repeat(40))).toBeUndefined()
   })
 
   it('includes every lifecycle and representation kind, including natives', () => {

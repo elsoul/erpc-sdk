@@ -219,7 +219,8 @@ function isKnownChainId(value: unknown): value is TokenChainId {
   return (
     value === TOKEN_CHAIN_IDS.ethereumMainnet ||
     value === TOKEN_CHAIN_IDS.solanaMainnet ||
-    value === TOKEN_CHAIN_IDS.avalancheCMainnet
+    value === TOKEN_CHAIN_IDS.avalancheCMainnet ||
+    value === TOKEN_CHAIN_IDS.baseMainnet
   )
 }
 
@@ -230,7 +231,8 @@ function isStableCurrency(value: unknown): value is StableCurrency {
 function isEvmChain(chainId: string): boolean {
   return (
     chainId === TOKEN_CHAIN_IDS.ethereumMainnet ||
-    chainId === TOKEN_CHAIN_IDS.avalancheCMainnet
+    chainId === TOKEN_CHAIN_IDS.avalancheCMainnet ||
+    chainId === TOKEN_CHAIN_IDS.baseMainnet
   )
 }
 

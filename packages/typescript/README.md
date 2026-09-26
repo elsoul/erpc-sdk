@@ -1,20 +1,27 @@
 # `@elsoul/erpc-sdk`
 
 Official type-safe TypeScript client for [ERPC](https://erpc.global). Use one
-client and an API key for Solana, Ethereum, Avalanche C/P/X chains, price data,
-indexed data, leader and validator data, analytics, subscriptions, and account
-information. Caller-owned direct endpoints can be selected for Solana,
-Ethereum, and Avalanche C-Chain JSON-RPC.
+client and an API key for Base, Solana, Ethereum, Avalanche C/P/X chains, price
+data, indexed data, leader and validator data, analytics, subscriptions, and
+account information. Base is exposed as a read-only JSON-RPC facade; caller-owned
+direct endpoints can be selected for Base, Solana, Ethereum, and Avalanche
+C-Chain JSON-RPC.
+
+The Base facade documented below is a `0.9.0` source candidate. The currently
+published `0.8.1` npm package does not include it; use the reviewed `0.9.0`
+candidate artifact or this source checkout until that version is published.
 
 ## Install
 
 ```bash
-npm install @elsoul/erpc-sdk
-# or: pnpm add @elsoul/erpc-sdk
+# Once 0.9.0 is published:
+npm install @elsoul/erpc-sdk@0.9.0
+# or: pnpm add @elsoul/erpc-sdk@0.9.0
+# Before publication, use the reviewed candidate tarball or this source checkout.
 ```
 
-The package has no runtime dependencies and includes ESM, CommonJS, and
-TypeScript declarations. Node.js 20 or later is supported.
+The package includes its ESM, CommonJS, and TypeScript declarations. Node.js 20
+or later is supported.
 
 ## Quick start
 
@@ -29,8 +36,9 @@ const erpc = createErpcClient({ apiKey })
 const slot = await erpc.solana.rpc.getSlot().send()
 const chainId = await erpc.ethereum.rpc.eth_chainId().send()
 const avalancheChainId = await erpc.avalanche.rpc.eth_chainId().send()
+const baseChainId = await erpc.base.rpc.eth_chainId().send()
 
-console.log({ slot, chainId, avalancheChainId })
+console.log({ slot, chainId, avalancheChainId, baseChainId })
 erpc.close()
 ```
 
@@ -62,6 +70,10 @@ const chainId = await erpc.ethereum.rpc.eth_chainId().send()
 The configured HTTP URL is treated as the final target. Redirect responses are
 returned as HTTP errors, and no redirected request is made.
 
+For direct HTTP transports, the public `endpoint` property is diagnostic
+metadata containing only the origin/root. The private request target still
+preserves the configured path, query order, and percent encoding exactly.
+
 Direct HTTP requests use `credentials: 'omit'`, so ambient browser cookies and
 authentication are not sent implicitly. Add authentication explicitly through
 the endpoint's scoped headers when needed.
@@ -84,11 +96,83 @@ const erpc = createErpcClient({
 })
 ```
 
-`solanaRpc`, `ethereumRpc`, and `avalancheCRpc` select direct Solana, Ethereum,
-and Avalanche C-Chain JSON-RPC transports. Without an API key, non-overridden
-chains and ERPC REST, native, and index services fail locally. The
+`solanaRpc`, `ethereumRpc`, `avalancheCRpc`, and `baseRpc` select direct Solana,
+Ethereum, Avalanche C-Chain, and Base JSON-RPC transports. `baseRpc` accepts
+only an HTTP URL and scoped HTTP headers because the Base facade has no
+WebSocket or subscription surface. Without an API key, non-overridden chains
+and ERPC REST, native, and index services fail locally. The
 `RpcEndpointConfig.headers` field applies to direct HTTP requests only; those
 headers are never sent on WSS connections.
+
+## Base read-only RPC (`0.9.0` candidate)
+
+The `0.9.0` candidate API-key client uses `https://base.erpc.global/` at the
+root JSON-RPC path.
+The first check for a Base connection should be `eth_chainId()` and must return
+`0x2105` (Base mainnet). The following uses the catalog's Base EURC record and
+formats the raw response with integer arithmetic:
+
+```ts
+import {
+  createErpcClient,
+  getTokenDeployment,
+  tokens,
+} from '@elsoul/erpc-sdk'
+
+const erpc = createErpcClient({ apiKey: process.env.ERPC_API_KEY! })
+const wallet = '0x7A5837f5bB52C53e08fcFf214c2Cd11daa8EF9EE'
+const eurc = getTokenDeployment(tokens.base.EURC)
+if (eurc?.address === null || eurc === undefined) {
+  throw new Error('Base EURC is missing from the catalog')
+}
+
+const chainId = await erpc.base.rpc.eth_chainId().send()
+if (chainId !== '0x2105') throw new Error(`Unexpected Base chain: ${chainId}`)
+
+const nativeWei = BigInt(
+  await erpc.base.rpc.eth_getBalance(wallet, '0x3167564').send(),
+)
+const calldata = `0x70a08231${wallet.slice(2).padStart(64, '0')}`
+const eurcAtomic = BigInt(
+  await erpc.base.rpc.eth_call(
+    { to: eurc.address, data: calldata },
+    '0x3167564',
+  ).send(),
+)
+
+const formatUnits = (value: bigint, decimals: number): string => {
+  const scale = 10n ** BigInt(decimals)
+  const whole = value / scale
+  const fraction = (value % scale).toString().padStart(decimals, '0').replace(/0+$/u, '')
+  return fraction.length === 0 ? whole.toString() : `${whole}.${fraction}`
+}
+
+const eurcDisplay = formatUnits(eurcAtomic, eurc.decimals)
+// Pinned review read: eurcAtomic === 5_500_000n and eurcDisplay === '5.5'.
+console.log({ chainId, nativeWei, eurcAtomic, eurcDecimals: eurc.decimals, eurcDisplay })
+erpc.close()
+```
+
+For a keyless caller-owned endpoint, use `baseRpc`. Its URL path and query are
+sent exactly as configured, and its headers stay scoped to Base:
+
+```ts
+const erpc = createErpcClient({
+  baseRpc: {
+    httpUrl: process.env.ERPC_BASE_RPC_URL!,
+    headers: { authorization: 'Bearer node-token' },
+  },
+})
+
+const chainId = await erpc.base.rpc.eth_chainId().send()
+```
+
+The Base client exposes only `rpc`; the inner read-only facade has exactly
+`endpoint`, `eth_chainId`, `eth_getBalance`, and `eth_call`. It does not provide
+raw, batch, subscription, signing, or broadcast methods. `baseEndpoint` forwards
+the main API key and global headers, so use it only for a caller-trusted,
+eRPC-compatible host. `baseRpc` takes precedence over it and over global
+headers; it sends only credentials explicitly scoped inside the direct override.
 
 ## Wallets, signing, and broadcast
 

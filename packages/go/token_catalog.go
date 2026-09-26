@@ -11,6 +11,9 @@ const TokenChainSolanaMainnet = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
 // TokenChainAvalancheCMainnet is the CAIP-2 identifier for Avalanche C-Chain mainnet.
 const TokenChainAvalancheCMainnet = "eip155:43114"
 
+// TokenChainBaseMainnet is the CAIP-2 identifier for Base mainnet.
+const TokenChainBaseMainnet = "eip155:8453"
+
 // TokenDeploymentFilter selects deployments by chain and, optionally, stable
 // currency. Empty fields leave the corresponding dimension unfiltered.
 type TokenDeploymentFilter struct {
@@ -147,7 +150,7 @@ func NativeTokenDeployment(chainID string) (TokenDeployment, bool) {
 
 func isKnownTokenChain(chainID string) bool {
 	switch chainID {
-	case TokenChainEthereumMainnet, TokenChainSolanaMainnet, TokenChainAvalancheCMainnet:
+	case TokenChainEthereumMainnet, TokenChainSolanaMainnet, TokenChainAvalancheCMainnet, TokenChainBaseMainnet:
 		return true
 	default:
 		return false
@@ -155,7 +158,7 @@ func isKnownTokenChain(chainID string) bool {
 }
 
 func isEVMTokenChain(chainID string) bool {
-	return chainID == TokenChainEthereumMainnet || chainID == TokenChainAvalancheCMainnet
+	return chainID == TokenChainEthereumMainnet || chainID == TokenChainAvalancheCMainnet || chainID == TokenChainBaseMainnet
 }
 
 func isKnownStableCurrency(currency string) bool {

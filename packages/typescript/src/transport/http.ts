@@ -130,8 +130,16 @@ export class HttpJsonRpcTransport {
     this.maxBatchSize = config.maxBatchSize ?? 256
 
     const endpoint = new URL(config.endpoint)
-    endpoint.search = ''
-    endpoint.hash = ''
+    if (this.#direct) {
+      // This is diagnostic metadata only. Keep the private request endpoint
+      // untouched so routing preserves the caller's exact path/query bytes.
+      endpoint.pathname = '/'
+      endpoint.search = ''
+      endpoint.hash = ''
+    } else {
+      endpoint.search = ''
+      endpoint.hash = ''
+    }
     this.endpoint = endpoint.toString()
   }
 

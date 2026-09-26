@@ -1,12 +1,13 @@
 # Token catalog sources
 
-As of 2026-09-15, the catalog is a bounded implementation seed selected from issuer, protocol, and primary project sources. The source packet and receipt captures are persisted in [`evidence/token-catalog-2026-09-15.json`](./evidence/token-catalog-2026-09-15.json). The packet records the consulted URL, selected field, method, network identity, block or slot, observed result, and remaining gap. Marketing or regulatory language is not an SDK endorsement.
+As of 2026-09-26, the catalog is a bounded implementation seed selected from issuer, protocol, and primary project sources. The source packet and receipt captures are persisted in [`evidence/token-catalog-2026-09-15.json`](./evidence/token-catalog-2026-09-15.json). The packet records the consulted URL, selected field, method, network identity, block or slot, observed result, and remaining gap. Marketing or regulatory language is not an SDK endorsement.
 
 ## Source index
 
 | Source area | Primary URL(s) | Selected facts or role |
 | --- | --- | --- |
 | Ethereum native / WETH | <https://ethereum.org/whitepaper/>; <https://github.com/gnosis/canonical-weth> | ETH native identity and WETH address/decimals |
+| Base Mainnet token identities (2026-09-26) | <https://docs.base.org/get-started/connect-to-base>; <https://docs.base.org/base-chain/api-reference/ethereum-json-rpc-api/eth_chainId>; <https://developers.circle.com/stablecoins/usdc-contract-addresses>; <https://developers.circle.com/stablecoins/eurc-contract-addresses>; <https://developers.circle.com/circle-mint/supported-chains-and-currencies> | Base `eip155:8453`, native ETH, Circle-native USDC `0x833589fcd6edb6e08f4c7c32d4f71b54bda02913`, and Circle-issued EURC `0x60a3e35cc302bfa44cb288bc5a4f316fdb1adb42`, all with catalog as-of 2026-09-26; token records do not enable swaps, pools, rankings, discovery, observer RPC, or bridging |
 | Avalanche native / WAVAX | <https://build.avax.network/docs/primary-network>; <https://build.avax.network/academy/blockchain/x402-payment-infrastructure/04-x402-on-avalanche/02-network-setup> | AVAX native identity and WAVAX address/decimals |
 | Solana native / wrapped SOL | <https://solana.com/docs/tokens/basics/sync-native> | SOL native identity, classic WSOL, and Token-2022 distinction |
 | Circle | <https://developers.circle.com/stablecoins/usdc-contract-addresses>; <https://developers.circle.com/stablecoins/eurc-contract-addresses> | USDC and EURC Ethereum, Avalanche, and Solana deployments |

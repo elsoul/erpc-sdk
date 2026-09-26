@@ -1,6 +1,6 @@
 {
   "name": "@elsoul/erpc-sdk",
-  "version": "0.8.1",
+  "version": "0.9.0",
   "description": "Type-safe multi-network TypeScript SDK for ERPC",
   "dependencies": {
     "@noble/curves": "1.9.7",

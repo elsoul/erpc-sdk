@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.9.0 — 2026-09-26
+
+- Add a read-only TypeScript Base Mainnet facade at `erpc.base.rpc` with only `eth_chainId`, `eth_getBalance`, `eth_call`, and the resolved endpoint. API-key clients default to `https://base.erpc.global`; `baseEndpoint` replaces that authenticated eRPC-compatible host, while `baseRpc` is the exact direct override and receives only its explicitly scoped credentials. No Base raw request, batch, subscription, send, signing, wallet, approval, or broadcast API is added.
+- Extend the shared offline token catalog and all five deterministic language projections with exactly three append-only Base deployments: native ETH (`eip155:8453`, 18 decimals, null address), Circle-native USDC (`0x833589fcd6edb6e08f4c7c32d4f71b54bda02913`, 6 decimals), and Circle-issued EURC (`0x60a3e35cc302bfa44cb288bc5a4f316fdb1adb42`, 6 decimals). This does not enable a Base DEX, pool, swap, or bridge capability.
+- Read Base native ETH with `eth_getBalance` and Base USDC/EURC with `eth_call` using deterministic `balanceOf(address)` calldata. Return raw hex/atomic-unit values and keep decimal presentation caller-owned.
+- Include the already-merged, previously unreleased Mayan Swift v2 native-USDC directions between Ethereum and Solana and caller-driven local unsigned construction for the four exact EURC/USDC directions as candidate release content. These existing mainline additions are separate from the Base-balance demo; they do not add a Base bridge and still do not approve, sign, submit, broadcast, or claim settlement.
+- Preserve configured-RPC and local logic for normal swap quotes, routes, simulation, and calldata construction with no hosted Jupiter or 0x dependency. The narrowed Base work changes none of those paths.
+
 ## 0.8.1 — 2026-09-24
 
 - Fix TypeScript Fetch API invocation in receiver-sensitive runtimes such as Cloudflare Workers for default and provided fetch implementations across JSON-RPC, REST, Cloud, and the existing Mayan client.

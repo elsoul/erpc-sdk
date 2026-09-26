@@ -4,8 +4,10 @@ import { fileURLToPath } from "node:url";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
+import { CATALOG, computeDigest as tokenDigest } from "./token-catalog.mjs";
 import {
   DEFAULT_DISCOVERY_CONFIG,
+  DISCOVERY_CHAINS,
   EVM_DISCOVERY_SELECTORS,
   SOLANA_DISCOVERY_LAYOUTS,
   TOKEN_CHAIN_IDS,
@@ -15,6 +17,7 @@ import {
   decodeBase58,
   discoverCatalog,
   replayDiscoveryReceipts,
+  validateDiscoveryState,
   validateDiscoveryArtifacts,
   validateDiscoveryConfig,
 } from "./discovery.mjs";
@@ -133,6 +136,12 @@ function fakeRpc({ batchedSolana = false, solanaPoolCount = null, evmPairCount =
 
 test("discovery config and deterministic address-only IDs are stable", async () => {
   assert.equal(validateDiscoveryConfig(DEFAULT_DISCOVERY_CONFIG), true);
+  assert.deepEqual(DISCOVERY_CHAINS, {
+    ethereum: TOKEN_CHAIN_IDS.ethereum,
+    avalancheC: TOKEN_CHAIN_IDS.avalancheC,
+    solana: TOKEN_CHAIN_IDS.solana,
+  });
+  assert.equal(Object.hasOwn(DISCOVERY_CHAINS, "base"), false);
   assert.equal(DEFAULT_DISCOVERY_CONFIG.limits.maxAdmissionTokens, 8);
   assert.equal(DEFAULT_DISCOVERY_CONFIG.limits.maxAdmissionPools, 8);
   assert.equal(DEFAULT_DISCOVERY_CONFIG.admission.tokenPolicy, "qualified-pool-dependencies");
@@ -142,6 +151,21 @@ test("discovery config and deterministic address-only IDs are stable", async () 
   assert.match(deriveDiscoveredAlias("pool", TOKEN_CHAIN_IDS.solana, "PoolAddress", "dex-deployment-0003"), /^DISCOVERED_POOL_[0-9A-F]{16}$/u);
   const fixture = JSON.parse(await readFile(new URL("./fixtures/discovery-cases.json", import.meta.url), "utf8"));
   assert.ok(fixture.cases.some((entry) => entry.caseId === "evm-unknown-tail-pair"));
+});
+
+test("committed discovery state binds the current catalog and rejects stale state before RPC", async () => {
+  const committed = JSON.parse(await readFile(new URL("./discovery-state.json", import.meta.url), "utf8"));
+  assert.equal(committed.tokenCatalogDigest, tokenDigest(CATALOG));
+  assert.doesNotThrow(() => validateDiscoveryState(committed, { config: DEFAULT_DISCOVERY_CONFIG }));
+
+  const stale = structuredClone(committed);
+  stale.tokenCatalogDigest = "2".repeat(64);
+  let rpcCalls = 0;
+  await assert.rejects(
+    () => discoverCatalog({ config: DEFAULT_DISCOVERY_CONFIG, state: stale, sourceSha: "a".repeat(40), rpcClient: async () => { rpcCalls += 1; return null; } }),
+    (error) => error?.code === "CONFIG_DIGEST_MISMATCH" && /prior discovery state binding is stale/u.test(error.message),
+  );
+  assert.equal(rpcCalls, 0);
 });
 
 test("bounded replay discovers unknown EVM tokens and pools without trusting symbol", async () => {

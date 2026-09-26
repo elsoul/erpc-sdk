@@ -57,6 +57,19 @@ test("pure replay reduces rationals, orders exact values, and accounts for every
   assert.equal(artifact.metadata.coverage[0].rankedDeployments + artifact.metadata.coverage[0].unrankedDeployments, artifact.metadata.coverage[0].totalDeployments);
 });
 
+test("Base token additions remain outside explicit ranking chains and coverage", () => {
+  const allChains = replayTokenRankings({ candidates: [], unranked: [], provenance: [] }, { tokenCatalog });
+  assert.equal(allChains.records.some((entry) => entry.chainId === "eip155:8453"), false);
+  assert.equal(allChains.unranked.some((entry) => entry.chainId === "eip155:8453"), false);
+  assert.equal(allChains.metadata.coverage.some((entry) => entry.chainId === "eip155:8453"), false);
+  const base = replayTokenRankings({ candidates: [], unranked: [], provenance: [] }, { tokenCatalog, chainId: "eip155:8453" });
+  assert.equal(base.metadata.status, "unconfigured");
+  assert.deepEqual(base.records, []);
+  assert.deepEqual(base.unranked, []);
+  assert.deepEqual(base.metadata.coverage, []);
+  assert.deepEqual(listTokenRankings("eip155:8453"), []);
+});
+
 test("global metric groups exact provider economic mappings and uses USD fields", () => {
   const entry = cases.validCases[1];
   const artifact = replayTokenRankings({ candidates: entry.observations }, { chainId: entry.chainId, metric: entry.metric });

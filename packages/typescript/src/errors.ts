@@ -29,6 +29,22 @@ const directEndpointVariants = (endpoint: URL): readonly string[] => {
     if (value) values.push(value)
   }
 
+  // Caller-owned direct paths can contain provider credentials. Keep each
+  // non-empty component so an upstream error that echoes either the URL or an
+  // individual path value is sanitized. The URL object preserves the
+  // caller's percent-escape spelling in pathname.
+  const addPathValue = (value: string): void => {
+    add(value)
+    try {
+      add(decodeURIComponent(value))
+    } catch {
+      // Invalid escapes are retained as raw input and have no decoded form.
+    }
+  }
+  for (const component of endpoint.pathname.split('/')) {
+    if (component) addPathValue(component)
+  }
+
   for (const value of endpoint.searchParams.values()) add(value)
 
   // URLSearchParams normalizes percent escapes. Preserve the raw query

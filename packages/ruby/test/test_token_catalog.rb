@@ -1,11 +1,15 @@
 # frozen_string_literal: true
 
 require_relative "test_helper"
+require "fileutils"
 
 class TokenCatalogTest < Minitest::Test
   ETHEREUM = ERPC::TokenChainIDs::ETHEREUM_MAINNET
   SOLANA = ERPC::TokenChainIDs::SOLANA_MAINNET
   AVALANCHE_C = ERPC::TokenChainIDs::AVALANCHE_C_MAINNET
+  BASE = ERPC::TokenChainIDs::BASE_MAINNET
+
+  CHAIN_IDS = [ETHEREUM, SOLANA, AVALANCHE_C, BASE].freeze
 
   DEPLOYMENT_KEYS = %i[
     deployment_id asset_id name representation_kind stable_currency
@@ -25,18 +29,21 @@ class TokenCatalogTest < Minitest::Test
     assert_equal ETHEREUM, ERPC::TokenCatalog::TOKEN_CHAIN_IDS.fetch(:ethereum)
     assert_equal SOLANA, ERPC::TokenCatalog::TOKEN_CHAIN_IDS.fetch(:solana)
     assert_equal AVALANCHE_C, ERPC::TokenCatalog::TOKEN_CHAIN_IDS.fetch(:avalanche_c)
+    assert_equal BASE, ERPC::TokenCatalog::TOKEN_CHAIN_IDS.fetch(:base)
 
     assert ERPC::TokenCatalog::TOKEN_CHAIN_IDS.frozen?
     assert ERPC::Tokens::Ethereum.frozen?
     assert ERPC::Tokens::Solana.frozen?
     assert ERPC::Tokens::AvalancheC.frozen?
+    assert ERPC::Tokens::Base.frozen?
     assert_equal ERPC::TokenCatalog::TOKEN_DEPLOYMENTS.map { |deployment| deployment.fetch(:deployment_id) }.sort,
                  ERPC::TokenCatalog::TOKEN_ALIASES.map { |alias_record| alias_record.fetch(:deployment_id) }.sort
 
     {
       ethereum: ERPC::Tokens::Ethereum,
       solana: ERPC::Tokens::Solana,
-      avalanche_c: ERPC::Tokens::AvalancheC
+      avalanche_c: ERPC::Tokens::AvalancheC,
+      base: ERPC::Tokens::Base
     }.each_value do |aliases|
       aliases.each_value do |deployment_id|
         assert_instance_of String, deployment_id
@@ -54,6 +61,9 @@ class TokenCatalogTest < Minitest::Test
   def test_cross_links_complete_flattened_asset_and_deployment_records
     refute_empty ERPC::TokenCatalog::TOKEN_ASSETS
     refute_empty ERPC::TokenCatalog::TOKEN_DEPLOYMENTS
+    assert_equal 49, ERPC::TokenCatalog::TOKEN_ASSETS.length
+    assert_equal 73, ERPC::TokenCatalog::TOKEN_DEPLOYMENTS.length
+    assert_equal 73, ERPC::TokenCatalog::TOKEN_ALIASES.length
     assert_equal ERPC::TokenCatalog::TOKEN_DEPLOYMENTS.length,
                  ERPC::TokenCatalog::TOKEN_ALIASES.length
 
@@ -78,7 +88,7 @@ class TokenCatalogTest < Minitest::Test
   end
 
   def test_chain_usdc_native_wrapped_bridged_and_symbol_edge_cases
-    [ETHEREUM, SOLANA, AVALANCHE_C].each do |chain_id|
+    CHAIN_IDS.each do |chain_id|
       usdc = ERPC::TokenCatalog.find_token_deployments_by_symbol(chain_id, "USDC")
       refute_empty usdc
       assert usdc.all? { |deployment| deployment.fetch(:chain_id) == chain_id && deployment.fetch(:symbol) == "USDC" }
@@ -111,6 +121,61 @@ class TokenCatalogTest < Minitest::Test
     refute_nil eurcv_eth
     refute_nil eurcv_solana
     assert_equal eurcv_eth.fetch(:asset_id), eurcv_solana.fetch(:asset_id)
+  end
+
+  def test_base_records_keep_ids_decimals_aliases_and_evm_lookup_normalization
+    base_eth = ERPC::TokenCatalog.get_token_deployment(ERPC::Tokens::Base.fetch(:ETH))
+    base_usdc = ERPC::TokenCatalog.get_token_deployment(ERPC::Tokens::Base.fetch(:USDC))
+    base_eurc = ERPC::TokenCatalog.get_token_deployment(ERPC::Tokens::Base.fetch(:EURC))
+
+    refute_nil base_eth
+    refute_nil base_usdc
+    refute_nil base_eurc
+
+    assert_equal %w[deployment-0061 deployment-0062 deployment-0063],
+                 ERPC::TokenCatalog.list_token_deployments(BASE).map { |deployment| deployment.fetch(:deployment_id) }
+
+    assert_equal "deployment-0061", base_eth.fetch(:deployment_id)
+    assert_equal "asset-0001", base_eth.fetch(:asset_id)
+    assert_equal "ETH", base_eth.fetch(:symbol)
+    assert_equal 18, base_eth.fetch(:decimals)
+    assert_equal "native", base_eth.fetch(:standard)
+    assert_nil base_eth.fetch(:address)
+    assert_same base_eth, ERPC::TokenCatalog.get_native_token_deployment(BASE)
+
+    assert_equal "deployment-0062", base_usdc.fetch(:deployment_id)
+    assert_equal "asset-0007", base_usdc.fetch(:asset_id)
+    assert_equal "USDC", base_usdc.fetch(:symbol)
+    assert_equal 6, base_usdc.fetch(:decimals)
+    assert_equal "erc20", base_usdc.fetch(:standard)
+    assert_equal "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913", base_usdc.fetch(:address)
+
+    assert_equal "deployment-0063", base_eurc.fetch(:deployment_id)
+    assert_equal "asset-0008", base_eurc.fetch(:asset_id)
+    assert_equal "EURC", base_eurc.fetch(:symbol)
+    assert_equal 6, base_eurc.fetch(:decimals)
+    assert_equal "erc20", base_eurc.fetch(:standard)
+    assert_equal "0x60a3e35cc302bfa44cb288bc5a4f316fdb1adb42", base_eurc.fetch(:address)
+
+    assert_equal %w[ETH EURC USDC], ERPC::Tokens::Base.keys.map(&:to_s).sort
+    ERPC::Tokens::Base.each do |name, deployment_id|
+      alias_record = ERPC::TokenCatalog::TOKEN_ALIASES.find do |candidate|
+        candidate.fetch(:namespace) == "base" && candidate.fetch(:name) == name.to_s
+      end
+      refute_nil alias_record
+      assert_equal deployment_id, alias_record.fetch(:deployment_id)
+    end
+
+    [base_usdc, base_eurc].each do |deployment|
+      address = deployment.fetch(:address)
+      mixed_case = "0x#{address.byteslice(2, 40).chars.each_with_index.map { |character, index| index.even? ? character.upcase : character.downcase }.join}"
+      assert_same deployment, ERPC::TokenCatalog.find_token_deployment_by_address(BASE, mixed_case)
+    end
+
+    assert_nil ERPC::TokenCatalog.find_token_deployment_by_address(BASE, nil)
+    assert_nil ERPC::TokenCatalog.find_token_deployment_by_address(BASE, "")
+    assert_nil ERPC::TokenCatalog.find_token_deployment_by_address(BASE, "0x#{"0" * 40}")
+    assert_nil ERPC::TokenCatalog.find_token_deployment_by_address(BASE, base_eth.fetch(:address))
   end
 
   def test_lists_filters_every_lifecycle_status_and_returns_frozen_arrays
@@ -190,6 +255,7 @@ class TokenCatalogTest < Minitest::Test
     assert_deeply_frozen(ERPC::Tokens::Ethereum)
     assert_deeply_frozen(ERPC::Tokens::Solana)
     assert_deeply_frozen(ERPC::Tokens::AvalancheC)
+    assert_deeply_frozen(ERPC::Tokens::Base)
 
     asset = ERPC::TokenCatalog::TOKEN_ASSETS.first
     deployment = ERPC::TokenCatalog::TOKEN_DEPLOYMENTS.first
@@ -206,7 +272,220 @@ class TokenCatalogTest < Minitest::Test
                  ERPC::TokenCatalog.get_token_deployment(ERPC::Tokens::Ethereum.fetch(:USDC))
   end
 
+  def test_captures_native_token_parity_when_requested
+    output_path = ENV["ERPC_SDK_TOKEN_CATALOG_PARITY_OUTPUT"]
+    return if output_path.nil? || output_path.empty?
+
+    snapshot = {
+      "snapshotVersion" => 1,
+      "snapshotKind" => "native-runtime",
+      "language" => "ruby",
+      "runtime" => "ruby-native-#{RUBY_VERSION}",
+      "metadata" => {
+        "version" => ERPC::TokenCatalog::TOKEN_CATALOG_VERSION,
+        "asOfDate" => ERPC::TokenCatalog::TOKEN_CATALOG_AS_OF_DATE,
+        "contentDigest" => ERPC::TokenCatalog::TOKEN_CATALOG_CONTENT_DIGEST,
+        "chainIds" => token_chain_ids_for_snapshot
+      },
+      "assets" => ERPC::TokenCatalog::TOKEN_ASSETS.map { |asset| runtime_asset(asset) },
+      "deployments" => ERPC::TokenCatalog::TOKEN_DEPLOYMENTS.map { |deployment| runtime_deployment(deployment) },
+      "aliases" => ERPC::TokenCatalog::TOKEN_ALIASES.map { |alias_record| runtime_alias(alias_record) },
+      "behavior" => token_catalog_capture_behavior
+    }
+
+    FileUtils.mkdir_p(File.dirname(output_path))
+    File.write(output_path, JSON.pretty_generate(snapshot) + "\n")
+    assert_operator File.size(output_path), :>, 0
+  end
+
   private
+
+  def token_chain_ids_for_snapshot
+    {
+      "ethereum" => ETHEREUM,
+      "solana" => SOLANA,
+      "avalancheC" => AVALANCHE_C,
+      "base" => BASE
+    }
+  end
+
+  def runtime_asset(asset)
+    {
+      "assetId" => asset.fetch(:asset_id),
+      "name" => asset.fetch(:name),
+      "representationKind" => asset.fetch(:representation_kind),
+      "stableCurrency" => asset.fetch(:stable_currency),
+      "underlyingAssetId" => asset.fetch(:underlying_asset_id),
+      "economicReferenceAssetId" => asset.fetch(:economic_reference_asset_id)
+    }
+  end
+
+  def runtime_deployment(deployment)
+    {
+      "deploymentId" => deployment.fetch(:deployment_id),
+      "assetId" => deployment.fetch(:asset_id),
+      "name" => deployment.fetch(:name),
+      "representationKind" => deployment.fetch(:representation_kind),
+      "stableCurrency" => deployment.fetch(:stable_currency),
+      "underlyingAssetId" => deployment.fetch(:underlying_asset_id),
+      "economicReferenceAssetId" => deployment.fetch(:economic_reference_asset_id),
+      "chainId" => deployment.fetch(:chain_id),
+      "symbol" => deployment.fetch(:symbol),
+      "decimals" => deployment.fetch(:decimals),
+      "standard" => deployment.fetch(:standard),
+      "address" => deployment.fetch(:address),
+      "status" => deployment.fetch(:status),
+      "replacedByDeploymentId" => deployment.fetch(:replaced_by_deployment_id)
+    }
+  end
+
+  def runtime_alias(alias_record)
+    {
+      "namespace" => alias_record.fetch(:namespace),
+      "name" => alias_record.fetch(:name),
+      "deploymentId" => alias_record.fetch(:deployment_id)
+    }
+  end
+
+  def deployment_ids(deployments)
+    deployments.map { |deployment| deployment.fetch(:deployment_id) }.sort
+  end
+
+  def evm_chain_for_snapshot?(chain_id)
+    [ETHEREUM, AVALANCHE_C, BASE].include?(chain_id)
+  end
+
+  def uppercase_evm_address(address)
+    "0x#{address.byteslice(2, 40).upcase}"
+  end
+
+  def token_catalog_capture_behavior
+    lookup_assets = ERPC::TokenCatalog::TOKEN_ASSETS.map do |asset|
+      input = asset.fetch(:asset_id)
+      {
+        "input" => input,
+        "result" => ERPC::TokenCatalog.get_token_asset(input)&.fetch(:asset_id)
+      }
+    end
+    lookup_assets << { "input" => "__unknown_asset__", "result" => nil }
+
+    lookup_deployments = ERPC::TokenCatalog::TOKEN_DEPLOYMENTS.map do |deployment|
+      input = deployment.fetch(:deployment_id)
+      {
+        "input" => input,
+        "result" => ERPC::TokenCatalog.get_token_deployment(input)&.fetch(:deployment_id)
+      }
+    end
+    lookup_deployments << { "input" => "__unknown_deployment__", "result" => nil }
+
+    native_deployments = CHAIN_IDS.map do |chain_id|
+      {
+        "chainId" => chain_id,
+        "result" => ERPC::TokenCatalog.get_native_token_deployment(chain_id)&.fetch(:deployment_id)
+      }
+    end
+    native_deployments << { "chainId" => "unknown:chain", "result" => nil }
+
+    symbol_keys = ERPC::TokenCatalog::TOKEN_DEPLOYMENTS.map do |deployment|
+      [deployment.fetch(:chain_id), deployment.fetch(:symbol)]
+    end.uniq.sort
+    symbols = symbol_keys.map do |chain_id, symbol|
+      {
+        "chainId" => chain_id,
+        "symbol" => symbol,
+        "result" => deployment_ids(ERPC::TokenCatalog.find_token_deployments_by_symbol(chain_id, symbol))
+      }
+    end
+    symbols.concat(
+      [
+        { "chainId" => ETHEREUM, "symbol" => "__unknown_symbol__", "result" => [] },
+        { "chainId" => "unknown:chain", "symbol" => "USDC", "result" => [] }
+      ]
+    )
+
+    addresses = []
+    ERPC::TokenCatalog::TOKEN_DEPLOYMENTS.each do |deployment|
+      address = deployment.fetch(:address)
+      next unless address.is_a?(String) && !address.empty?
+
+      chain_id = deployment.fetch(:chain_id)
+      addresses << {
+        "chainId" => chain_id,
+        "address" => address,
+        "result" => ERPC::TokenCatalog.find_token_deployment_by_address(chain_id, address)&.fetch(:deployment_id)
+      }
+      if evm_chain_for_snapshot?(chain_id)
+        mixed_case = uppercase_evm_address(address)
+        addresses << {
+          "chainId" => chain_id,
+          "address" => mixed_case,
+          "result" => ERPC::TokenCatalog.find_token_deployment_by_address(chain_id, mixed_case)&.fetch(:deployment_id)
+        }
+      end
+    end
+    addresses.concat(
+      [
+        {
+          "chainId" => ETHEREUM,
+          "address" => "0x#{"0" * 40}",
+          "result" => nil
+        },
+        { "chainId" => ETHEREUM, "address" => "not-an-address", "result" => nil },
+        { "chainId" => SOLANA, "address" => "not-a-solana-address", "result" => nil },
+        {
+          "chainId" => "unknown:chain",
+          "address" => "0x#{"0" * 39}1",
+          "result" => nil
+        }
+      ]
+    )
+
+    aliases = ERPC::TokenCatalog::TOKEN_ALIASES.map do |alias_record|
+      matching = ERPC::TokenCatalog::TOKEN_ALIASES.find do |candidate|
+        candidate.fetch(:namespace) == alias_record.fetch(:namespace) &&
+          candidate.fetch(:name) == alias_record.fetch(:name)
+      end
+      {
+        "namespace" => alias_record.fetch(:namespace),
+        "name" => alias_record.fetch(:name),
+        "result" => matching&.fetch(:deployment_id)
+      }
+    end
+    aliases.concat(
+      [
+        { "namespace" => "ethereum", "name" => "__UNKNOWN_ALIAS__", "result" => nil },
+        { "namespace" => "unknown", "name" => "USDC", "result" => nil }
+      ]
+    )
+
+    list_inputs = [[nil, nil]] + CHAIN_IDS.map { |chain_id| [chain_id, nil] }
+    list_inputs.concat(%w[USD EUR JPY].map { |currency| [nil, currency] })
+    list_inputs.concat(
+      [
+        [ETHEREUM, "USD"],
+        [SOLANA, "EUR"],
+        ["unknown:chain", nil],
+        [nil, "unknown"]
+      ]
+    )
+    lists = list_inputs.map do |chain_id, stable_currency|
+      {
+        "chainId" => chain_id,
+        "stableCurrency" => stable_currency,
+        "result" => deployment_ids(ERPC::TokenCatalog.list_token_deployments(chain_id, stable_currency))
+      }
+    end
+
+    {
+      "lookupAsset" => lookup_assets,
+      "lookupDeployment" => lookup_deployments,
+      "nativeDeployment" => native_deployments,
+      "symbol" => symbols,
+      "address" => addresses,
+      "alias" => aliases,
+      "list" => lists
+    }
+  end
 
   def assert_matching_nullable_field(asset, deployment, key)
     expected = asset.fetch(key)

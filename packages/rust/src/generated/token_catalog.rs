@@ -62,15 +62,16 @@ pub struct TokenAlias {
     pub deployment_id: &'static str,
 }
 
-pub const TOKEN_CATALOG_VERSION: &str = "1.0.0";
-pub const TOKEN_CATALOG_AS_OF_DATE: &str = "2026-09-15";
+pub const TOKEN_CATALOG_VERSION: &str = "1.1.0";
+pub const TOKEN_CATALOG_AS_OF_DATE: &str = "2026-09-26";
 pub const TOKEN_CATALOG_CONTENT_DIGEST: &str =
-    "28318f4f6a6bc2cdeef51368eeb17c86685c6f12d1723b0b4dd27f7e54d7235d";
+    "cca180df1846def0ec98f4e55b84cc46614c60d7a8c4a91c66dc9715c710ba73";
 
 pub mod token_chain_ids {
     pub const ETHEREUM_MAINNET: super::TokenChainId = "eip155:1";
     pub const SOLANA_MAINNET: super::TokenChainId = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp";
     pub const AVALANCHE_C_MAINNET: super::TokenChainId = "eip155:43114";
+    pub const BASE_MAINNET: super::TokenChainId = "eip155:8453";
 }
 
 pub mod tokens {
@@ -97,6 +98,11 @@ pub mod tokens {
         pub const USDC_E: &str = "deployment-0018";
         pub const USDT: &str = "deployment-0015";
         pub const WAVAX: &str = "deployment-0004";
+    }
+    pub mod base {
+        pub const ETH: &str = "deployment-0061";
+        pub const EURC: &str = "deployment-0063";
+        pub const USDC: &str = "deployment-0062";
     }
     pub mod ethereum {
         pub const AAVE: &str = "deployment-0056";
@@ -166,6 +172,7 @@ pub const TOKEN_CHAIN_IDS: &[(&str, TokenChainId)] = &[
     ("ethereum", "eip155:1"),
     ("solana", "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"),
     ("avalancheC", "eip155:43114"),
+    ("base", "eip155:8453"),
 ];
 
 pub static TOKEN_ASSETS: &[TokenAsset] = &[
@@ -1525,6 +1532,54 @@ pub static TOKEN_DEPLOYMENTS: &[TokenDeployment] = &[
         replaced_by_deployment_id: None,
     },
     TokenDeployment {
+        deployment_id: "deployment-0061",
+        asset_id: "asset-0001",
+        name: "Ether",
+        representation_kind: TokenRepresentationKind::Native,
+        stable_currency: None,
+        underlying_asset_id: None,
+        economic_reference_asset_id: None,
+        chain_id: "eip155:8453",
+        symbol: "ETH",
+        decimals: 18,
+        standard: TokenStandard::Native,
+        address: None,
+        status: TokenStatus::Active,
+        replaced_by_deployment_id: None,
+    },
+    TokenDeployment {
+        deployment_id: "deployment-0062",
+        asset_id: "asset-0007",
+        name: "USD Coin",
+        representation_kind: TokenRepresentationKind::Issued,
+        stable_currency: Some("USD"),
+        underlying_asset_id: None,
+        economic_reference_asset_id: None,
+        chain_id: "eip155:8453",
+        symbol: "USDC",
+        decimals: 6,
+        standard: TokenStandard::Erc20,
+        address: Some("0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"),
+        status: TokenStatus::Active,
+        replaced_by_deployment_id: None,
+    },
+    TokenDeployment {
+        deployment_id: "deployment-0063",
+        asset_id: "asset-0008",
+        name: "Euro Coin",
+        representation_kind: TokenRepresentationKind::Issued,
+        stable_currency: Some("EUR"),
+        underlying_asset_id: None,
+        economic_reference_asset_id: None,
+        chain_id: "eip155:8453",
+        symbol: "EURC",
+        decimals: 6,
+        standard: TokenStandard::Erc20,
+        address: Some("0x60a3e35cc302bfa44cb288bc5a4f316fdb1adb42"),
+        status: TokenStatus::Active,
+        replaced_by_deployment_id: None,
+    },
+    TokenDeployment {
         deployment_id: "discovered-token-054d80a64e1f36a756129763ca2f1e7a140b50b04c83876ff01dd5fd497a74c5",
         asset_id: "discovered-token-054d80a64e1f36a756129763ca2f1e7a140b50b04c83876ff01dd5fd497a74c5",
         name: "Unclassified token at 0x0f5d2fb29fb7d3cfee444a200298f468908cc942",
@@ -1771,6 +1826,21 @@ pub static TOKEN_ALIASES: &[TokenAlias] = &[
         namespace: "avalancheC",
         name: "WAVAX",
         deployment_id: tokens::avalanche_c::WAVAX,
+    },
+    TokenAlias {
+        namespace: "base",
+        name: "ETH",
+        deployment_id: tokens::base::ETH,
+    },
+    TokenAlias {
+        namespace: "base",
+        name: "EURC",
+        deployment_id: tokens::base::EURC,
+    },
+    TokenAlias {
+        namespace: "base",
+        name: "USDC",
+        deployment_id: tokens::base::USDC,
     },
     TokenAlias {
         namespace: "ethereum",

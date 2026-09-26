@@ -79,6 +79,7 @@ export const TOKEN_PROGRAM_IDS = Object.freeze({
 const EVM_CHAINS = new Set([TOKEN_CHAIN_IDS.ethereum, TOKEN_CHAIN_IDS.avalancheC]);
 const SOLANA_CHAIN = TOKEN_CHAIN_IDS.solana;
 const NETWORKS = Object.freeze(["ethereum", "avalancheC", "solana"]);
+const OBSERVER_CHAIN_IDS = new Set(NETWORKS.map((network) => TOKEN_CHAIN_IDS[network]));
 const RETRYABLE_HTTP_STATUS = new Set([429, 500, 502, 503, 504]);
 const ACTIONABLE_SOURCE_STATUS = new Set([404, 410]);
 const REDIRECT_STATUS = new Set([301, 302, 303, 307, 308]);
@@ -115,6 +116,7 @@ const FIXED_ERROR_CODES = new Set([
   "RPC_ENCODING_UNSUPPORTED",
   "RPC_INVALID_BODY",
   "RPC_UNAVAILABLE",
+  "NETWORK_UNCONFIGURED",
   "NETWORK_IDENTITY_MISMATCH",
   "NETWORK_IDENTITY_INVALID",
   "EVM_BLOCK_NUMBER_INVALID",
@@ -285,7 +287,10 @@ function isReviewedRpcProofForDeployment(catalog, deployment, url) {
 function sourceUrlsFromCatalog(catalog) {
   const urls = new Set();
   for (const asset of catalog.assets) for (const url of asset.evidence) if (!isReviewedRpcProofForAsset(catalog, asset, url)) urls.add(url);
-  for (const deployment of catalog.deployments) for (const url of deployment.evidence) if (!isReviewedRpcProofForDeployment(catalog, deployment, url)) urls.add(url);
+  for (const deployment of catalog.deployments) {
+    if (!OBSERVER_CHAIN_IDS.has(deployment.chainId)) continue;
+    for (const url of deployment.evidence) if (!isReviewedRpcProofForDeployment(catalog, deployment, url)) urls.add(url);
+  }
   return urls;
 }
 
@@ -1507,7 +1512,7 @@ function candidateFor({ sourceRecords, findings, currentFindings = findings, bas
 function artifactStatus(networks, sourceRecords, deploymentRecords = []) {
   const anyPartial = networks.some((network) => network.status === "partial" || network.status === "failed" && !["NETWORK_IDENTITY_MISMATCH", "NETWORK_IDENTITY_INVALID"].includes(network.errorCode))
     || sourceRecords.some((source) => source.status !== "success")
-    || deploymentRecords.some((deployment) => deployment.status === "skipped" || deployment.status === "failed" && (String(deployment.errorCode).startsWith("RPC_") || ["TIMEOUT", "SOLANA_CONTEXT_SLOT_INVALID", "SOLANA_CONTEXT_SLOT_BELOW_ANCHOR"].includes(deployment.errorCode)));
+    || deploymentRecords.some((deployment) => deployment.status === "skipped" && deployment.errorCode !== "NETWORK_UNCONFIGURED" || deployment.status === "failed" && (String(deployment.errorCode).startsWith("RPC_") || ["TIMEOUT", "SOLANA_CONTEXT_SLOT_INVALID", "SOLANA_CONTEXT_SLOT_BELOW_ANCHOR"].includes(deployment.errorCode)));
   return anyPartial ? "partial" : "complete";
 }
 
@@ -1662,6 +1667,14 @@ function validateDeploymentReceipts(receipts, catalog, networkByName) {
     const asset = catalog.assets.find((entry) => entry.assetId === deployment.assetId);
     const unclassified = asset?.representationKind === "unclassified";
     validateFailedDeploymentPredicate(receipt, deployment, unclassified);
+    const unconfigured = !OBSERVER_CHAIN_IDS.has(deployment.chainId);
+    if (receipt.errorCode === "NETWORK_UNCONFIGURED" && !unconfigured) fail(`configured deployment ${receipt.deploymentId} may not use NETWORK_UNCONFIGURED`, "ARTIFACT_INVALID");
+    if (unconfigured) {
+      const observationFields = ["networkIdentity", "blockNumber", "codeNonEmpty", "observedDecimals", "observedSymbol", "decimals", "symbol", "symbolSource", "anchorSlot", "contextSlot", "owner", "parsedType"];
+      if (observationFields.some((field) => Object.hasOwn(receipt, field))) fail(`unconfigured deployment ${receipt.deploymentId} contains RPC observation fields`, "ARTIFACT_INVALID");
+      if (receipt.status !== "skipped" || receipt.verification !== "skipped" || receipt.errorCode !== "NETWORK_UNCONFIGURED") fail(`unconfigured deployment ${receipt.deploymentId} must be explicitly skipped`, "ARTIFACT_INVALID");
+      continue;
+    }
     if (deployment.standard === "native") {
       if (receipt.status === "success" && receipt.verification !== "protocol-declared") fail(`native receipt ${receipt.deploymentId} must be protocol declared`, "ARTIFACT_INVALID");
       if (Object.hasOwn(receipt, "observedDecimals") || Object.hasOwn(receipt, "observedSymbol") || Object.hasOwn(receipt, "decimals") || Object.hasOwn(receipt, "symbol") || Object.hasOwn(receipt, "blockNumber") || Object.hasOwn(receipt, "anchorSlot") || Object.hasOwn(receipt, "contextSlot")) fail(`native receipt ${receipt.deploymentId} contains RPC token metadata`, "ARTIFACT_INVALID");
@@ -1962,7 +1975,10 @@ export async function observeTokenCatalog(options = {}) {
     networkResults.push(result);
   }
   const sourceRecords = await observeSources(config, options, deadline, baseline);
-  const deploymentRecords = networkResults.flatMap((result) => result.deployments).sort(deploymentSort);
+  const unconfiguredDeployments = catalog.deployments
+    .filter((deployment) => !OBSERVER_CHAIN_IDS.has(deployment.chainId))
+    .map((deployment) => skippedDeployment(deployment, "NETWORK_UNCONFIGURED"));
+  const deploymentRecords = [...networkResults.flatMap((result) => result.deployments), ...unconfiguredDeployments].sort(deploymentSort);
   const status = artifactStatus(networkResults.map((result) => result.network), sourceRecords, deploymentRecords);
   const receipts = buildReceipts({ sourceShaValue, catalog, config, configDigestValue, networks: networkResults.map((result) => result.network), deployments: deploymentRecords, sourceRecords, status, workspace });
   const artifacts = recomputeObservationArtifacts(receipts, { sourceSha: sourceShaValue, catalog, config: configInput, priorFindings: prior, baseline });

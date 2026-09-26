@@ -107,6 +107,8 @@ const ALIAS_RE = /^DISCOVERED_(?:POOL_)?[0-9A-F]{16}$/u;
 const EVM_CHAINS = new Set([TOKEN_CHAIN_IDS.ethereum, TOKEN_CHAIN_IDS.avalancheC]);
 const SOLANA_CHAIN = TOKEN_CHAIN_IDS.solana;
 const NETWORKS = Object.freeze(["ethereum", "avalancheC", "solana"]);
+const DISCOVERY_CHAIN_IDS = Object.freeze(Object.fromEntries(NETWORKS.map((network) => [network, TOKEN_CHAIN_IDS[network]])));
+const DISCOVERY_CHAIN_ID_SET = new Set(Object.values(DISCOVERY_CHAIN_IDS));
 const RETRYABLE_HTTP = new Set([429, 500, 502, 503, 504]);
 const FINALIZED_AGE_LIMIT_SECONDS = Object.freeze({ ethereum: 1800, avalancheC: 120 });
 const FINALIZED_FUTURE_SKEW_SECONDS = 90;
@@ -365,7 +367,7 @@ export function validateDiscoveryConfig(config = defaultConfig) {
   if (config.admission.tokenPolicy !== "qualified-pool-dependencies" || config.admission.selectionPolicy !== "chain-round-robin-liquidity-desc") fail("admission selection policy is invalid");
   exactKeys(config.admission.poolQualification, ["kind", "sources"], "admission.poolQualification");
   if (config.admission.poolQualification.kind !== "direct-reviewed-native-v1" || !isRecord(config.admission.poolQualification.sources)) fail("admission pool qualification is invalid");
-  for (const chainId of Object.values(TOKEN_CHAIN_IDS)) {
+  for (const chainId of Object.values(DISCOVERY_CHAIN_IDS)) {
     exactKeys(config.admission.poolQualification.sources[chainId], ["nativeWrapDeploymentId", "minNativeLiquidity"], `admission.poolQualification.sources.${chainId}`);
     string(config.admission.poolQualification.sources[chainId].nativeWrapDeploymentId, "nativeWrapDeploymentId");
     if (!/^[1-9][0-9]*$/u.test(config.admission.poolQualification.sources[chainId].minNativeLiquidity)) fail(`admission pool floor ${chainId} is invalid`);
@@ -1546,6 +1548,7 @@ function collisionCheck(proposals, tokenCatalogValue, dexCatalogValue) {
   const poolAliases = new Set(dexCatalogValue.aliases.filter((entry) => entry.poolDefinitionId).map((entry) => `${entry.namespace}\u0000${entry.name}`));
   const proposedTokenIds = new Set(proposals.filter((entry) => entry.kind === "token").map((entry) => entry.deploymentId));
   for (const proposal of proposals) {
+    if (!DISCOVERY_CHAIN_ID_SET.has(proposal.chainId)) throw new DiscoveryRunError("ADMISSION_INVALID", `discovery chain ${String(proposal.chainId)} is not configured`);
     if (proposal.kind === "token") {
       if (tokenIds.has(proposal.deploymentId) || assetIds.has(proposal.assetId)) throw new DiscoveryRunError("ADMISSION_COLLISION", `token identity ${proposal.id} collides with canonical data`);
       const namespace = EVM_CHAINS.has(proposal.chainId) ? (proposal.chainId === TOKEN_CHAIN_IDS.ethereum ? "ethereum" : "avalancheC") : "solana";
@@ -1925,7 +1928,7 @@ function selectQualifiedAdmissions(ordered, config, tokenCatalogValue) {
   const qualified = ordered.filter((entry) => entry.kind === "pool")
     .map((entry) => ({ entry, liquidity: proposalNativeLiquidity(entry, config, tokenCatalogValue) }))
     .filter((candidate) => candidate.liquidity !== null);
-  const chainOrder = Object.values(TOKEN_CHAIN_IDS);
+  const chainOrder = Object.values(DISCOVERY_CHAIN_IDS);
   const queues = new Map(chainOrder.map((chainId) => [chainId, qualified.filter((candidate) => candidate.entry.chainId === chainId).sort((left, right) => right.liquidity < left.liquidity ? -1 : right.liquidity > left.liquidity ? 1 : left.entry.id.localeCompare(right.entry.id))]));
   const selectedPools = [];
   const selectedUnknownTokenIds = new Set();
@@ -2440,7 +2443,7 @@ export function exitCodeForDiscovery(artifacts) {
 export const DEFAULT_DISCOVERY_CONFIG = defaultConfig;
 export const DEFAULT_TOKEN_CATALOG = tokenCatalog;
 export const DEFAULT_DEX_CATALOG = dexCatalog;
-export const DISCOVERY_CHAINS = TOKEN_CHAIN_IDS;
+export const DISCOVERY_CHAINS = DISCOVERY_CHAIN_IDS;
 export const DISCOVERY_DEX_CHAINS = DEX_CHAIN_IDS;
 export { TOKEN_CHAIN_IDS };
 export { TOKEN_PROGRAM_IDS };

@@ -128,13 +128,16 @@ fn is_known_chain_id(chain_id: &str) -> bool {
         token_chain_ids::ETHEREUM_MAINNET
             | token_chain_ids::SOLANA_MAINNET
             | token_chain_ids::AVALANCHE_C_MAINNET
+            | token_chain_ids::BASE_MAINNET
     )
 }
 
 fn is_evm_chain_id(chain_id: &str) -> bool {
     matches!(
         chain_id,
-        token_chain_ids::ETHEREUM_MAINNET | token_chain_ids::AVALANCHE_C_MAINNET
+        token_chain_ids::ETHEREUM_MAINNET
+            | token_chain_ids::AVALANCHE_C_MAINNET
+            | token_chain_ids::BASE_MAINNET
     )
 }
 

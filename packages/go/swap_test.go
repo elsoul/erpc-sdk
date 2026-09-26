@@ -557,7 +557,7 @@ func TestDexParityCapture(t *testing.T) {
 			"version":       TOKEN_CATALOG_VERSION,
 			"asOfDate":      TOKEN_CATALOG_AS_OF_DATE,
 			"contentDigest": TOKEN_CATALOG_CONTENT_DIGEST,
-			"chainIds":      TokenChainIDs(),
+			"chainIds":      DexChainIDs(),
 		},
 		"dexMetadata": map[string]any{
 			"version":       DexCatalogVersion,

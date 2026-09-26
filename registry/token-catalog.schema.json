@@ -199,7 +199,8 @@
           "enum": [
             "eip155:1",
             "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
-            "eip155:43114"
+            "eip155:43114",
+            "eip155:8453"
           ]
         },
         "symbol": {
@@ -287,7 +288,8 @@
               "chainId": {
                 "enum": [
                   "eip155:1",
-                  "eip155:43114"
+                  "eip155:43114",
+                  "eip155:8453"
                 ]
               },
               "address": {
@@ -333,7 +335,8 @@
           "enum": [
             "ethereum",
             "solana",
-            "avalancheC"
+            "avalancheC",
+            "base"
           ]
         },
         "name": {

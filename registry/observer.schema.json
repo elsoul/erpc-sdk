@@ -108,7 +108,12 @@
         "configDigest": { "$ref": "#/$defs/sha256" },
         "workspace": { "$ref": "#/$defs/workspace" },
         "networks": { "type": "array", "items": { "$ref": "#/$defs/networkReceipt" } },
-        "deployments": { "type": "array", "minItems": 60, "maxItems": 60, "items": { "$ref": "#/$defs/deploymentReceipt" } },
+        "deployments": {
+          "type": "array",
+          "minItems": 1,
+          "description": "One receipt is required for each deployment in the bound token catalog; exact coverage is enforced by the runtime validator.",
+          "items": { "$ref": "#/$defs/deploymentReceipt" }
+        },
         "sources": { "type": "array", "minItems": 41, "maxItems": 41, "items": { "$ref": "#/$defs/sourceReceipt" } }
       }
     },

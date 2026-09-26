@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "catalogVersion": "1.0.0",
-  "manualAsOf": "2026-09-15",
-  "contentDigest": "28318f4f6a6bc2cdeef51368eeb17c86685c6f12d1723b0b4dd27f7e54d7235d",
+  "catalogVersion": "1.1.0",
+  "manualAsOf": "2026-09-26",
+  "contentDigest": "cca180df1846def0ec98f4e55b84cc46614c60d7a8c4a91c66dc9715c710ba73",
   "assets": [
     {
       "assetId": "asset-0001",
@@ -1670,6 +1670,54 @@
         "https://ethereum-rpc.publicnode.com"
       ],
       "asOfDate": "2026-09-16"
+    },
+    {
+      "deploymentId": "deployment-0061",
+      "assetId": "asset-0001",
+      "chainId": "eip155:8453",
+      "symbol": "ETH",
+      "decimals": 18,
+      "standard": "native",
+      "address": null,
+      "status": "active",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://docs.base.org/get-started/connect-to-base",
+        "https://docs.base.org/base-chain/api-reference/ethereum-json-rpc-api/eth_chainId"
+      ],
+      "asOfDate": "2026-09-26"
+    },
+    {
+      "deploymentId": "deployment-0062",
+      "assetId": "asset-0007",
+      "chainId": "eip155:8453",
+      "symbol": "USDC",
+      "decimals": 6,
+      "standard": "erc20",
+      "address": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+      "status": "active",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://developers.circle.com/stablecoins/usdc-contract-addresses",
+        "https://developers.circle.com/circle-mint/supported-chains-and-currencies"
+      ],
+      "asOfDate": "2026-09-26"
+    },
+    {
+      "deploymentId": "deployment-0063",
+      "assetId": "asset-0008",
+      "chainId": "eip155:8453",
+      "symbol": "EURC",
+      "decimals": 6,
+      "standard": "erc20",
+      "address": "0x60a3e35cc302bfa44cb288bc5a4f316fdb1adb42",
+      "status": "active",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://developers.circle.com/stablecoins/eurc-contract-addresses",
+        "https://developers.circle.com/circle-mint/supported-chains-and-currencies"
+      ],
+      "asOfDate": "2026-09-26"
     }
   ],
   "aliases": [
@@ -1757,6 +1805,21 @@
       "namespace": "avalancheC",
       "name": "WAVAX",
       "deploymentId": "deployment-0004"
+    },
+    {
+      "namespace": "base",
+      "name": "ETH",
+      "deploymentId": "deployment-0061"
+    },
+    {
+      "namespace": "base",
+      "name": "EURC",
+      "deploymentId": "deployment-0063"
+    },
+    {
+      "namespace": "base",
+      "name": "USDC",
+      "deploymentId": "deployment-0062"
     },
     {
       "namespace": "ethereum",

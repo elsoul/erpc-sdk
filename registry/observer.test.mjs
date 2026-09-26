@@ -197,6 +197,21 @@ test("successful observation covers all current deployments, uses pinned EVM blo
   assert.equal(artifacts.receipts.deployments.length, CATALOG.deployments.length);
   assert.equal(artifacts.receipts.deployments.find((entry) => entry.deploymentId === "deployment-0002").status, "success");
   assert.equal(artifacts.receipts.deployments.find((entry) => entry.deploymentId === "deployment-0006").status, "success");
+  const baseDeployments = CATALOG.deployments.filter((entry) => entry.chainId === TOKEN_CHAIN_IDS.base);
+  assert.equal(baseDeployments.length, 3);
+  for (const deployment of baseDeployments) {
+    const receipt = artifacts.receipts.deployments.find((entry) => entry.deploymentId === deployment.deploymentId);
+    assert.deepEqual(receipt, {
+      deploymentId: deployment.deploymentId,
+      chainId: TOKEN_CHAIN_IDS.base,
+      standard: deployment.standard,
+      address: deployment.address,
+      status: "skipped",
+      verification: "skipped",
+      errorCode: "NETWORK_UNCONFIGURED",
+    });
+  }
+  assert.equal(rpcTransport.calls.some((call) => call.endpointId === "base-public"), false);
   assert.equal(artifacts.receipts.sources.length, 41);
   assert.equal(artifacts.reviewCandidate.baseline.eligibleBootstrap, true);
   assert.equal(exitCodeForArtifacts(artifacts), 2);
@@ -209,6 +224,28 @@ test("successful observation covers all current deployments, uses pinned EVM blo
   assert.equal(new Set(evmBlocks.filter((value) => value === "0x18c7852")).size, 1);
   assert.equal(new Set(evmBlocks.filter((value) => value === "0x5aee016")).size, 1);
   assert.equal(rpcTransport.calls.filter((call) => call.method === "eth_blockNumber").length, 2);
+});
+
+test("unconfigured-chain receipt boundaries reject forged configured and RPC-observed Base rows", async () => {
+  const artifacts = await observeTokenCatalog(baseOptions());
+  const configured = structuredClone(artifacts);
+  const eth = configured.receipts.deployments.find((entry) => entry.deploymentId === "deployment-0001");
+  eth.status = "skipped";
+  eth.verification = "skipped";
+  eth.errorCode = "NETWORK_UNCONFIGURED";
+  assert.throws(() => validateObservationArtifacts(configured, { sourceSha: "a".repeat(40), catalog: CATALOG, config }), /configured deployment .*NETWORK_UNCONFIGURED/u);
+
+  const observedBase = structuredClone(artifacts);
+  const base = observedBase.receipts.deployments.find((entry) => entry.deploymentId === "deployment-0062");
+  base.verification = "rpc";
+  base.status = "success";
+  base.errorCode = null;
+  base.blockNumber = "0x1";
+  base.codeNonEmpty = true;
+  base.decimals = 6;
+  base.symbol = "USDC";
+  base.symbolSource = "catalog";
+  assert.throws(() => validateObservationArtifacts(observedBase, { sourceSha: "a".repeat(40), catalog: CATALOG, config }), /unconfigured deployment .*observation fields|explicitly skipped/u);
 });
 
 test("current unclassified RPC evidence is excluded from web sources and proven by same-chain RPC receipts", async () => {

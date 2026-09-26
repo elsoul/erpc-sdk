@@ -39,13 +39,14 @@ class TokenAlias(NamedTuple):
     name: str
     deployment_id: str
 
-TOKEN_CATALOG_VERSION = "1.0.0"
-TOKEN_CATALOG_AS_OF_DATE = "2026-09-15"
-TOKEN_CATALOG_CONTENT_DIGEST = "28318f4f6a6bc2cdeef51368eeb17c86685c6f12d1723b0b4dd27f7e54d7235d"
+TOKEN_CATALOG_VERSION = "1.1.0"
+TOKEN_CATALOG_AS_OF_DATE = "2026-09-26"
+TOKEN_CATALOG_CONTENT_DIGEST = "cca180df1846def0ec98f4e55b84cc46614c60d7a8c4a91c66dc9715c710ba73"
 TOKEN_CHAIN_IDS = MappingProxyType({
     "ethereum": "eip155:1",
     "solana": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
     "avalancheC": "eip155:43114",
+    "base": "eip155:8453",
 })
 
 class _AvalancheCTokens(NamedTuple):
@@ -66,6 +67,11 @@ class _AvalancheCTokens(NamedTuple):
     USDC_E: str
     USDT: str
     WAVAX: str
+
+class _BaseTokens(NamedTuple):
+    ETH: str
+    EURC: str
+    USDC: str
 
 class _EthereumTokens(NamedTuple):
     AAVE: str
@@ -126,6 +132,7 @@ class _SolanaTokens(NamedTuple):
 
 class _Tokens(NamedTuple):
     avalanche_c: _AvalancheCTokens
+    base: _BaseTokens
     ethereum: _EthereumTokens
     solana: _SolanaTokens
 
@@ -148,6 +155,11 @@ tokens = _Tokens(
         USDC_E="deployment-0018",
         USDT="deployment-0015",
         WAVAX="deployment-0004",
+    ),
+    base=_BaseTokens(
+        ETH="deployment-0061",
+        EURC="deployment-0063",
+        USDC="deployment-0062",
     ),
     ethereum=_EthereumTokens(
         AAVE="deployment-0056",
@@ -1566,6 +1578,54 @@ TOKEN_DEPLOYMENTS: tuple[TokenDeployment, ...] = (
         replaced_by_deployment_id=None,
     ),
     TokenDeployment(
+        deployment_id="deployment-0061",
+        asset_id="asset-0001",
+        name="Ether",
+        representation_kind="native",
+        stable_currency=None,
+        underlying_asset_id=None,
+        economic_reference_asset_id=None,
+        chain_id="eip155:8453",
+        symbol="ETH",
+        decimals=18,
+        standard="native",
+        address=None,
+        status="active",
+        replaced_by_deployment_id=None,
+    ),
+    TokenDeployment(
+        deployment_id="deployment-0062",
+        asset_id="asset-0007",
+        name="USD Coin",
+        representation_kind="issued",
+        stable_currency="USD",
+        underlying_asset_id=None,
+        economic_reference_asset_id=None,
+        chain_id="eip155:8453",
+        symbol="USDC",
+        decimals=6,
+        standard="erc20",
+        address="0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+        status="active",
+        replaced_by_deployment_id=None,
+    ),
+    TokenDeployment(
+        deployment_id="deployment-0063",
+        asset_id="asset-0008",
+        name="Euro Coin",
+        representation_kind="issued",
+        stable_currency="EUR",
+        underlying_asset_id=None,
+        economic_reference_asset_id=None,
+        chain_id="eip155:8453",
+        symbol="EURC",
+        decimals=6,
+        standard="erc20",
+        address="0x60a3e35cc302bfa44cb288bc5a4f316fdb1adb42",
+        status="active",
+        replaced_by_deployment_id=None,
+    ),
+    TokenDeployment(
         deployment_id="discovered-token-054d80a64e1f36a756129763ca2f1e7a140b50b04c83876ff01dd5fd497a74c5",
         asset_id="discovered-token-054d80a64e1f36a756129763ca2f1e7a140b50b04c83876ff01dd5fd497a74c5",
         name="Unclassified token at 0x0f5d2fb29fb7d3cfee444a200298f468908cc942",
@@ -1765,6 +1825,9 @@ TOKEN_ALIASES: tuple[TokenAlias, ...] = (
     TokenAlias("avalancheC", "USDC_E", tokens.avalanche_c.USDC_E),
     TokenAlias("avalancheC", "USDT", tokens.avalanche_c.USDT),
     TokenAlias("avalancheC", "WAVAX", tokens.avalanche_c.WAVAX),
+    TokenAlias("base", "ETH", tokens.base.ETH),
+    TokenAlias("base", "EURC", tokens.base.EURC),
+    TokenAlias("base", "USDC", tokens.base.USDC),
     TokenAlias("ethereum", "AAVE", tokens.ethereum.AAVE),
     TokenAlias("ethereum", "AUSD", tokens.ethereum.AUSD),
     TokenAlias("ethereum", "DAI", tokens.ethereum.DAI),

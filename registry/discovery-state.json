@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "artifactKind": "discovery-state",
   "configDigest": "7512dc53476195c20434208897ba96ce30b820ee6d9d31129454723ee6249b1f",
-  "tokenCatalogDigest": "28318f4f6a6bc2cdeef51368eeb17c86685c6f12d1723b0b4dd27f7e54d7235d",
+  "tokenCatalogDigest": "cca180df1846def0ec98f4e55b84cc46614c60d7a8c4a91c66dc9715c710ba73",
   "dexCatalogDigest": "caccde1f997648dfa045af41d4f8b7f93a051c59d098cc770bd3a2757185aac1",
   "factories": {
     "dex-deployment-0001": {

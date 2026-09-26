@@ -45,17 +45,19 @@ const deepFreeze = <T>(value: T): Readonly<T> => {
   return value as Readonly<T>;
 };
 
-export const TOKEN_CATALOG_VERSION = "1.0.0" as const;
-export const TOKEN_CATALOG_AS_OF_DATE = "2026-09-15" as const;
-export const TOKEN_CATALOG_CONTENT_DIGEST = "28318f4f6a6bc2cdeef51368eeb17c86685c6f12d1723b0b4dd27f7e54d7235d" as const;
+export const TOKEN_CATALOG_VERSION = "1.1.0" as const;
+export const TOKEN_CATALOG_AS_OF_DATE = "2026-09-26" as const;
+export const TOKEN_CATALOG_CONTENT_DIGEST = "cca180df1846def0ec98f4e55b84cc46614c60d7a8c4a91c66dc9715c710ba73" as const;
 export const TOKEN_CHAIN_IDS = deepFreeze({
   "ethereumMainnet": "eip155:1",
   "solanaMainnet": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
-  "avalancheCMainnet": "eip155:43114"
+  "avalancheCMainnet": "eip155:43114",
+  "baseMainnet": "eip155:8453"
 }) as {
   readonly ethereumMainnet: "eip155:1";
   readonly solanaMainnet: "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp";
   readonly avalancheCMainnet: "eip155:43114";
+  readonly baseMainnet: "eip155:8453";
 };
 export type TokenChainId = (typeof TOKEN_CHAIN_IDS)[keyof typeof TOKEN_CHAIN_IDS];
 
@@ -78,6 +80,11 @@ export const tokens = deepFreeze({
     "USDC_E": "deployment-0018",
     "USDT": "deployment-0015",
     "WAVAX": "deployment-0004"
+  },
+  "base": {
+    "ETH": "deployment-0061",
+    "EURC": "deployment-0063",
+    "USDC": "deployment-0062"
   },
   "ethereum": {
     "AAVE": "deployment-0056",
@@ -1493,6 +1500,54 @@ export const TOKEN_DEPLOYMENTS: readonly TokenDeployment[] = deepFreeze([
     "replacedByDeploymentId": null
   },
   {
+    "deploymentId": "deployment-0061",
+    "assetId": "asset-0001",
+    "name": "Ether",
+    "representationKind": "native",
+    "stableCurrency": null,
+    "underlyingAssetId": null,
+    "economicReferenceAssetId": null,
+    "chainId": "eip155:8453",
+    "symbol": "ETH",
+    "decimals": 18,
+    "standard": "native",
+    "address": null,
+    "status": "active",
+    "replacedByDeploymentId": null
+  },
+  {
+    "deploymentId": "deployment-0062",
+    "assetId": "asset-0007",
+    "name": "USD Coin",
+    "representationKind": "issued",
+    "stableCurrency": "USD",
+    "underlyingAssetId": null,
+    "economicReferenceAssetId": null,
+    "chainId": "eip155:8453",
+    "symbol": "USDC",
+    "decimals": 6,
+    "standard": "erc20",
+    "address": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+    "status": "active",
+    "replacedByDeploymentId": null
+  },
+  {
+    "deploymentId": "deployment-0063",
+    "assetId": "asset-0008",
+    "name": "Euro Coin",
+    "representationKind": "issued",
+    "stableCurrency": "EUR",
+    "underlyingAssetId": null,
+    "economicReferenceAssetId": null,
+    "chainId": "eip155:8453",
+    "symbol": "EURC",
+    "decimals": 6,
+    "standard": "erc20",
+    "address": "0x60a3e35cc302bfa44cb288bc5a4f316fdb1adb42",
+    "status": "active",
+    "replacedByDeploymentId": null
+  },
+  {
     "deploymentId": "discovered-token-054d80a64e1f36a756129763ca2f1e7a140b50b04c83876ff01dd5fd497a74c5",
     "assetId": "discovered-token-054d80a64e1f36a756129763ca2f1e7a140b50b04c83876ff01dd5fd497a74c5",
     "name": "Unclassified token at 0x0f5d2fb29fb7d3cfee444a200298f468908cc942",
@@ -1671,6 +1726,9 @@ export const TOKEN_ALIASES: readonly TokenAlias[] = deepFreeze([
   { namespace: "avalancheC", name: "USDC_E", deploymentId: tokens.avalancheC.USDC_E },
   { namespace: "avalancheC", name: "USDT", deploymentId: tokens.avalancheC.USDT },
   { namespace: "avalancheC", name: "WAVAX", deploymentId: tokens.avalancheC.WAVAX },
+  { namespace: "base", name: "ETH", deploymentId: tokens.base.ETH },
+  { namespace: "base", name: "EURC", deploymentId: tokens.base.EURC },
+  { namespace: "base", name: "USDC", deploymentId: tokens.base.USDC },
   { namespace: "ethereum", name: "AAVE", deploymentId: tokens.ethereum.AAVE },
   { namespace: "ethereum", name: "AUSD", deploymentId: tokens.ethereum.AUSD },
   { namespace: "ethereum", name: "DAI", deploymentId: tokens.ethereum.DAI },
