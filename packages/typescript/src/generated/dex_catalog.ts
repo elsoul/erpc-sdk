@@ -10,7 +10,7 @@ export interface DexAlias { readonly namespace: string; readonly name: string; r
 function deepFreeze<T>(value: T): T { if (value && typeof value === 'object') { Object.freeze(value); for (const child of Object.values(value as Record<string, unknown>)) deepFreeze(child); } return value; }
 export const DEX_CATALOG_VERSION = "1.0.0" as const;
 export const DEX_CATALOG_AS_OF_DATE = "2026-09-15" as const;
-export const DEX_CATALOG_CONTENT_DIGEST = "caccde1f997648dfa045af41d4f8b7f93a051c59d098cc770bd3a2757185aac1" as const;
+export const DEX_CATALOG_CONTENT_DIGEST = "fb6aa6d3195e6f9de97400e19fa12a4f8df9e8df63596400a1f1131816208dba" as const;
 export const DEX_CHAIN_IDS = deepFreeze({
   "ethereum": "eip155:1",
   "solana": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
@@ -30,13 +30,20 @@ export const dexes = deepFreeze({
 } as const);
 export const pools = deepFreeze({
   "ethereum": {
+    "DISCOVERED_POOL_11EDD8516008078D": "discovered-pool-11edd8516008078d92331a5ee0466fcb8400b69b56d418e566722e7d2c8c08cd",
     "DISCOVERED_POOL_1B98A5F24A364E05": "discovered-pool-1b98a5f24a364e05b3d56a9702c3560fc3a71f84b2195c486cfc5f8a956cc0b7",
+    "DISCOVERED_POOL_627BAB60DADA7CCA": "discovered-pool-627bab60dada7ccaf8877b4e685b841380283adfcd7a79c2a7c9580e73279411",
     "DISCOVERED_POOL_6428A1E5DA293B2E": "discovered-pool-6428a1e5da293b2ef62027ec823ba27532219a40784def3930feee56a623b809",
+    "DISCOVERED_POOL_85F07BE87C0B9BE9": "discovered-pool-85f07be87c0b9be964c35ba69e421c1a611a9208bcd31ff56b645dd30cd7f68a",
     "DISCOVERED_POOL_866F890448D13C07": "discovered-pool-866f890448d13c078e217a894ebd47430da5941fe5bff7e382fc095916b4614d",
+    "DISCOVERED_POOL_8EE383C33CE263C3": "discovered-pool-8ee383c33ce263c33d72015ed1d41841d11eb7de663aeb314c14447248b6522b",
     "DISCOVERED_POOL_90805F8995C1D0B8": "discovered-pool-90805f8995c1d0b85a45fcd4587928a00066b1f14407baee4e8ed1b634c07804",
     "DISCOVERED_POOL_A7F9E600A86951F4": "discovered-pool-a7f9e600a86951f40472ff779fae467db8a6bbbc6076356058f427e97d4ae429",
+    "DISCOVERED_POOL_AE8A33A46B624BC8": "discovered-pool-ae8a33a46b624bc85796b9038b9cedaa172b92052b6f5a6eee80de879c58fa75",
     "DISCOVERED_POOL_B8F972F8BAE36C82": "discovered-pool-b8f972f8bae36c82b51ed2aeed070d3ef3e7642e2a708c7d3c0c134e6e1946ed",
+    "DISCOVERED_POOL_D87FCCC735FCB198": "discovered-pool-d87fccc735fcb198dbfd3120db47630db1c614f13b3cedbe9f7a0d7efc61c4df",
     "DISCOVERED_POOL_E702B0CB56528418": "discovered-pool-e702b0cb56528418b4ce089dfc001c6241c94e92aabde72f1a340c4601541780",
+    "DISCOVERED_POOL_FEA726B2C744D8DA": "discovered-pool-fea726b2c744d8da56acd8c0801829e2054b7292fd96aa74eea9e732d5b96c40",
     "UNISWAP_V2_USDC_WETH": "pool-0001"
   },
   "solana": {
@@ -98,6 +105,21 @@ export const DEX_DEPLOYMENTS: ReadonlyArray<Readonly<DexDeployment>> = deepFreez
   }
 ]);
 export const POOL_DEFINITIONS: ReadonlyArray<Readonly<PoolDefinition>> = deepFreeze([
+  {
+    "poolDefinitionId": "discovered-pool-11edd8516008078d92331a5ee0466fcb8400b69b56d418e566722e7d2c8c08cd",
+    "dexDeploymentId": "dex-deployment-0001",
+    "chainId": "eip155:1",
+    "address": "0x43ae24960e5534731fc831386c07755a2dc33d47",
+    "token0DeploymentId": "discovered-token-2fa5450c9fa7285d6fc8352d9b7fed6eb042020a7a5e4f72e4181ec21f3e923d",
+    "token1DeploymentId": "deployment-0002",
+    "adapter": {
+      "kind": "evm-constant-product-v2",
+      "feeNumerator": "3",
+      "feeDenominator": "1000"
+    },
+    "status": "active",
+    "replacedByPoolDefinitionId": null
+  },
   {
     "poolDefinitionId": "discovered-pool-1568e761c62f7dc58207a77f2dc32153805efe03a8d9cce9366ce68efdf276c4",
     "dexDeploymentId": "dex-deployment-0002",
@@ -174,11 +196,41 @@ export const POOL_DEFINITIONS: ReadonlyArray<Readonly<PoolDefinition>> = deepFre
     "replacedByPoolDefinitionId": null
   },
   {
+    "poolDefinitionId": "discovered-pool-627bab60dada7ccaf8877b4e685b841380283adfcd7a79c2a7c9580e73279411",
+    "dexDeploymentId": "dex-deployment-0001",
+    "chainId": "eip155:1",
+    "address": "0xaef16913b6c50ebcf627a394921f306985fc8604",
+    "token0DeploymentId": "discovered-token-de17c35bf41345a60acbabfcc00e8108b2c058299fcb70416e9e15749f22220e",
+    "token1DeploymentId": "deployment-0002",
+    "adapter": {
+      "kind": "evm-constant-product-v2",
+      "feeNumerator": "3",
+      "feeDenominator": "1000"
+    },
+    "status": "active",
+    "replacedByPoolDefinitionId": null
+  },
+  {
     "poolDefinitionId": "discovered-pool-6428a1e5da293b2ef62027ec823ba27532219a40784def3930feee56a623b809",
     "dexDeploymentId": "dex-deployment-0001",
     "chainId": "eip155:1",
     "address": "0xa2107fa5b38d9bbd2c461d6edf11b11a50f6b974",
     "token0DeploymentId": "deployment-0057",
+    "token1DeploymentId": "deployment-0002",
+    "adapter": {
+      "kind": "evm-constant-product-v2",
+      "feeNumerator": "3",
+      "feeDenominator": "1000"
+    },
+    "status": "active",
+    "replacedByPoolDefinitionId": null
+  },
+  {
+    "poolDefinitionId": "discovered-pool-85f07be87c0b9be964c35ba69e421c1a611a9208bcd31ff56b645dd30cd7f68a",
+    "dexDeploymentId": "dex-deployment-0001",
+    "chainId": "eip155:1",
+    "address": "0xb27de0ba2abfbfdf15667a939f041b52118af5ba",
+    "token0DeploymentId": "discovered-token-4712886cee128f138bba49725f5df0c310125ac43949b14c0edafcd90ff0d545",
     "token1DeploymentId": "deployment-0002",
     "adapter": {
       "kind": "evm-constant-product-v2",
@@ -195,6 +247,21 @@ export const POOL_DEFINITIONS: ReadonlyArray<Readonly<PoolDefinition>> = deepFre
     "address": "0xb6909b960dbbe7392d405429eb2b3649752b4838",
     "token0DeploymentId": "discovered-token-69519fd08e31445cad84b0c17a5346b7ee9c5692e270602af9308ca6d8943bb6",
     "token1DeploymentId": "deployment-0002",
+    "adapter": {
+      "kind": "evm-constant-product-v2",
+      "feeNumerator": "3",
+      "feeDenominator": "1000"
+    },
+    "status": "active",
+    "replacedByPoolDefinitionId": null
+  },
+  {
+    "poolDefinitionId": "discovered-pool-8ee383c33ce263c33d72015ed1d41841d11eb7de663aeb314c14447248b6522b",
+    "dexDeploymentId": "dex-deployment-0001",
+    "chainId": "eip155:1",
+    "address": "0x0d4a11d5eeaac28ec3f61d100daf4d40471f1852",
+    "token0DeploymentId": "deployment-0002",
+    "token1DeploymentId": "deployment-0014",
     "adapter": {
       "kind": "evm-constant-product-v2",
       "feeNumerator": "3",
@@ -264,11 +331,41 @@ export const POOL_DEFINITIONS: ReadonlyArray<Readonly<PoolDefinition>> = deepFre
     "replacedByPoolDefinitionId": null
   },
   {
+    "poolDefinitionId": "discovered-pool-ae8a33a46b624bc85796b9038b9cedaa172b92052b6f5a6eee80de879c58fa75",
+    "dexDeploymentId": "dex-deployment-0001",
+    "chainId": "eip155:1",
+    "address": "0xc5be99a02c6857f9eac67bbce58df5572498f40c",
+    "token0DeploymentId": "deployment-0002",
+    "token1DeploymentId": "discovered-token-a8375562798bc4ae7b3f6f673452be39367f106be864d5ad44d3b5a17ccd04c6",
+    "adapter": {
+      "kind": "evm-constant-product-v2",
+      "feeNumerator": "3",
+      "feeDenominator": "1000"
+    },
+    "status": "active",
+    "replacedByPoolDefinitionId": null
+  },
+  {
     "poolDefinitionId": "discovered-pool-b8f972f8bae36c82b51ed2aeed070d3ef3e7642e2a708c7d3c0c134e6e1946ed",
     "dexDeploymentId": "dex-deployment-0001",
     "chainId": "eip155:1",
     "address": "0x11b1f53204d03e5529f09eb3091939e4fd8c9cf3",
     "token0DeploymentId": "discovered-token-054d80a64e1f36a756129763ca2f1e7a140b50b04c83876ff01dd5fd497a74c5",
+    "token1DeploymentId": "deployment-0002",
+    "adapter": {
+      "kind": "evm-constant-product-v2",
+      "feeNumerator": "3",
+      "feeDenominator": "1000"
+    },
+    "status": "active",
+    "replacedByPoolDefinitionId": null
+  },
+  {
+    "poolDefinitionId": "discovered-pool-d87fccc735fcb198dbfd3120db47630db1c614f13b3cedbe9f7a0d7efc61c4df",
+    "dexDeploymentId": "dex-deployment-0001",
+    "chainId": "eip155:1",
+    "address": "0xa32523371390b0cc4e11f6bb236ecf4c2cdea101",
+    "token0DeploymentId": "discovered-token-23a03dcf2efbe86795f325e3f649738ef7315dfd1f6039c347c515c9c9c612bd",
     "token1DeploymentId": "deployment-0002",
     "adapter": {
       "kind": "evm-constant-product-v2",
@@ -315,6 +412,21 @@ export const POOL_DEFINITIONS: ReadonlyArray<Readonly<PoolDefinition>> = deepFre
     "address": "0xb6a00cead355d1ec492fd72e1d79199c347a74b5",
     "token0DeploymentId": "discovered-token-1847342426b765add3c8b4feb724c6b15121f25097cb7917c967c285ca77e804",
     "token1DeploymentId": "deployment-0004",
+    "adapter": {
+      "kind": "evm-constant-product-v2",
+      "feeNumerator": "3",
+      "feeDenominator": "1000"
+    },
+    "status": "active",
+    "replacedByPoolDefinitionId": null
+  },
+  {
+    "poolDefinitionId": "discovered-pool-fea726b2c744d8da56acd8c0801829e2054b7292fd96aa74eea9e732d5b96c40",
+    "dexDeploymentId": "dex-deployment-0001",
+    "chainId": "eip155:1",
+    "address": "0x819f3450da6f110ba6ea52195b3beafa246062de",
+    "token0DeploymentId": "discovered-token-e2d57f6e6123c78a3215badf6e040643117e7e0ca727788ff1ff4fc1e1c3a556",
+    "token1DeploymentId": "deployment-0002",
     "adapter": {
       "kind": "evm-constant-product-v2",
       "feeNumerator": "3",
@@ -418,13 +530,20 @@ export const DEX_ALIASES: ReadonlyArray<Readonly<DexAlias>> = deepFreeze([
   { namespace: "avalancheC", name: "DISCOVERED_POOL_FB02E85806CD9079", dexDeploymentId: null, poolDefinitionId: pools.avalancheC.DISCOVERED_POOL_FB02E85806CD9079 },
   { namespace: "avalancheC", name: "LFJ_LEGACY", dexDeploymentId: dexes.avalancheC.LFJ_LEGACY, poolDefinitionId: null },
   { namespace: "avalancheC", name: "LFJ_LEGACY_WAVAX_USDC", dexDeploymentId: null, poolDefinitionId: pools.avalancheC.LFJ_LEGACY_WAVAX_USDC },
+  { namespace: "ethereum", name: "DISCOVERED_POOL_11EDD8516008078D", dexDeploymentId: null, poolDefinitionId: pools.ethereum.DISCOVERED_POOL_11EDD8516008078D },
   { namespace: "ethereum", name: "DISCOVERED_POOL_1B98A5F24A364E05", dexDeploymentId: null, poolDefinitionId: pools.ethereum.DISCOVERED_POOL_1B98A5F24A364E05 },
+  { namespace: "ethereum", name: "DISCOVERED_POOL_627BAB60DADA7CCA", dexDeploymentId: null, poolDefinitionId: pools.ethereum.DISCOVERED_POOL_627BAB60DADA7CCA },
   { namespace: "ethereum", name: "DISCOVERED_POOL_6428A1E5DA293B2E", dexDeploymentId: null, poolDefinitionId: pools.ethereum.DISCOVERED_POOL_6428A1E5DA293B2E },
+  { namespace: "ethereum", name: "DISCOVERED_POOL_85F07BE87C0B9BE9", dexDeploymentId: null, poolDefinitionId: pools.ethereum.DISCOVERED_POOL_85F07BE87C0B9BE9 },
   { namespace: "ethereum", name: "DISCOVERED_POOL_866F890448D13C07", dexDeploymentId: null, poolDefinitionId: pools.ethereum.DISCOVERED_POOL_866F890448D13C07 },
+  { namespace: "ethereum", name: "DISCOVERED_POOL_8EE383C33CE263C3", dexDeploymentId: null, poolDefinitionId: pools.ethereum.DISCOVERED_POOL_8EE383C33CE263C3 },
   { namespace: "ethereum", name: "DISCOVERED_POOL_90805F8995C1D0B8", dexDeploymentId: null, poolDefinitionId: pools.ethereum.DISCOVERED_POOL_90805F8995C1D0B8 },
   { namespace: "ethereum", name: "DISCOVERED_POOL_A7F9E600A86951F4", dexDeploymentId: null, poolDefinitionId: pools.ethereum.DISCOVERED_POOL_A7F9E600A86951F4 },
+  { namespace: "ethereum", name: "DISCOVERED_POOL_AE8A33A46B624BC8", dexDeploymentId: null, poolDefinitionId: pools.ethereum.DISCOVERED_POOL_AE8A33A46B624BC8 },
   { namespace: "ethereum", name: "DISCOVERED_POOL_B8F972F8BAE36C82", dexDeploymentId: null, poolDefinitionId: pools.ethereum.DISCOVERED_POOL_B8F972F8BAE36C82 },
+  { namespace: "ethereum", name: "DISCOVERED_POOL_D87FCCC735FCB198", dexDeploymentId: null, poolDefinitionId: pools.ethereum.DISCOVERED_POOL_D87FCCC735FCB198 },
   { namespace: "ethereum", name: "DISCOVERED_POOL_E702B0CB56528418", dexDeploymentId: null, poolDefinitionId: pools.ethereum.DISCOVERED_POOL_E702B0CB56528418 },
+  { namespace: "ethereum", name: "DISCOVERED_POOL_FEA726B2C744D8DA", dexDeploymentId: null, poolDefinitionId: pools.ethereum.DISCOVERED_POOL_FEA726B2C744D8DA },
   { namespace: "ethereum", name: "UNISWAP_V2", dexDeploymentId: dexes.ethereum.UNISWAP_V2, poolDefinitionId: null },
   { namespace: "ethereum", name: "UNISWAP_V2_USDC_WETH", dexDeploymentId: null, poolDefinitionId: pools.ethereum.UNISWAP_V2_USDC_WETH },
   { namespace: "solana", name: "ORCA_WHIRLPOOLS", dexDeploymentId: dexes.solana.ORCA_WHIRLPOOLS, poolDefinitionId: null },
