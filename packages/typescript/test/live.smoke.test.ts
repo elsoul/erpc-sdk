@@ -18,6 +18,15 @@ const BASE_PINNED_BLOCK = '0x3167564'
 const ERC20_BALANCE_OF = '0x70a08231'
 const BALANCE_OF_CALLDATA = `${ERC20_BALANCE_OF}${BASE_WALLET.slice(2).padStart(64, '0')}`
 const BASE_EURC_DEPLOYMENT = getTokenDeployment(tokens.base.EURC)
+const EXPECTED_PINNED_EURC_ATOMIC = 5_500_000n
+const expectedLatestEurcAtomic = process.env.ERPC_BASE_EXPECTED_EURC_ATOMIC
+
+const formatUnits = (value: bigint, decimals: number): string => {
+  const scale = 10n ** BigInt(decimals)
+  const whole = value / scale
+  const fraction = (value % scale).toString().padStart(decimals, '0').replace(/0+$/u, '')
+  return fraction.length === 0 ? whole.toString() : `${whole}.${fraction}`
+}
 
 live('live ERPC smoke tests', () => {
   afterAll(() => client?.close())
@@ -80,23 +89,21 @@ baseLive('live Base read-only smoke tests', () => {
       address: BASE_EURC,
     })
     const rawBalance = BigInt(eurcBalance ?? '0x0')
-    expect(rawBalance).toBe(5_500_000n)
-    expect(
-      Number(rawBalance) / 10 ** (BASE_EURC_DEPLOYMENT?.decimals ?? 0),
-    ).toBe(5.5)
+    expect(rawBalance).toBe(EXPECTED_PINNED_EURC_ATOMIC)
+    expect(formatUnits(rawBalance, BASE_EURC_DEPLOYMENT?.decimals ?? 0)).toBe('5.5')
   })
 
-  it('checks a mutable latest balance only when an expected value is supplied', async () => {
-    const expected = process.env.ERPC_BASE_EXPECTED_EURC
-    if (expected === undefined) return
-
-    const latest = await baseClient?.base.rpc
-      .eth_call(
-        { to: BASE_EURC, data: BALANCE_OF_CALLDATA },
-        'latest',
-      )
-      .send()
-    const decimals = BASE_EURC_DEPLOYMENT?.decimals ?? 0
-    expect(Number(BigInt(latest ?? '0x0')) / 10 ** decimals).toBe(Number(expected))
-  })
+  it.skipIf(expectedLatestEurcAtomic === undefined)(
+    'checks the mutable latest balance against an explicit atomic expectation',
+    async () => {
+      const latest = await baseClient?.base.rpc
+        .eth_call(
+          { to: BASE_EURC, data: BALANCE_OF_CALLDATA },
+          'latest',
+        )
+        .send()
+      const rawLatest = BigInt(latest ?? '0x0')
+      expect(rawLatest).toBe(BigInt(expectedLatestEurcAtomic!))
+    },
+  )
 })

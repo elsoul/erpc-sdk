@@ -675,7 +675,7 @@ describe('ERPC client', () => {
     expect(capturedHeaders?.get('content-type')).toBe('application/json')
     expect(capturedHeaders?.get('x-global')).toBeNull()
     expect(capturedCredentials).toBe('omit')
-    expect(client.solana.rpc.endpoint).toBe('https://customer.example/customer/path')
+    expect(client.solana.rpc.endpoint).toBe('https://customer.example/')
     client.close()
   })
 

@@ -70,6 +70,10 @@ const chainId = await erpc.ethereum.rpc.eth_chainId().send()
 The configured HTTP URL is treated as the final target. Redirect responses are
 returned as HTTP errors, and no redirected request is made.
 
+For direct HTTP transports, the public `endpoint` property is diagnostic
+metadata containing only the origin/root. The private request target still
+preserves the configured path, query order, and percent encoding exactly.
+
 Direct HTTP requests use `credentials: 'omit'`, so ambient browser cookies and
 authentication are not sent implicitly. Add authentication explicitly through
 the endpoint's scoped headers when needed.
@@ -105,17 +109,48 @@ headers are never sent on WSS connections.
 The `0.9.0` candidate API-key client uses `https://base.erpc.global/` at the
 root JSON-RPC path.
 The first check for a Base connection should be `eth_chainId()` and must return
-`0x2105` (Base mainnet):
+`0x2105` (Base mainnet). The following uses the catalog's Base EURC record and
+formats the raw response with integer arithmetic:
 
 ```ts
-const baseChainId = await erpc.base.rpc.eth_chainId().send()
-const ethBalance = await erpc.base.rpc
-  .eth_getBalance('0x0000000000000000000000000000000000000000', 'latest')
-  .send()
-const result = await erpc.base.rpc.eth_call(
-  { to: '0x0000000000000000000000000000000000000000', data: '0x' },
-  'latest',
-).send()
+import {
+  createErpcClient,
+  getTokenDeployment,
+  tokens,
+} from '@elsoul/erpc-sdk'
+
+const erpc = createErpcClient({ apiKey: process.env.ERPC_API_KEY! })
+const wallet = '0x7A5837f5bB52C53e08fcFf214c2Cd11daa8EF9EE'
+const eurc = getTokenDeployment(tokens.base.EURC)
+if (eurc?.address === null || eurc === undefined) {
+  throw new Error('Base EURC is missing from the catalog')
+}
+
+const chainId = await erpc.base.rpc.eth_chainId().send()
+if (chainId !== '0x2105') throw new Error(`Unexpected Base chain: ${chainId}`)
+
+const nativeWei = BigInt(
+  await erpc.base.rpc.eth_getBalance(wallet, '0x3167564').send(),
+)
+const calldata = `0x70a08231${wallet.slice(2).padStart(64, '0')}`
+const eurcAtomic = BigInt(
+  await erpc.base.rpc.eth_call(
+    { to: eurc.address, data: calldata },
+    '0x3167564',
+  ).send(),
+)
+
+const formatUnits = (value: bigint, decimals: number): string => {
+  const scale = 10n ** BigInt(decimals)
+  const whole = value / scale
+  const fraction = (value % scale).toString().padStart(decimals, '0').replace(/0+$/u, '')
+  return fraction.length === 0 ? whole.toString() : `${whole}.${fraction}`
+}
+
+const eurcDisplay = formatUnits(eurcAtomic, eurc.decimals)
+// Pinned review read: eurcAtomic === 5_500_000n and eurcDisplay === '5.5'.
+console.log({ chainId, nativeWei, eurcAtomic, eurcDecimals: eurc.decimals, eurcDisplay })
+erpc.close()
 ```
 
 For a keyless caller-owned endpoint, use `baseRpc`. Its URL path and query are
@@ -134,9 +169,10 @@ const chainId = await erpc.base.rpc.eth_chainId().send()
 
 The Base client exposes only `rpc`; the inner read-only facade has exactly
 `endpoint`, `eth_chainId`, `eth_getBalance`, and `eth_call`. It does not provide
-raw, batch, subscription, signing, or broadcast methods. `baseEndpoint` is the
-authenticated API-key endpoint override; `baseRpc` takes precedence over it and
-over global headers.
+raw, batch, subscription, signing, or broadcast methods. `baseEndpoint` forwards
+the main API key and global headers, so use it only for a caller-trusted,
+eRPC-compatible host. `baseRpc` takes precedence over it and over global
+headers; it sends only credentials explicitly scoped inside the direct override.
 
 ## Wallets, signing, and broadcast
 

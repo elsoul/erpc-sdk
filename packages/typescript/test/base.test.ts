@@ -206,4 +206,49 @@ describe('Base read-only facade', () => {
     expect(JSON.stringify(error)).not.toContain('base-header-secret')
     client.close()
   })
+
+  it('redacts encoded, decoded, and mixed-escape path credentials while preserving the request URL', async () => {
+    const encodedPath = 'gate%2Ffake-path-key'
+    const decodedPath = 'gate/fake-path-key'
+    const mixedEscapePath = 'gate%2ffake-path-key'
+    const directUrl = `https://node.example/customer/${encodedPath}?region=eu`
+    let capturedUrl = ''
+    const client = createErpcClient({
+      baseRpc: { httpUrl: directUrl },
+      fetch: async (input, init) => {
+        capturedUrl = String(input)
+        const body = JSON.parse(String(init?.body)) as { readonly id: number }
+        return new Response(JSON.stringify({
+          jsonrpc: '2.0',
+          id: body.id,
+          error: {
+            code: -32000,
+            message: [encodedPath, decodedPath, mixedEscapePath].join(' | '),
+            data: {
+              url: directUrl,
+              [encodedPath]: decodedPath,
+              nested: { [decodedPath]: mixedEscapePath },
+            },
+          },
+        }))
+      },
+    })
+
+    const error = await client.base.rpc.eth_chainId().send().catch((value) => value)
+    expect(error).toBeInstanceOf(ErpcJsonRpcError)
+    expect(capturedUrl).toBe(directUrl)
+    expect(client.base.rpc.endpoint).toBe('https://node.example/')
+    expect(client.base.rpc.endpoint).not.toContain(encodedPath)
+    expect(String(error)).not.toContain(encodedPath)
+    expect(String(error)).not.toContain(decodedPath)
+    expect(String(error)).not.toContain(mixedEscapePath)
+    expect((error as ErpcJsonRpcError).message).not.toContain(encodedPath)
+    expect((error as ErpcJsonRpcError).message).not.toContain(decodedPath)
+    expect((error as ErpcJsonRpcError).message).not.toContain(mixedEscapePath)
+    const data = JSON.stringify((error as ErpcJsonRpcError).data)
+    expect(data).not.toContain(encodedPath)
+    expect(data).not.toContain(decodedPath)
+    expect(data).not.toContain(mixedEscapePath)
+    client.close()
+  })
 })
