@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "catalogVersion": "1.0.0",
   "manualAsOf": "2026-09-15",
-  "contentDigest": "caccde1f997648dfa045af41d4f8b7f93a051c59d098cc770bd3a2757185aac1",
+  "contentDigest": "fb6aa6d3195e6f9de97400e19fa12a4f8df9e8df63596400a1f1131816208dba",
   "dexDeployments": [
     {
       "dexDeploymentId": "dex-deployment-0001",
@@ -66,6 +66,25 @@
     }
   ],
   "poolDefinitions": [
+    {
+      "poolDefinitionId": "discovered-pool-11edd8516008078d92331a5ee0466fcb8400b69b56d418e566722e7d2c8c08cd",
+      "dexDeploymentId": "dex-deployment-0001",
+      "chainId": "eip155:1",
+      "address": "0x43ae24960e5534731fc831386c07755a2dc33d47",
+      "token0DeploymentId": "discovered-token-2fa5450c9fa7285d6fc8352d9b7fed6eb042020a7a5e4f72e4181ec21f3e923d",
+      "token1DeploymentId": "deployment-0002",
+      "adapter": {
+        "kind": "evm-constant-product-v2",
+        "feeNumerator": "3",
+        "feeDenominator": "1000"
+      },
+      "status": "active",
+      "replacedByPoolDefinitionId": null,
+      "evidence": [
+        "https://ethereum-rpc.publicnode.com"
+      ],
+      "asOfDate": "2026-09-26"
+    },
     {
       "poolDefinitionId": "discovered-pool-1568e761c62f7dc58207a77f2dc32153805efe03a8d9cce9366ce68efdf276c4",
       "dexDeploymentId": "dex-deployment-0002",
@@ -162,6 +181,25 @@
       "asOfDate": "2026-09-16"
     },
     {
+      "poolDefinitionId": "discovered-pool-627bab60dada7ccaf8877b4e685b841380283adfcd7a79c2a7c9580e73279411",
+      "dexDeploymentId": "dex-deployment-0001",
+      "chainId": "eip155:1",
+      "address": "0xaef16913b6c50ebcf627a394921f306985fc8604",
+      "token0DeploymentId": "discovered-token-de17c35bf41345a60acbabfcc00e8108b2c058299fcb70416e9e15749f22220e",
+      "token1DeploymentId": "deployment-0002",
+      "adapter": {
+        "kind": "evm-constant-product-v2",
+        "feeNumerator": "3",
+        "feeDenominator": "1000"
+      },
+      "status": "active",
+      "replacedByPoolDefinitionId": null,
+      "evidence": [
+        "https://ethereum-rpc.publicnode.com"
+      ],
+      "asOfDate": "2026-09-26"
+    },
+    {
       "poolDefinitionId": "discovered-pool-6428a1e5da293b2ef62027ec823ba27532219a40784def3930feee56a623b809",
       "dexDeploymentId": "dex-deployment-0001",
       "chainId": "eip155:1",
@@ -181,6 +219,25 @@
       "asOfDate": "2026-09-16"
     },
     {
+      "poolDefinitionId": "discovered-pool-85f07be87c0b9be964c35ba69e421c1a611a9208bcd31ff56b645dd30cd7f68a",
+      "dexDeploymentId": "dex-deployment-0001",
+      "chainId": "eip155:1",
+      "address": "0xb27de0ba2abfbfdf15667a939f041b52118af5ba",
+      "token0DeploymentId": "discovered-token-4712886cee128f138bba49725f5df0c310125ac43949b14c0edafcd90ff0d545",
+      "token1DeploymentId": "deployment-0002",
+      "adapter": {
+        "kind": "evm-constant-product-v2",
+        "feeNumerator": "3",
+        "feeDenominator": "1000"
+      },
+      "status": "active",
+      "replacedByPoolDefinitionId": null,
+      "evidence": [
+        "https://ethereum-rpc.publicnode.com"
+      ],
+      "asOfDate": "2026-09-26"
+    },
+    {
       "poolDefinitionId": "discovered-pool-866f890448d13c078e217a894ebd47430da5941fe5bff7e382fc095916b4614d",
       "dexDeploymentId": "dex-deployment-0001",
       "chainId": "eip155:1",
@@ -198,6 +255,25 @@
         "https://ethereum-rpc.publicnode.com"
       ],
       "asOfDate": "2026-09-16"
+    },
+    {
+      "poolDefinitionId": "discovered-pool-8ee383c33ce263c33d72015ed1d41841d11eb7de663aeb314c14447248b6522b",
+      "dexDeploymentId": "dex-deployment-0001",
+      "chainId": "eip155:1",
+      "address": "0x0d4a11d5eeaac28ec3f61d100daf4d40471f1852",
+      "token0DeploymentId": "deployment-0002",
+      "token1DeploymentId": "deployment-0014",
+      "adapter": {
+        "kind": "evm-constant-product-v2",
+        "feeNumerator": "3",
+        "feeDenominator": "1000"
+      },
+      "status": "active",
+      "replacedByPoolDefinitionId": null,
+      "evidence": [
+        "https://ethereum-rpc.publicnode.com"
+      ],
+      "asOfDate": "2026-09-26"
     },
     {
       "poolDefinitionId": "discovered-pool-90805f8995c1d0b85a45fcd4587928a00066b1f14407baee4e8ed1b634c07804",
@@ -276,6 +352,25 @@
       "asOfDate": "2026-09-16"
     },
     {
+      "poolDefinitionId": "discovered-pool-ae8a33a46b624bc85796b9038b9cedaa172b92052b6f5a6eee80de879c58fa75",
+      "dexDeploymentId": "dex-deployment-0001",
+      "chainId": "eip155:1",
+      "address": "0xc5be99a02c6857f9eac67bbce58df5572498f40c",
+      "token0DeploymentId": "deployment-0002",
+      "token1DeploymentId": "discovered-token-a8375562798bc4ae7b3f6f673452be39367f106be864d5ad44d3b5a17ccd04c6",
+      "adapter": {
+        "kind": "evm-constant-product-v2",
+        "feeNumerator": "3",
+        "feeDenominator": "1000"
+      },
+      "status": "active",
+      "replacedByPoolDefinitionId": null,
+      "evidence": [
+        "https://ethereum-rpc.publicnode.com"
+      ],
+      "asOfDate": "2026-09-26"
+    },
+    {
       "poolDefinitionId": "discovered-pool-b8f972f8bae36c82b51ed2aeed070d3ef3e7642e2a708c7d3c0c134e6e1946ed",
       "dexDeploymentId": "dex-deployment-0001",
       "chainId": "eip155:1",
@@ -293,6 +388,25 @@
         "https://ethereum-rpc.publicnode.com"
       ],
       "asOfDate": "2026-09-16"
+    },
+    {
+      "poolDefinitionId": "discovered-pool-d87fccc735fcb198dbfd3120db47630db1c614f13b3cedbe9f7a0d7efc61c4df",
+      "dexDeploymentId": "dex-deployment-0001",
+      "chainId": "eip155:1",
+      "address": "0xa32523371390b0cc4e11f6bb236ecf4c2cdea101",
+      "token0DeploymentId": "discovered-token-23a03dcf2efbe86795f325e3f649738ef7315dfd1f6039c347c515c9c9c612bd",
+      "token1DeploymentId": "deployment-0002",
+      "adapter": {
+        "kind": "evm-constant-product-v2",
+        "feeNumerator": "3",
+        "feeDenominator": "1000"
+      },
+      "status": "active",
+      "replacedByPoolDefinitionId": null,
+      "evidence": [
+        "https://ethereum-rpc.publicnode.com"
+      ],
+      "asOfDate": "2026-09-26"
     },
     {
       "poolDefinitionId": "discovered-pool-e702b0cb56528418b4ce089dfc001c6241c94e92aabde72f1a340c4601541780",
@@ -350,6 +464,25 @@
         "https://api.avax.network/ext/bc/C/rpc"
       ],
       "asOfDate": "2026-09-16"
+    },
+    {
+      "poolDefinitionId": "discovered-pool-fea726b2c744d8da56acd8c0801829e2054b7292fd96aa74eea9e732d5b96c40",
+      "dexDeploymentId": "dex-deployment-0001",
+      "chainId": "eip155:1",
+      "address": "0x819f3450da6f110ba6ea52195b3beafa246062de",
+      "token0DeploymentId": "discovered-token-e2d57f6e6123c78a3215badf6e040643117e7e0ca727788ff1ff4fc1e1c3a556",
+      "token1DeploymentId": "deployment-0002",
+      "adapter": {
+        "kind": "evm-constant-product-v2",
+        "feeNumerator": "3",
+        "feeDenominator": "1000"
+      },
+      "status": "active",
+      "replacedByPoolDefinitionId": null,
+      "evidence": [
+        "https://ethereum-rpc.publicnode.com"
+      ],
+      "asOfDate": "2026-09-26"
     },
     {
       "poolDefinitionId": "pool-0001",
@@ -571,6 +704,16 @@
     },
     {
       "namespace": "ethereum",
+      "name": "DISCOVERED_POOL_11EDD8516008078D",
+      "dexDeploymentId": null,
+      "poolDefinitionId": "discovered-pool-11edd8516008078d92331a5ee0466fcb8400b69b56d418e566722e7d2c8c08cd",
+      "evidence": [
+        "https://ethereum-rpc.publicnode.com"
+      ],
+      "asOfDate": "2026-09-26"
+    },
+    {
+      "namespace": "ethereum",
       "name": "DISCOVERED_POOL_1B98A5F24A364E05",
       "dexDeploymentId": null,
       "poolDefinitionId": "discovered-pool-1b98a5f24a364e05b3d56a9702c3560fc3a71f84b2195c486cfc5f8a956cc0b7",
@@ -578,6 +721,16 @@
         "https://ethereum-rpc.publicnode.com"
       ],
       "asOfDate": "2026-09-16"
+    },
+    {
+      "namespace": "ethereum",
+      "name": "DISCOVERED_POOL_627BAB60DADA7CCA",
+      "dexDeploymentId": null,
+      "poolDefinitionId": "discovered-pool-627bab60dada7ccaf8877b4e685b841380283adfcd7a79c2a7c9580e73279411",
+      "evidence": [
+        "https://ethereum-rpc.publicnode.com"
+      ],
+      "asOfDate": "2026-09-26"
     },
     {
       "namespace": "ethereum",
@@ -591,6 +744,16 @@
     },
     {
       "namespace": "ethereum",
+      "name": "DISCOVERED_POOL_85F07BE87C0B9BE9",
+      "dexDeploymentId": null,
+      "poolDefinitionId": "discovered-pool-85f07be87c0b9be964c35ba69e421c1a611a9208bcd31ff56b645dd30cd7f68a",
+      "evidence": [
+        "https://ethereum-rpc.publicnode.com"
+      ],
+      "asOfDate": "2026-09-26"
+    },
+    {
+      "namespace": "ethereum",
       "name": "DISCOVERED_POOL_866F890448D13C07",
       "dexDeploymentId": null,
       "poolDefinitionId": "discovered-pool-866f890448d13c078e217a894ebd47430da5941fe5bff7e382fc095916b4614d",
@@ -598,6 +761,16 @@
         "https://ethereum-rpc.publicnode.com"
       ],
       "asOfDate": "2026-09-16"
+    },
+    {
+      "namespace": "ethereum",
+      "name": "DISCOVERED_POOL_8EE383C33CE263C3",
+      "dexDeploymentId": null,
+      "poolDefinitionId": "discovered-pool-8ee383c33ce263c33d72015ed1d41841d11eb7de663aeb314c14447248b6522b",
+      "evidence": [
+        "https://ethereum-rpc.publicnode.com"
+      ],
+      "asOfDate": "2026-09-26"
     },
     {
       "namespace": "ethereum",
@@ -621,6 +794,16 @@
     },
     {
       "namespace": "ethereum",
+      "name": "DISCOVERED_POOL_AE8A33A46B624BC8",
+      "dexDeploymentId": null,
+      "poolDefinitionId": "discovered-pool-ae8a33a46b624bc85796b9038b9cedaa172b92052b6f5a6eee80de879c58fa75",
+      "evidence": [
+        "https://ethereum-rpc.publicnode.com"
+      ],
+      "asOfDate": "2026-09-26"
+    },
+    {
+      "namespace": "ethereum",
       "name": "DISCOVERED_POOL_B8F972F8BAE36C82",
       "dexDeploymentId": null,
       "poolDefinitionId": "discovered-pool-b8f972f8bae36c82b51ed2aeed070d3ef3e7642e2a708c7d3c0c134e6e1946ed",
@@ -631,6 +814,16 @@
     },
     {
       "namespace": "ethereum",
+      "name": "DISCOVERED_POOL_D87FCCC735FCB198",
+      "dexDeploymentId": null,
+      "poolDefinitionId": "discovered-pool-d87fccc735fcb198dbfd3120db47630db1c614f13b3cedbe9f7a0d7efc61c4df",
+      "evidence": [
+        "https://ethereum-rpc.publicnode.com"
+      ],
+      "asOfDate": "2026-09-26"
+    },
+    {
+      "namespace": "ethereum",
       "name": "DISCOVERED_POOL_E702B0CB56528418",
       "dexDeploymentId": null,
       "poolDefinitionId": "discovered-pool-e702b0cb56528418b4ce089dfc001c6241c94e92aabde72f1a340c4601541780",
@@ -638,6 +831,16 @@
         "https://ethereum-rpc.publicnode.com"
       ],
       "asOfDate": "2026-09-16"
+    },
+    {
+      "namespace": "ethereum",
+      "name": "DISCOVERED_POOL_FEA726B2C744D8DA",
+      "dexDeploymentId": null,
+      "poolDefinitionId": "discovered-pool-fea726b2c744d8da56acd8c0801829e2054b7292fd96aa74eea9e732d5b96c40",
+      "evidence": [
+        "https://ethereum-rpc.publicnode.com"
+      ],
+      "asOfDate": "2026-09-26"
     },
     {
       "namespace": "ethereum",
