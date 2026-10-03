@@ -9,30 +9,30 @@ const deepFreeze = <T>(value: T): Readonly<T> => { if (value && typeof value ===
 export const TOKEN_RANKINGS_METADATA = deepFreeze({
   "schemaVersion": 1,
   "metric": "onchain-total-supply-value-native",
-  "asOf": "2026-09-16T16:41:59Z",
-  "contentDigest": "26d1dc0a1091c8bfcb475c22877d1ce4ee7384462a184c9d4fc509c57110c0ea",
+  "asOf": "2026-10-03T09:01:11Z",
+  "contentDigest": "86d3091bc7282438a5f4ea64a0aec64f676b3f84f8f6257807ebb09536da0f56",
   "status": "partial",
   "coverage": [
     {
       "chainId": "eip155:1",
       "totalDeployments": 34,
-      "rankedDeployments": 8,
-      "unrankedDeployments": 26,
-      "observedAt": "2026-09-16T16:41:59Z"
+      "rankedDeployments": 9,
+      "unrankedDeployments": 25,
+      "observedAt": "2026-10-03T09:01:11Z"
     },
     {
       "chainId": "eip155:43114",
       "totalDeployments": 17,
       "rankedDeployments": 0,
       "unrankedDeployments": 17,
-      "observedAt": "2026-09-16T16:57:22Z"
+      "observedAt": "2026-10-03T09:16:06Z"
     },
     {
       "chainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
       "totalDeployments": 19,
-      "rankedDeployments": 1,
-      "unrankedDeployments": 18,
-      "observedAt": "2026-09-16T16:57:16Z"
+      "rankedDeployments": 0,
+      "unrankedDeployments": 19,
+      "observedAt": "2026-10-03T09:16:06Z"
     }
   ],
   "sourceIds": [
@@ -46,14 +46,14 @@ export const TOKEN_RANKINGS = deepFreeze([
     "rank": 1,
     "chainId": "eip155:1",
     "deploymentIds": [
-      "deployment-0008"
+      "deployment-0014"
     ],
     "metric": "onchain-total-supply-value-native",
-    "valueNumerator": "207204000029972648356119414046913566875",
-    "valueDenominator": "9901974834827",
+    "valueNumerator": "82897803772028321241209445971403271667",
+    "valueDenominator": "2513773972317",
     "quoteCurrency": "native",
     "quoteDeploymentId": "deployment-0001",
-    "observedAt": "2026-09-16T16:41:59Z",
+    "observedAt": "2026-10-03T09:01:11Z",
     "sourceId": "rpc-ethereum-mainnet",
     "sourceAssetId": null
   },
@@ -61,14 +61,14 @@ export const TOKEN_RANKINGS = deepFreeze([
     "rank": 2,
     "chainId": "eip155:1",
     "deploymentIds": [
-      "deployment-0057"
+      "deployment-0008"
     ],
     "metric": "onchain-total-supply-value-native",
-    "valueNumerator": "33884048421157235660750000000000000000000000000",
-    "valueDenominator": "7575670698454356114489",
+    "valueNumerator": "95712397005185480436024638278930146915",
+    "valueDenominator": "5233354281586",
     "quoteCurrency": "native",
     "quoteDeploymentId": "deployment-0001",
-    "observedAt": "2026-09-16T16:41:59Z",
+    "observedAt": "2026-10-03T09:01:11Z",
     "sourceId": "rpc-ethereum-mainnet",
     "sourceAssetId": null
   },
@@ -76,14 +76,14 @@ export const TOKEN_RANKINGS = deepFreeze([
     "rank": 3,
     "chainId": "eip155:1",
     "deploymentIds": [
-      "discovered-token-e375086901067fe3de023bcdc70f1bafca798e1719ed7e676a98f57de3350a07"
+      "deployment-0057"
     ],
     "metric": "onchain-total-supply-value-native",
-    "valueNumerator": "2530529372917746092314437530549111",
-    "valueDenominator": "689351076",
+    "valueNumerator": "147042827976068449985000000000000000000000000000",
+    "valueDenominator": "28193659082725486506453",
     "quoteCurrency": "native",
     "quoteDeploymentId": "deployment-0001",
-    "observedAt": "2026-09-16T16:41:59Z",
+    "observedAt": "2026-10-03T09:01:11Z",
     "sourceId": "rpc-ethereum-mainnet",
     "sourceAssetId": null
   },
@@ -91,14 +91,14 @@ export const TOKEN_RANKINGS = deepFreeze([
     "rank": 4,
     "chainId": "eip155:1",
     "deploymentIds": [
-      "deployment-0019"
+      "discovered-token-e375086901067fe3de023bcdc70f1bafca798e1719ed7e676a98f57de3350a07"
     ],
     "metric": "onchain-total-supply-value-native",
-    "valueNumerator": "8563994066253688594928908892314570251695637864181",
-    "valueDenominator": "4480501906764632895725190",
+    "valueNumerator": "6736725645272025482221303972010436",
+    "valueDenominator": "1835385151",
     "quoteCurrency": "native",
     "quoteDeploymentId": "deployment-0001",
-    "observedAt": "2026-09-16T16:41:59Z",
+    "observedAt": "2026-10-03T09:01:11Z",
     "sourceId": "rpc-ethereum-mainnet",
     "sourceAssetId": null
   },
@@ -106,14 +106,14 @@ export const TOKEN_RANKINGS = deepFreeze([
     "rank": 5,
     "chainId": "eip155:1",
     "deploymentIds": [
-      "discovered-token-054d80a64e1f36a756129763ca2f1e7a140b50b04c83876ff01dd5fd497a74c5"
+      "deployment-0019"
     ],
     "metric": "onchain-total-supply-value-native",
-    "valueNumerator": "33087553822039834447063841834161374382321688576",
-    "valueDenominator": "507606550755599406088755",
+    "valueNumerator": "8135924368025922081144629206814356937640684129076",
+    "valueDenominator": "4738013330014906832924153",
     "quoteCurrency": "native",
     "quoteDeploymentId": "deployment-0001",
-    "observedAt": "2026-09-16T16:41:59Z",
+    "observedAt": "2026-10-03T09:01:11Z",
     "sourceId": "rpc-ethereum-mainnet",
     "sourceAssetId": null
   },
@@ -121,14 +121,14 @@ export const TOKEN_RANKINGS = deepFreeze([
     "rank": 6,
     "chainId": "eip155:1",
     "deploymentIds": [
-      "discovered-token-b475569f6a15e97ac04e531dd813e9dcc902521c098d60d6ae4d21d53baf1395"
+      "discovered-token-054d80a64e1f36a756129763ca2f1e7a140b50b04c83876ff01dd5fd497a74c5"
     ],
     "metric": "onchain-total-supply-value-native",
-    "valueNumerator": "22129458437198611962075707523082974663376278",
-    "valueDenominator": "466235585330384227837",
+    "valueNumerator": "37652529553157038666753415959350493870778863168",
+    "valueDenominator": "451936961487684764877311",
     "quoteCurrency": "native",
     "quoteDeploymentId": "deployment-0001",
-    "observedAt": "2026-09-16T16:41:59Z",
+    "observedAt": "2026-10-03T09:01:11Z",
     "sourceId": "rpc-ethereum-mainnet",
     "sourceAssetId": null
   },
@@ -136,14 +136,14 @@ export const TOKEN_RANKINGS = deepFreeze([
     "rank": 7,
     "chainId": "eip155:1",
     "deploymentIds": [
-      "discovered-token-69519fd08e31445cad84b0c17a5346b7ee9c5692e270602af9308ca6d8943bb6"
+      "discovered-token-b475569f6a15e97ac04e531dd813e9dcc902521c098d60d6ae4d21d53baf1395"
     ],
     "metric": "onchain-total-supply-value-native",
-    "valueNumerator": "461823962164048108560000000000000000000000000",
-    "valueDenominator": "10479085950557704780219",
+    "valueNumerator": "25727867450908444944540929855320344741753198",
+    "valueDenominator": "399008275283338274845",
     "quoteCurrency": "native",
     "quoteDeploymentId": "deployment-0001",
-    "observedAt": "2026-09-16T16:41:59Z",
+    "observedAt": "2026-10-03T09:01:11Z",
     "sourceId": "rpc-ethereum-mainnet",
     "sourceAssetId": null
   },
@@ -151,30 +151,30 @@ export const TOKEN_RANKINGS = deepFreeze([
     "rank": 8,
     "chainId": "eip155:1",
     "deploymentIds": [
-      "discovered-token-611597bd13daa43d01a23caa9cca6a98797c64be7fb5b2677370ddbcdeaf01ec"
+      "discovered-token-69519fd08e31445cad84b0c17a5346b7ee9c5692e270602af9308ca6d8943bb6"
     ],
     "metric": "onchain-total-supply-value-native",
-    "valueNumerator": "591208964484530983367688374937406614318",
-    "valueDenominator": "21093793193177765",
+    "valueNumerator": "2557335894586116041850000000000000000000000000",
+    "valueDenominator": "47728403838468112718809",
     "quoteCurrency": "native",
     "quoteDeploymentId": "deployment-0001",
-    "observedAt": "2026-09-16T16:41:59Z",
+    "observedAt": "2026-10-03T09:01:11Z",
     "sourceId": "rpc-ethereum-mainnet",
     "sourceAssetId": null
   },
   {
-    "rank": 1,
-    "chainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+    "rank": 9,
+    "chainId": "eip155:1",
     "deploymentIds": [
-      "deployment-0013"
+      "discovered-token-611597bd13daa43d01a23caa9cca6a98797c64be7fb5b2677370ddbcdeaf01ec"
     ],
     "metric": "onchain-total-supply-value-native",
-    "valueNumerator": "8934052641907075195235710143877572821100144726376448",
-    "valueDenominator": "7196706365568923421366403517072759025",
+    "valueNumerator": "504222095930248604082409597038287075256",
+    "valueDenominator": "25161603337018519",
     "quoteCurrency": "native",
-    "quoteDeploymentId": "deployment-0005",
-    "observedAt": "2026-09-16T16:57:16Z",
-    "sourceId": "rpc-solana-mainnet",
+    "quoteDeploymentId": "deployment-0001",
+    "observedAt": "2026-10-03T09:01:11Z",
+    "sourceId": "rpc-ethereum-mainnet",
     "sourceAssetId": null
   }
 ]) as readonly TokenRanking[];
@@ -185,14 +185,14 @@ export const TOKEN_RANKINGS_BY_CHAIN = deepFreeze({
       "rank": 1,
       "chainId": "eip155:1",
       "deploymentIds": [
-        "deployment-0008"
+        "deployment-0014"
       ],
       "metric": "onchain-total-supply-value-native",
-      "valueNumerator": "207204000029972648356119414046913566875",
-      "valueDenominator": "9901974834827",
+      "valueNumerator": "82897803772028321241209445971403271667",
+      "valueDenominator": "2513773972317",
       "quoteCurrency": "native",
       "quoteDeploymentId": "deployment-0001",
-      "observedAt": "2026-09-16T16:41:59Z",
+      "observedAt": "2026-10-03T09:01:11Z",
       "sourceId": "rpc-ethereum-mainnet",
       "sourceAssetId": null
     },
@@ -200,14 +200,14 @@ export const TOKEN_RANKINGS_BY_CHAIN = deepFreeze({
       "rank": 2,
       "chainId": "eip155:1",
       "deploymentIds": [
-        "deployment-0057"
+        "deployment-0008"
       ],
       "metric": "onchain-total-supply-value-native",
-      "valueNumerator": "33884048421157235660750000000000000000000000000",
-      "valueDenominator": "7575670698454356114489",
+      "valueNumerator": "95712397005185480436024638278930146915",
+      "valueDenominator": "5233354281586",
       "quoteCurrency": "native",
       "quoteDeploymentId": "deployment-0001",
-      "observedAt": "2026-09-16T16:41:59Z",
+      "observedAt": "2026-10-03T09:01:11Z",
       "sourceId": "rpc-ethereum-mainnet",
       "sourceAssetId": null
     },
@@ -215,14 +215,14 @@ export const TOKEN_RANKINGS_BY_CHAIN = deepFreeze({
       "rank": 3,
       "chainId": "eip155:1",
       "deploymentIds": [
-        "discovered-token-e375086901067fe3de023bcdc70f1bafca798e1719ed7e676a98f57de3350a07"
+        "deployment-0057"
       ],
       "metric": "onchain-total-supply-value-native",
-      "valueNumerator": "2530529372917746092314437530549111",
-      "valueDenominator": "689351076",
+      "valueNumerator": "147042827976068449985000000000000000000000000000",
+      "valueDenominator": "28193659082725486506453",
       "quoteCurrency": "native",
       "quoteDeploymentId": "deployment-0001",
-      "observedAt": "2026-09-16T16:41:59Z",
+      "observedAt": "2026-10-03T09:01:11Z",
       "sourceId": "rpc-ethereum-mainnet",
       "sourceAssetId": null
     },
@@ -230,14 +230,14 @@ export const TOKEN_RANKINGS_BY_CHAIN = deepFreeze({
       "rank": 4,
       "chainId": "eip155:1",
       "deploymentIds": [
-        "deployment-0019"
+        "discovered-token-e375086901067fe3de023bcdc70f1bafca798e1719ed7e676a98f57de3350a07"
       ],
       "metric": "onchain-total-supply-value-native",
-      "valueNumerator": "8563994066253688594928908892314570251695637864181",
-      "valueDenominator": "4480501906764632895725190",
+      "valueNumerator": "6736725645272025482221303972010436",
+      "valueDenominator": "1835385151",
       "quoteCurrency": "native",
       "quoteDeploymentId": "deployment-0001",
-      "observedAt": "2026-09-16T16:41:59Z",
+      "observedAt": "2026-10-03T09:01:11Z",
       "sourceId": "rpc-ethereum-mainnet",
       "sourceAssetId": null
     },
@@ -245,14 +245,14 @@ export const TOKEN_RANKINGS_BY_CHAIN = deepFreeze({
       "rank": 5,
       "chainId": "eip155:1",
       "deploymentIds": [
-        "discovered-token-054d80a64e1f36a756129763ca2f1e7a140b50b04c83876ff01dd5fd497a74c5"
+        "deployment-0019"
       ],
       "metric": "onchain-total-supply-value-native",
-      "valueNumerator": "33087553822039834447063841834161374382321688576",
-      "valueDenominator": "507606550755599406088755",
+      "valueNumerator": "8135924368025922081144629206814356937640684129076",
+      "valueDenominator": "4738013330014906832924153",
       "quoteCurrency": "native",
       "quoteDeploymentId": "deployment-0001",
-      "observedAt": "2026-09-16T16:41:59Z",
+      "observedAt": "2026-10-03T09:01:11Z",
       "sourceId": "rpc-ethereum-mainnet",
       "sourceAssetId": null
     },
@@ -260,14 +260,14 @@ export const TOKEN_RANKINGS_BY_CHAIN = deepFreeze({
       "rank": 6,
       "chainId": "eip155:1",
       "deploymentIds": [
-        "discovered-token-b475569f6a15e97ac04e531dd813e9dcc902521c098d60d6ae4d21d53baf1395"
+        "discovered-token-054d80a64e1f36a756129763ca2f1e7a140b50b04c83876ff01dd5fd497a74c5"
       ],
       "metric": "onchain-total-supply-value-native",
-      "valueNumerator": "22129458437198611962075707523082974663376278",
-      "valueDenominator": "466235585330384227837",
+      "valueNumerator": "37652529553157038666753415959350493870778863168",
+      "valueDenominator": "451936961487684764877311",
       "quoteCurrency": "native",
       "quoteDeploymentId": "deployment-0001",
-      "observedAt": "2026-09-16T16:41:59Z",
+      "observedAt": "2026-10-03T09:01:11Z",
       "sourceId": "rpc-ethereum-mainnet",
       "sourceAssetId": null
     },
@@ -275,14 +275,14 @@ export const TOKEN_RANKINGS_BY_CHAIN = deepFreeze({
       "rank": 7,
       "chainId": "eip155:1",
       "deploymentIds": [
-        "discovered-token-69519fd08e31445cad84b0c17a5346b7ee9c5692e270602af9308ca6d8943bb6"
+        "discovered-token-b475569f6a15e97ac04e531dd813e9dcc902521c098d60d6ae4d21d53baf1395"
       ],
       "metric": "onchain-total-supply-value-native",
-      "valueNumerator": "461823962164048108560000000000000000000000000",
-      "valueDenominator": "10479085950557704780219",
+      "valueNumerator": "25727867450908444944540929855320344741753198",
+      "valueDenominator": "399008275283338274845",
       "quoteCurrency": "native",
       "quoteDeploymentId": "deployment-0001",
-      "observedAt": "2026-09-16T16:41:59Z",
+      "observedAt": "2026-10-03T09:01:11Z",
       "sourceId": "rpc-ethereum-mainnet",
       "sourceAssetId": null
     },
@@ -290,32 +290,30 @@ export const TOKEN_RANKINGS_BY_CHAIN = deepFreeze({
       "rank": 8,
       "chainId": "eip155:1",
       "deploymentIds": [
+        "discovered-token-69519fd08e31445cad84b0c17a5346b7ee9c5692e270602af9308ca6d8943bb6"
+      ],
+      "metric": "onchain-total-supply-value-native",
+      "valueNumerator": "2557335894586116041850000000000000000000000000",
+      "valueDenominator": "47728403838468112718809",
+      "quoteCurrency": "native",
+      "quoteDeploymentId": "deployment-0001",
+      "observedAt": "2026-10-03T09:01:11Z",
+      "sourceId": "rpc-ethereum-mainnet",
+      "sourceAssetId": null
+    },
+    {
+      "rank": 9,
+      "chainId": "eip155:1",
+      "deploymentIds": [
         "discovered-token-611597bd13daa43d01a23caa9cca6a98797c64be7fb5b2677370ddbcdeaf01ec"
       ],
       "metric": "onchain-total-supply-value-native",
-      "valueNumerator": "591208964484530983367688374937406614318",
-      "valueDenominator": "21093793193177765",
+      "valueNumerator": "504222095930248604082409597038287075256",
+      "valueDenominator": "25161603337018519",
       "quoteCurrency": "native",
       "quoteDeploymentId": "deployment-0001",
-      "observedAt": "2026-09-16T16:41:59Z",
+      "observedAt": "2026-10-03T09:01:11Z",
       "sourceId": "rpc-ethereum-mainnet",
-      "sourceAssetId": null
-    }
-  ],
-  "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": [
-    {
-      "rank": 1,
-      "chainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
-      "deploymentIds": [
-        "deployment-0013"
-      ],
-      "metric": "onchain-total-supply-value-native",
-      "valueNumerator": "8934052641907075195235710143877572821100144726376448",
-      "valueDenominator": "7196706365568923421366403517072759025",
-      "quoteCurrency": "native",
-      "quoteDeploymentId": "deployment-0005",
-      "observedAt": "2026-09-16T16:57:16Z",
-      "sourceId": "rpc-solana-mainnet",
       "sourceAssetId": null
     }
   ]
