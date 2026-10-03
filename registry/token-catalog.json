@@ -1522,6 +1522,54 @@
       "asOfDate": "2026-09-15"
     },
     {
+      "deploymentId": "deployment-0061",
+      "assetId": "asset-0001",
+      "chainId": "eip155:8453",
+      "symbol": "ETH",
+      "decimals": 18,
+      "standard": "native",
+      "address": null,
+      "status": "active",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://docs.base.org/get-started/connect-to-base",
+        "https://docs.base.org/base-chain/api-reference/ethereum-json-rpc-api/eth_chainId"
+      ],
+      "asOfDate": "2026-09-26"
+    },
+    {
+      "deploymentId": "deployment-0062",
+      "assetId": "asset-0007",
+      "chainId": "eip155:8453",
+      "symbol": "USDC",
+      "decimals": 6,
+      "standard": "erc20",
+      "address": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+      "status": "active",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://developers.circle.com/stablecoins/usdc-contract-addresses",
+        "https://developers.circle.com/circle-mint/supported-chains-and-currencies"
+      ],
+      "asOfDate": "2026-09-26"
+    },
+    {
+      "deploymentId": "deployment-0063",
+      "assetId": "asset-0008",
+      "chainId": "eip155:8453",
+      "symbol": "EURC",
+      "decimals": 6,
+      "standard": "erc20",
+      "address": "0x60a3e35cc302bfa44cb288bc5a4f316fdb1adb42",
+      "status": "active",
+      "replacedByDeploymentId": null,
+      "evidence": [
+        "https://developers.circle.com/stablecoins/eurc-contract-addresses",
+        "https://developers.circle.com/circle-mint/supported-chains-and-currencies"
+      ],
+      "asOfDate": "2026-09-26"
+    },
+    {
       "deploymentId": "discovered-token-054d80a64e1f36a756129763ca2f1e7a140b50b04c83876ff01dd5fd497a74c5",
       "assetId": "discovered-token-054d80a64e1f36a756129763ca2f1e7a140b50b04c83876ff01dd5fd497a74c5",
       "chainId": "eip155:1",
@@ -1670,54 +1718,6 @@
         "https://ethereum-rpc.publicnode.com"
       ],
       "asOfDate": "2026-09-16"
-    },
-    {
-      "deploymentId": "deployment-0061",
-      "assetId": "asset-0001",
-      "chainId": "eip155:8453",
-      "symbol": "ETH",
-      "decimals": 18,
-      "standard": "native",
-      "address": null,
-      "status": "active",
-      "replacedByDeploymentId": null,
-      "evidence": [
-        "https://docs.base.org/get-started/connect-to-base",
-        "https://docs.base.org/base-chain/api-reference/ethereum-json-rpc-api/eth_chainId"
-      ],
-      "asOfDate": "2026-09-26"
-    },
-    {
-      "deploymentId": "deployment-0062",
-      "assetId": "asset-0007",
-      "chainId": "eip155:8453",
-      "symbol": "USDC",
-      "decimals": 6,
-      "standard": "erc20",
-      "address": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
-      "status": "active",
-      "replacedByDeploymentId": null,
-      "evidence": [
-        "https://developers.circle.com/stablecoins/usdc-contract-addresses",
-        "https://developers.circle.com/circle-mint/supported-chains-and-currencies"
-      ],
-      "asOfDate": "2026-09-26"
-    },
-    {
-      "deploymentId": "deployment-0063",
-      "assetId": "asset-0008",
-      "chainId": "eip155:8453",
-      "symbol": "EURC",
-      "decimals": 6,
-      "standard": "erc20",
-      "address": "0x60a3e35cc302bfa44cb288bc5a4f316fdb1adb42",
-      "status": "active",
-      "replacedByDeploymentId": null,
-      "evidence": [
-        "https://developers.circle.com/stablecoins/eurc-contract-addresses",
-        "https://developers.circle.com/circle-mint/supported-chains-and-currencies"
-      ],
-      "asOfDate": "2026-09-26"
     }
   ],
   "aliases": [

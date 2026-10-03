@@ -48,7 +48,7 @@ pub struct DexAlias {
 pub const DEX_CATALOG_VERSION: &str = "1.0.0";
 pub const DEX_CATALOG_AS_OF_DATE: &str = "2026-09-15";
 pub const DEX_CATALOG_CONTENT_DIGEST: &str =
-    "caccde1f997648dfa045af41d4f8b7f93a051c59d098cc770bd3a2757185aac1";
+    "d087e185fa3928d2b288afe325e54d2d114b64f98bb65f1351e33d17fca33651";
 pub const DEX_CHAIN_IDS: &[(&str, &str)] = &[
     ("ethereum", "eip155:1"),
     ("solana", "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"),
@@ -75,6 +75,8 @@ pub mod pools {
             "discovered-pool-6428a1e5da293b2ef62027ec823ba27532219a40784def3930feee56a623b809";
         pub const DISCOVERED_POOL_866F890448D13C07: &str =
             "discovered-pool-866f890448d13c078e217a894ebd47430da5941fe5bff7e382fc095916b4614d";
+        pub const DISCOVERED_POOL_8EE383C33CE263C3: &str =
+            "discovered-pool-8ee383c33ce263c33d72015ed1d41841d11eb7de663aeb314c14447248b6522b";
         pub const DISCOVERED_POOL_90805F8995C1D0B8: &str =
             "discovered-pool-90805f8995c1d0b85a45fcd4587928a00066b1f14407baee4e8ed1b634c07804";
         pub const DISCOVERED_POOL_A7F9E600A86951F4: &str =
@@ -249,6 +251,21 @@ pub const POOL_DEFINITIONS: &[PoolDefinition] = &[
         address: "0xb6909b960dbbe7392d405429eb2b3649752b4838",
         token0_deployment_id: "discovered-token-69519fd08e31445cad84b0c17a5346b7ee9c5692e270602af9308ca6d8943bb6",
         token1_deployment_id: "deployment-0002",
+        adapter: PoolAdapter {
+            kind: "evm-constant-product-v2",
+            fee_numerator: Some("3"),
+            fee_denominator: Some("1000"),
+        },
+        status: "active",
+        replaced_by_pool_definition_id: None,
+    },
+    PoolDefinition {
+        pool_definition_id: "discovered-pool-8ee383c33ce263c33d72015ed1d41841d11eb7de663aeb314c14447248b6522b",
+        dex_deployment_id: "dex-deployment-0001",
+        chain_id: "eip155:1",
+        address: "0x0d4a11d5eeaac28ec3f61d100daf4d40471f1852",
+        token0_deployment_id: "deployment-0002",
+        token1_deployment_id: "deployment-0014",
         adapter: PoolAdapter {
             kind: "evm-constant-product-v2",
             fee_numerator: Some("3"),
@@ -539,6 +556,12 @@ pub const DEX_ALIASES: &[DexAlias] = &[
         name: "DISCOVERED_POOL_866F890448D13C07",
         dex_deployment_id: None,
         pool_definition_id: Some(pools::ethereum::DISCOVERED_POOL_866F890448D13C07),
+    },
+    DexAlias {
+        namespace: "ethereum",
+        name: "DISCOVERED_POOL_8EE383C33CE263C3",
+        dex_deployment_id: None,
+        pool_definition_id: Some(pools::ethereum::DISCOVERED_POOL_8EE383C33CE263C3),
     },
     DexAlias {
         namespace: "ethereum",

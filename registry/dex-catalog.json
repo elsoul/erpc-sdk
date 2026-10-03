@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "catalogVersion": "1.0.0",
   "manualAsOf": "2026-09-15",
-  "contentDigest": "caccde1f997648dfa045af41d4f8b7f93a051c59d098cc770bd3a2757185aac1",
+  "contentDigest": "d087e185fa3928d2b288afe325e54d2d114b64f98bb65f1351e33d17fca33651",
   "dexDeployments": [
     {
       "dexDeploymentId": "dex-deployment-0001",
@@ -198,6 +198,25 @@
         "https://ethereum-rpc.publicnode.com"
       ],
       "asOfDate": "2026-09-16"
+    },
+    {
+      "poolDefinitionId": "discovered-pool-8ee383c33ce263c33d72015ed1d41841d11eb7de663aeb314c14447248b6522b",
+      "dexDeploymentId": "dex-deployment-0001",
+      "chainId": "eip155:1",
+      "address": "0x0d4a11d5eeaac28ec3f61d100daf4d40471f1852",
+      "token0DeploymentId": "deployment-0002",
+      "token1DeploymentId": "deployment-0014",
+      "adapter": {
+        "kind": "evm-constant-product-v2",
+        "feeNumerator": "3",
+        "feeDenominator": "1000"
+      },
+      "status": "active",
+      "replacedByPoolDefinitionId": null,
+      "evidence": [
+        "https://ethereum-rpc.publicnode.com"
+      ],
+      "asOfDate": "2026-10-03"
     },
     {
       "poolDefinitionId": "discovered-pool-90805f8995c1d0b85a45fcd4587928a00066b1f14407baee4e8ed1b634c07804",
@@ -598,6 +617,16 @@
         "https://ethereum-rpc.publicnode.com"
       ],
       "asOfDate": "2026-09-16"
+    },
+    {
+      "namespace": "ethereum",
+      "name": "DISCOVERED_POOL_8EE383C33CE263C3",
+      "dexDeploymentId": null,
+      "poolDefinitionId": "discovered-pool-8ee383c33ce263c33d72015ed1d41841d11eb7de663aeb314c14447248b6522b",
+      "evidence": [
+        "https://ethereum-rpc.publicnode.com"
+      ],
+      "asOfDate": "2026-10-03"
     },
     {
       "namespace": "ethereum",

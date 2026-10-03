@@ -46,7 +46,7 @@ type DexAlias struct {
 
 const DexCatalogVersion = "1.0.0"
 const DexCatalogAsOfDate = "2026-09-15"
-const DexCatalogContentDigest = "caccde1f997648dfa045af41d4f8b7f93a051c59d098cc770bd3a2757185aac1"
+const DexCatalogContentDigest = "d087e185fa3928d2b288afe325e54d2d114b64f98bb65f1351e33d17fca33651"
 
 func DexChainIDs() map[string]string {
 	return map[string]string{
@@ -72,6 +72,7 @@ func PoolDefinitions() []PoolDefinition {
 		{PoolDefinitionID: "discovered-pool-5d7aa6a767a0c6ea9ddeb06d1289bd12d85018935d5b25724b165dc8b9832252", DexDeploymentID: "dex-deployment-0002", ChainID: "eip155:43114", Address: "0x48f7c83c29e5ecea926d8169864d8cd022deaf3c", Token0DeploymentID: "discovered-token-323d07c442f0d089197ae7eea9b3ebb829910177c5b780161a7623aaed5e4371", Token1DeploymentID: "deployment-0004", Adapter: PoolAdapter{Kind: "evm-constant-product-v2", FeeNumerator: dexString("3"), FeeDenominator: dexString("1000")}, Status: "active", ReplacedByPoolDefinitionID: nil},
 		{PoolDefinitionID: "discovered-pool-6428a1e5da293b2ef62027ec823ba27532219a40784def3930feee56a623b809", DexDeploymentID: "dex-deployment-0001", ChainID: "eip155:1", Address: "0xa2107fa5b38d9bbd2c461d6edf11b11a50f6b974", Token0DeploymentID: "deployment-0057", Token1DeploymentID: "deployment-0002", Adapter: PoolAdapter{Kind: "evm-constant-product-v2", FeeNumerator: dexString("3"), FeeDenominator: dexString("1000")}, Status: "active", ReplacedByPoolDefinitionID: nil},
 		{PoolDefinitionID: "discovered-pool-866f890448d13c078e217a894ebd47430da5941fe5bff7e382fc095916b4614d", DexDeploymentID: "dex-deployment-0001", ChainID: "eip155:1", Address: "0xb6909b960dbbe7392d405429eb2b3649752b4838", Token0DeploymentID: "discovered-token-69519fd08e31445cad84b0c17a5346b7ee9c5692e270602af9308ca6d8943bb6", Token1DeploymentID: "deployment-0002", Adapter: PoolAdapter{Kind: "evm-constant-product-v2", FeeNumerator: dexString("3"), FeeDenominator: dexString("1000")}, Status: "active", ReplacedByPoolDefinitionID: nil},
+		{PoolDefinitionID: "discovered-pool-8ee383c33ce263c33d72015ed1d41841d11eb7de663aeb314c14447248b6522b", DexDeploymentID: "dex-deployment-0001", ChainID: "eip155:1", Address: "0x0d4a11d5eeaac28ec3f61d100daf4d40471f1852", Token0DeploymentID: "deployment-0002", Token1DeploymentID: "deployment-0014", Adapter: PoolAdapter{Kind: "evm-constant-product-v2", FeeNumerator: dexString("3"), FeeDenominator: dexString("1000")}, Status: "active", ReplacedByPoolDefinitionID: nil},
 		{PoolDefinitionID: "discovered-pool-90805f8995c1d0b85a45fcd4587928a00066b1f14407baee4e8ed1b634c07804", DexDeploymentID: "dex-deployment-0001", ChainID: "eip155:1", Address: "0x55d5c232d921b9eaa6b37b5845e439acd04b4dba", Token0DeploymentID: "discovered-token-611597bd13daa43d01a23caa9cca6a98797c64be7fb5b2677370ddbcdeaf01ec", Token1DeploymentID: "deployment-0002", Adapter: PoolAdapter{Kind: "evm-constant-product-v2", FeeNumerator: dexString("3"), FeeDenominator: dexString("1000")}, Status: "active", ReplacedByPoolDefinitionID: nil},
 		{PoolDefinitionID: "discovered-pool-9e4ed76f76904a4ae271946bb1a4b2dc7428e343040b05a42707071bbfac9462", DexDeploymentID: "dex-deployment-0002", ChainID: "eip155:43114", Address: "0x6f3a0c89f611ef5dc9d96650324ac633d02265d3", Token0DeploymentID: "deployment-0058", Token1DeploymentID: "deployment-0004", Adapter: PoolAdapter{Kind: "evm-constant-product-v2", FeeNumerator: dexString("3"), FeeDenominator: dexString("1000")}, Status: "active", ReplacedByPoolDefinitionID: nil},
 		{PoolDefinitionID: "discovered-pool-a2480f3d4ea5ce12252126acf64b174b9fe678b0f0fda8936a12fef180ae08cd", DexDeploymentID: "dex-deployment-0002", ChainID: "eip155:43114", Address: "0xa389f9430876455c36478deea9769b7ca4e3ddb1", Token0DeploymentID: "deployment-0018", Token1DeploymentID: "deployment-0004", Adapter: PoolAdapter{Kind: "evm-constant-product-v2", FeeNumerator: dexString("3"), FeeDenominator: dexString("1000")}, Status: "active", ReplacedByPoolDefinitionID: nil},
@@ -108,6 +109,7 @@ func DexAliases() []DexAlias {
 		{Namespace: "ethereum", Name: "DISCOVERED_POOL_1B98A5F24A364E05", DexDeploymentID: nil, PoolDefinitionID: dexString(PoolEthereumDISCOVERED_POOL_1B98A5F24A364E05)},
 		{Namespace: "ethereum", Name: "DISCOVERED_POOL_6428A1E5DA293B2E", DexDeploymentID: nil, PoolDefinitionID: dexString(PoolEthereumDISCOVERED_POOL_6428A1E5DA293B2E)},
 		{Namespace: "ethereum", Name: "DISCOVERED_POOL_866F890448D13C07", DexDeploymentID: nil, PoolDefinitionID: dexString(PoolEthereumDISCOVERED_POOL_866F890448D13C07)},
+		{Namespace: "ethereum", Name: "DISCOVERED_POOL_8EE383C33CE263C3", DexDeploymentID: nil, PoolDefinitionID: dexString(PoolEthereumDISCOVERED_POOL_8EE383C33CE263C3)},
 		{Namespace: "ethereum", Name: "DISCOVERED_POOL_90805F8995C1D0B8", DexDeploymentID: nil, PoolDefinitionID: dexString(PoolEthereumDISCOVERED_POOL_90805F8995C1D0B8)},
 		{Namespace: "ethereum", Name: "DISCOVERED_POOL_A7F9E600A86951F4", DexDeploymentID: nil, PoolDefinitionID: dexString(PoolEthereumDISCOVERED_POOL_A7F9E600A86951F4)},
 		{Namespace: "ethereum", Name: "DISCOVERED_POOL_B8F972F8BAE36C82", DexDeploymentID: nil, PoolDefinitionID: dexString(PoolEthereumDISCOVERED_POOL_B8F972F8BAE36C82)},
@@ -134,6 +136,7 @@ const PoolAvalancheCLFJ_LEGACY_WAVAX_USDC = "pool-0002"
 const PoolEthereumDISCOVERED_POOL_1B98A5F24A364E05 = "discovered-pool-1b98a5f24a364e05b3d56a9702c3560fc3a71f84b2195c486cfc5f8a956cc0b7"
 const PoolEthereumDISCOVERED_POOL_6428A1E5DA293B2E = "discovered-pool-6428a1e5da293b2ef62027ec823ba27532219a40784def3930feee56a623b809"
 const PoolEthereumDISCOVERED_POOL_866F890448D13C07 = "discovered-pool-866f890448d13c078e217a894ebd47430da5941fe5bff7e382fc095916b4614d"
+const PoolEthereumDISCOVERED_POOL_8EE383C33CE263C3 = "discovered-pool-8ee383c33ce263c33d72015ed1d41841d11eb7de663aeb314c14447248b6522b"
 const PoolEthereumDISCOVERED_POOL_90805F8995C1D0B8 = "discovered-pool-90805f8995c1d0b85a45fcd4587928a00066b1f14407baee4e8ed1b634c07804"
 const PoolEthereumDISCOVERED_POOL_A7F9E600A86951F4 = "discovered-pool-a7f9e600a86951f40472ff779fae467db8a6bbbc6076356058f427e97d4ae429"
 const PoolEthereumDISCOVERED_POOL_B8F972F8BAE36C82 = "discovered-pool-b8f972f8bae36c82b51ed2aeed070d3ef3e7642e2a708c7d3c0c134e6e1946ed"
