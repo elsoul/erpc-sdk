@@ -41,7 +41,7 @@ class TokenAlias(NamedTuple):
 
 TOKEN_CATALOG_VERSION = "1.1.0"
 TOKEN_CATALOG_AS_OF_DATE = "2026-09-26"
-TOKEN_CATALOG_CONTENT_DIGEST = "cca180df1846def0ec98f4e55b84cc46614c60d7a8c4a91c66dc9715c710ba73"
+TOKEN_CATALOG_CONTENT_DIGEST = "fa552f15432de652c8e6f4d71297c3dbc3e2f1cf4996d5d73c98fe5a3c78bf97"
 TOKEN_CHAIN_IDS = MappingProxyType({
     "ethereum": "eip155:1",
     "solana": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
@@ -78,9 +78,15 @@ class _EthereumTokens(NamedTuple):
     AUSD: str
     DAI: str
     DISCOVERED_054D80A64E1F36A7: str
+    DISCOVERED_23A03DCF2EFBE867: str
+    DISCOVERED_2FA5450C9FA7285D: str
+    DISCOVERED_4712886CEE128F13: str
     DISCOVERED_611597BD13DAA43D: str
     DISCOVERED_69519FD08E31445C: str
+    DISCOVERED_A8375562798BC4AE: str
     DISCOVERED_B475569F6A15E97A: str
+    DISCOVERED_DE17C35BF41345A6: str
+    DISCOVERED_E2D57F6E6123C78A: str
     DISCOVERED_E375086901067FE3: str
     ETH: str
     EURA: str
@@ -166,9 +172,15 @@ tokens = _Tokens(
         AUSD="deployment-0034",
         DAI="deployment-0019",
         DISCOVERED_054D80A64E1F36A7="discovered-token-054d80a64e1f36a756129763ca2f1e7a140b50b04c83876ff01dd5fd497a74c5",
+        DISCOVERED_23A03DCF2EFBE867="discovered-token-23a03dcf2efbe86795f325e3f649738ef7315dfd1f6039c347c515c9c9c612bd",
+        DISCOVERED_2FA5450C9FA7285D="discovered-token-2fa5450c9fa7285d6fc8352d9b7fed6eb042020a7a5e4f72e4181ec21f3e923d",
+        DISCOVERED_4712886CEE128F13="discovered-token-4712886cee128f138bba49725f5df0c310125ac43949b14c0edafcd90ff0d545",
         DISCOVERED_611597BD13DAA43D="discovered-token-611597bd13daa43d01a23caa9cca6a98797c64be7fb5b2677370ddbcdeaf01ec",
         DISCOVERED_69519FD08E31445C="discovered-token-69519fd08e31445cad84b0c17a5346b7ee9c5692e270602af9308ca6d8943bb6",
+        DISCOVERED_A8375562798BC4AE="discovered-token-a8375562798bc4ae7b3f6f673452be39367f106be864d5ad44d3b5a17ccd04c6",
         DISCOVERED_B475569F6A15E97A="discovered-token-b475569f6a15e97ac04e531dd813e9dcc902521c098d60d6ae4d21d53baf1395",
+        DISCOVERED_DE17C35BF41345A6="discovered-token-de17c35bf41345a60acbabfcc00e8108b2c058299fcb70416e9e15749f22220e",
+        DISCOVERED_E2D57F6E6123C78A="discovered-token-e2d57f6e6123c78a3215badf6e040643117e7e0ca727788ff1ff4fc1e1c3a556",
         DISCOVERED_E375086901067FE3="discovered-token-e375086901067fe3de023bcdc70f1bafca798e1719ed7e676a98f57de3350a07",
         ETH="deployment-0001",
         EURA="deployment-0051",
@@ -559,6 +571,14 @@ TOKEN_ASSETS: tuple[TokenAsset, ...] = (
         economic_reference_asset_id=None,
     ),
     TokenAsset(
+        asset_id="discovered-token-23a03dcf2efbe86795f325e3f649738ef7315dfd1f6039c347c515c9c9c612bd",
+        name="Unclassified token at 0x9469d013805bffb7d3debe5e7839237e535ec483",
+        representation_kind="unclassified",
+        stable_currency=None,
+        underlying_asset_id=None,
+        economic_reference_asset_id=None,
+    ),
+    TokenAsset(
         asset_id="discovered-token-288036a90ee0fa72a2751a78a6934cc6ced9e16de91c97ae8e109e2ee6189bc5",
         name="Unclassified token at 0xc7198437980c041c805a1edcba50c1ce5db95118",
         representation_kind="unclassified",
@@ -567,8 +587,24 @@ TOKEN_ASSETS: tuple[TokenAsset, ...] = (
         economic_reference_asset_id=None,
     ),
     TokenAsset(
+        asset_id="discovered-token-2fa5450c9fa7285d6fc8352d9b7fed6eb042020a7a5e4f72e4181ec21f3e923d",
+        name="Unclassified token at 0xc011a73ee8576fb46f5e1c5751ca3b9fe0af2a6f",
+        representation_kind="unclassified",
+        stable_currency=None,
+        underlying_asset_id=None,
+        economic_reference_asset_id=None,
+    ),
+    TokenAsset(
         asset_id="discovered-token-323d07c442f0d089197ae7eea9b3ebb829910177c5b780161a7623aaed5e4371",
         name="Unclassified token at 0x3ceeb67533e494c0dc6be579585e3c62916062e0",
+        representation_kind="unclassified",
+        stable_currency=None,
+        underlying_asset_id=None,
+        economic_reference_asset_id=None,
+    ),
+    TokenAsset(
+        asset_id="discovered-token-4712886cee128f138bba49725f5df0c310125ac43949b14c0edafcd90ff0d545",
+        name="Unclassified token at 0x8400d94a5cb0fa0d041a3788e395285d61c9ee5e",
         representation_kind="unclassified",
         stable_currency=None,
         underlying_asset_id=None,
@@ -599,8 +635,32 @@ TOKEN_ASSETS: tuple[TokenAsset, ...] = (
         economic_reference_asset_id=None,
     ),
     TokenAsset(
+        asset_id="discovered-token-a8375562798bc4ae7b3f6f673452be39367f106be864d5ad44d3b5a17ccd04c6",
+        name="Unclassified token at 0xd46ba6d942050d489dbd938a2c909a5d5039a161",
+        representation_kind="unclassified",
+        stable_currency=None,
+        underlying_asset_id=None,
+        economic_reference_asset_id=None,
+    ),
+    TokenAsset(
         asset_id="discovered-token-b475569f6a15e97ac04e531dd813e9dcc902521c098d60d6ae4d21d53baf1395",
         name="Unclassified token at 0x9f8f72aa9304c8b593d555f12ef6589cc3a579a2",
+        representation_kind="unclassified",
+        stable_currency=None,
+        underlying_asset_id=None,
+        economic_reference_asset_id=None,
+    ),
+    TokenAsset(
+        asset_id="discovered-token-de17c35bf41345a60acbabfcc00e8108b2c058299fcb70416e9e15749f22220e",
+        name="Unclassified token at 0xb64ef51c888972c908cfacf59b47c1afbc0ab8ac",
+        representation_kind="unclassified",
+        stable_currency=None,
+        underlying_asset_id=None,
+        economic_reference_asset_id=None,
+    ),
+    TokenAsset(
+        asset_id="discovered-token-e2d57f6e6123c78a3215badf6e040643117e7e0ca727788ff1ff4fc1e1c3a556",
+        name="Unclassified token at 0x7d1afa7b718fb893db30a3abc0cfc608aacfebb0",
         representation_kind="unclassified",
         stable_currency=None,
         underlying_asset_id=None,
@@ -1674,6 +1734,22 @@ TOKEN_DEPLOYMENTS: tuple[TokenDeployment, ...] = (
         replaced_by_deployment_id=None,
     ),
     TokenDeployment(
+        deployment_id="discovered-token-23a03dcf2efbe86795f325e3f649738ef7315dfd1f6039c347c515c9c9c612bd",
+        asset_id="discovered-token-23a03dcf2efbe86795f325e3f649738ef7315dfd1f6039c347c515c9c9c612bd",
+        name="Unclassified token at 0x9469d013805bffb7d3debe5e7839237e535ec483",
+        representation_kind="unclassified",
+        stable_currency=None,
+        underlying_asset_id=None,
+        economic_reference_asset_id=None,
+        chain_id="eip155:1",
+        symbol="0x9469d013805bffb7d3debe5e7839237e535ec483",
+        decimals=18,
+        standard="erc20",
+        address="0x9469d013805bffb7d3debe5e7839237e535ec483",
+        status="active",
+        replaced_by_deployment_id=None,
+    ),
+    TokenDeployment(
         deployment_id="discovered-token-288036a90ee0fa72a2751a78a6934cc6ced9e16de91c97ae8e109e2ee6189bc5",
         asset_id="discovered-token-288036a90ee0fa72a2751a78a6934cc6ced9e16de91c97ae8e109e2ee6189bc5",
         name="Unclassified token at 0xc7198437980c041c805a1edcba50c1ce5db95118",
@@ -1690,6 +1766,22 @@ TOKEN_DEPLOYMENTS: tuple[TokenDeployment, ...] = (
         replaced_by_deployment_id=None,
     ),
     TokenDeployment(
+        deployment_id="discovered-token-2fa5450c9fa7285d6fc8352d9b7fed6eb042020a7a5e4f72e4181ec21f3e923d",
+        asset_id="discovered-token-2fa5450c9fa7285d6fc8352d9b7fed6eb042020a7a5e4f72e4181ec21f3e923d",
+        name="Unclassified token at 0xc011a73ee8576fb46f5e1c5751ca3b9fe0af2a6f",
+        representation_kind="unclassified",
+        stable_currency=None,
+        underlying_asset_id=None,
+        economic_reference_asset_id=None,
+        chain_id="eip155:1",
+        symbol="0xc011a73ee8576fb46f5e1c5751ca3b9fe0af2a6f",
+        decimals=18,
+        standard="erc20",
+        address="0xc011a73ee8576fb46f5e1c5751ca3b9fe0af2a6f",
+        status="active",
+        replaced_by_deployment_id=None,
+    ),
+    TokenDeployment(
         deployment_id="discovered-token-323d07c442f0d089197ae7eea9b3ebb829910177c5b780161a7623aaed5e4371",
         asset_id="discovered-token-323d07c442f0d089197ae7eea9b3ebb829910177c5b780161a7623aaed5e4371",
         name="Unclassified token at 0x3ceeb67533e494c0dc6be579585e3c62916062e0",
@@ -1702,6 +1794,22 @@ TOKEN_DEPLOYMENTS: tuple[TokenDeployment, ...] = (
         decimals=18,
         standard="erc20",
         address="0x3ceeb67533e494c0dc6be579585e3c62916062e0",
+        status="active",
+        replaced_by_deployment_id=None,
+    ),
+    TokenDeployment(
+        deployment_id="discovered-token-4712886cee128f138bba49725f5df0c310125ac43949b14c0edafcd90ff0d545",
+        asset_id="discovered-token-4712886cee128f138bba49725f5df0c310125ac43949b14c0edafcd90ff0d545",
+        name="Unclassified token at 0x8400d94a5cb0fa0d041a3788e395285d61c9ee5e",
+        representation_kind="unclassified",
+        stable_currency=None,
+        underlying_asset_id=None,
+        economic_reference_asset_id=None,
+        chain_id="eip155:1",
+        symbol="0x8400d94a5cb0fa0d041a3788e395285d61c9ee5e",
+        decimals=8,
+        standard="erc20",
+        address="0x8400d94a5cb0fa0d041a3788e395285d61c9ee5e",
         status="active",
         replaced_by_deployment_id=None,
     ),
@@ -1754,6 +1862,22 @@ TOKEN_DEPLOYMENTS: tuple[TokenDeployment, ...] = (
         replaced_by_deployment_id=None,
     ),
     TokenDeployment(
+        deployment_id="discovered-token-a8375562798bc4ae7b3f6f673452be39367f106be864d5ad44d3b5a17ccd04c6",
+        asset_id="discovered-token-a8375562798bc4ae7b3f6f673452be39367f106be864d5ad44d3b5a17ccd04c6",
+        name="Unclassified token at 0xd46ba6d942050d489dbd938a2c909a5d5039a161",
+        representation_kind="unclassified",
+        stable_currency=None,
+        underlying_asset_id=None,
+        economic_reference_asset_id=None,
+        chain_id="eip155:1",
+        symbol="0xd46ba6d942050d489dbd938a2c909a5d5039a161",
+        decimals=9,
+        standard="erc20",
+        address="0xd46ba6d942050d489dbd938a2c909a5d5039a161",
+        status="active",
+        replaced_by_deployment_id=None,
+    ),
+    TokenDeployment(
         deployment_id="discovered-token-b475569f6a15e97ac04e531dd813e9dcc902521c098d60d6ae4d21d53baf1395",
         asset_id="discovered-token-b475569f6a15e97ac04e531dd813e9dcc902521c098d60d6ae4d21d53baf1395",
         name="Unclassified token at 0x9f8f72aa9304c8b593d555f12ef6589cc3a579a2",
@@ -1766,6 +1890,38 @@ TOKEN_DEPLOYMENTS: tuple[TokenDeployment, ...] = (
         decimals=18,
         standard="erc20",
         address="0x9f8f72aa9304c8b593d555f12ef6589cc3a579a2",
+        status="active",
+        replaced_by_deployment_id=None,
+    ),
+    TokenDeployment(
+        deployment_id="discovered-token-de17c35bf41345a60acbabfcc00e8108b2c058299fcb70416e9e15749f22220e",
+        asset_id="discovered-token-de17c35bf41345a60acbabfcc00e8108b2c058299fcb70416e9e15749f22220e",
+        name="Unclassified token at 0xb64ef51c888972c908cfacf59b47c1afbc0ab8ac",
+        representation_kind="unclassified",
+        stable_currency=None,
+        underlying_asset_id=None,
+        economic_reference_asset_id=None,
+        chain_id="eip155:1",
+        symbol="0xb64ef51c888972c908cfacf59b47c1afbc0ab8ac",
+        decimals=8,
+        standard="erc20",
+        address="0xb64ef51c888972c908cfacf59b47c1afbc0ab8ac",
+        status="active",
+        replaced_by_deployment_id=None,
+    ),
+    TokenDeployment(
+        deployment_id="discovered-token-e2d57f6e6123c78a3215badf6e040643117e7e0ca727788ff1ff4fc1e1c3a556",
+        asset_id="discovered-token-e2d57f6e6123c78a3215badf6e040643117e7e0ca727788ff1ff4fc1e1c3a556",
+        name="Unclassified token at 0x7d1afa7b718fb893db30a3abc0cfc608aacfebb0",
+        representation_kind="unclassified",
+        stable_currency=None,
+        underlying_asset_id=None,
+        economic_reference_asset_id=None,
+        chain_id="eip155:1",
+        symbol="0x7d1afa7b718fb893db30a3abc0cfc608aacfebb0",
+        decimals=18,
+        standard="erc20",
+        address="0x7d1afa7b718fb893db30a3abc0cfc608aacfebb0",
         status="active",
         replaced_by_deployment_id=None,
     ),
@@ -1838,6 +1994,21 @@ TOKEN_ALIASES: tuple[TokenAlias, ...] = (
     ),
     TokenAlias(
         "ethereum",
+        "DISCOVERED_23A03DCF2EFBE867",
+        tokens.ethereum.DISCOVERED_23A03DCF2EFBE867,
+    ),
+    TokenAlias(
+        "ethereum",
+        "DISCOVERED_2FA5450C9FA7285D",
+        tokens.ethereum.DISCOVERED_2FA5450C9FA7285D,
+    ),
+    TokenAlias(
+        "ethereum",
+        "DISCOVERED_4712886CEE128F13",
+        tokens.ethereum.DISCOVERED_4712886CEE128F13,
+    ),
+    TokenAlias(
+        "ethereum",
         "DISCOVERED_611597BD13DAA43D",
         tokens.ethereum.DISCOVERED_611597BD13DAA43D,
     ),
@@ -1848,8 +2019,23 @@ TOKEN_ALIASES: tuple[TokenAlias, ...] = (
     ),
     TokenAlias(
         "ethereum",
+        "DISCOVERED_A8375562798BC4AE",
+        tokens.ethereum.DISCOVERED_A8375562798BC4AE,
+    ),
+    TokenAlias(
+        "ethereum",
         "DISCOVERED_B475569F6A15E97A",
         tokens.ethereum.DISCOVERED_B475569F6A15E97A,
+    ),
+    TokenAlias(
+        "ethereum",
+        "DISCOVERED_DE17C35BF41345A6",
+        tokens.ethereum.DISCOVERED_DE17C35BF41345A6,
+    ),
+    TokenAlias(
+        "ethereum",
+        "DISCOVERED_E2D57F6E6123C78A",
+        tokens.ethereum.DISCOVERED_E2D57F6E6123C78A,
     ),
     TokenAlias(
         "ethereum",
