@@ -46,7 +46,7 @@ class DexAlias(NamedTuple):
 
 DEX_CATALOG_VERSION = "1.0.0"
 DEX_CATALOG_AS_OF_DATE = "2026-09-15"
-DEX_CATALOG_CONTENT_DIGEST = "caccde1f997648dfa045af41d4f8b7f93a051c59d098cc770bd3a2757185aac1"
+DEX_CATALOG_CONTENT_DIGEST = "d087e185fa3928d2b288afe325e54d2d114b64f98bb65f1351e33d17fca33651"
 DEX_CHAIN_IDS = MappingProxyType({
     "ethereum": "eip155:1",
     "solana": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
@@ -85,6 +85,7 @@ class _EthereumPools(NamedTuple):
     DISCOVERED_POOL_1B98A5F24A364E05: str
     DISCOVERED_POOL_6428A1E5DA293B2E: str
     DISCOVERED_POOL_866F890448D13C07: str
+    DISCOVERED_POOL_8EE383C33CE263C3: str
     DISCOVERED_POOL_90805F8995C1D0B8: str
     DISCOVERED_POOL_A7F9E600A86951F4: str
     DISCOVERED_POOL_B8F972F8BAE36C82: str
@@ -116,6 +117,7 @@ pools = _Pools(
         DISCOVERED_POOL_1B98A5F24A364E05="discovered-pool-1b98a5f24a364e05b3d56a9702c3560fc3a71f84b2195c486cfc5f8a956cc0b7",
         DISCOVERED_POOL_6428A1E5DA293B2E="discovered-pool-6428a1e5da293b2ef62027ec823ba27532219a40784def3930feee56a623b809",
         DISCOVERED_POOL_866F890448D13C07="discovered-pool-866f890448d13c078e217a894ebd47430da5941fe5bff7e382fc095916b4614d",
+        DISCOVERED_POOL_8EE383C33CE263C3="discovered-pool-8ee383c33ce263c33d72015ed1d41841d11eb7de663aeb314c14447248b6522b",
         DISCOVERED_POOL_90805F8995C1D0B8="discovered-pool-90805f8995c1d0b85a45fcd4587928a00066b1f14407baee4e8ed1b634c07804",
         DISCOVERED_POOL_A7F9E600A86951F4="discovered-pool-a7f9e600a86951f40472ff779fae467db8a6bbbc6076356058f427e97d4ae429",
         DISCOVERED_POOL_B8F972F8BAE36C82="discovered-pool-b8f972f8bae36c82b51ed2aeed070d3ef3e7642e2a708c7d3c0c134e6e1946ed",
@@ -280,6 +282,21 @@ POOL_DEFINITIONS = (
         address="0xb6909b960dbbe7392d405429eb2b3649752b4838",
         token0_deployment_id="discovered-token-69519fd08e31445cad84b0c17a5346b7ee9c5692e270602af9308ca6d8943bb6",
         token1_deployment_id="deployment-0002",
+        adapter=PoolAdapter(
+            kind="evm-constant-product-v2",
+            fee_numerator="3",
+            fee_denominator="1000",
+        ),
+        status="active",
+        replaced_by_pool_definition_id=None,
+    ),
+    PoolDefinition(
+        pool_definition_id="discovered-pool-8ee383c33ce263c33d72015ed1d41841d11eb7de663aeb314c14447248b6522b",
+        dex_deployment_id="dex-deployment-0001",
+        chain_id="eip155:1",
+        address="0x0d4a11d5eeaac28ec3f61d100daf4d40471f1852",
+        token0_deployment_id="deployment-0002",
+        token1_deployment_id="deployment-0014",
         adapter=PoolAdapter(
             kind="evm-constant-product-v2",
             fee_numerator="3",
@@ -570,6 +587,12 @@ DEX_ALIASES = (
         name="DISCOVERED_POOL_866F890448D13C07",
         dex_deployment_id=None,
         pool_definition_id=pools.ethereum.DISCOVERED_POOL_866F890448D13C07,
+    ),
+    DexAlias(
+        namespace="ethereum",
+        name="DISCOVERED_POOL_8EE383C33CE263C3",
+        dex_deployment_id=None,
+        pool_definition_id=pools.ethereum.DISCOVERED_POOL_8EE383C33CE263C3,
     ),
     DexAlias(
         namespace="ethereum",
