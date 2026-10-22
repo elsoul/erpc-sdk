@@ -2,11 +2,13 @@ PATH
   remote: .
   specs:
     erpc-sdk (0.9.1)
+      base64 (= 0.2.0)
       digest-keccak (= 0.0.7)
 
 GEM
   remote: https://rubygems.org/
   specs:
+    base64 (0.2.0)
     digest-keccak (0.0.7)
     minitest (5.27.0)
     rake (13.4.2)
