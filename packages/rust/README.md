@@ -192,8 +192,9 @@ For Solana transaction-version options and response handling, see the
 | `erpc.usage` | Masked monthly API-key usage |
 
 Most JSON-RPC namespaces expose `request`, `raw`, and `batch` for typed results
-and forward-compatible methods. Base is the deliberate read-only exception:
-it exposes only its three typed reads and no raw/request/batch escape hatch.
+and forward-compatible methods. Base, Arbitrum, Polygon, BSC, and Optimism are
+deliberate sealed read-only exceptions: each exposes only its three typed reads
+and no raw/request/batch escape hatch.
 Avalanche uses the Ethereum-compatible
 typed catalog and defaults to `https://ava-rpc.erpc.global`; the SDK uses its
 `/ava` HTTP route and `/ava-ws` WebSocket route. Native namespaces provide
