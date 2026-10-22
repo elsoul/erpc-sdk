@@ -23,6 +23,8 @@ export const FOUNDATION_RUST_SOURCE = 'f05abe4276991612c4b5e404fdc768baace32e61'
 export const FOUNDATION_RUST_SHA256 = 'f2ad81528b35470b8f193dc45ad9f95e2d5ba0749b916ab9422cb07639088dd7'
 export const RELEASE_USER_AGENT = 'erpc-sdk-release-verification (https://github.com/elsoul/erpc-sdk)'
 export const FOUNDATION_WORKFLOW = '.github/workflows/release.yml'
+export const FOUNDATION_CI_WORKFLOW = '.github/workflows/ci.yml'
+export const FOUNDATION_CI_JOB = 'required-ci'
 export const FOUNDATION_ARTIFACT_KINDS = Object.freeze([
   'npm',
   'pypi-wheel',
@@ -1180,6 +1182,7 @@ export async function verifyFoundationProofSet({ plan, proofDirectory, manifestF
   const names = entries.filter(entry => entry.isFile()).map(entry => entry.name).sort()
   const allowedNames = [...required, 'foundation-proof-manifest.json'].sort()
   if (names.some(name => !allowedNames.includes(name)) || names.filter(name => required.includes(name)).length !== required.length) fail('Foundation proof receipt set is incomplete or has extras')
+  let priorReceiptArtifactId
   const receipts = {}
   for (const [file, kind] of Object.entries({ 'npm-proof.json': 'npm', 'pypi-proof.json': 'pypi', 'rubygems-proof.json': 'rubygems', 'rust-proof.json': 'rust', 'tag-proof.json': 'tags', 'go-proof.json': 'go' })) {
     receipts[file] = validateFoundationProofReceipt(JSON.parse(await readFile(join(proofDirectory, file), 'utf8')), { plan: normalized, kind, expected })
@@ -1192,9 +1195,10 @@ export async function verifyFoundationProofSet({ plan, proofDirectory, manifestF
     requireEqual(priorManifest?.planSha256, sha256Hex(canonicalJson(normalized)), 'Foundation proof manifest plan mismatch')
     requireEqual(priorManifest?.sourceCommit, normalized.sourceCommit, 'Foundation proof manifest source mismatch')
     requireEqual(canonicalJson(priorManifest?.receipts), canonicalJson(receiptDigests), 'Foundation proof manifest receipt bytes mismatch')
-    if (priorManifest?.proofReceiptsArtifactId !== undefined) requirePositiveId(priorManifest.proofReceiptsArtifactId, 'Foundation proof receipts artifact ID')
+    if (priorManifest?.proofReceiptsArtifactId !== undefined) priorReceiptArtifactId = requirePositiveId(priorManifest.proofReceiptsArtifactId, 'Foundation proof receipts artifact ID')
     if (expected.receiptArtifactId !== undefined && priorManifest?.proofReceiptsArtifactId !== undefined) requireEqual(String(priorManifest.proofReceiptsArtifactId), String(expected.receiptArtifactId), 'Foundation proof receipts artifact binding mismatch')
   }
+  const receiptArtifactId = expected.receiptArtifactId === undefined ? priorReceiptArtifactId : requirePositiveId(expected.receiptArtifactId, 'Foundation proof receipts artifact ID')
   const manifest = {
     schemaVersion: 1,
     kind: 'erpc-sdk-foundation-proof-manifest',
@@ -1205,7 +1209,7 @@ export async function verifyFoundationProofSet({ plan, proofDirectory, manifestF
     preparedRunId: String(expected.runId),
     preparedRunAttempt: String(expected.runAttempt),
     preparedArtifactId: String(expected.artifactId),
-    ...(expected.receiptArtifactId === undefined ? {} : { proofReceiptsArtifactId: String(requirePositiveId(expected.receiptArtifactId, 'Foundation proof receipts artifact ID')) }),
+    ...(receiptArtifactId === undefined ? {} : { proofReceiptsArtifactId: String(receiptArtifactId) }),
     receipts: receiptDigests,
     proofAssets: FOUNDATION_PROOF_ASSETS,
     state: 'complete',
@@ -1290,6 +1294,77 @@ export function validateFoundationWorkflowContext(context) {
   requireFoundationVersion(expectedVersion)
   if (mode !== 'prepare' && mode !== 'publish') fail('Foundation mode must be prepare or publish')
   return { expectedCommit, expectedVersion, mode }
+}
+
+const foundationCIRunIsEligible = (run, expected) =>
+  run?.workflow_id === expected.workflowId &&
+  run?.path === FOUNDATION_CI_WORKFLOW &&
+  run?.head_sha === expected.sourceCommit &&
+  run?.head_branch === 'main' &&
+  (run?.event === 'push' || run?.event === 'workflow_dispatch') &&
+  String(run?.repository?.id ?? run?.repository_id) === EXPECTED_REPOSITORY_ID &&
+  (run?.repository?.full_name === undefined || run.repository.full_name === EXPECTED_REPOSITORY) &&
+  (run?.head_repository?.id === undefined || String(run.head_repository.id) === EXPECTED_REPOSITORY_ID) &&
+  (run?.head_repository?.full_name === undefined || run.head_repository.full_name === EXPECTED_REPOSITORY)
+
+export function selectFoundationCIRun({ workflow, runs, expected }) {
+  requirePositiveId(workflow?.id, 'CI workflow ID')
+  requireEqual(workflow?.path, FOUNDATION_CI_WORKFLOW, 'CI workflow path mismatch')
+  if (workflow?.url !== undefined && workflow.url !== `https://api.github.com/repos/${EXPECTED_REPOSITORY}/actions/workflows/ci.yml`) fail('CI workflow URL is not bound to the expected repository')
+  if (!Array.isArray(runs?.workflow_runs) || !Number.isSafeInteger(runs?.total_count) || runs.total_count < runs.workflow_runs.length || runs.total_count > 100) {
+    fail('CI workflow run enumeration is missing, truncated, or malformed')
+  }
+  const sourceRuns = runs.workflow_runs.filter(run => run?.head_sha === expected.sourceCommit && String(run?.repository?.id ?? run?.repository_id) === EXPECTED_REPOSITORY_ID)
+  if (sourceRuns.some(run => run?.workflow_id === workflow.id && (run?.event === 'pull_request' || run?.head_branch !== 'main' || run?.path !== FOUNDATION_CI_WORKFLOW))) {
+    fail('CI proof includes an ineligible pull-request, branch, or workflow run for the release source')
+  }
+  const eligible = runs.workflow_runs.filter(run => foundationCIRunIsEligible(run, { ...expected, workflowId: workflow.id }))
+  if (eligible.length === 0) fail('No eligible main CI run exists for the exact release source')
+  eligible.sort((left, right) => {
+    const created = String(right.created_at ?? '').localeCompare(String(left.created_at ?? ''))
+    if (created !== 0) return created
+    const number = Number(right.run_number ?? right.id) - Number(left.run_number ?? left.id)
+    return Number.isNaN(number) ? 0 : number
+  })
+  const selected = eligible[0]
+  requirePositiveId(selected.id, 'Selected CI run ID')
+  requirePositiveId(selected.run_attempt, 'Selected CI run attempt')
+  return {
+    id: Number(selected.id),
+    runAttempt: Number(selected.run_attempt),
+    workflowId: Number(workflow.id),
+    sourceCommit: selected.head_sha,
+    event: selected.event,
+    headBranch: selected.head_branch,
+    createdAt: selected.created_at,
+  }
+}
+
+export function validateFoundationCIProof({ workflow, runs, selection, recheck, jobs, expected }) {
+  const selected = selectFoundationCIRun({ workflow, runs, expected })
+  requireEqual(selection?.id, selected.id, 'CI selected run binding mismatch')
+  requireEqual(selection?.runAttempt, selected.runAttempt, 'CI selected attempt binding mismatch')
+  const selectedRun = runs.workflow_runs.find(run => Number(run.id) === selected.id)
+  requireEqual(selectedRun?.status, 'completed', 'Selected CI run is not completed')
+  requireEqual(selectedRun?.conclusion, 'success', 'Selected CI run did not succeed')
+  requireEqual(recheck?.id, selected.id, 'CI run changed while proof was fetched')
+  requireEqual(recheck?.run_attempt, selected.runAttempt, 'CI run attempt changed while proof was fetched')
+  requireEqual(recheck?.head_sha, expected.sourceCommit, 'CI recheck source mismatch')
+  requireEqual(recheck?.head_branch, 'main', 'CI recheck branch mismatch')
+  requireEqual(recheck?.status, 'completed', 'CI recheck is not completed')
+  requireEqual(recheck?.conclusion, 'success', 'CI recheck did not succeed')
+  if (!Array.isArray(jobs?.jobs) || !Number.isSafeInteger(jobs?.total_count) || jobs.total_count !== jobs.jobs.length || jobs.total_count > 100) fail('CI job enumeration is missing, truncated, or malformed')
+  const requiredJobs = jobs.jobs.filter(job => job?.name === FOUNDATION_CI_JOB)
+  if (requiredJobs.length !== 1) fail('CI proof must contain exactly one required-ci job')
+  const job = requiredJobs[0]
+  requirePositiveId(job.id, 'required-ci job ID')
+  requireEqual(job.status, 'completed', 'required-ci job is not completed')
+  requireEqual(job.conclusion, 'success', 'required-ci job did not succeed')
+  requireEqual(job.run_id, selected.id, 'required-ci run binding mismatch')
+  if (job.run_attempt !== undefined) requireEqual(job.run_attempt, selected.runAttempt, 'required-ci attempt binding mismatch')
+  requireEqual(job.head_sha, expected.sourceCommit, 'required-ci source binding mismatch')
+  if (job.repository_id !== undefined) requireEqual(String(job.repository_id), EXPECTED_REPOSITORY_ID, 'required-ci repository binding mismatch')
+  return { ...selected, requiredJobId: job.id, requiredJobName: job.name, requiredJobStatus: job.status, requiredJobConclusion: job.conclusion }
 }
 
 /** Classify the fixed crates.io API response before any authentication. */
@@ -1488,6 +1563,31 @@ const run = async arguments_ => {
     return
   }
 
+  if (arguments_[0] === '--foundation-ci-select') {
+    requireExactInternalMode(arguments_, '--foundation-ci-select')
+    const workflow = JSON.parse(await readFile(env('FOUNDATION_CI_WORKFLOW_FILE'), 'utf8'))
+    const runs = JSON.parse(await readFile(env('FOUNDATION_CI_RUNS_FILE'), 'utf8'))
+    const selection = selectFoundationCIRun({ workflow, runs, expected: { sourceCommit: env('FOUNDATION_SOURCE_SHA') } })
+    await writeFile(env('FOUNDATION_CI_SELECTION_FILE'), `${canonicalJson(selection)}\n`)
+    console.log(`foundation-ci-selection=${canonicalJson(selection)}`)
+    return
+  }
+
+  if (arguments_[0] === '--foundation-ci-proof') {
+    requireExactInternalMode(arguments_, '--foundation-ci-proof')
+    const evidence = validateFoundationCIProof({
+      workflow: JSON.parse(await readFile(env('FOUNDATION_CI_WORKFLOW_FILE'), 'utf8')),
+      runs: JSON.parse(await readFile(env('FOUNDATION_CI_RUNS_FILE'), 'utf8')),
+      selection: JSON.parse(await readFile(env('FOUNDATION_CI_SELECTION_FILE'), 'utf8')),
+      recheck: JSON.parse(await readFile(env('FOUNDATION_CI_RECHECK_FILE'), 'utf8')),
+      jobs: JSON.parse(await readFile(env('FOUNDATION_CI_JOBS_FILE'), 'utf8')),
+      expected: { sourceCommit: env('FOUNDATION_SOURCE_SHA') },
+    })
+    await writeFile(env('FOUNDATION_CI_EVIDENCE_FILE'), `${canonicalJson(evidence)}\n`)
+    console.log(`foundation-ci-proof=${canonicalJson(evidence)}`)
+    return
+  }
+
   if (arguments_[0] === '--foundation-preparation') {
     requireExactInternalMode(arguments_, '--foundation-preparation')
     const observed = validateFoundationPreparationMetadata({
@@ -1498,7 +1598,6 @@ const run = async arguments_ => {
         runId: env('FOUNDATION_PREPARED_RUN_ID'),
         runAttempt: env('FOUNDATION_PREPARED_RUN_ATTEMPT'),
         artifactId: env('FOUNDATION_PREPARED_ARTIFACT_ID'),
-        receiptArtifactId: process.env.FOUNDATION_PROOF_RECEIPTS_ARTIFACT_ID,
         bindingArtifactId: env('FOUNDATION_PREPARED_BINDING_ARTIFACT_ID'),
         sourceCommit: env('FOUNDATION_SOURCE_SHA'),
       },
@@ -1538,6 +1637,7 @@ const run = async arguments_ => {
         runId: env('FOUNDATION_PREPARED_RUN_ID'),
         runAttempt: env('FOUNDATION_PREPARED_RUN_ATTEMPT'),
         artifactId: env('FOUNDATION_PREPARED_ARTIFACT_ID'),
+        receiptArtifactId: process.env.FOUNDATION_PROOF_RECEIPTS_ARTIFACT_ID || undefined,
       },
     })
     console.log(`foundation-proofs=${sha256Hex(canonicalJson(manifest))}`)

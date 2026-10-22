@@ -367,6 +367,28 @@ jobs:
         run: |
           set -euo pipefail
           CHECKOUT_STATUS="$(git status --porcelain)" CHECKOUT_HEAD="$(git rev-parse HEAD)" node scripts/verify-release.mjs --foundation-guard
+      - name: Verify bounded CI proof for this immutable release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FOUNDATION_SOURCE_SHA: ${{ inputs.expected_commit }}
+          CI_WORKFLOW_FILE: ${{ runner.temp }}/foundation-ci-workflow.json
+          CI_RUNS_FILE: ${{ runner.temp }}/foundation-ci-runs.json
+          CI_SELECTION_FILE: ${{ runner.temp }}/foundation-ci-selection.json
+          CI_RECHECK_FILE: ${{ runner.temp }}/foundation-ci-recheck.json
+          CI_JOBS_FILE: ${{ runner.temp }}/foundation-ci-jobs.json
+          CI_EVIDENCE_FILE: ${{ runner.temp }}/foundation-ci-evidence.json
+        run: |
+          set -euo pipefail
+          gh api "/repos/$EXPECTED_REPOSITORY/actions/workflows/ci.yml" > "$CI_WORKFLOW_FILE"
+          ci_workflow_id="$(jq -r '.id' "$CI_WORKFLOW_FILE")"
+          test "$ci_workflow_id" != null
+          gh api "/repos/$EXPECTED_REPOSITORY/actions/workflows/$ci_workflow_id/runs?branch=main&head_sha=$FOUNDATION_SOURCE_SHA&per_page=100" > "$CI_RUNS_FILE"
+          FOUNDATION_CI_WORKFLOW_FILE="$CI_WORKFLOW_FILE" FOUNDATION_CI_RUNS_FILE="$CI_RUNS_FILE" FOUNDATION_CI_SELECTION_FILE="$CI_SELECTION_FILE" node scripts/verify-release.mjs --foundation-ci-select
+          ci_run_id="$(jq -r '.id' "$CI_SELECTION_FILE")"
+          ci_run_attempt="$(jq -r '.runAttempt' "$CI_SELECTION_FILE")"
+          gh api "/repos/$EXPECTED_REPOSITORY/actions/runs/$ci_run_id/attempts/$ci_run_attempt/jobs?per_page=100" > "$CI_JOBS_FILE"
+          gh api "/repos/$EXPECTED_REPOSITORY/actions/runs/$ci_run_id" > "$CI_RECHECK_FILE"
+          FOUNDATION_CI_WORKFLOW_FILE="$CI_WORKFLOW_FILE" FOUNDATION_CI_RUNS_FILE="$CI_RUNS_FILE" FOUNDATION_CI_SELECTION_FILE="$CI_SELECTION_FILE" FOUNDATION_CI_RECHECK_FILE="$CI_RECHECK_FILE" FOUNDATION_CI_JOBS_FILE="$CI_JOBS_FILE" FOUNDATION_CI_EVIDENCE_FILE="$CI_EVIDENCE_FILE" node scripts/verify-release.mjs --foundation-ci-proof
       - name: Authenticate successful preparation run and artifact metadata
         env:
           GH_TOKEN: ${{ github.token }}

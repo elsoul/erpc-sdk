@@ -29,6 +29,8 @@ import {
   validateFoundationPlan,
   validateFoundationArtifactDescriptor,
   validateFoundationPyPIResponse,
+  selectFoundationCIRun,
+  validateFoundationCIProof,
   validateWorkflowContext,
   verifyArchiveContents,
   verifyFoundationBundle,
@@ -299,6 +301,23 @@ test('preparation metadata requires a successful exact workflow run and both own
   }
 })
 
+test('bounded CI proof selects the newest exact-source attempt and rejects stale or incomplete evidence', () => {
+  const workflow = { id: 77, path: '.github/workflows/ci.yml', url: 'https://api.github.com/repos/elsoul/erpc-sdk/actions/workflows/ci.yml' }
+  const runs = {
+    total_count: 2,
+    workflow_runs: [
+      { id: 100, run_attempt: 1, workflow_id: 77, path: '.github/workflows/ci.yml', repository: { full_name: 'elsoul/erpc-sdk', id: 1429568627 }, head_sha: sha, head_branch: 'main', event: 'push', status: 'completed', conclusion: 'success', created_at: '2026-10-22T00:00:00Z' },
+      { id: 101, run_attempt: 1, workflow_id: 77, path: '.github/workflows/ci.yml', repository: { full_name: 'elsoul/erpc-sdk', id: 1429568627 }, head_sha: sha, head_branch: 'main', event: 'push', status: 'in_progress', conclusion: null, created_at: '2026-10-22T00:01:00Z' },
+    ],
+  }
+  const selection = selectFoundationCIRun({ workflow, runs, expected: { sourceCommit: sha } })
+  assert.equal(selection.id, 101)
+  assert.throws(() => validateFoundationCIProof({ workflow, runs, selection, recheck: runs.workflow_runs[1], jobs: { total_count: 1, jobs: [{ id: 1, name: 'required-ci', status: 'completed', conclusion: 'success', run_id: 101, run_attempt: 1, head_sha: sha, repository_id: 1429568627 }] }, expected: { sourceCommit: sha } }), /not completed|did not succeed/)
+  const successfulRuns = { ...runs, workflow_runs: runs.workflow_runs.map(run => run.id === 101 ? { ...run, status: 'completed', conclusion: 'success' } : run) }
+  assert.throws(() => validateFoundationCIProof({ workflow, runs: successfulRuns, selection, recheck: successfulRuns.workflow_runs[1], jobs: { total_count: 2, jobs: [{ id: 1, name: 'required-ci', status: 'completed', conclusion: 'success' }, { id: 2, name: 'required-ci', status: 'completed', conclusion: 'success' }] }, expected: { sourceCommit: sha } }), /exactly one required-ci/)
+  assert.throws(() => selectFoundationCIRun({ workflow, runs: { total_count: 1, workflow_runs: [{ ...successfulRuns.workflow_runs[1], event: 'pull_request' }] }, expected: { sourceCommit: sha } }), /ineligible|No eligible/)
+})
+
 test('registry classification distinguishes absent, match, conflict, yanked, malformed, and HTTP failure', () => {
   const response = JSON.stringify({
     version: { crate: 'erpc-sdk', num: '0.10.0', checksum: hash, yanked: false },
@@ -395,6 +414,15 @@ test('foundation proof aggregate binds observed receipts, auth paths, and attest
   assert.equal(manifest.state, 'complete')
   const boundManifest = await verifyFoundationProofSet({ plan, proofDirectory: directory, manifestFile, expected: { runId: '12345', runAttempt: '1', artifactId: '45678', receiptArtifactId: '56789' } })
   assert.equal(boundManifest.proofReceiptsArtifactId, '56789')
+  const planFile = `${directory}-foundation-plan.json`
+  t.after(() => rm(planFile, { force: true }))
+  await writeFile(planFile, `${canonicalJson(plan)}\n`)
+  const cliEnvironment = { FOUNDATION_PLAN_FILE: planFile, FOUNDATION_PROOF_DIR: directory, FOUNDATION_PROOF_MANIFEST_FILE: manifestFile, FOUNDATION_PREPARED_RUN_ID: '12345', FOUNDATION_PREPARED_RUN_ATTEMPT: '1', FOUNDATION_PREPARED_ARTIFACT_ID: '45678', FOUNDATION_PROOF_RECEIPTS_ARTIFACT_ID: '56789' }
+  await runVerifierCli(['--foundation-proof-verify'], cliEnvironment)
+  assert.equal(JSON.parse(await readFile(manifestFile, 'utf8')).proofReceiptsArtifactId, '56789')
+  await assert.rejects(runVerifierCli(['--foundation-proof-verify'], { ...cliEnvironment, FOUNDATION_PROOF_RECEIPTS_ARTIFACT_ID: '99999' }), /receipts artifact binding mismatch/)
+  await runVerifierCli(['--foundation-proof-verify'], { ...cliEnvironment, FOUNDATION_PROOF_RECEIPTS_ARTIFACT_ID: undefined })
+  assert.equal(JSON.parse(await readFile(manifestFile, 'utf8')).proofReceiptsArtifactId, '56789')
   const tampered = { ...receipts['tag-proof.json'], tags: { ...receipts['tag-proof.json'].tags, go: { ref: 'refs/tags/packages/go/v0.9.1', sha: 'c'.repeat(40) } } }
   await writeFile(join(directory, 'tag-proof.json'), JSON.stringify(tampered))
   await assert.rejects(() => verifyFoundationProofSet({ plan, proofDirectory: directory, manifestFile, expected: { runId: '12345', runAttempt: '1', artifactId: '45678' } }))
@@ -576,6 +604,8 @@ test('every internal verifier mode rejects extra, duplicate, and conflicting CLI
     [['--foundation-describe-artifacts', '--unknown'], {}],
     [['--foundation-go-inventory', '--foundation-go-inventory'], {}],
     [['--foundation-plan', '--scope', 'all'], {}],
+    [['--foundation-ci-select', '--unknown'], {}],
+    [['--foundation-ci-proof', '--unknown'], {}],
     [['--foundation-preparation', '--unknown'], {}],
     [['--foundation-verify', '--foundation-verify'], {}],
     [['--foundation-proof-verify', '--unknown'], {}],
@@ -879,6 +909,52 @@ test('actual npm Fulcio claim decoder accepts legacy raw issuer OIDs and rejects
   await assert.rejects(run(validCertificate, 'https://registry.npmjs.org.evil/'))
   await assert.rejects(run(await makeCertificate('https://evil.invalid', sha)))
   await assert.rejects(run(await makeCertificate('https://token.actions.githubusercontent.com', 'c'.repeat(40))))
+})
+
+test('actual bounded CI proof step parses and fails closed on stale, pending, duplicate, and truncated evidence', async t => {
+  const workflow = await readFile(new URL('../.github/workflows/release.yml', import.meta.url), 'utf8')
+  const block = extractWorkflowRunBlock(workflow, 'Verify bounded CI proof for this immutable release')
+  const directory = await mkdtemp(join(tmpdir(), 'erpc-sdk-ci-proof-'))
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  const blockFile = join(directory, 'ci-proof.sh')
+  await writeFile(blockFile, block)
+  await execFileAsync('bash', ['-n', blockFile])
+  const gh = join(directory, 'gh')
+  await writeFile(gh, `#!/usr/bin/env node
+const args = process.argv.slice(2)
+const endpoint = args[1] || ''
+const sha = process.env.FOUNDATION_SOURCE_SHA
+const workflow = { id: 77, path: '.github/workflows/ci.yml', url: 'https://api.github.com/repos/elsoul/erpc-sdk/actions/workflows/ci.yml' }
+const oldRun = { id: 100, run_attempt: 1, workflow_id: 77, path: '.github/workflows/ci.yml', repository: { full_name: 'elsoul/erpc-sdk', id: 1429568627 }, head_repository: { full_name: 'elsoul/erpc-sdk', id: 1429568627 }, head_sha: sha, head_branch: 'main', event: 'push', status: 'completed', conclusion: 'success', created_at: '2026-10-22T00:00:00Z' }
+const latestRun = { id: 101, run_attempt: 1, workflow_id: 77, path: '.github/workflows/ci.yml', repository: { full_name: 'elsoul/erpc-sdk', id: 1429568627 }, head_repository: { full_name: 'elsoul/erpc-sdk', id: 1429568627 }, head_sha: sha, head_branch: 'main', event: 'push', status: process.env.CI_CASE === 'pending' ? 'in_progress' : 'completed', conclusion: process.env.CI_CASE === 'pending' ? null : 'success', created_at: '2026-10-22T00:01:00Z' }
+if (endpoint.endsWith('/actions/workflows/ci.yml')) process.stdout.write(JSON.stringify(workflow))
+else if (endpoint.includes('/actions/workflows/77/runs')) process.stdout.write(JSON.stringify(process.env.CI_CASE === 'truncated' ? { total_count: 101, workflow_runs: [latestRun] } : { total_count: 2, workflow_runs: [oldRun, latestRun] }))
+else if (endpoint.includes('/attempts/1/jobs')) {
+  const job = { id: 200, name: 'required-ci', status: 'completed', conclusion: process.env.CI_CASE === 'job-failure' ? 'failure' : 'success', run_id: 101, run_attempt: 1, head_sha: sha, repository_id: 1429568627 }
+  process.stdout.write(JSON.stringify({ total_count: process.env.CI_CASE === 'duplicate' ? 2 : 1, jobs: process.env.CI_CASE === 'duplicate' ? [job, { ...job, id: 201 }] : [job] }))
+} else if (endpoint.endsWith('/actions/runs/101')) process.stdout.write(JSON.stringify(latestRun))
+else process.exit(97)
+`)
+  await chmod(gh, 0o755)
+  const runCase = (caseName = 'success') => execFileAsync('bash', ['-c', `set -euo pipefail\n${block}`], {
+    env: {
+      ...process.env,
+      PATH: `${directory}:${process.env.PATH ?? ''}`,
+      GH_TOKEN: 'offline-token',
+      EXPECTED_REPOSITORY: 'elsoul/erpc-sdk',
+      FOUNDATION_SOURCE_SHA: sha,
+      CI_WORKFLOW_FILE: join(directory, 'workflow.json'),
+      CI_RUNS_FILE: join(directory, 'runs.json'),
+      CI_SELECTION_FILE: join(directory, 'selection.json'),
+      CI_RECHECK_FILE: join(directory, 'recheck.json'),
+      CI_JOBS_FILE: join(directory, 'jobs.json'),
+      CI_EVIDENCE_FILE: join(directory, 'evidence.json'),
+      CI_CASE: caseName,
+    },
+  })
+  await runCase()
+  assert.equal(JSON.parse(await readFile(join(directory, 'evidence.json'), 'utf8')).requiredJobName, 'required-ci')
+  for (const caseName of ['pending', 'duplicate', 'job-failure', 'truncated']) await assert.rejects(runCase(caseName))
 })
 
 test('actual Go proof block rejects wrong module, origin, subdirectory, sums, and zip members', async t => {
