@@ -1,0 +1,10 @@
+Ported repository hygiene tooling
+Copyright 2026 ELSOUL LABO B.V.
+
+This repository includes software developed at ELSOUL LABO B.V.
+(https://elsoul.nl) for the ERPC service (https://erpc.global).
+
+scripts/check-oss-hygiene.sh, scripts/tests/check-oss-hygiene.test.sh,
+lefthook.yml, and .gitleaks.toml are adapted from the ERPC CLI and licensed
+under Apache-2.0; see their headers and LICENSES/Apache-2.0.txt.
+Other files retain their existing licenses.

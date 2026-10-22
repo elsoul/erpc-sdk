@@ -545,7 +545,7 @@ const monthlyUsage = await cloud.usage.getMonthlyApiKeyUsage()
 
 Catalog, credit, and resource results are projected onto documented public
 fields. Interactive login and operating-system keychain storage belong to
-`@elsoul/erpc-cli`.
+the ERPC command-line client.
 
 ## Raw methods
 
