@@ -190,13 +190,17 @@ For Solana transaction-version options and response handling, see the
 | `erpc.kaia.rpc` | Kaia mainnet HTTP read-only JSON-RPC (target Rust 0.11.0) |
 | `erpc.soneium.rpc` | Soneium mainnet HTTP read-only JSON-RPC (target Rust 0.11.0) |
 | `erpc.monad.rpc` | Monad mainnet HTTP read-only JSON-RPC (target Rust 0.11.0) |
+| erpc.hyperliquid.rpc | Hyperliquid HyperEVM mainnet HTTP read-only JSON-RPC (target Rust 0.11.0) |
+| erpc.arc.rpc | Arc mainnet HTTP read-only JSON-RPC (target Rust 0.11.0) |
+| erpc.robinhood.rpc | Robinhood Chain Public Mainnet HTTP read-only JSON-RPC (target Rust 0.11.0) |
 | `erpc.price` | Price metadata, updates, and SSE streams |
 | `erpc.account` | Token balance |
 | `erpc.usage` | Masked monthly API-key usage |
 
 Most JSON-RPC namespaces expose `request`, `raw`, and `batch` for typed results
 and forward-compatible methods. Base, Arbitrum, Polygon, BSC, Optimism, Kaia,
-Soneium, and Monad are deliberate sealed read-only exceptions: each exposes
+Soneium, Monad, Hyperliquid, Arc, and Robinhood are deliberate sealed
+read-only exceptions: each exposes
 only its three typed reads and no raw/request/batch escape hatch.
 Avalanche uses the Ethereum-compatible
 typed catalog and defaults to `https://ava-rpc.erpc.global`; the SDK uses its
@@ -430,6 +434,37 @@ finality/archive assertion. Monad mainnet is 0x8f; Monad Testnet is 0x279f and
 is outside this facade. Custom endpoints return their actual chain ID unchanged
 so callers can detect a mismatch. Safe/finalized block selectors pass through
 as supplied.
+
+## Hyperliquid HyperEVM, Arc, and Robinhood read-only RPC (target Rust 0.11.0)
+
+These three namespaces are unreleased source work in the same Rust 0.11.0
+candidate. The published erpc-sdk 0.10.0 crate does not contain them; keep the
+install line above at erpc-sdk = 0.10 until the later promotion brief and
+release proof.
+
+Hyperliquid is HyperEVM-only: its dedicated root is hyperliquid.erpc.global and
+its edge override is edge.erpc.global/hyperliquid. The facade never exposes
+HyperCore info, orders, trades, exchange, or transfer operations. The default
+node history caveat is latest-only; caller selectors pass through unchanged and
+there is no archive fallback or history promise.
+
+Arc Mainnet uses arc.erpc.global with edge override edge.erpc.global/arc and
+chain ID 5042 / 0x13b2. Arc native USDC balances use 18-decimal base units,
+while its ERC-20 view uses 6 decimals over the same underlying balance. The
+SDK returns each raw view unchanged and performs no scaling, double counting,
+aggregation, token registration, wrapper claim, or sentinel mapping. Arc
+Testnet is a separate network.
+
+Robinhood Chain Public Mainnet uses robinhood.erpc.global with edge override
+edge.erpc.global/robinhood and chain ID 4663 / 0x1237. Robinhood Testnet is
+46630 / 0xb626; this facade is mainnet-only and makes no brokerage, trading,
+Stock Token, account, or trading-authentication claim.
+
+All three facades expose only eth_chainId, eth_getBalance, and eth_call,
+returning raw hex String results. They have no request, raw, batch,
+WebSocket/subscription, sign, send, broadcast, swap, or bridge surface. Verify
+the expected chain ID before trusting a custom endpoint. Native balances remain
+raw quantities: HyperEVM HYPE, Arc native USDC, and Robinhood native ETH.
 
 ## Bitcoin HTTP JSON-RPC
 

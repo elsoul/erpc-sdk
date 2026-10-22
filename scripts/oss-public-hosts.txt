@@ -11,3 +11,6 @@ optimism.erpc.global
 kaia.erpc.global
 soneium.erpc.global
 monad.erpc.global
+hyperliquid.erpc.global
+arc.erpc.global
+robinhood.erpc.global

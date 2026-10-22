@@ -30,6 +30,12 @@ pub const DEFAULT_KAIA_ENDPOINT: &str = "https://kaia.erpc.global";
 pub const DEFAULT_SONEIUM_ENDPOINT: &str = "https://soneium.erpc.global";
 /// Default Monad mainnet JSON-RPC endpoint.
 pub const DEFAULT_MONAD_ENDPOINT: &str = "https://monad.erpc.global";
+/// Default Hyperliquid `HyperEVM` mainnet JSON-RPC endpoint.
+pub const DEFAULT_HYPERLIQUID_ENDPOINT: &str = "https://hyperliquid.erpc.global";
+/// Default Arc mainnet JSON-RPC endpoint.
+pub const DEFAULT_ARC_ENDPOINT: &str = "https://arc.erpc.global";
+/// Default Robinhood Chain Public Mainnet JSON-RPC endpoint.
+pub const DEFAULT_ROBINHOOD_ENDPOINT: &str = "https://robinhood.erpc.global";
 /// Default request and connection-establishment timeout.
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -198,6 +204,18 @@ pub struct ErpcClientConfig {
     pub monad_endpoint: String,
     /// Optional caller-owned Monad mainnet JSON-RPC endpoint.
     pub monad_rpc: Option<RpcEndpointConfig>,
+    /// Hosted Hyperliquid `HyperEVM` mainnet JSON-RPC endpoint override.
+    pub hyperliquid_endpoint: String,
+    /// Optional caller-owned Hyperliquid `HyperEVM` mainnet JSON-RPC endpoint.
+    pub hyperliquid_rpc: Option<RpcEndpointConfig>,
+    /// Hosted Arc mainnet JSON-RPC endpoint override.
+    pub arc_endpoint: String,
+    /// Optional caller-owned Arc mainnet JSON-RPC endpoint.
+    pub arc_rpc: Option<RpcEndpointConfig>,
+    /// Hosted Robinhood Chain Public Mainnet JSON-RPC endpoint override.
+    pub robinhood_endpoint: String,
+    /// Optional caller-owned Robinhood Chain Public Mainnet JSON-RPC endpoint.
+    pub robinhood_rpc: Option<RpcEndpointConfig>,
 }
 
 impl fmt::Debug for ErpcClientConfig {
@@ -245,6 +263,24 @@ impl fmt::Debug for ErpcClientConfig {
             .field("monad_endpoint", &debug_origin(&self.monad_endpoint))
             .field("monad_rpc", &self.monad_rpc.as_ref().map(MonadRpcDebug))
             .field(
+                "hyperliquid_endpoint",
+                &debug_origin(&self.hyperliquid_endpoint),
+            )
+            .field(
+                "hyperliquid_rpc",
+                &self.hyperliquid_rpc.as_ref().map(HyperliquidRpcDebug),
+            )
+            .field("arc_endpoint", &debug_origin(&self.arc_endpoint))
+            .field("arc_rpc", &self.arc_rpc.as_ref().map(ArcRpcDebug))
+            .field(
+                "robinhood_endpoint",
+                &debug_origin(&self.robinhood_endpoint),
+            )
+            .field(
+                "robinhood_rpc",
+                &self.robinhood_rpc.as_ref().map(RobinhoodRpcDebug),
+            )
+            .field(
                 "header_names",
                 &self
                     .headers
@@ -289,6 +325,12 @@ impl ErpcClientConfig {
             soneium_rpc: None,
             monad_endpoint: DEFAULT_MONAD_ENDPOINT.to_owned(),
             monad_rpc: None,
+            hyperliquid_endpoint: DEFAULT_HYPERLIQUID_ENDPOINT.to_owned(),
+            hyperliquid_rpc: None,
+            arc_endpoint: DEFAULT_ARC_ENDPOINT.to_owned(),
+            arc_rpc: None,
+            robinhood_endpoint: DEFAULT_ROBINHOOD_ENDPOINT.to_owned(),
+            robinhood_rpc: None,
         }
     }
 
@@ -495,6 +537,48 @@ impl ErpcClientConfig {
         self.monad_rpc = Some(endpoint.into());
         self
     }
+
+    /// Overrides the hosted Hyperliquid `HyperEVM` mainnet JSON-RPC endpoint.
+    #[must_use]
+    pub fn with_hyperliquid_endpoint(mut self, endpoint: impl Into<String>) -> Self {
+        self.hyperliquid_endpoint = endpoint.into();
+        self
+    }
+
+    /// Selects a caller-owned Hyperliquid `HyperEVM` mainnet JSON-RPC endpoint.
+    #[must_use]
+    pub fn with_hyperliquid_rpc(mut self, endpoint: impl Into<RpcEndpointConfig>) -> Self {
+        self.hyperliquid_rpc = Some(endpoint.into());
+        self
+    }
+
+    /// Overrides the hosted Arc mainnet JSON-RPC endpoint.
+    #[must_use]
+    pub fn with_arc_endpoint(mut self, endpoint: impl Into<String>) -> Self {
+        self.arc_endpoint = endpoint.into();
+        self
+    }
+
+    /// Selects a caller-owned Arc mainnet JSON-RPC endpoint.
+    #[must_use]
+    pub fn with_arc_rpc(mut self, endpoint: impl Into<RpcEndpointConfig>) -> Self {
+        self.arc_rpc = Some(endpoint.into());
+        self
+    }
+
+    /// Overrides the hosted Robinhood Chain Public Mainnet JSON-RPC endpoint.
+    #[must_use]
+    pub fn with_robinhood_endpoint(mut self, endpoint: impl Into<String>) -> Self {
+        self.robinhood_endpoint = endpoint.into();
+        self
+    }
+
+    /// Selects a caller-owned Robinhood Chain Public Mainnet JSON-RPC endpoint.
+    #[must_use]
+    pub fn with_robinhood_rpc(mut self, endpoint: impl Into<RpcEndpointConfig>) -> Self {
+        self.robinhood_rpc = Some(endpoint.into());
+        self
+    }
 }
 
 pub(crate) struct ResolvedRpcEndpoint {
@@ -532,6 +616,12 @@ pub(crate) struct ResolvedErpcClientConfig {
     pub soneium_rpc: Option<ResolvedRpcEndpoint>,
     pub monad_endpoint: Url,
     pub monad_rpc: Option<ResolvedRpcEndpoint>,
+    pub hyperliquid_endpoint: Url,
+    pub hyperliquid_rpc: Option<ResolvedRpcEndpoint>,
+    pub arc_endpoint: Url,
+    pub arc_rpc: Option<ResolvedRpcEndpoint>,
+    pub robinhood_endpoint: Url,
+    pub robinhood_rpc: Option<ResolvedRpcEndpoint>,
 }
 
 impl TryFrom<ErpcClientConfig> for ResolvedErpcClientConfig {
@@ -553,6 +643,9 @@ impl TryFrom<ErpcClientConfig> for ResolvedErpcClientConfig {
             && config.kaia_rpc.is_none()
             && config.soneium_rpc.is_none()
             && config.monad_rpc.is_none()
+            && config.hyperliquid_rpc.is_none()
+            && config.arc_rpc.is_none()
+            && config.robinhood_rpc.is_none()
         {
             return Err(ErpcError::Config("api_key must not be empty".to_owned()));
         }
@@ -620,6 +713,21 @@ impl TryFrom<ErpcClientConfig> for ResolvedErpcClientConfig {
             .as_ref()
             .map(resolve_monad_rpc_endpoint)
             .transpose()?;
+        let hyperliquid_rpc = config
+            .hyperliquid_rpc
+            .as_ref()
+            .map(resolve_hyperliquid_rpc_endpoint)
+            .transpose()?;
+        let arc_rpc = config
+            .arc_rpc
+            .as_ref()
+            .map(resolve_arc_rpc_endpoint)
+            .transpose()?;
+        let robinhood_rpc = config
+            .robinhood_rpc
+            .as_ref()
+            .map(resolve_robinhood_rpc_endpoint)
+            .transpose()?;
         Ok(Self {
             api_key: (!api_key.is_empty()).then_some(api_key),
             endpoint: endpoint(&config.endpoint, false)?,
@@ -648,6 +756,12 @@ impl TryFrom<ErpcClientConfig> for ResolvedErpcClientConfig {
             soneium_rpc,
             monad_endpoint: endpoint(&config.monad_endpoint, false)?,
             monad_rpc,
+            hyperliquid_endpoint: endpoint(&config.hyperliquid_endpoint, false)?,
+            hyperliquid_rpc,
+            arc_endpoint: endpoint(&config.arc_endpoint, false)?,
+            arc_rpc,
+            robinhood_endpoint: endpoint(&config.robinhood_endpoint, false)?,
+            robinhood_rpc,
         })
     }
 }
@@ -803,6 +917,39 @@ fn resolve_monad_rpc_endpoint(config: &RpcEndpointConfig) -> Result<ResolvedRpcE
     if config.websocket_url.is_some() {
         return Err(ErpcError::Config(
             "Monad RPC is HTTP-only; websocket_url is not supported".to_owned(),
+        ));
+    }
+    let mut endpoint = resolve_rpc_endpoint(config)?;
+    collect_path_values(&endpoint.http_url, &mut endpoint.redaction_secrets);
+    Ok(endpoint)
+}
+
+fn resolve_hyperliquid_rpc_endpoint(config: &RpcEndpointConfig) -> Result<ResolvedRpcEndpoint> {
+    if config.websocket_url.is_some() {
+        return Err(ErpcError::Config(
+            "Hyperliquid RPC is HTTP-only; websocket_url is not supported".to_owned(),
+        ));
+    }
+    let mut endpoint = resolve_rpc_endpoint(config)?;
+    collect_path_values(&endpoint.http_url, &mut endpoint.redaction_secrets);
+    Ok(endpoint)
+}
+
+fn resolve_arc_rpc_endpoint(config: &RpcEndpointConfig) -> Result<ResolvedRpcEndpoint> {
+    if config.websocket_url.is_some() {
+        return Err(ErpcError::Config(
+            "Arc RPC is HTTP-only; websocket_url is not supported".to_owned(),
+        ));
+    }
+    let mut endpoint = resolve_rpc_endpoint(config)?;
+    collect_path_values(&endpoint.http_url, &mut endpoint.redaction_secrets);
+    Ok(endpoint)
+}
+
+fn resolve_robinhood_rpc_endpoint(config: &RpcEndpointConfig) -> Result<ResolvedRpcEndpoint> {
+    if config.websocket_url.is_some() {
+        return Err(ErpcError::Config(
+            "Robinhood RPC is HTTP-only; websocket_url is not supported".to_owned(),
         ));
     }
     let mut endpoint = resolve_rpc_endpoint(config)?;
@@ -1200,6 +1347,69 @@ impl fmt::Debug for MonadRpcDebug<'_> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("MonadRpcEndpointConfig")
+            .field("origin", &debug_origin(&self.0.http_url))
+            .field("has_websocket_url", &self.0.websocket_url.is_some())
+            .field(
+                "header_names",
+                &self
+                    .0
+                    .headers
+                    .iter()
+                    .map(|(name, _)| name)
+                    .collect::<Vec<_>>(),
+            )
+            .finish()
+    }
+}
+
+struct HyperliquidRpcDebug<'a>(&'a RpcEndpointConfig);
+
+impl fmt::Debug for HyperliquidRpcDebug<'_> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("HyperliquidRpcEndpointConfig")
+            .field("origin", &debug_origin(&self.0.http_url))
+            .field("has_websocket_url", &self.0.websocket_url.is_some())
+            .field(
+                "header_names",
+                &self
+                    .0
+                    .headers
+                    .iter()
+                    .map(|(name, _)| name)
+                    .collect::<Vec<_>>(),
+            )
+            .finish()
+    }
+}
+
+struct ArcRpcDebug<'a>(&'a RpcEndpointConfig);
+
+impl fmt::Debug for ArcRpcDebug<'_> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ArcRpcEndpointConfig")
+            .field("origin", &debug_origin(&self.0.http_url))
+            .field("has_websocket_url", &self.0.websocket_url.is_some())
+            .field(
+                "header_names",
+                &self
+                    .0
+                    .headers
+                    .iter()
+                    .map(|(name, _)| name)
+                    .collect::<Vec<_>>(),
+            )
+            .finish()
+    }
+}
+
+struct RobinhoodRpcDebug<'a>(&'a RpcEndpointConfig);
+
+impl fmt::Debug for RobinhoodRpcDebug<'_> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("RobinhoodRpcEndpointConfig")
             .field("origin", &debug_origin(&self.0.http_url))
             .field("has_websocket_url", &self.0.websocket_url.is_some())
             .field(

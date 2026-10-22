@@ -3,6 +3,7 @@
 
 mod account;
 mod arbitrum;
+mod arc;
 mod avalanche;
 mod base;
 mod bitcoin;
@@ -15,12 +16,14 @@ pub mod dex_catalog;
 mod error;
 mod ethereum;
 mod generated;
+mod hyperliquid;
 mod kaia;
 mod monad;
 mod optimism;
 mod polygon;
 mod price;
 mod rest;
+mod robinhood;
 mod rpc;
 mod solana;
 mod soneium;
@@ -32,6 +35,7 @@ mod usage;
 
 pub use account::{AccountClient, ErpcPlan, TokenBalance};
 pub use arbitrum::{ARBITRUM_RPC_METHODS, ArbitrumClient, ArbitrumRpcClient};
+pub use arc::{ARC_RPC_METHODS, ArcClient, ArcRpcClient};
 pub use avalanche::{
     AVALANCHE_AVAX_METHODS, AVALANCHE_INDEX_METHODS, AVALANCHE_INFO_METHODS,
     AVALANCHE_P_CHAIN_METHODS, AVALANCHE_PROPOSER_VM_METHODS, AVALANCHE_X_CHAIN_METHODS,
@@ -66,9 +70,10 @@ pub use cloud::{
     ErpcCloudClient, ErpcCloudClientConfig,
 };
 pub use config::{
-    DEFAULT_ACCOUNT_ENDPOINT, DEFAULT_ARBITRUM_ENDPOINT, DEFAULT_AVALANCHE_ENDPOINT,
-    DEFAULT_BASE_ENDPOINT, DEFAULT_BSC_ENDPOINT, DEFAULT_ENDPOINT, DEFAULT_KAIA_ENDPOINT,
-    DEFAULT_MONAD_ENDPOINT, DEFAULT_OPTIMISM_ENDPOINT, DEFAULT_POLYGON_ENDPOINT,
+    DEFAULT_ACCOUNT_ENDPOINT, DEFAULT_ARBITRUM_ENDPOINT, DEFAULT_ARC_ENDPOINT,
+    DEFAULT_AVALANCHE_ENDPOINT, DEFAULT_BASE_ENDPOINT, DEFAULT_BSC_ENDPOINT, DEFAULT_ENDPOINT,
+    DEFAULT_HYPERLIQUID_ENDPOINT, DEFAULT_KAIA_ENDPOINT, DEFAULT_MONAD_ENDPOINT,
+    DEFAULT_OPTIMISM_ENDPOINT, DEFAULT_POLYGON_ENDPOINT, DEFAULT_ROBINHOOD_ENDPOINT,
     DEFAULT_SONEIUM_ENDPOINT, DEFAULT_TIMEOUT, DEFAULT_USER_ENDPOINT, ErpcClientConfig,
     RpcEndpointConfig,
 };
@@ -85,6 +90,7 @@ pub use ethereum::{
     ETHEREUM_RPC_METHODS, ETHEREUM_SUBSCRIPTION_METHODS, EthereumClient, EthereumRpcClient,
     EthereumSubscriptions,
 };
+pub use hyperliquid::{HYPERLIQUID_RPC_METHODS, HyperliquidClient, HyperliquidRpcClient};
 pub use kaia::{KAIA_RPC_METHODS, KaiaClient, KaiaRpcClient};
 pub use monad::{MONAD_RPC_METHODS, MonadClient, MonadRpcClient};
 pub use optimism::{OPTIMISM_RPC_METHODS, OptimismClient, OptimismRpcClient};
@@ -95,6 +101,7 @@ pub use price::{
     PriceStreamOptions, PriceUpdateOptions, PriceUpdateResponse, PublisherStakeCap,
     PublisherStakeCapsResponse,
 };
+pub use robinhood::{ROBINHOOD_RPC_METHODS, RobinhoodClient, RobinhoodRpcClient};
 pub use rpc::{
     HttpJsonRpcTransport, HttpTransportConfig, JsonRpcId, PendingRpcBatchRequest,
     PendingRpcRequest, RequestOptions, RpcBatchCall, RpcNamespace,
@@ -334,6 +341,49 @@ fn monad_rpc_transport(
     )
 }
 
+fn hyperliquid_rpc_transport(
+    resolved: &ResolvedErpcClientConfig,
+    client: &reqwest::Client,
+    direct_client: &reqwest::Client,
+) -> Arc<HttpJsonRpcTransport> {
+    if let Some(endpoint) = &resolved.hyperliquid_rpc {
+        return direct_rpc_transport(endpoint, direct_client, "hyperliquid.rpc", resolved.timeout);
+    }
+    legacy_rpc_transport(
+        resolved,
+        resolved.hyperliquid_endpoint.clone(),
+        client,
+        "hyperliquid.rpc",
+    )
+}
+
+fn arc_rpc_transport(
+    resolved: &ResolvedErpcClientConfig,
+    client: &reqwest::Client,
+    direct_client: &reqwest::Client,
+) -> Arc<HttpJsonRpcTransport> {
+    if let Some(endpoint) = &resolved.arc_rpc {
+        return direct_rpc_transport(endpoint, direct_client, "arc.rpc", resolved.timeout);
+    }
+    legacy_rpc_transport(resolved, resolved.arc_endpoint.clone(), client, "arc.rpc")
+}
+
+fn robinhood_rpc_transport(
+    resolved: &ResolvedErpcClientConfig,
+    client: &reqwest::Client,
+    direct_client: &reqwest::Client,
+) -> Arc<HttpJsonRpcTransport> {
+    if let Some(endpoint) = &resolved.robinhood_rpc {
+        return direct_rpc_transport(endpoint, direct_client, "robinhood.rpc", resolved.timeout);
+    }
+    legacy_rpc_transport(
+        resolved,
+        resolved.robinhood_endpoint.clone(),
+        client,
+        "robinhood.rpc",
+    )
+}
+
 fn websocket_transport(
     resolved: &ResolvedErpcClientConfig,
     direct: Option<&ResolvedRpcEndpoint>,
@@ -399,6 +449,8 @@ pub struct ErpcClient {
     pub avalanche: AvalancheClient,
     /// BNB Smart Chain mainnet read-only HTTP JSON-RPC.
     pub bsc: BscClient,
+    /// Arc mainnet read-only HTTP JSON-RPC.
+    pub arc: ArcClient,
     /// Base read-only HTTP JSON-RPC.
     pub base: BaseClient,
     /// Bitcoin Core HTTP JSON-RPC.
@@ -409,10 +461,14 @@ pub struct ErpcClient {
     pub price: PriceClient,
     /// Kaia mainnet read-only HTTP JSON-RPC.
     pub kaia: KaiaClient,
+    /// Hyperliquid `HyperEVM` mainnet read-only HTTP JSON-RPC.
+    pub hyperliquid: HyperliquidClient,
     /// Monad mainnet read-only HTTP JSON-RPC.
     pub monad: MonadClient,
     /// OP Mainnet read-only HTTP JSON-RPC.
     pub optimism: OptimismClient,
+    /// Robinhood Chain Public Mainnet read-only HTTP JSON-RPC.
+    pub robinhood: RobinhoodClient,
     /// Standard and extended Solana JSON-RPC and subscriptions.
     pub solana: SolanaClient,
     /// Polygon `PoS` mainnet read-only HTTP JSON-RPC.
@@ -440,6 +496,9 @@ impl ErpcClient {
         let kaia_transport = kaia_rpc_transport(&resolved, &http, &direct_http);
         let soneium_transport = soneium_rpc_transport(&resolved, &http, &direct_http);
         let monad_transport = monad_rpc_transport(&resolved, &http, &direct_http);
+        let hyperliquid_transport = hyperliquid_rpc_transport(&resolved, &http, &direct_http);
+        let arc_transport = arc_rpc_transport(&resolved, &http, &direct_http);
+        let robinhood_transport = robinhood_rpc_transport(&resolved, &http, &direct_http);
         let bitcoin_transport = bitcoin_rpc_transport(&resolved, &http, &direct_http)?;
         let solana_transport = resolved.solana_rpc.as_ref().map_or_else(
             || legacy_rpc_transport(&resolved, resolved.endpoint.clone(), &http, "solana.rpc"),
@@ -545,13 +604,16 @@ impl ErpcClient {
                 avalanche_index,
             ),
             bsc: BscClient::new(bsc_transport),
+            arc: ArcClient::new(arc_transport),
             base: BaseClient::new(base_transport),
             bitcoin: BitcoinClient::new(bitcoin_transport),
             ethereum: EthereumClient::new(ethereum_transport, ethereum_ws),
             price: PriceClient::new(shared_rest),
             kaia: KaiaClient::new(kaia_transport),
+            hyperliquid: HyperliquidClient::new(hyperliquid_transport),
             monad: MonadClient::new(monad_transport),
             optimism: OptimismClient::new(optimism_transport),
+            robinhood: RobinhoodClient::new(robinhood_transport),
             solana: SolanaClient::new(solana_transport, solana_ws),
             polygon: PolygonClient::new(polygon_transport),
             soneium: SoneiumClient::new(soneium_transport),
