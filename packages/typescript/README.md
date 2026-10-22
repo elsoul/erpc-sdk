@@ -449,8 +449,10 @@ custody and all signing and ERPC broadcast steps described in the
 [TypeScript signing and broadcast guide](https://github.com/elsoul/erpc-sdk/blob/main/packages/typescript/docs/signing-and-broadcast.md).
 
 These local methods and native USDC routes are included in the public `0.9.0`
-baseline and the source/release cohort targets `0.9.1`. The hosted bridge API
-remains the explicit EURC adapter described above.
+baseline and the source/release cohort targets `0.9.1`. The bridge API remains
+an explicit standalone EURC/native-USDC adapter with optional external provider
+dependencies and configured source-RPC requirements, while normal swaps
+continue to use configured RPC and local logic.
 
 ## Namespaces
 
