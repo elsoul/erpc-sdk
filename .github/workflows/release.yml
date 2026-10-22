@@ -83,9 +83,11 @@ jobs:
           EXPECTED_COMMIT: ${{ inputs.expected_commit }}
           EXPECTED_VERSION: ${{ inputs.expected_version }}
           FOUNDATION_MODE: ${{ inputs.mode }}
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
         run: |
           set -euo pipefail
-          CHECKOUT_HEAD="$(git rev-parse HEAD)" node scripts/verify-release.mjs --foundation-guard
+          CHECKOUT_STATUS="$(git status --porcelain)" CHECKOUT_HEAD="$(git rev-parse HEAD)" node scripts/verify-release.mjs --foundation-guard
 
       - name: Install pinned Node and package tooling
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -137,11 +139,12 @@ jobs:
           corepack pnpm --filter @elsoul/erpc-sdk test
           corepack pnpm --filter @elsoul/erpc-sdk build
           (cd packages/typescript && npm install --global npm@11.19.1 && npm pack --ignore-scripts --json --pack-destination "$BUNDLE_DIR" > "$RUNNER_TEMP/npm-pack.json")
+          test -f "$BUNDLE_DIR/elsoul-erpc-sdk-0.9.1.tgz"
           test "$(find "$BUNDLE_DIR" -maxdepth 1 -type f -name '*.tgz' | wc -l | tr -d ' ')" = 1
           npm_smoke="$RUNNER_TEMP/npm-smoke"
           mkdir -p "$npm_smoke"
           npm init --yes --prefix "$npm_smoke" >/dev/null
-          npm install --ignore-scripts --no-audit --no-fund --prefix "$npm_smoke" "$BUNDLE_DIR"/*.tgz >/dev/null
+          npm install --ignore-scripts --no-audit --no-fund --prefix "$npm_smoke" "$BUNDLE_DIR/elsoul-erpc-sdk-0.9.1.tgz" >/dev/null
           (cd "$npm_smoke" && node --input-type=module -e "const sdk = await import('@elsoul/erpc-sdk'); if (!sdk) throw new Error('npm ESM smoke failed')")
           (cd "$npm_smoke" && node -e "if (!require('@elsoul/erpc-sdk')) throw new Error('npm CommonJS smoke failed')")
 
@@ -152,23 +155,31 @@ jobs:
           set -euo pipefail
           python -m pip install --disable-pip-version-check build==1.6.0 twine==7.0.0
           python -m build packages/python --outdir "$BUNDLE_DIR"
-          python -m twine check "$BUNDLE_DIR"/*.whl "$BUNDLE_DIR"/*.tar.gz
+          WHEEL_FILE="$BUNDLE_DIR/erpc_sdk-0.9.1-py3-none-any.whl"
+          SDIST_FILE="$BUNDLE_DIR/erpc_sdk-0.9.1.tar.gz"
+          test -f "$WHEEL_FILE"
+          test -f "$SDIST_FILE"
+          test "$(find "$BUNDLE_DIR" -maxdepth 1 -type f -name '*.whl' | wc -l | tr -d ' ')" = 1
+          test "$(find "$BUNDLE_DIR" -maxdepth 1 -type f -name '*.tar.gz' | wc -l | tr -d ' ')" = 1
+          python -m twine check "$WHEEL_FILE" "$SDIST_FILE"
           python -m venv "$RUNNER_TEMP/python-smoke"
-          "$RUNNER_TEMP/python-smoke/bin/python" -m pip install --disable-pip-version-check --no-deps "$BUNDLE_DIR"/*.whl
+          "$RUNNER_TEMP/python-smoke/bin/python" -m pip install --disable-pip-version-check "$WHEEL_FILE"
           "$RUNNER_TEMP/python-smoke/bin/python" -c 'import erpc_sdk; assert erpc_sdk.__version__ == "0.9.1"'
 
       - name: Validate and build the exact Ruby gem
         env:
           BUNDLE_DIR: ${{ runner.temp }}/sdk-foundation-bundle
+        working-directory: packages/ruby
         run: |
           set -euo pipefail
           bundle exec rake check
           bundle exec rake test
           bundle exec rake package
-          GEM_FILES=(packages/ruby/pkg/erpc-sdk-*.gem)
-          test "${#GEM_FILES[@]}" -eq 1
-          cp "${GEM_FILES[0]}" "$BUNDLE_DIR/"
-          ruby packages/ruby/scripts/verify-package.rb
+          GEM_FILE=pkg/erpc-sdk-0.9.1.gem
+          test -f "$GEM_FILE"
+          test "$(find pkg -maxdepth 1 -type f -name '*.gem' | wc -l | tr -d ' ')" = 1
+          cp "$GEM_FILE" "$BUNDLE_DIR/"
+          ruby scripts/verify-package.rb
 
       - name: Describe exact package artifacts
         id: artifacts
@@ -187,7 +198,7 @@ jobs:
         id: rust
         env:
           RUST_METADATA: ${{ runner.temp }}/rust-metadata.json
-          RUST_ARCHIVE: ${{ runner.temp }}/sdk-foundation-bundle/erpc-sdk-0.10.0.crate
+          RUST_ARCHIVE: ${{ runner.temp }}/erpc-sdk-0.10.0.crate
           FOUNDATION_RUST_SOURCE: f05abe4276991612c4b5e404fdc768baace32e61
           FOUNDATION_RUST_SHA256: f2ad81528b35470b8f193dc45ad9f95e2d5ba0749b916ab9422cb07639088dd7
         run: |
@@ -213,13 +224,14 @@ jobs:
           const metadata = JSON.parse(readFileSync(metadataFile, 'utf8'))
           const version = metadata.version
           if (version?.crate !== 'erpc-sdk' || version.num !== '0.10.0' || version.yanked !== false || version.checksum !== process.env.FOUNDATION_RUST_SHA256) throw new Error('Rust registry receipt does not match the approved artifact')
-          writeFileSync(outputFile, JSON.stringify({ identity: 'erpc-sdk', version: '0.10.0', sourceCommit: process.env.FOUNDATION_RUST_SOURCE, sha256: process.env.FOUNDATION_RUST_SHA256, yanked: false, downloadUrl: 'https://crates.io/api/v1/crates/erpc-sdk/0.10.0/download' }, null, 2) + '\n')
+          writeFileSync(outputFile, `${JSON.stringify({ downloadUrl: 'https://crates.io/api/v1/crates/erpc-sdk/0.10.0/download', identity: 'erpc-sdk', sha256: process.env.FOUNDATION_RUST_SHA256, sourceCommit: process.env.FOUNDATION_RUST_SOURCE, version: '0.10.0', yanked: false })}\n`)
           NODE
       - name: Preflight the exact 0.9.1 registry versions
         id: preflight
         env:
           PREFLIGHT_DIR: ${{ runner.temp }}/sdk-foundation-preflight
           ARTIFACT_METADATA: ${{ runner.temp }}/sdk-foundation-bundle/artifact-metadata.json
+          EXPECTED_VERSION: ${{ inputs.expected_version }}
         run: |
           set -euo pipefail
           mkdir -p "$PREFLIGHT_DIR"
@@ -252,7 +264,7 @@ jobs:
           const read = name => ({ state: readFileSync(`${dir}/${name}.json.state`, 'utf8').trim(), status: Number(readFileSync(`${dir}/${name}.json.status`, 'utf8').trim()) })
           const preflight = { npm: read('npm'), pypi: read('pypi'), rubygems: read('rubygems'), rust: { state: 'match', status: 200 } }
           for (const [name, record] of Object.entries(preflight)) if (name !== 'rust' && record.state !== 'absent') throw new Error(`${name} 0.9.1 was not absent during preparation`)
-          writeFileSync(output, JSON.stringify(preflight, null, 2) + '\n')
+          writeFileSync(output, JSON.stringify(preflight) + '\n')
           NODE
 
       - name: Build the stable approval plan and body
@@ -272,7 +284,7 @@ jobs:
           PLAN_SHA256="$(tr -d '\r\n' < "$FOUNDATION_PLAN_DIGEST_FILE")"
           echo "plan_sha256=$PLAN_SHA256" >> "$GITHUB_OUTPUT"
           printf '%s\n' "$PLAN_SHA256" > "$RUNNER_TEMP/plan-sha256-output"
-          find "$RUNNER_TEMP/sdk-foundation-bundle" -maxdepth 1 -type f ! -name checksums.txt -print0 | xargs -0 sha256sum > "$RUNNER_TEMP/sdk-foundation-bundle/checksums.txt"
+          (cd "$RUNNER_TEMP/sdk-foundation-bundle" && find . -maxdepth 1 -type f ! -name checksums.txt -print0 | xargs -0 sha256sum) > "$RUNNER_TEMP/sdk-foundation-bundle/checksums.txt"
 
       - name: Upload the immutable approval bundle
         id: bundle
@@ -348,9 +360,31 @@ jobs:
           EXPECTED_COMMIT: ${{ inputs.expected_commit }}
           EXPECTED_VERSION: ${{ inputs.expected_version }}
           FOUNDATION_MODE: ${{ inputs.mode }}
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
         run: |
           set -euo pipefail
-          CHECKOUT_HEAD="$(git rev-parse HEAD)" node scripts/verify-release.mjs --foundation-guard
+          CHECKOUT_STATUS="$(git status --porcelain)" CHECKOUT_HEAD="$(git rev-parse HEAD)" node scripts/verify-release.mjs --foundation-guard
+      - name: Authenticate successful preparation run and artifact metadata
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PREPARATION_RUN_FILE: ${{ runner.temp }}/preparation-run.json
+          PREPARATION_ARTIFACT_FILE: ${{ runner.temp }}/preparation-artifact.json
+          PREPARATION_BINDING_ARTIFACT_FILE: ${{ runner.temp }}/preparation-binding-artifact.json
+          FOUNDATION_SOURCE_SHA: ${{ inputs.expected_commit }}
+          FOUNDATION_PREPARED_RUN_ID: ${{ inputs.prepared_run_id }}
+          FOUNDATION_PREPARED_RUN_ATTEMPT: ${{ inputs.prepared_run_attempt }}
+          FOUNDATION_PREPARED_ARTIFACT_ID: ${{ inputs.prepared_artifact_id }}
+          FOUNDATION_PREPARED_BINDING_ARTIFACT_ID: ${{ inputs.prepared_binding_artifact_id }}
+        run: |
+          set -euo pipefail
+          gh api "/repos/$EXPECTED_REPOSITORY/actions/runs/$FOUNDATION_PREPARED_RUN_ID" > "$PREPARATION_RUN_FILE"
+          gh api "/repos/$EXPECTED_REPOSITORY/actions/artifacts/$FOUNDATION_PREPARED_ARTIFACT_ID" > "$PREPARATION_ARTIFACT_FILE"
+          gh api "/repos/$EXPECTED_REPOSITORY/actions/artifacts/$FOUNDATION_PREPARED_BINDING_ARTIFACT_ID" > "$PREPARATION_BINDING_ARTIFACT_FILE"
+          FOUNDATION_PREPARATION_RUN_FILE="$PREPARATION_RUN_FILE" \
+            FOUNDATION_PREPARATION_ARTIFACT_FILE="$PREPARATION_ARTIFACT_FILE" \
+            FOUNDATION_PREPARATION_BINDING_ARTIFACT_FILE="$PREPARATION_BINDING_ARTIFACT_FILE" \
+            node scripts/verify-release.mjs --foundation-preparation
       - name: Download exact preparation bundle
         uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
         with:
@@ -398,7 +432,7 @@ jobs:
       id-token: write
     steps:
       - name: Check out exact source without credentials
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30deaf803 # v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
           ref: ${{ github.sha }}
@@ -434,6 +468,11 @@ jobs:
           node-version: 24
           registry-url: https://registry.npmjs.org
           cache: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Install pinned certificate inspection support
+        run: python -m pip install --disable-pip-version-check pypi-attestations==0.0.30
       - name: Install npm Trusted Publishing CLI and locate archive
         id: locate
         env:
@@ -478,13 +517,23 @@ jobs:
           EXPECTED_VERSION: ${{ inputs.expected_version }}
         run: |
           set -euo pipefail
-          curl --fail --silent --show-error --location --max-time 60 --retry 0 --user-agent "$RELEASE_USER_AGENT" --output "$RUNNER_TEMP/npm-published.tgz" "https://registry.npmjs.org/@elsoul/erpc-sdk/-/$(basename "$NPM_FILE")"
+          NPM_TARBALL_URL="$(node --input-type=module - "$RESPONSE_FILE" "$EXPECTED_VERSION" <<'NODE'
+          import { readFileSync } from 'node:fs'
+          const [metadataFile, version] = process.argv.slice(2)
+          const metadata = JSON.parse(readFileSync(metadataFile, 'utf8'))
+          const expected = `https://registry.npmjs.org/@elsoul/erpc-sdk/-/erpc-sdk-${version}.tgz`
+          if (metadata?.name !== '@elsoul/erpc-sdk' || metadata.version !== version || metadata.dist?.tarball !== expected) throw new Error('npm exact-version tarball URL is not canonical')
+          process.stdout.write(metadata.dist.tarball)
+          NODE
+          )"
+          curl --fail --silent --show-error --location --max-time 60 --retry 0 --user-agent "$RELEASE_USER_AGENT" --output "$RUNNER_TEMP/npm-published.tgz" "$NPM_TARBALL_URL"
           test "$(sha256sum "$RUNNER_TEMP/npm-published.tgz" | awk '{print $1}')" = "$NPM_SHA256"
           node --input-type=module - "$RESPONSE_FILE" "$RUNNER_TEMP/npm-published.tgz" "$EXPECTED_VERSION" <<'NODE'
           import { createHash } from 'node:crypto'
           import { readFileSync } from 'node:fs'
           const [metadataFile, archiveFile, version] = process.argv.slice(2)
-          const metadata = JSON.parse(readFileSync(metadataFile, 'utf8'))?.versions?.[version]
+          const payload = JSON.parse(readFileSync(metadataFile, 'utf8'))
+          const metadata = payload
           const observed = `sha512-${createHash('sha512').update(readFileSync(archiveFile)).digest('base64')}`
           if (metadata?.dist?.integrity !== observed) throw new Error('npm dist.integrity does not match the downloaded archive')
           NODE
@@ -494,10 +543,11 @@ jobs:
         continue-on-error: true
         env:
           NPM_CONFIG_USERCONFIG: ${{ runner.temp }}/empty-npmrc
+          NPM_FILE: ${{ steps.locate.outputs.filename }}
         run: |
           set -euo pipefail
           : > "$NPM_CONFIG_USERCONFIG"
-          npm publish "$RUNNER_TEMP/sdk-foundation-bundle/${{ steps.locate.outputs.filename }}" --registry=https://registry.npmjs.org/ --access public --provenance --ignore-scripts
+          npm publish "$RUNNER_TEMP/sdk-foundation-bundle/$NPM_FILE" --registry=https://registry.npmjs.org/ --access public --provenance --ignore-scripts
       - name: Verify npm publication after upload or reuse
         if: always() && (steps.preflight.outputs.state == 'absent' || steps.preflight.outputs.state == 'match')
         env:
@@ -505,6 +555,13 @@ jobs:
           EXPECTED_VERSION: ${{ inputs.expected_version }}
           NPM_FILE: ${{ steps.locate.outputs.filename }}
           NPM_SHA256: ${{ steps.locate.outputs.sha256 }}
+          NPM_STATE: ${{ steps.preflight.outputs.state }}
+          NPM_UPLOAD_OUTCOME: ${{ steps.publish_npm.outcome }}
+          FOUNDATION_SOURCE_SHA: ${{ inputs.expected_commit }}
+          FOUNDATION_PLAN_SHA256: ${{ inputs.approval_plan_sha256 }}
+          FOUNDATION_PREPARED_RUN_ID: ${{ inputs.prepared_run_id }}
+          FOUNDATION_PREPARED_RUN_ATTEMPT: ${{ inputs.prepared_run_attempt }}
+          FOUNDATION_PREPARED_ARTIFACT_ID: ${{ inputs.prepared_artifact_id }}
         run: |
           set -euo pipefail
           for attempt in 1 2 3 4 5 6; do
@@ -518,17 +575,83 @@ jobs:
             sleep 5
           done
           FOUNDATION_REGISTRY=npm REGISTRY_STATUS="$STATUS" REGISTRY_RESPONSE_FILE="$RESPONSE_FILE" EXPECTED_VERSION="$EXPECTED_VERSION" node scripts/verify-release.mjs --foundation-registry
-          curl --fail --silent --show-error --location --max-time 60 --retry 0 --user-agent "$RELEASE_USER_AGENT" --output "$RUNNER_TEMP/npm-final.tgz" "https://registry.npmjs.org/@elsoul/erpc-sdk/-/$NPM_FILE"
-          test "$(sha256sum "$RUNNER_TEMP/npm-final.tgz" | awk '{print $1}')" = "$NPM_SHA256"
-          node --input-type=module - "$RESPONSE_FILE" "$RUNNER_TEMP/npm-final.tgz" "$EXPECTED_VERSION" <<'NODE'
-          import { createHash } from 'node:crypto'
+          NPM_TARBALL_URL="$(node --input-type=module - "$RESPONSE_FILE" "$EXPECTED_VERSION" <<'NODE'
           import { readFileSync } from 'node:fs'
-          const [metadataFile, archiveFile, version] = process.argv.slice(2)
-          const metadata = JSON.parse(readFileSync(metadataFile, 'utf8'))?.versions?.[version]
-          const observed = `sha512-${createHash('sha512').update(readFileSync(archiveFile)).digest('base64')}`
-          if (metadata?.dist?.integrity !== observed) throw new Error('npm dist.integrity does not match the downloaded archive')
+          const [metadataFile, version] = process.argv.slice(2)
+          const metadata = JSON.parse(readFileSync(metadataFile, 'utf8'))
+          const expected = `https://registry.npmjs.org/@elsoul/erpc-sdk/-/erpc-sdk-${version}.tgz`
+          if (metadata?.name !== '@elsoul/erpc-sdk' || metadata.version !== version || metadata.dist?.tarball !== expected) throw new Error('npm exact-version tarball URL is not canonical')
+          process.stdout.write(metadata.dist.tarball)
           NODE
-          printf '%s\n' '{"registry":"npm","verified":true,"credential":"short-lived OIDC","source":"approved archive"}' > "$RUNNER_TEMP/npm-proof.json"
+          )"
+          curl --fail --silent --show-error --location --max-time 60 --retry 0 --user-agent "$RELEASE_USER_AGENT" --output "$RUNNER_TEMP/npm-final.tgz" "$NPM_TARBALL_URL"
+          test "$(sha256sum "$RUNNER_TEMP/npm-final.tgz" | awk '{print $1}')" = "$NPM_SHA256"
+          : > "$RUNNER_TEMP/empty-npmrc"
+          npm_consumer="$RUNNER_TEMP/npm-signature-consumer"
+          mkdir -p "$npm_consumer"
+          npm init --yes --prefix "$npm_consumer" >/dev/null
+          NPM_CONFIG_USERCONFIG="$RUNNER_TEMP/empty-npmrc" npm install --ignore-scripts --no-audit --no-fund --prefix "$npm_consumer" --registry=https://registry.npmjs.org/ "@elsoul/erpc-sdk@$EXPECTED_VERSION" >/dev/null
+          NPM_CONFIG_USERCONFIG="$RUNNER_TEMP/empty-npmrc" npm audit signatures --json --include-attestations --prefix "$npm_consumer" > "$RUNNER_TEMP/npm-audit.json"
+          python - "$RUNNER_TEMP/npm-audit.json" "$RUNNER_TEMP/npm-certificate-claims.json" <<'PY'
+          import base64, json, os, sys
+          from cryptography import x509
+          audit_file, claims_file = sys.argv[1:]
+          audit = json.load(open(audit_file, encoding='utf-8'))
+          target = next((item for item in audit.get('verified', []) if item.get('name') == '@elsoul/erpc-sdk' and item.get('version') == os.environ['EXPECTED_VERSION'] and item.get('registry') == 'https://registry.npmjs.org'), None)
+          slsa = next((item for item in (target or {}).get('attestationBundles', []) if item.get('predicateType') == 'https://slsa.dev/provenance/v1'), None)
+          raw = (((slsa or {}).get('bundle') or {}).get('verificationMaterial') or {}).get('certificate', {}).get('rawBytes')
+          if not target or not slsa or not raw: raise SystemExit('npm verified SLSA certificate is missing')
+          certificate = x509.load_der_x509_certificate(base64.b64decode(raw))
+          claims = {}
+          for extension in certificate.extensions:
+              if extension.oid.dotted_string.startswith('1.3.6.1.4.1.57264.1.'):
+                  value = extension.value.value
+                  if not value or value[0] != 0x0c: raise SystemExit('npm Fulcio claim is not a UTF-8 extension')
+                  length = value[1]
+                  offset = 2
+                  if length & 0x80:
+                      count = length & 0x7f
+                      length = int.from_bytes(value[offset:offset + count], 'big')
+                      offset += count
+                  claims[extension.oid.dotted_string] = value[offset:offset + length].decode('utf-8')
+          expected_workflow = 'https://github.com/elsoul/erpc-sdk/.github/workflows/release.yml@refs/heads/main'
+          expected = {
+              '1.3.6.1.4.1.57264.1.8': 'https://token.actions.githubusercontent.com',
+              '1.3.6.1.4.1.57264.1.9': expected_workflow,
+              '1.3.6.1.4.1.57264.1.10': os.environ['FOUNDATION_SOURCE_SHA'],
+              '1.3.6.1.4.1.57264.1.12': 'https://github.com/elsoul/erpc-sdk',
+              '1.3.6.1.4.1.57264.1.13': os.environ['FOUNDATION_SOURCE_SHA'],
+              '1.3.6.1.4.1.57264.1.14': 'refs/heads/main',
+              '1.3.6.1.4.1.57264.1.15': os.environ['EXPECTED_REPOSITORY_ID'],
+              '1.3.6.1.4.1.57264.1.18': expected_workflow,
+              '1.3.6.1.4.1.57264.1.19': os.environ['FOUNDATION_SOURCE_SHA'],
+              '1.3.6.1.4.1.57264.1.20': 'workflow_dispatch',
+          }
+          if any(claims.get(key) != value for key, value in expected.items()): raise SystemExit('npm Fulcio certificate claims do not bind the approved source/workflow')
+          json.dump(claims, open(claims_file, 'w', encoding='utf-8'))
+          PY
+          node --input-type=module - "$RESPONSE_FILE" "$RUNNER_TEMP/npm-final.tgz" "$RUNNER_TEMP/npm-proof.json" <<'NODE'
+          import { createHash } from 'node:crypto'
+          import { readFileSync, writeFileSync } from 'node:fs'
+          const [metadataFile, archiveFile, outputFile] = process.argv.slice(2)
+          const metadata = JSON.parse(readFileSync(metadataFile, 'utf8'))
+          const audit = JSON.parse(readFileSync(`${process.env.RUNNER_TEMP}/npm-audit.json`, 'utf8'))
+          if (!Array.isArray(audit.invalid) || audit.invalid.length !== 0 || !Array.isArray(audit.missing) || audit.missing.length !== 0) throw new Error('npm audit signatures reported invalid or missing attestations')
+          const target = audit.verified?.find(item => item.name === metadata.name && item.version === metadata.version && item.registry === 'https://registry.npmjs.org')
+          const slsa = target?.attestationBundles?.find(item => item.predicateType === 'https://slsa.dev/provenance/v1')
+          if (!target || !slsa?.bundle?.dsseEnvelope?.payload) throw new Error('npm audit signatures did not verify the exact target SLSA attestation')
+          const provenance = JSON.parse(Buffer.from(slsa.bundle.dsseEnvelope.payload, 'base64').toString('utf8'))
+          const observedSha512 = createHash('sha512').update(readFileSync(archiveFile)).digest('hex')
+          const subject = provenance.subject?.find(item => item.name === `pkg:npm/%40elsoul/erpc-sdk@${metadata.version}`)
+          const build = provenance.predicate?.buildDefinition
+          const workflow = build?.externalParameters?.workflow
+          const dependency = build?.resolvedDependencies?.find(item => item.digest?.gitCommit === process.env.FOUNDATION_SOURCE_SHA)
+          if (subject?.digest?.sha512 !== observedSha512 || workflow?.repository !== 'https://github.com/elsoul/erpc-sdk' || workflow.path !== '.github/workflows/release.yml' || workflow.ref !== 'refs/heads/main' || provenance.predicateType !== 'https://slsa.dev/provenance/v1' || String(build?.internalParameters?.github?.repository_id) !== process.env.EXPECTED_REPOSITORY_ID || build?.internalParameters?.github?.event_name !== 'workflow_dispatch' || !dependency) throw new Error('npm verified SLSA provenance does not bind archive, repository, workflow, event, or source')
+          const certificateClaims = JSON.parse(readFileSync(`${process.env.RUNNER_TEMP}/npm-certificate-claims.json`, 'utf8'))
+          const observedSha256 = createHash('sha256').update(readFileSync(archiveFile)).digest('hex')
+          const state = process.env.NPM_STATE === 'absent' ? 'published' : 'reused'
+          writeFileSync(outputFile, `${JSON.stringify({ schemaVersion: 1, registry: 'npmjs.org', repository: process.env.EXPECTED_REPOSITORY, identity: metadata.name, version: metadata.version, state, tarball: metadata.dist.tarball, integrity: metadata.dist.integrity, provenance, certificateClaims, expectedSha256: process.env.NPM_SHA256, observedSha256, sourceCommit: process.env.FOUNDATION_SOURCE_SHA, planSha256: process.env.FOUNDATION_PLAN_SHA256, preparedRunId: process.env.FOUNDATION_PREPARED_RUN_ID, preparedRunAttempt: process.env.FOUNDATION_PREPARED_RUN_ATTEMPT, preparedArtifactId: process.env.FOUNDATION_PREPARED_ARTIFACT_ID, observerRunId: process.env.GITHUB_RUN_ID, observerAttempt: process.env.GITHUB_RUN_ATTEMPT, observedAt: new Date().toISOString(), auth: { requested: state === 'published', uploadAttempted: state === 'published', uploadOutcome: process.env.NPM_UPLOAD_OUTCOME || 'not-requested', publicProvenanceObserved: true } })}\n`)
+          NODE
       - name: Clean npm credential workspace
         if: always()
         run: |
@@ -590,6 +713,8 @@ jobs:
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.12'
+      - name: Install pinned PyPI attestation verifier
+        run: python -m pip install --disable-pip-version-check pypi-attestations==0.0.30
       - name: Locate approved Python files
         id: locate
         env:
@@ -625,7 +750,7 @@ jobs:
           FOUNDATION_REGISTRY=pypi REGISTRY_STATUS="$STATUS" REGISTRY_RESPONSE_FILE="$RESPONSE_FILE" EXPECTED_VERSION="$EXPECTED_VERSION" EXPECTED_ARTIFACTS="$EXPECTED_ARTIFACTS" node scripts/verify-release.mjs --foundation-registry > "$RUNNER_TEMP/pypi-state"
           STATE="$(cat "$RUNNER_TEMP/pypi-state")"
           python - "$STATUS" "$RESPONSE_FILE" "$BUNDLE_DIR" "$STAGE_DIR" "$EXPECTED_ARTIFACTS" "$STATE" <<'PY'
-          import hashlib, json, shutil, sys
+          import hashlib, json, os, shutil, sys
           status, response, bundle, stage, expected_json, state = sys.argv[1:]
           expected = json.loads(expected_json)
           plan = json.load(open(f'{bundle}/foundation-plan.json', encoding='utf-8'))
@@ -653,6 +778,7 @@ jobs:
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
         with:
           packages-dir: ${{ runner.temp }}/pypi-stage
+          attestations: true
       - name: Verify complete PyPI file set and downloads
         if: always() && (steps.preflight.outputs.state == 'absent' || steps.preflight.outputs.state == 'partial' || steps.preflight.outputs.state == 'match')
         env:
@@ -662,6 +788,16 @@ jobs:
           WHEEL_SHA256: ${{ steps.locate.outputs.wheel_sha256 }}
           SDIST_FILE: ${{ steps.locate.outputs.sdist_file }}
           SDIST_SHA256: ${{ steps.locate.outputs.sdist_sha256 }}
+          EXPECTED_ARTIFACTS: '["${{ steps.locate.outputs.wheel_file }}","${{ steps.locate.outputs.sdist_file }}"]'
+          EXPECTED_SHA256S: '{"${{ steps.locate.outputs.wheel_file }}":"${{ steps.locate.outputs.wheel_sha256 }}","${{ steps.locate.outputs.sdist_file }}":"${{ steps.locate.outputs.sdist_sha256 }}"}'
+          FOUNDATION_DOWNLOADS_FILE: ${{ runner.temp }}/pypi-downloads.tsv
+          PYPI_STATE: ${{ steps.preflight.outputs.state }}
+          PYPI_UPLOAD_OUTCOME: ${{ steps.publish_pypi.outcome }}
+          FOUNDATION_SOURCE_SHA: ${{ inputs.expected_commit }}
+          FOUNDATION_PLAN_SHA256: ${{ inputs.approval_plan_sha256 }}
+          FOUNDATION_PREPARED_RUN_ID: ${{ inputs.prepared_run_id }}
+          FOUNDATION_PREPARED_RUN_ATTEMPT: ${{ inputs.prepared_run_attempt }}
+          FOUNDATION_PREPARED_ARTIFACT_ID: ${{ inputs.prepared_artifact_id }}
         run: |
           set -euo pipefail
           for attempt in 1 2 3 4 5 6; do
@@ -675,30 +811,76 @@ jobs:
             sleep 5
           done
           test "$STATUS" = 200
-          python - "$RESPONSE_FILE" "$WHEEL_FILE" "$WHEEL_SHA256" "$SDIST_FILE" "$SDIST_SHA256" <<'PY'
-          import json, sys
-          payload = json.load(open(sys.argv[1], encoding='utf-8'))
-          wanted = {sys.argv[2]: sys.argv[3], sys.argv[4]: sys.argv[5]}
-          files = {item['filename']: item for item in payload.get('urls', [])}
-          for name, digest in wanted.items():
-              item = files.get(name)
-              if not item or item.get('yanked') or item.get('digests', {}).get('sha256') != digest:
-                  raise SystemExit(f'PyPI proof mismatch for {name}')
-              print(f"{name}\t{item['url']}\t{digest}")
-          PY
+          REGISTRY_RESPONSE_FILE="$RESPONSE_FILE" EXPECTED_VERSION="$EXPECTED_VERSION" EXPECTED_ARTIFACTS="$EXPECTED_ARTIFACTS" EXPECTED_SHA256S="$EXPECTED_SHA256S" FOUNDATION_DOWNLOADS_FILE="$FOUNDATION_DOWNLOADS_FILE" node scripts/verify-release.mjs --foundation-pypi-proof
           while IFS=$'\t' read -r name url digest; do
             curl --fail --silent --show-error --location --max-time 60 --retry 0 --user-agent "$RELEASE_USER_AGENT" --output "$RUNNER_TEMP/$name" "$url"
             test "$(sha256sum "$RUNNER_TEMP/$name" | awk '{print $1}')" = "$digest"
-          done < <(python - "$RESPONSE_FILE" "$WHEEL_FILE" "$WHEEL_SHA256" "$SDIST_FILE" "$SDIST_SHA256" <<'PY'
-          import json, sys
-          payload = json.load(open(sys.argv[1], encoding='utf-8'))
-          wanted = {sys.argv[2]: sys.argv[3], sys.argv[4]: sys.argv[5]}
-          for item in payload.get('urls', []):
-              if item.get('filename') in wanted:
-                  print(f"{item['filename']}\t{item['url']}\t{wanted[item['filename']]}")
+            attestation_url="https://pypi.org/integrity/erpc-sdk/$EXPECTED_VERSION/$name/provenance"
+            attestation_file="$RUNNER_TEMP/$name.provenance.json"
+            curl --fail --silent --show-error --location --max-time 60 --retry 0 --user-agent "$RELEASE_USER_AGENT" --output "$attestation_file" "$attestation_url"
+          done < "$FOUNDATION_DOWNLOADS_FILE"
+          python - "$FOUNDATION_DOWNLOADS_FILE" "$RUNNER_TEMP" <<'PY'
+          import base64, json, os, subprocess, sys
+          from pypi_attestations import Distribution, GitHubPublisher, Provenance
+          downloads_file, runner_temp = sys.argv[1:]
+          for line in open(downloads_file, encoding='utf-8'):
+              name, url, digest = line.rstrip('\n').split('\t')
+              provenance_file = f'{runner_temp}/{name}.provenance.json'
+              local_file = f'{runner_temp}/{name}'
+              subprocess.run([sys.executable, '-m', 'pypi_attestations', 'verify', 'pypi', '--repository', 'https://github.com/elsoul/erpc-sdk', '--provenance-file', provenance_file, local_file], check=True)
+              document = Provenance.model_validate_json(open(provenance_file, encoding='utf-8').read())
+              publisher = document.attestation_bundles[0].publisher
+              if publisher.kind != 'GitHub' or publisher.repository != 'elsoul/erpc-sdk' or publisher.workflow != 'release.yml' or publisher.environment != 'pypi':
+                  raise SystemExit(f'PyPI publisher binding is invalid for {name}')
+              matching = []
+              for bundle in document.attestation_bundles:
+                  for attestation in bundle.attestations:
+                      statement = attestation.statement
+                      subject = statement.get('subject', [{}])[0]
+                      if statement.get('predicateType') == 'https://docs.pypi.org/attestations/publish/v1' and subject.get('name') == name and subject.get('digest', {}).get('sha256') == digest:
+                          matching.append((attestation, statement))
+              if len(matching) != 1:
+                  raise SystemExit(f'PyPI attestation subject is not unique for {name}')
+              attestation, statement = matching[0]
+              attestation.verify(GitHubPublisher(repository='elsoul/erpc-sdk', workflow='release.yml', environment='pypi'), Distribution(name=name, digest=digest))
+              claims = attestation.certificate_claims
+              expected_workflow = 'https://github.com/elsoul/erpc-sdk/.github/workflows/release.yml@refs/heads/main'
+              expected_claims = {
+                  '1.3.6.1.4.1.57264.1.9': expected_workflow,
+                  '1.3.6.1.4.1.57264.1.10': os.environ['FOUNDATION_SOURCE_SHA'],
+                  '1.3.6.1.4.1.57264.1.12': 'https://github.com/elsoul/erpc-sdk',
+                  '1.3.6.1.4.1.57264.1.13': os.environ['FOUNDATION_SOURCE_SHA'],
+                  '1.3.6.1.4.1.57264.1.14': 'refs/heads/main',
+                  '1.3.6.1.4.1.57264.1.15': os.environ['EXPECTED_REPOSITORY_ID'],
+                  '1.3.6.1.4.1.57264.1.18': expected_workflow,
+                  '1.3.6.1.4.1.57264.1.19': os.environ['FOUNDATION_SOURCE_SHA'],
+                  '1.3.6.1.4.1.57264.1.20': 'workflow_dispatch',
+              }
+              if any(claims.get(key) != value for key, value in expected_claims.items()):
+                  raise SystemExit(f'PyPI certificate claims do not bind the approved source/workflow for {name}')
+              with open(f'{runner_temp}/{name}.claims.json', 'w', encoding='utf-8') as output:
+                  json.dump({'statement': statement, 'claims': claims}, output)
+                  output.write('\n')
           PY
-          )
-          printf '%s\n' '{"registry":"pypi","verified":true,"credential":"short-lived OIDC","attestations":"official action default"}' > "$RUNNER_TEMP/pypi-proof.json"
+          node --input-type=module - "$RESPONSE_FILE" "$RUNNER_TEMP/pypi-proof.json" <<'NODE'
+          import { createHash } from 'node:crypto'
+          import { readFileSync, writeFileSync } from 'node:fs'
+          const [responseFile, outputFile] = process.argv.slice(2)
+          const payload = JSON.parse(readFileSync(responseFile, 'utf8'))
+          const expected = JSON.parse(process.env.EXPECTED_ARTIFACTS)
+          const expectedSha = JSON.parse(process.env.EXPECTED_SHA256S)
+          const files = expected.map(filename => {
+            const file = payload.urls.find(candidate => candidate.filename === filename)
+            const claimsRecord = JSON.parse(readFileSync(`${process.env.RUNNER_TEMP}/${filename}.claims.json`, 'utf8'))
+            const statement = claimsRecord.statement
+            if (!file || file.yanked !== false || file.digests?.sha256 !== expectedSha[filename] || !statement || statement.predicateType !== 'https://docs.pypi.org/attestations/publish/v1' || statement.subject?.[0]?.name !== filename || statement.subject?.[0]?.digest?.sha256 !== expectedSha[filename]) throw new Error(`PyPI observed file or attestation is invalid for ${filename}`)
+            const observedSha256 = createHash('sha256').update(readFileSync(`${process.env.RUNNER_TEMP}/${filename}`)).digest('hex')
+            if (observedSha256 !== expectedSha[filename]) throw new Error(`PyPI downloaded digest mismatch for ${filename}`)
+            return { filename, url: file.url, sha256: file.digests.sha256, yanked: file.yanked, packagetype: file.packagetype, attestations: [statement], certificateClaims: claimsRecord.claims, attestationUrl: `https://pypi.org/integrity/erpc-sdk/${process.env.EXPECTED_VERSION}/${filename}/provenance`, observedSha256 }
+          })
+          const state = process.env.PYPI_STATE === 'absent' ? 'published' : process.env.PYPI_STATE === 'partial' ? 'partial-resume' : 'reused'
+          writeFileSync(outputFile, `${JSON.stringify({ schemaVersion: 1, registry: 'pypi.org', repository: process.env.EXPECTED_REPOSITORY, identity: payload.info.name, version: payload.info.version, state, files, sourceCommit: process.env.FOUNDATION_SOURCE_SHA, planSha256: process.env.FOUNDATION_PLAN_SHA256, preparedRunId: process.env.FOUNDATION_PREPARED_RUN_ID, preparedRunAttempt: process.env.FOUNDATION_PREPARED_RUN_ATTEMPT, preparedArtifactId: process.env.FOUNDATION_PREPARED_ARTIFACT_ID, observerRunId: process.env.GITHUB_RUN_ID, observerAttempt: process.env.GITHUB_RUN_ATTEMPT, observedAt: new Date().toISOString(), auth: { requested: state !== 'reused', uploadAttempted: state !== 'reused', uploadOutcome: process.env.PYPI_UPLOAD_OUTCOME || 'not-requested', attestationsVerified: true } })}\n`)
+          NODE
       - name: Upload PyPI proof
         if: always()
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
@@ -769,6 +951,7 @@ jobs:
         env:
           RESPONSE_FILE: ${{ runner.temp }}/rubygems-version.json
           EXPECTED_VERSION: ${{ inputs.expected_version }}
+          GEM_SHA256: ${{ steps.locate.outputs.sha256 }}
         run: |
           set -euo pipefail
           set +e
@@ -776,14 +959,17 @@ jobs:
           CURL_STATUS=$?
           set -e
           test "$CURL_STATUS" -eq 0
-          FOUNDATION_REGISTRY=rubygems REGISTRY_STATUS="$STATUS" REGISTRY_RESPONSE_FILE="$RESPONSE_FILE" EXPECTED_VERSION="$EXPECTED_VERSION" EXPECTED_SHA256="${{ steps.locate.outputs.sha256 }}" node scripts/verify-release.mjs --foundation-registry > "$RUNNER_TEMP/rubygems-state"
+          FOUNDATION_REGISTRY=rubygems REGISTRY_STATUS="$STATUS" REGISTRY_RESPONSE_FILE="$RESPONSE_FILE" EXPECTED_VERSION="$EXPECTED_VERSION" EXPECTED_SHA256="$GEM_SHA256" node scripts/verify-release.mjs --foundation-registry > "$RUNNER_TEMP/rubygems-state"
           echo "state=$(cat "$RUNNER_TEMP/rubygems-state")" >> "$GITHUB_OUTPUT"
       - name: Download matching gem without authentication
         if: steps.preflight.outputs.state == 'match'
+        env:
+          GEM_FILE: ${{ steps.locate.outputs.filename }}
+          GEM_SHA256: ${{ steps.locate.outputs.sha256 }}
         run: |
           set -euo pipefail
-          curl --fail --silent --show-error --location --max-time 60 --retry 0 --user-agent "$RELEASE_USER_AGENT" --output "$RUNNER_TEMP/gem-final.gem" "https://rubygems.org/downloads/${{ steps.locate.outputs.filename }}"
-          test "$(sha256sum "$RUNNER_TEMP/gem-final.gem" | awk '{print $1}')" = "${{ steps.locate.outputs.sha256 }}"
+          curl --fail --silent --show-error --location --max-time 60 --retry 0 --user-agent "$RELEASE_USER_AGENT" --output "$RUNNER_TEMP/gem-final.gem" "https://rubygems.org/downloads/$GEM_FILE"
+          test "$(sha256sum "$RUNNER_TEMP/gem-final.gem" | awk '{print $1}')" = "$GEM_SHA256"
       - name: Configure RubyGems Trusted Publishing credentials
         if: steps.preflight.outputs.state == 'absent'
         id: rubygems_auth
@@ -794,12 +980,17 @@ jobs:
         if: steps.preflight.outputs.state == 'absent'
         id: publish_gem
         continue-on-error: true
-        run: gem push "$RUNNER_TEMP/sdk-foundation-bundle/${{ steps.locate.outputs.filename }}"
-      - name: Verify RubyGems publication and clean ephemeral credentials
+        env:
+          GEM_FILE: ${{ steps.locate.outputs.filename }}
+        run: gem push "$RUNNER_TEMP/sdk-foundation-bundle/$GEM_FILE"
+      - name: Verify RubyGems publication and record observed receipt
         if: always() && (steps.preflight.outputs.state == 'absent' || steps.preflight.outputs.state == 'match')
         env:
           RESPONSE_FILE: ${{ runner.temp }}/rubygems-final.json
           EXPECTED_VERSION: ${{ inputs.expected_version }}
+          GEM_FILE: ${{ steps.locate.outputs.filename }}
+          GEM_SHA256: ${{ steps.locate.outputs.sha256 }}
+          CREDENTIAL_OBSERVED_FILE: ${{ runner.temp }}/rubygems-credential-observed.json
         run: |
           set -euo pipefail
           for attempt in 1 2 3 4 5 6; do
@@ -812,16 +1003,43 @@ jobs:
             if [ "$STATUS" != 404 ] || [ "$attempt" -eq 6 ]; then exit 1; fi
             sleep 5
           done
-          FOUNDATION_REGISTRY=rubygems REGISTRY_STATUS="$STATUS" REGISTRY_RESPONSE_FILE="$RESPONSE_FILE" EXPECTED_VERSION="$EXPECTED_VERSION" EXPECTED_SHA256="${{ steps.locate.outputs.sha256 }}" node scripts/verify-release.mjs --foundation-registry
-          curl --fail --silent --show-error --location --max-time 60 --retry 0 --user-agent "$RELEASE_USER_AGENT" --output "$RUNNER_TEMP/gem-final.gem" "https://rubygems.org/downloads/${{ steps.locate.outputs.filename }}"
-          test "$(sha256sum "$RUNNER_TEMP/gem-final.gem" | awk '{print $1}')" = "${{ steps.locate.outputs.sha256 }}"
-          gem install --local "$RUNNER_TEMP/gem-final.gem" --install-dir "$RUNNER_TEMP/gem-check" --no-document
-          printf '%s\n' '{"registry":"rubygems","verified":true,"credential":"OIDC trusted publisher; local credential cleanup/expiry only","attestation":"not asserted"}' > "$RUNNER_TEMP/rubygems-proof.json"
+          FOUNDATION_REGISTRY=rubygems REGISTRY_STATUS="$STATUS" REGISTRY_RESPONSE_FILE="$RESPONSE_FILE" EXPECTED_VERSION="$EXPECTED_VERSION" EXPECTED_SHA256="$GEM_SHA256" node scripts/verify-release.mjs --foundation-registry
+          curl --fail --silent --show-error --location --max-time 60 --retry 0 --user-agent "$RELEASE_USER_AGENT" --output "$RUNNER_TEMP/gem-final.gem" "https://rubygems.org/downloads/$GEM_FILE"
+          test "$(sha256sum "$RUNNER_TEMP/gem-final.gem" | awk '{print $1}')" = "$GEM_SHA256"
+          credential_observed=false
+          if [ -n "${GEM_HOST_API_KEY:-}" ] || [ -n "${BUNDLE_GEM__PUSH_KEY:-}" ] || [ -n "${RUBYGEMS_API_KEY:-}" ]; then credential_observed=true; fi
+          printf '{"credentialObserved":%s}\n' "$credential_observed" > "$CREDENTIAL_OBSERVED_FILE"
       - name: Clean RubyGems local credential material
         if: always()
         run: |
           rm -f "$HOME/.gem/credentials" "$HOME/.config/gem/credentials"
-          unset GEM_HOST_API_KEY BUNDLE_GEM__PUSH_KEY RUBYGEMS_API_KEY
+          for key in GEM_HOST_API_KEY BUNDLE_GEM__PUSH_KEY RUBYGEMS_API_KEY; do
+            unset "$key"
+            printf '%s=\n' "$key" >> "$GITHUB_ENV"
+          done
+      - name: Run Ruby consumer after credential cleanup and write receipt
+        if: always() && (steps.preflight.outputs.state == 'absent' || steps.preflight.outputs.state == 'match')
+        env:
+          GEM_FILE: ${{ steps.locate.outputs.filename }}
+          GEM_SHA256: ${{ steps.locate.outputs.sha256 }}
+          EXPECTED_VERSION: ${{ inputs.expected_version }}
+          RUBYGEMS_STATE: ${{ steps.preflight.outputs.state }}
+          RUBYGEMS_AUTH_OUTCOME: ${{ steps.rubygems_auth.outcome }}
+          RUBYGEMS_UPLOAD_OUTCOME: ${{ steps.publish_gem.outcome }}
+          CREDENTIAL_OBSERVED_FILE: ${{ runner.temp }}/rubygems-credential-observed.json
+        run: |
+          set -euo pipefail
+          test -z "${GEM_HOST_API_KEY:-}"
+          test -z "${BUNDLE_GEM__PUSH_KEY:-}"
+          test -z "${RUBYGEMS_API_KEY:-}"
+          env -u GEM_HOST_API_KEY -u BUNDLE_GEM__PUSH_KEY -u RUBYGEMS_API_KEY gem install --local "$RUNNER_TEMP/gem-final.gem" --install-dir "$RUNNER_TEMP/gem-check" --no-document
+          node --input-type=module - "$CREDENTIAL_OBSERVED_FILE" "$RUNNER_TEMP/rubygems-proof.json" <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs'
+          const [observedFile, outputFile] = process.argv.slice(2)
+          const observed = JSON.parse(readFileSync(observedFile, 'utf8'))
+          const state = process.env.RUBYGEMS_STATE === 'absent' ? 'published' : 'reused'
+          writeFileSync(outputFile, JSON.stringify({ schemaVersion: 1, registry: 'rubygems.org', repository: process.env.EXPECTED_REPOSITORY, identity: 'erpc-sdk', version: process.env.EXPECTED_VERSION, state, artifact: process.env.GEM_FILE, sha256: process.env.GEM_SHA256, sourceCommit: process.env.FOUNDATION_SOURCE_SHA, planSha256: process.env.FOUNDATION_PLAN_SHA256, preparedRunId: process.env.FOUNDATION_PREPARED_RUN_ID, preparedRunAttempt: process.env.FOUNDATION_PREPARED_RUN_ATTEMPT, preparedArtifactId: process.env.FOUNDATION_PREPARED_ARTIFACT_ID, observerRunId: process.env.GITHUB_RUN_ID, observerAttempt: process.env.GITHUB_RUN_ATTEMPT, observedAt: new Date().toISOString(), auth: { requested: state === 'published', uploadAttempted: state === 'published', credentialObserved: observed.credentialObserved, configureOutcome: process.env.RUBYGEMS_AUTH_OUTCOME || 'not-requested', uploadOutcome: process.env.RUBYGEMS_UPLOAD_OUTCOME || 'not-requested' }, credentialCleanup: { envCleared: true, filesCleared: true }, consumer: { installed: true } }) + '\n')
+          NODE
       - name: Upload RubyGems proof
         if: always()
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
@@ -851,6 +1069,11 @@ jobs:
         env:
           RELEASE_USER_AGENT: erpc-sdk-release-verification (https://github.com/elsoul/erpc-sdk)
           EXPECTED_SHA256: f2ad81528b35470b8f193dc45ad9f95e2d5ba0749b916ab9422cb07639088dd7
+          FOUNDATION_SOURCE_SHA: ${{ inputs.expected_commit }}
+          FOUNDATION_PLAN_SHA256: ${{ inputs.approval_plan_sha256 }}
+          FOUNDATION_PREPARED_RUN_ID: ${{ inputs.prepared_run_id }}
+          FOUNDATION_PREPARED_RUN_ATTEMPT: ${{ inputs.prepared_run_attempt }}
+          FOUNDATION_PREPARED_ARTIFACT_ID: ${{ inputs.prepared_artifact_id }}
         run: |
           set -euo pipefail
           response="$RUNNER_TEMP/rust.json"
@@ -862,7 +1085,16 @@ jobs:
           FOUNDATION_REGISTRY=rust REGISTRY_STATUS="$status" REGISTRY_RESPONSE_FILE="$response" node scripts/verify-release.mjs --foundation-registry
           curl --fail --silent --show-error --location --max-time 60 --retry 0 --user-agent "$RELEASE_USER_AGENT" --output "$RUNNER_TEMP/erpc-sdk-0.10.0.crate" https://crates.io/api/v1/crates/erpc-sdk/0.10.0/download
           test "$(sha256sum "$RUNNER_TEMP/erpc-sdk-0.10.0.crate" | awk '{print $1}')" = "$EXPECTED_SHA256"
-          printf '%s\n' '{"registry":"crates.io","verified":true,"mode":"reuse","source":"f05abe4276991612c4b5e404fdc768baace32e61","sha256":"f2ad81528b35470b8f193dc45ad9f95e2d5ba0749b916ab9422cb07639088dd7"}' > "$RUNNER_TEMP/rust-proof.json"
+          RUST_REGISTRY_STATUS="$status" node --input-type=module - "$response" "$RUNNER_TEMP/erpc-sdk-0.10.0.crate" "$RUNNER_TEMP/rust-proof.json" <<'NODE'
+          import { createHash } from 'node:crypto'
+          import { readFileSync, writeFileSync } from 'node:fs'
+          const [metadataFile, archiveFile, outputFile] = process.argv.slice(2)
+          const metadata = JSON.parse(readFileSync(metadataFile, 'utf8'))
+          const version = metadata.version
+          const observedSha256 = createHash('sha256').update(readFileSync(archiveFile)).digest('hex')
+          if (version?.crate !== 'erpc-sdk' || version.num !== '0.10.0' || version.yanked !== false || version.checksum !== process.env.EXPECTED_SHA256 || observedSha256 !== process.env.EXPECTED_SHA256) throw new Error('Rust observed receipt does not match the approved artifact')
+          writeFileSync(outputFile, `${JSON.stringify({ schemaVersion: 1, registry: 'crates.io', repository: process.env.EXPECTED_REPOSITORY, identity: version.crate, version: version.num, sourceCommit: 'f05abe4276991612c4b5e404fdc768baace32e61', foundationSourceCommit: process.env.FOUNDATION_SOURCE_SHA, sha256: version.checksum, registryStatus: Number(process.env.RUST_REGISTRY_STATUS), yanked: version.yanked, downloadStatus: 200, preparedRunId: process.env.FOUNDATION_PREPARED_RUN_ID, preparedRunAttempt: process.env.FOUNDATION_PREPARED_RUN_ATTEMPT, preparedArtifactId: process.env.FOUNDATION_PREPARED_ARTIFACT_ID, observerRunId: process.env.GITHUB_RUN_ID, observerAttempt: process.env.GITHUB_RUN_ATTEMPT, planSha256: process.env.FOUNDATION_PLAN_SHA256, observedAt: new Date().toISOString(), auth: { requested: false, uploadAttempted: false } })}\n`)
+          NODE
       - name: Upload Rust reuse proof
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
@@ -884,6 +1116,7 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: write
+      actions: read
     steps:
       - name: Check out exact approved source
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -891,25 +1124,81 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.sha }}
           persist-credentials: false
+      - name: Download approved bundle and binding before tag writes
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          artifact-ids: ${{ inputs.prepared_artifact_id }}
+          run-id: ${{ inputs.prepared_run_id }}
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          path: ${{ runner.temp }}/sdk-foundation-bundle
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          artifact-ids: ${{ inputs.prepared_binding_artifact_id }}
+          run-id: ${{ inputs.prepared_run_id }}
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          path: ${{ runner.temp }}/sdk-foundation-binding
+      - name: Verify approved bundle before tag writes
+        env:
+          FOUNDATION_SOURCE_SHA: ${{ inputs.expected_commit }}
+          FOUNDATION_PLAN_FILE: ${{ runner.temp }}/sdk-foundation-bundle/foundation-plan.json
+          FOUNDATION_PLAN_SHA256: ${{ inputs.approval_plan_sha256 }}
+          FOUNDATION_ARTIFACT_DIR: ${{ runner.temp }}/sdk-foundation-bundle
+          FOUNDATION_BINDING_FILE: ${{ runner.temp }}/sdk-foundation-binding/foundation-binding.json
+          FOUNDATION_PREPARED_RUN_ID: ${{ inputs.prepared_run_id }}
+          FOUNDATION_PREPARED_RUN_ATTEMPT: ${{ inputs.prepared_run_attempt }}
+          FOUNDATION_PREPARED_ARTIFACT_ID: ${{ inputs.prepared_artifact_id }}
+        run: node scripts/verify-release.mjs --foundation-verify
       - name: Create or verify only the two approved refs
         env:
           EXPECTED_COMMIT: ${{ inputs.expected_commit }}
           GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          FOUNDATION_PLAN_SHA256: ${{ inputs.approval_plan_sha256 }}
+          FOUNDATION_PREPARED_RUN_ID: ${{ inputs.prepared_run_id }}
+          FOUNDATION_PREPARED_RUN_ATTEMPT: ${{ inputs.prepared_run_attempt }}
+          FOUNDATION_PREPARED_ARTIFACT_ID: ${{ inputs.prepared_artifact_id }}
         run: |
           set -euo pipefail
+          state_dir="$RUNNER_TEMP/tag-states"
+          mkdir -p "$state_dir"
           for tag in non-rust-v0.9.1 packages/go/v0.9.1; do
-            ref="refs/tags/$tag"
-            existing="$(git ls-remote origin "$ref" | awk 'NR==1 {print $1}')"
-            if [ -n "$existing" ]; then
-              test "$existing" = "$EXPECTED_COMMIT"
+            ref="tags/$tag"
+            set +e
+            existing_status="$(curl --silent --show-error --max-time 20 --retry 0 --user-agent "$RELEASE_USER_AGENT" --header "Authorization: Bearer $GH_TOKEN" --header 'Accept: application/vnd.github+json' --output "$RUNNER_TEMP/tag-ref.json" --write-out '%{http_code}' "https://api.github.com/repos/$REPOSITORY/git/ref/$ref")"
+            curl_status=$?
+            set -e
+            test "$curl_status" -eq 0
+            if [ "$existing_status" = 200 ]; then
+              jq -r '.object.sha' "$RUNNER_TEMP/tag-ref.json" > "$state_dir/$(printf '%s' "$tag" | tr '/' '_')"
+            elif [ "$existing_status" = 404 ]; then
+              printf '%s\n' absent > "$state_dir/$(printf '%s' "$tag" | tr '/' '_')"
             else
-              git tag "$tag" "$EXPECTED_COMMIT"
-              git push origin "refs/tags/$tag"
+              echo "Git ref read failed with HTTP $existing_status" >&2
+              exit 1
             fi
           done
-          test "$(git ls-remote origin refs/tags/non-rust-v0.9.1 | awk 'NR==1 {print $1}')" = "$EXPECTED_COMMIT"
-          test "$(git ls-remote origin refs/tags/packages/go/v0.9.1 | awk 'NR==1 {print $1}')" = "$EXPECTED_COMMIT"
-          printf '%s\n' '{"verified":true,"release_tag":"non-rust-v0.9.1","go_tag":"packages/go/v0.9.1"}' > "$RUNNER_TEMP/tag-proof.json"
+          for tag in non-rust-v0.9.1 packages/go/v0.9.1; do
+            state="$(cat "$state_dir/$(printf '%s' "$tag" | tr '/' '_')")"
+            if [ "$state" != absent ]; then test "$state" = "$EXPECTED_COMMIT"; fi
+          done
+          for tag in non-rust-v0.9.1 packages/go/v0.9.1; do
+            state="$(cat "$state_dir/$(printf '%s' "$tag" | tr '/' '_')")"
+            if [ "$state" = absent ]; then gh api --method POST "/repos/$REPOSITORY/git/refs" -f "ref=refs/tags/$tag" -f "sha=$EXPECTED_COMMIT" >/dev/null; fi
+          done
+          for ref in tags/non-rust-v0.9.1 tags/packages/go/v0.9.1; do
+            final_file="$state_dir/$(printf '%s' "$ref" | tr '/' '_')-final.json"
+            status="$(curl --silent --show-error --max-time 20 --retry 0 --user-agent "$RELEASE_USER_AGENT" --header "Authorization: Bearer $GH_TOKEN" --header 'Accept: application/vnd.github+json' --output "$final_file" --write-out '%{http_code}' "https://api.github.com/repos/$REPOSITORY/git/ref/$ref")"
+            test "$status" = 200
+            test "$(jq -r '.object.sha' "$final_file")" = "$EXPECTED_COMMIT"
+          done
+          node --input-type=module - "$state_dir" "$RUNNER_TEMP/tag-proof.json" <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs'
+          const [stateDir, outputFile] = process.argv.slice(2)
+          const readRef = name => ({ ref: `refs/tags/${name}`, sha: JSON.parse(readFileSync(`${stateDir}/tags_${name.replaceAll('/', '_')}-final.json`, 'utf8')).object.sha })
+          writeFileSync(outputFile, `${JSON.stringify({ schemaVersion: 1, registry: 'github.com', repository: process.env.REPOSITORY, sourceCommit: process.env.EXPECTED_COMMIT, version: '0.9.1', planSha256: process.env.FOUNDATION_PLAN_SHA256, preparedRunId: process.env.FOUNDATION_PREPARED_RUN_ID, preparedRunAttempt: process.env.FOUNDATION_PREPARED_RUN_ATTEMPT, preparedArtifactId: process.env.FOUNDATION_PREPARED_ARTIFACT_ID, observerRunId: process.env.GITHUB_RUN_ID, observerAttempt: process.env.GITHUB_RUN_ATTEMPT, tags: { release: readRef('non-rust-v0.9.1'), go: readRef('packages/go/v0.9.1') }, auth: { requested: true, writeObserved: true, mechanism: 'github-token' }, observedAt: new Date().toISOString() })}\n`)
+          NODE
       - name: Upload tag proof
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
@@ -926,6 +1215,7 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
+      actions: read
     steps:
       - name: Check out approved source and tags
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -933,6 +1223,32 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.sha }}
           persist-credentials: false
+      - name: Download and verify the approved bundle before Go proof
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          artifact-ids: ${{ inputs.prepared_artifact_id }}
+          run-id: ${{ inputs.prepared_run_id }}
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          path: ${{ runner.temp }}/sdk-foundation-bundle
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          artifact-ids: ${{ inputs.prepared_binding_artifact_id }}
+          run-id: ${{ inputs.prepared_run_id }}
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          path: ${{ runner.temp }}/sdk-foundation-binding
+      - name: Revalidate approved plan and sidecars for Go proof
+        env:
+          FOUNDATION_SOURCE_SHA: ${{ inputs.expected_commit }}
+          FOUNDATION_PLAN_FILE: ${{ runner.temp }}/sdk-foundation-bundle/foundation-plan.json
+          FOUNDATION_PLAN_SHA256: ${{ inputs.approval_plan_sha256 }}
+          FOUNDATION_ARTIFACT_DIR: ${{ runner.temp }}/sdk-foundation-bundle
+          FOUNDATION_BINDING_FILE: ${{ runner.temp }}/sdk-foundation-binding/foundation-binding.json
+          FOUNDATION_PREPARED_RUN_ID: ${{ inputs.prepared_run_id }}
+          FOUNDATION_PREPARED_RUN_ATTEMPT: ${{ inputs.prepared_run_attempt }}
+          FOUNDATION_PREPARED_ARTIFACT_ID: ${{ inputs.prepared_artifact_id }}
+        run: node scripts/verify-release.mjs --foundation-verify
       - name: Verify Go proxy, checksum, origin, and exact module members
         env:
           GOPROXY: https://proxy.golang.org
@@ -940,29 +1256,80 @@ jobs:
           MODULE: github.com/elsoul/erpc-sdk/packages/go
           VERSION: v0.9.1
           EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+          FOUNDATION_SOURCE_SHA: ${{ inputs.expected_commit }}
+          FOUNDATION_PLAN_SHA256: ${{ inputs.approval_plan_sha256 }}
+          FOUNDATION_PREPARED_RUN_ID: ${{ inputs.prepared_run_id }}
+          FOUNDATION_PREPARED_RUN_ATTEMPT: ${{ inputs.prepared_run_attempt }}
+          FOUNDATION_PREPARED_ARTIFACT_ID: ${{ inputs.prepared_artifact_id }}
         run: |
           set -euo pipefail
           git fetch --no-tags origin refs/tags/packages/go/v0.9.1
           test "$(git rev-parse FETCH_HEAD)" = "$EXPECTED_COMMIT"
           mkdir -p "$RUNNER_TEMP/go-consumer"
           printf 'module example.invalid/consumer\n\ngo 1.22\n\nrequire %s %s\n' "$MODULE" "$VERSION" > "$RUNNER_TEMP/go-consumer/go.mod"
-          (cd "$RUNNER_TEMP/go-consumer" && go mod download -json "$MODULE@$VERSION") > "$RUNNER_TEMP/go-download.json"
-          python - "$RUNNER_TEMP/go-download.json" "$RUNNER_TEMP/go-inventory.json" "$EXPECTED_COMMIT" <<'PY'
-          import hashlib, json, sys, zipfile
+          for attempt in 1 2 3 4 5; do
+            set +e
+            (cd "$RUNNER_TEMP/go-consumer" && GOMODCACHE="$RUNNER_TEMP/go-mod-cache" GOPROXY="$GOPROXY" GOSUMDB="$GOSUMDB" go mod download -json "$MODULE@$VERSION") > "$RUNNER_TEMP/go-download.json"
+            download_status=$?
+            set -e
+            if [ "$download_status" -eq 0 ] && python - "$RUNNER_TEMP/go-download.json" <<'PY'
+          import json, sys
+          receipt = json.load(open(sys.argv[1], encoding='utf-8'))
+          raise SystemExit(1 if receipt.get('Error') else 0)
+          PY
+            then break; fi
+            if [ "$attempt" -eq 5 ]; then exit 1; fi
+            sleep 5
+          done
+          mkdir -p "$RUNNER_TEMP/go-direct-consumer"
+          printf 'module example.invalid/direct-consumer\n\ngo 1.22\n\nrequire %s %s\n' "$MODULE" "$VERSION" > "$RUNNER_TEMP/go-direct-consumer/go.mod"
+          (cd "$RUNNER_TEMP/go-direct-consumer" && GOMODCACHE="$RUNNER_TEMP/go-direct-mod-cache" GOPROXY=direct GOSUMDB=off go mod download -json "$MODULE@$VERSION") > "$RUNNER_TEMP/go-direct-download.json"
+          python - "$RUNNER_TEMP/go-download.json" "$RUNNER_TEMP/go-direct-download.json" "$RUNNER_TEMP/sdk-foundation-bundle/go-inventory.json" "$EXPECTED_COMMIT" <<'PY'
+          import base64, hashlib, json, os, re, sys, zipfile
           result = json.load(open(sys.argv[1], encoding='utf-8'))
-          origin = result.get('Origin') or {}
-          if origin.get('Hash') != sys.argv[3] or origin.get('Ref') != 'refs/tags/packages/go/v0.9.1':
+          direct = json.load(open(sys.argv[2], encoding='utf-8'))
+          module = os.environ['MODULE']
+          version = os.environ['VERSION']
+          required = {'Path', 'Version', 'Info', 'GoMod', 'Zip', 'Dir', 'Sum', 'GoModSum', 'Origin'}
+          if not isinstance(result, dict) or result.get('Error') or not required.issubset(result):
+              raise SystemExit('Go tool receipt is incomplete or reports an error')
+          for key in ('Path', 'Version', 'Info', 'GoMod', 'Zip', 'Dir', 'Sum', 'GoModSum'):
+              if not isinstance(result.get(key), str) or not result[key]:
+                  raise SystemExit(f'Go tool receipt field {key} is not a nonempty string')
+          for key in ('Info', 'GoMod', 'Zip', 'Dir'):
+              if not os.path.isabs(result[key]):
+                  raise SystemExit(f'Go tool receipt field {key} is not an absolute path')
+          if result.get('Reuse') is True:
+              raise SystemExit('Go proof must come from a fresh consumer download')
+          origin = result.get('Origin')
+          if not isinstance(origin, dict) or set(origin) != {'VCS', 'URL', 'Hash', 'Ref', 'Subdir'}:
+              raise SystemExit('Go proxy origin shape is incomplete or has unexpected fields')
+          if result.get('Path') != module or result.get('Version') != version:
+              raise SystemExit('Go proxy module identity/version mismatch')
+          if origin.get('VCS') != 'git' or origin.get('URL') != 'https://github.com/elsoul/erpc-sdk' or origin.get('Hash') != sys.argv[4] or origin.get('Ref') != 'refs/tags/packages/go/v0.9.1' or origin.get('Subdir') != 'packages/go':
               raise SystemExit('Go proxy origin does not bind the approved tag and commit')
-          if not result.get('Sum') or not result.get('GoModSum'):
+          direct_origin = direct.get('Origin')
+          if direct.get('Error') or direct.get('Path') != module or direct.get('Version') != version or not isinstance(direct_origin, dict) or set(direct_origin) != {'VCS', 'URL', 'Hash', 'Ref', 'Subdir'}:
+              raise SystemExit('Go direct origin receipt is incomplete')
+          if direct_origin.get('VCS') != 'git' or direct_origin.get('URL') != 'https://github.com/elsoul/erpc-sdk' or direct_origin.get('Hash') != sys.argv[4] or direct_origin.get('Ref') != 'refs/tags/packages/go/v0.9.1' or direct_origin.get('Subdir') != 'packages/go':
+              raise SystemExit('Go direct origin does not bind the approved tag and commit')
+          if not re.fullmatch(r'h1:[A-Za-z0-9+/]{43}=?', result['Sum']) or not re.fullmatch(r'h1:[A-Za-z0-9+/]{43}=?', result['GoModSum']):
               raise SystemExit('Go proxy did not provide checksum receipts')
-          inventory = json.load(open(sys.argv[2], encoding='utf-8'))
+          for checksum in (result['Sum'], result['GoModSum']):
+              try:
+                  base64.b64decode(checksum[3:], validate=True)
+              except Exception as error:
+                  raise SystemExit('Go proxy checksum receipt is not valid base64') from error
+          inventory = json.load(open(sys.argv[3], encoding='utf-8'))
           expected = {entry['path']: entry['sha256'] for entry in inventory['files']}
-          prefix = 'github.com/elsoul/erpc-sdk/packages/go@v0.9.1/'
+          if len(expected) != len(inventory['files']) or set(expected) != set(inventory['files'][index]['path'] for index in range(len(inventory['files']))):
+              raise SystemExit('Go inventory contains duplicate paths')
+          prefix = f'{module}@{version}/'
           with zipfile.ZipFile(result['Zip']) as archive:
               names = []
               for member in archive.infolist():
                   if member.is_dir(): continue
-                  if not member.filename.startswith(prefix): raise SystemExit('unexpected Go zip prefix')
+                  if '\\' in member.filename or member.filename.startswith('/') or '..' in member.filename.split('/') or not member.filename.startswith(prefix): raise SystemExit('unexpected Go zip prefix or unsafe member')
                   name = member.filename[len(prefix):]
                   if not name or name in names or '..' in name.split('/'):
                       raise SystemExit('unsafe or duplicate Go zip member')
@@ -970,10 +1337,20 @@ jobs:
                   if name not in expected or hashlib.sha256(archive.read(member)).hexdigest() != expected[name]:
                       raise SystemExit(f'Go inventory mismatch for {name}')
               if set(names) != set(expected): raise SystemExit('Go zip member set mismatch')
+              gomod = archive.read(prefix + 'go.mod').decode('utf-8') if prefix + 'go.mod' in archive.namelist() else ''
+              if not re.search(rf'^module {re.escape(module)}$', gomod, re.MULTILINE): raise SystemExit('Go module file does not identify the approved module')
           with open('go-proof.json', 'w', encoding='utf-8') as output:
-              json.dump({'verified': True, 'module': result['Path'], 'version': result['Version'], 'sum': result['Sum'], 'goModSum': result['GoModSum'], 'originHash': origin['Hash'], 'zipSha256': hashlib.sha256(open(result['Zip'], 'rb').read()).hexdigest()}, output)
+              json.dump({'schemaVersion': 1, 'registry': 'proxy.golang.org', 'repository': os.environ['EXPECTED_REPOSITORY'], 'module': result['Path'], 'version': result['Version'], 'sum': result['Sum'], 'goModSum': result['GoModSum'], 'originHash': origin['Hash'], 'originSubdir': origin['Subdir'], 'directOriginHash': direct_origin['Hash'], 'directOriginSubdir': direct_origin['Subdir'], 'zipSha256': hashlib.sha256(open(result['Zip'], 'rb').read()).hexdigest(), 'sourceCommit': os.environ['FOUNDATION_SOURCE_SHA'], 'planSha256': os.environ['FOUNDATION_PLAN_SHA256'], 'preparedRunId': os.environ['FOUNDATION_PREPARED_RUN_ID'], 'preparedRunAttempt': os.environ['FOUNDATION_PREPARED_RUN_ATTEMPT'], 'preparedArtifactId': os.environ['FOUNDATION_PREPARED_ARTIFACT_ID'], 'observerRunId': os.environ['GITHUB_RUN_ID'], 'observerAttempt': os.environ['GITHUB_RUN_ATTEMPT'], 'auth': {'requested': False, 'uploadAttempted': False}, 'observedAt': __import__('datetime').datetime.now(__import__('datetime').timezone.utc).isoformat()}, output)
               output.write('\n')
           PY
+          cat > "$RUNNER_TEMP/go-consumer/main.go" <<'GO'
+          package main
+
+          import _ "github.com/elsoul/erpc-sdk/packages/go"
+
+          func main() {}
+          GO
+          (cd "$RUNNER_TEMP/go-consumer" && GOMODCACHE="$RUNNER_TEMP/go-mod-cache" GOPROXY="$GOPROXY" GOSUMDB="$GOSUMDB" go run .)
       - name: Upload Go proof
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
@@ -982,17 +1359,95 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+  proof-aggregate:
+    name: Aggregate observed publication and source proofs
+    needs:
+      - publication-validation
+      - npm
+      - pypi
+      - rubygems
+      - rust-reuse
+      - tags
+      - go-proof
+    if: ${{ inputs.mode == 'publish' && needs.publication-validation.result == 'success' && needs.npm.result == 'success' && needs.pypi.result == 'success' && needs.rubygems.result == 'success' && needs.rust-reuse.result == 'success' && needs.tags.result == 'success' && needs.go-proof.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Check out approved source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Download approved bundle, binding, and observed receipts
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          artifact-ids: ${{ inputs.prepared_artifact_id }}
+          run-id: ${{ inputs.prepared_run_id }}
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          path: ${{ runner.temp }}/sdk-foundation-bundle
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          artifact-ids: ${{ inputs.prepared_binding_artifact_id }}
+          run-id: ${{ inputs.prepared_run_id }}
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          path: ${{ runner.temp }}/sdk-foundation-binding
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          pattern: foundation-proof-*
+          run-id: ${{ github.run_id }}
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          path: ${{ runner.temp }}/foundation-proof-downloads
+          merge-multiple: false
+      - name: Verify bundle and create complete evidence manifest
+        env:
+          FOUNDATION_SOURCE_SHA: ${{ inputs.expected_commit }}
+          FOUNDATION_PLAN_FILE: ${{ runner.temp }}/sdk-foundation-bundle/foundation-plan.json
+          FOUNDATION_PLAN_SHA256: ${{ inputs.approval_plan_sha256 }}
+          FOUNDATION_ARTIFACT_DIR: ${{ runner.temp }}/sdk-foundation-bundle
+          FOUNDATION_BINDING_FILE: ${{ runner.temp }}/sdk-foundation-binding/foundation-binding.json
+          FOUNDATION_PREPARED_RUN_ID: ${{ inputs.prepared_run_id }}
+          FOUNDATION_PREPARED_RUN_ATTEMPT: ${{ inputs.prepared_run_attempt }}
+          FOUNDATION_PREPARED_ARTIFACT_ID: ${{ inputs.prepared_artifact_id }}
+          FOUNDATION_PROOF_DIR: ${{ runner.temp }}/foundation-proofs
+          FOUNDATION_PROOF_MANIFEST_FILE: ${{ runner.temp }}/foundation-proofs/foundation-proof-manifest.json
+        run: |
+          set -euo pipefail
+          node scripts/verify-release.mjs --foundation-verify
+          mkdir -p "$FOUNDATION_PROOF_DIR"
+          cp "$RUNNER_TEMP/foundation-proof-downloads/foundation-proof-npm-$GITHUB_RUN_ID/npm-proof.json" "$FOUNDATION_PROOF_DIR/npm-proof.json"
+          cp "$RUNNER_TEMP/foundation-proof-downloads/foundation-proof-pypi-$GITHUB_RUN_ID/pypi-proof.json" "$FOUNDATION_PROOF_DIR/pypi-proof.json"
+          cp "$RUNNER_TEMP/foundation-proof-downloads/foundation-proof-rubygems-$GITHUB_RUN_ID/rubygems-proof.json" "$FOUNDATION_PROOF_DIR/rubygems-proof.json"
+          cp "$RUNNER_TEMP/foundation-proof-downloads/foundation-proof-rust-$GITHUB_RUN_ID/rust-proof.json" "$FOUNDATION_PROOF_DIR/rust-proof.json"
+          cp "$RUNNER_TEMP/foundation-proof-downloads/foundation-proof-tags-$GITHUB_RUN_ID/tag-proof.json" "$FOUNDATION_PROOF_DIR/tag-proof.json"
+          cp "$RUNNER_TEMP/foundation-proof-downloads/foundation-proof-go-$GITHUB_RUN_ID/go-proof.json" "$FOUNDATION_PROOF_DIR/go-proof.json"
+          node scripts/verify-release.mjs --foundation-proof-verify
+      - name: Upload immutable aggregate evidence
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: foundation-proof-aggregate-${{ github.run_id }}
+          path: ${{ runner.temp }}/foundation-proofs
+          if-no-files-found: error
+          retention-days: 365
+
   github-release:
     name: Create or verify the final GitHub Release
     needs:
       - publication-validation
       - tags
       - go-proof
+      - proof-aggregate
       - npm
       - pypi
       - rubygems
       - rust-reuse
-    if: ${{ inputs.mode == 'publish' && needs.publication-validation.result == 'success' && needs.tags.result == 'success' && needs.go-proof.result == 'success' && needs.npm.result == 'success' && needs.pypi.result == 'success' && needs.rubygems.result == 'success' && needs.rust-reuse.result == 'success' }}
+    if: ${{ inputs.mode == 'publish' && needs.publication-validation.result == 'success' && needs.tags.result == 'success' && needs.go-proof.result == 'success' && needs.proof-aggregate.result == 'success' && needs.npm.result == 'success' && needs.pypi.result == 'success' && needs.rubygems.result == 'success' && needs.rust-reuse.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -1020,6 +1475,14 @@ jobs:
           github-token: ${{ github.token }}
           repository: ${{ github.repository }}
           path: ${{ runner.temp }}/sdk-foundation-binding
+      - name: Download immutable aggregate evidence
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: foundation-proof-aggregate-${{ github.run_id }}
+          run-id: ${{ github.run_id }}
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          path: ${{ runner.temp }}/foundation-proofs
       - name: Verify approved bundle before GitHub writes
         env:
           FOUNDATION_SOURCE_SHA: ${{ inputs.expected_commit }}
@@ -1031,6 +1494,19 @@ jobs:
           FOUNDATION_PREPARED_RUN_ATTEMPT: ${{ inputs.prepared_run_attempt }}
           FOUNDATION_PREPARED_ARTIFACT_ID: ${{ inputs.prepared_artifact_id }}
         run: node scripts/verify-release.mjs --foundation-verify
+      - name: Verify complete observed proof set before GitHub writes
+        env:
+          FOUNDATION_SOURCE_SHA: ${{ inputs.expected_commit }}
+          FOUNDATION_PLAN_FILE: ${{ runner.temp }}/sdk-foundation-bundle/foundation-plan.json
+          FOUNDATION_PROOF_DIR: ${{ runner.temp }}/foundation-proofs
+          FOUNDATION_PROOF_MANIFEST_FILE: ${{ runner.temp }}/foundation-proofs/foundation-proof-manifest.json
+          FOUNDATION_PREPARED_RUN_ID: ${{ inputs.prepared_run_id }}
+          FOUNDATION_PREPARED_RUN_ATTEMPT: ${{ inputs.prepared_run_attempt }}
+          FOUNDATION_PREPARED_ARTIFACT_ID: ${{ inputs.prepared_artifact_id }}
+        run: |
+          set -euo pipefail
+          test -f "$FOUNDATION_PROOF_DIR/foundation-proof-manifest.json"
+          node scripts/verify-release.mjs --foundation-proof-verify
       - name: Verify the exact tags before Release mutation
         env:
           EXPECTED_COMMIT: ${{ inputs.expected_commit }}
@@ -1045,6 +1521,7 @@ jobs:
           PLAN_FILE: ${{ runner.temp }}/sdk-foundation-bundle/foundation-plan.json
           BUNDLE_DIR: ${{ runner.temp }}/sdk-foundation-bundle
           ASSET_DIR: ${{ runner.temp }}/sdk-foundation-release-assets
+          PROOF_DIR: ${{ runner.temp }}/foundation-proofs
         run: |
           set -euo pipefail
           mkdir -p "$ASSET_DIR"
@@ -1057,6 +1534,7 @@ jobs:
           const [planFile, bundle, assets] = process.argv.slice(2)
           const plan = JSON.parse(readFileSync(planFile, 'utf8'))
           for (const artifact of plan.artifacts) copyFileSync(`${bundle}/${artifact.filename}`, `${assets}/${artifact.filename}`)
+          for (const proof of plan.proofAssets) copyFileSync(`${process.env.PROOF_DIR}/${proof}`, `${assets}/${proof}`)
           NODE
       - name: Reconcile existing Release or create a draft
         id: release
@@ -1067,17 +1545,31 @@ jobs:
           EXPECTED_COMMIT: ${{ inputs.expected_commit }}
           RELEASE_TITLE: 'SDK release state: non-Rust 0.9.1 / Rust 0.10.0'
           BODY_FILE: ${{ runner.temp }}/sdk-foundation-bundle/release-body.md
+          PLAN_FILE: ${{ runner.temp }}/sdk-foundation-bundle/foundation-plan.json
         run: |
           set -euo pipefail
+          node --input-type=module - "$PLAN_FILE" "$BODY_FILE" <<'NODE'
+          import { readFileSync } from 'node:fs'
+          import { createHash } from 'node:crypto'
+          const [planFile, bodyFile] = process.argv.slice(2)
+          const plan = JSON.parse(readFileSync(planFile, 'utf8'))
+          const body = readFileSync(bodyFile, 'utf8')
+          if (plan.githubRelease?.body !== body || plan.githubRelease?.bodySha256 !== createHash('sha256').update(body).digest('hex')) throw new Error('Release body is not the approved plan body')
+          NODE
           release_json="$RUNNER_TEMP/release.json"
+          api_url="https://api.github.com/repos/$REPOSITORY/releases/tags/$TAG"
           set +e
-          gh api "/repos/$REPOSITORY/releases/tags/$TAG" > "$release_json" 2> "$RUNNER_TEMP/release-api-error"
-          status=$?
+          http_status="$(curl --silent --show-error --max-time 20 --retry 0 --user-agent "$RELEASE_USER_AGENT" --header "Authorization: Bearer $GH_TOKEN" --header 'Accept: application/vnd.github+json' --output "$release_json" --write-out '%{http_code}' "$api_url")"
+          curl_status=$?
           set -e
-          if [ "$status" -ne 0 ]; then
-            grep -q '404' "$RUNNER_TEMP/release-api-error"
+          test "$curl_status" -eq 0
+          if [ "$http_status" = 404 ]; then
             gh release create "$TAG" --repo "$REPOSITORY" --target "$EXPECTED_COMMIT" --title "$RELEASE_TITLE" --notes-file "$BODY_FILE" --draft --latest=false
-            gh api "/repos/$REPOSITORY/releases/tags/$TAG" > "$release_json"
+            http_status="$(curl --silent --show-error --max-time 20 --retry 0 --user-agent "$RELEASE_USER_AGENT" --header "Authorization: Bearer $GH_TOKEN" --header 'Accept: application/vnd.github+json' --output "$release_json" --write-out '%{http_code}' "$api_url")"
+            test "$http_status" = 200
+          elif [ "$http_status" != 200 ]; then
+            echo "GitHub Release read failed with HTTP $http_status" >&2
+            exit 1
           fi
           node --input-type=module - "$release_json" "$BODY_FILE" "$TAG" "$EXPECTED_COMMIT" <<'NODE'
           import { readFileSync } from 'node:fs'
@@ -1094,32 +1586,47 @@ jobs:
           REPOSITORY: ${{ github.repository }}
           TAG: non-rust-v0.9.1
           ASSET_DIR: ${{ runner.temp }}/sdk-foundation-release-assets
+          FOUNDATION_SOURCE_SHA: ${{ inputs.expected_commit }}
+          FOUNDATION_PLAN_FILE: ${{ runner.temp }}/sdk-foundation-bundle/foundation-plan.json
         run: |
           set -euo pipefail
           release_id="$(gh api "/repos/$REPOSITORY/releases/tags/$TAG" --jq .id)"
           assets_json="$RUNNER_TEMP/release-assets.json"
           gh api "/repos/$REPOSITORY/releases/$release_id/assets?per_page=100" > "$assets_json"
-          missing=()
-          for asset in "$ASSET_DIR"/*; do
-            name="$(basename "$asset")"
-          if node --input-type=module - "$assets_json" "$name" <<'NODE'
-          import { readFileSync } from 'node:fs'
-          const [file, name] = process.argv.slice(2)
-          process.exit(JSON.parse(readFileSync(file, 'utf8')).some(asset => asset.name === name) ? 0 : 1)
+          expected_assets="$RUNNER_TEMP/expected-release-assets.txt"
+          remote_assets="$RUNNER_TEMP/remote-release-assets.txt"
+          find "$ASSET_DIR" -maxdepth 1 -type f -exec basename {} \; | sort > "$expected_assets"
+          node --input-type=module - "$assets_json" "$expected_assets" "$remote_assets" <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs'
+          const [assetsFile, expectedFile, remoteFile] = process.argv.slice(2)
+          const remote = JSON.parse(readFileSync(assetsFile, 'utf8'))
+          const expected = new Set(readFileSync(expectedFile, 'utf8').split(/\r?\n/).filter(Boolean))
+          for (const asset of remote) if (!expected.has(asset.name)) throw new Error(`unexpected existing Release asset ${asset.name}`)
+          writeFileSync(remoteFile, remote.map(asset => asset.name).join('\n') + (remote.length ? '\n' : ''))
           NODE
-            then
-              gh release download "$TAG" --repo "$REPOSITORY" --pattern "$name" --dir "$RUNNER_TEMP" >/dev/null
-              test -f "$RUNNER_TEMP/$name"
-              test "$(sha256sum "$RUNNER_TEMP/$name" | awk '{print $1}')" = "$(sha256sum "$asset" | awk '{print $1}')"
-            else
-              missing+=("$asset")
-            fi
-          done
+          snapshot_dir="$RUNNER_TEMP/foundation-proof-snapshot"
+          if grep -Fxq 'foundation-proof-manifest.json' "$remote_assets"; then
+            mkdir -p "$snapshot_dir"
+            gh release download "$TAG" --repo "$REPOSITORY" --pattern 'foundation-proof-manifest.json' --dir "$snapshot_dir" >/dev/null
+            for proof in npm-proof.json pypi-proof.json rubygems-proof.json rust-proof.json tag-proof.json go-proof.json; do
+              gh release download "$TAG" --repo "$REPOSITORY" --pattern "$proof" --dir "$snapshot_dir" >/dev/null
+            done
+            snapshot_context="$(jq -r '[.preparedRunId, .preparedRunAttempt, .preparedArtifactId] | @tsv' "$snapshot_dir/foundation-proof-manifest.json")"
+            IFS=$'\t' read -r snapshot_run snapshot_attempt snapshot_artifact <<< "$snapshot_context"
+            FOUNDATION_PREPARED_RUN_ID="$snapshot_run" FOUNDATION_PREPARED_RUN_ATTEMPT="$snapshot_attempt" FOUNDATION_PREPARED_ARTIFACT_ID="$snapshot_artifact" FOUNDATION_PROOF_DIR="$snapshot_dir" FOUNDATION_PROOF_MANIFEST_FILE="$snapshot_dir/foundation-proof-manifest.json" node scripts/verify-release.mjs --foundation-proof-verify
+            cp "$snapshot_dir"/*.json "$ASSET_DIR/"
+          fi
+          missing=()
+          while IFS= read -r name; do
+            if ! grep -Fxq "$name" "$remote_assets"; then missing+=("$ASSET_DIR/$name"); fi
+          done < "$expected_assets"
           if [ "${#missing[@]}" -gt 0 ]; then gh release upload "$TAG" --repo "$REPOSITORY" "${missing[@]}"; fi
+          download_dir="$RUNNER_TEMP/release-asset-downloads"
+          mkdir -p "$download_dir"
           for asset in "$ASSET_DIR"/*; do
             name="$(basename "$asset")"
-            gh release download "$TAG" --repo "$REPOSITORY" --pattern "$name" --dir "$RUNNER_TEMP" >/dev/null
-            test "$(sha256sum "$RUNNER_TEMP/$name" | awk '{print $1}')" = "$(sha256sum "$asset" | awk '{print $1}')"
+            gh release download "$TAG" --repo "$REPOSITORY" --pattern "$name" --dir "$download_dir" >/dev/null
+            test "$(sha256sum "$download_dir/$name" | awk '{print $1}')" = "$(sha256sum "$asset" | awk '{print $1}')"
           done
       - name: Publish matching draft and verify final Release
         env:

@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto'
 import { execFile as execFileCallback } from 'node:child_process'
-import { lstat, readdir, readFile, stat, writeFile } from 'node:fs/promises'
+import { lstat, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
+import { tmpdir } from 'node:os'
 import { pathToFileURL } from 'node:url'
 import { promisify } from 'node:util'
 
@@ -27,6 +28,22 @@ export const FOUNDATION_ARTIFACT_KINDS = Object.freeze([
   'pypi-wheel',
   'pypi-sdist',
   'rubygems',
+])
+
+export const FOUNDATION_ARTIFACT_FILENAMES = Object.freeze({
+  npm: 'elsoul-erpc-sdk-0.9.1.tgz',
+  'pypi-wheel': 'erpc_sdk-0.9.1-py3-none-any.whl',
+  'pypi-sdist': 'erpc_sdk-0.9.1.tar.gz',
+  rubygems: 'erpc-sdk-0.9.1.gem',
+})
+export const FOUNDATION_PROOF_ASSETS = Object.freeze([
+  'npm-proof.json',
+  'pypi-proof.json',
+  'rubygems-proof.json',
+  'rust-proof.json',
+  'tag-proof.json',
+  'go-proof.json',
+  'foundation-proof-manifest.json',
 ])
 
 const STABLE_VERSION = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/
@@ -60,6 +77,8 @@ const safeRelativePath = value => {
     value.startsWith('/') ||
     value.includes('\\') ||
     value.split('/').includes('..') ||
+    value.split('/').includes('.') ||
+    value.split('/').includes('') ||
     /^[A-Za-z]:/.test(value)
   ) {
     fail(`Unsafe foundation path ${value}`)
@@ -463,10 +482,7 @@ export function validateFoundationArtifactDescriptor(descriptor) {
   if (kind === 'npm') requireEqual(name, '@elsoul/erpc-sdk', 'Unexpected npm foundation artifact name')
   if (kind.startsWith('pypi')) requireEqual(name, 'erpc-sdk', 'Unexpected PyPI foundation artifact name')
   if (kind === 'rubygems') requireEqual(name, 'erpc-sdk', 'Unexpected RubyGems foundation artifact name')
-  if (kind === 'npm' && !filename.endsWith('.tgz')) fail('npm foundation artifact must be a tgz')
-  if (kind === 'pypi-wheel' && !filename.endsWith('.whl')) fail('PyPI wheel foundation artifact must be a wheel')
-  if (kind === 'pypi-sdist' && !filename.endsWith('.tar.gz')) fail('PyPI sdist foundation artifact must be a tarball')
-  if (kind === 'rubygems' && !filename.endsWith('.gem')) fail('RubyGems foundation artifact must be a gem')
+  requireEqual(filename, FOUNDATION_ARTIFACT_FILENAMES[kind], `${kind} artifact basename is not canonical`)
   return { kind, filename, name, version, sha256, files: normalizedFiles }
 }
 
@@ -545,9 +561,11 @@ export function validateFoundationRustReceipt(receipt) {
   requireEqual(receipt.sourceCommit, FOUNDATION_RUST_SOURCE, 'Rust receipt source commit is not the approved published source')
   requireEqual(receipt.sha256, FOUNDATION_RUST_SHA256, 'Rust receipt checksum does not match the approved published artifact')
   requireEqual(receipt.yanked, false, 'Rust receipt must prove the crate is not yanked')
-  if (typeof receipt.downloadUrl !== 'string' || !receipt.downloadUrl.startsWith('https://crates.io/')) {
-    fail('Rust receipt download URL must be a public crates.io URL')
-  }
+  requireEqual(
+    receipt.downloadUrl,
+    'https://crates.io/api/v1/crates/erpc-sdk/0.10.0/download',
+    'Rust receipt download URL must identify the approved crates.io archive',
+  )
   return {
     identity: receipt.identity,
     version: receipt.version,
@@ -570,10 +588,26 @@ export function validateFoundationPlan(plan) {
   requireEqual(plan?.cohort, 'non-rust-0.9.1', 'Unexpected foundation cohort')
   requireEqual(plan?.tags?.release, FOUNDATION_TAG, 'Unexpected foundation release tag')
   requireEqual(plan?.tags?.go, FOUNDATION_GO_TAG, 'Unexpected foundation Go tag')
+  requireEqual(plan?.tags?.commit, plan.sourceCommit, 'Foundation tag target must match the source commit')
+  if (canonicalJson(plan?.proofAssets) !== canonicalJson(FOUNDATION_PROOF_ASSETS)) fail('Foundation proof asset plan is not the approved set')
   const byKind = foundationArtifactMap(plan.artifacts)
   const go = validateGoInventory(plan.goInventory)
   requireEqual(plan.goInventory.inventorySha256, go.inventorySha256, 'Foundation Go inventory mismatch')
   const rust = validateFoundationRustReceipt(plan.rustReceipt)
+  const expectedBundleFiles = [
+    ...Object.values(byKind).map(artifact => artifact.filename),
+    'artifact-metadata.json',
+    'go-inventory.json',
+    'rust-receipt.json',
+    'preflight.json',
+    'foundation-plan.json',
+    'foundation-plan.sha256',
+    'release-body.md',
+    'checksums.txt',
+  ]
+  if (canonicalJson(plan?.bundleFiles) !== canonicalJson(expectedBundleFiles)) fail('Foundation bundle file set is not the approved set')
+  if (!plan.sidecars || typeof plan.sidecars !== 'object') fail('Foundation sidecar digests are missing')
+  for (const key of ['artifactMetadataSha256', 'goInventorySha256', 'rustReceiptSha256', 'preflightSha256', 'releaseBodySha256']) requireArchiveSha(plan.sidecars[key], `Foundation sidecar digest ${key}`)
   const body = plan.githubRelease?.body
   requireEqual(plan.githubRelease?.title, FOUNDATION_RELEASE_TITLE, 'Unexpected foundation release title')
   requireEqual(plan.githubRelease?.tag, FOUNDATION_TAG, 'Unexpected foundation release tag')
@@ -611,6 +645,17 @@ export function buildFoundationPlan({ sourceSha, artifacts, goInventory, rustRec
     if (record.status !== 404 && registry !== 'rust') fail(`${registry} preflight absence must be an exact HTTP 404`)
   }
   const body = buildFoundationReleaseBody({ sourceSha, artifacts: normalizedArtifacts, rustReceipt: normalizedRust })
+  const bundleFiles = [
+    ...normalizedArtifacts.map(artifact => artifact.filename),
+    'artifact-metadata.json',
+    'go-inventory.json',
+    'rust-receipt.json',
+    'preflight.json',
+    'foundation-plan.json',
+    'foundation-plan.sha256',
+    'release-body.md',
+    'checksums.txt',
+  ]
   const plan = {
     schemaVersion: 1,
     kind: 'erpc-sdk-foundation-approval-plan',
@@ -625,6 +670,15 @@ export function buildFoundationPlan({ sourceSha, artifacts, goInventory, rustRec
     goInventory: normalizedGo,
     rustReceipt: normalizedRust,
     registryPreflight,
+    sidecars: {
+      artifactMetadataSha256: sha256Hex(`${canonicalJson(normalizedArtifacts)}\n`),
+      goInventorySha256: sha256Hex(`${canonicalJson(normalizedGo)}\n`),
+      rustReceiptSha256: sha256Hex(`${canonicalJson(normalizedRust)}\n`),
+      preflightSha256: sha256Hex(`${canonicalJson(registryPreflight)}\n`),
+      releaseBodySha256: sha256Hex(body),
+    },
+    bundleFiles,
+    proofAssets: FOUNDATION_PROOF_ASSETS,
     tags: { release: FOUNDATION_TAG, go: FOUNDATION_GO_TAG, commit: sourceSha },
     githubRelease: {
       title: FOUNDATION_RELEASE_TITLE,
@@ -647,13 +701,52 @@ const commandText = async (command, arguments_) => {
   return result.stdout.trim()
 }
 
-const archiveFiles = async filePath => {
-  const command = filePath.endsWith('.whl') ? 'unzip' : 'tar'
-  const arguments_ = filePath.endsWith('.whl')
-    ? ['-Z1', filePath]
-    : ['-tzf', filePath]
-  return (await commandText(command, arguments_)).split(/\r?\n/).filter(Boolean).map(safeRelativePath)
+const archiveInspectionScript = String.raw`
+import json, stat, sys, tarfile, zipfile
+path, kind = sys.argv[1:]
+entries = []
+if kind == 'zip':
+    with zipfile.ZipFile(path) as archive:
+        for info in archive.infolist():
+            mode = (info.external_attr >> 16) & 0o170000
+            if info.is_dir(): entry_type = 'directory'
+            elif stat.S_ISLNK(mode): entry_type = 'symlink'
+            elif mode == 0 or stat.S_ISREG(mode): entry_type = 'file'
+            else: entry_type = 'other'
+            entries.append({'name': info.filename, 'type': entry_type})
+else:
+    with tarfile.open(path, 'r:*') as archive:
+        for info in archive.getmembers():
+            if info.isdir(): entry_type = 'directory'
+            elif info.isfile(): entry_type = 'file'
+            elif info.issym(): entry_type = 'symlink'
+            elif info.islnk(): entry_type = 'hardlink'
+            else: entry_type = 'other'
+            entries.append({'name': info.name, 'type': entry_type})
+print(json.dumps(entries))
+`
+
+const archiveEntries = async (filePath, kind) => {
+  const raw = await commandText('python3', ['-c', archiveInspectionScript, filePath, kind])
+  let records
+  try { records = JSON.parse(raw) } catch { fail(`Archive inspection is malformed for ${filePath}`) }
+  if (!Array.isArray(records) || records.length === 0) fail(`Archive ${filePath} is empty`)
+  const names = []
+  const seen = new Set()
+  for (const record of records) {
+    if (record?.type !== 'file' && record?.type !== 'directory') fail(`Archive ${filePath} contains a non-regular member`)
+    if (typeof record?.name !== 'string' || record.name.length === 0) fail(`Archive ${filePath} contains an invalid member name`)
+    const name = record.type === 'directory' ? record.name.replace(/\/$/, '') : record.name
+    safeRelativePath(name)
+    if (seen.has(name)) fail(`Archive ${filePath} contains duplicate member ${name}`)
+    seen.add(name)
+    names.push(name)
+  }
+  return names
 }
+
+const archiveFiles = async (filePath, kind = filePath.endsWith('.whl') ? 'zip' : 'tar') =>
+  archiveEntries(filePath, kind)
 
 const archiveText = async (filePath, member, wheel = false) => {
   const output = wheel
@@ -679,7 +772,8 @@ export async function describeFoundationArtifacts(artifactDirectory) {
     if (byKind[kind].length !== 1) fail(`Expected exactly one ${kind} artifact, found ${byKind[kind].length}`)
     const filename = byKind[kind][0]
     const filePath = join(artifactDirectory, filename)
-    const filesInArchive = await archiveFiles(filePath)
+    const archiveKind = kind === 'pypi-wheel' ? 'zip' : 'tar'
+    const filesInArchive = await archiveFiles(filePath, archiveKind)
     let name
     let version
     if (kind === 'npm') {
@@ -688,24 +782,46 @@ export async function describeFoundationArtifacts(artifactDirectory) {
       const packageJson = JSON.parse(await archiveText(filePath, packageJsonPath))
       name = packageJson.name
       version = packageJson.version
-      if (!filesInArchive.includes('package/LICENSE') || !filesInArchive.some(file => file.startsWith('package/dist/'))) fail('npm artifact is missing LICENSE or dist files')
+      if (!filesInArchive.includes('package/LICENSE') || !filesInArchive.includes('package/README.md') || !filesInArchive.some(file => file.startsWith('package/dist/'))) fail('npm artifact is missing LICENSE, README, or dist files')
     } else if (kind === 'pypi-wheel') {
       const metadataPath = filesInArchive.find(file => /\.dist-info\/METADATA$/.test(file))
       if (!metadataPath) fail('PyPI wheel is missing dist-info/METADATA')
       const metadata = await archiveText(filePath, metadataPath, true)
       name = metadataValue(metadata, 'Name')
       version = metadataValue(metadata, 'Version')
-      if (!filesInArchive.some(file => /\.dist-info\/(?:licenses\/)?LICENSE$/.test(file))) fail('PyPI wheel is missing its LICENSE metadata')
+      if (!filesInArchive.some(file => /\.dist-info\/(?:licenses\/)?LICENSE$/.test(file)) || !filesInArchive.some(file => /\.py$/.test(file))) fail('PyPI wheel is missing its LICENSE metadata or package code')
     } else if (kind === 'pypi-sdist') {
       const metadataPath = filesInArchive.find(file => /(?:^|\/)PKG-INFO$/.test(file))
       if (!metadataPath) fail('PyPI sdist is missing PKG-INFO')
       const metadata = await archiveText(filePath, metadataPath)
       name = metadataValue(metadata, 'Name')
       version = metadataValue(metadata, 'Version')
-      if (!filesInArchive.some(file => /(?:^|\/)LICENSE$/.test(file))) fail('PyPI sdist is missing LICENSE')
+      if (!filesInArchive.some(file => /(?:^|\/)LICENSE$/.test(file)) || !filesInArchive.some(file => /\.py$/.test(file))) fail('PyPI sdist is missing LICENSE or package code')
     } else {
-      name = 'erpc-sdk'
-      version = filename.match(/^erpc-sdk-(\d+\.\d+\.\d+)\.gem$/)?.[1]
+      const outerMembers = new Set(filesInArchive)
+      const expectedOuterMembers = new Set(['metadata.gz', 'data.tar.gz', 'checksums.yaml.gz'])
+      if (outerMembers.size !== expectedOuterMembers.size || [...expectedOuterMembers].some(member => !outerMembers.has(member))) fail('Ruby gem outer member set is invalid')
+      const specification = JSON.parse(await commandText('ruby', [
+        '-rrubygems/package',
+        '-rjson',
+        '-e',
+        'spec = Gem::Package.new(ARGV.fetch(0)).spec; puts JSON.generate({"name" => spec.name, "version" => spec.version.to_s, "platform" => spec.platform.to_s, "files" => spec.files})',
+        filePath,
+      ]))
+      name = specification.name
+      version = specification.version
+      if (specification.platform !== 'ruby') fail('Ruby gem platform must be ruby')
+      const gemDataDirectory = await mkdtemp(join(tmpdir(), 'erpc-sdk-gem-data-'))
+      try {
+        const dataTar = await execFile('tar', ['-xOf', filePath, 'data.tar.gz'], { encoding: 'buffer', maxBuffer: 16 * 1024 * 1024 })
+        const dataTarPath = join(gemDataDirectory, 'data.tar.gz')
+        await writeFile(dataTarPath, dataTar.stdout)
+        const dataFiles = await archiveFiles(dataTarPath, 'tar')
+        if (canonicalJson([...specification.files].sort()) !== canonicalJson([...dataFiles].sort())) fail('Ruby gem specification file list does not match its data archive')
+        filesInArchive.splice(0, filesInArchive.length, ...dataFiles)
+      } finally {
+        await rm(gemDataDirectory, { recursive: true, force: true })
+      }
       if (!filesInArchive.some(file => /(?:^|\/)LICENSE$/.test(file))) fail('Ruby gem is missing LICENSE')
     }
     descriptors.push(validateFoundationArtifactDescriptor({
@@ -749,12 +865,39 @@ export async function verifyFoundationBundle({ plan, artifactDirectory }) {
     'foundation-plan.sha256',
     'release-body.md',
     'checksums.txt',
-    'erpc-sdk-0.10.0.crate',
   ])
   const bundleEntries = await readdir(artifactDirectory, { withFileTypes: true })
   for (const entry of bundleEntries) {
     if (!entry.isFile() || !allowedFiles.has(entry.name)) fail(`Unexpected foundation bundle member ${entry.name}`)
   }
+  const planBytes = await readFile(join(artifactDirectory, 'foundation-plan.json'), 'utf8')
+  requireEqual(canonicalJson(JSON.parse(planBytes)), canonicalJson(normalized), 'Foundation plan bytes do not match the approved plan')
+  requireEqual((await readFile(join(artifactDirectory, 'foundation-plan.sha256'), 'utf8')).trim(), sha256Hex(canonicalJson(normalized)), 'Foundation plan digest sidecar mismatch')
+  requireEqual(await readFile(join(artifactDirectory, 'release-body.md'), 'utf8'), normalized.githubRelease.body, 'Foundation release body sidecar mismatch')
+  requireEqual(sha256Hex(await readFile(join(artifactDirectory, 'release-body.md'))), normalized.sidecars.releaseBodySha256, 'Foundation release body digest mismatch')
+  const artifactMetadata = JSON.parse(await readFile(join(artifactDirectory, 'artifact-metadata.json'), 'utf8'))
+  requireEqual(canonicalJson(artifactMetadata), canonicalJson(normalized.artifacts), 'Foundation artifact metadata sidecar mismatch')
+  requireEqual(sha256Hex(`${canonicalJson(artifactMetadata)}\n`), normalized.sidecars.artifactMetadataSha256, 'Foundation artifact metadata digest mismatch')
+  const goInventory = JSON.parse(await readFile(join(artifactDirectory, 'go-inventory.json'), 'utf8'))
+  requireEqual(canonicalJson(goInventory), canonicalJson(normalized.goInventory), 'Foundation Go inventory sidecar mismatch')
+  requireEqual(sha256Hex(`${canonicalJson(goInventory)}\n`), normalized.sidecars.goInventorySha256, 'Foundation Go inventory digest mismatch')
+  const rustReceipt = JSON.parse(await readFile(join(artifactDirectory, 'rust-receipt.json'), 'utf8'))
+  requireEqual(canonicalJson(rustReceipt), canonicalJson(normalized.rustReceipt), 'Foundation Rust receipt sidecar mismatch')
+  requireEqual(sha256Hex(`${canonicalJson(rustReceipt)}\n`), normalized.sidecars.rustReceiptSha256, 'Foundation Rust receipt digest mismatch')
+  const preflight = JSON.parse(await readFile(join(artifactDirectory, 'preflight.json'), 'utf8'))
+  requireEqual(canonicalJson(preflight), canonicalJson(normalized.registryPreflight), 'Foundation preflight sidecar mismatch')
+  requireEqual(sha256Hex(`${canonicalJson(preflight)}\n`), normalized.sidecars.preflightSha256, 'Foundation preflight digest mismatch')
+  const checksumLines = (await readFile(join(artifactDirectory, 'checksums.txt'), 'utf8')).trim().split(/\r?\n/).filter(Boolean)
+  const checksumMap = new Map()
+  for (const line of checksumLines) {
+    const match = line.match(/^([0-9a-f]{64})\s+\.?\/?(.+)$/)
+    if (!match) fail('Foundation checksum manifest is malformed')
+    if (checksumMap.has(match[2])) fail(`Foundation checksum manifest duplicates ${match[2]}`)
+    checksumMap.set(match[2], match[1])
+  }
+  const checksumExpected = normalized.bundleFiles.filter(file => file !== 'checksums.txt')
+  if (checksumMap.size !== checksumExpected.length || checksumExpected.some(file => !checksumMap.has(file))) fail('Foundation checksum manifest file set mismatch')
+  for (const file of checksumExpected) requireEqual(checksumMap.get(file), await sha256File(join(artifactDirectory, file)), `Foundation checksum mismatch for ${file}`)
   const files = []
   for (const artifact of normalized.artifacts) {
     const path = join(artifactDirectory, artifact.filename)
@@ -784,29 +927,49 @@ export function classifyFoundationRegistryResponse({
     return { state: 'malformed', status: numericStatus }
   }
   if (registry === 'npm') {
-    const metadata = payload?.versions?.[expectedVersion]
+    // The exact-version npm endpoint returns one package-version object at
+    // the JSON root.  A full package document with `versions` is a different
+    // endpoint and must not be accepted as proof for this request.
+    const metadata = payload
     if (!metadata || metadata.name !== '@elsoul/erpc-sdk' || metadata.version !== expectedVersion) return { state: 'malformed', status: numericStatus }
     const integrity = metadata.dist?.integrity
     const tarball = metadata.dist?.tarball
-    if (typeof integrity !== 'string' || !integrity.startsWith('sha512-') || typeof tarball !== 'string' || !tarball.startsWith('https://registry.npmjs.org/')) return { state: 'malformed', status: numericStatus }
+    const expectedTarball = `https://registry.npmjs.org/@elsoul/erpc-sdk/-/erpc-sdk-${expectedVersion}.tgz`
+    if (typeof integrity !== 'string' || !/^sha512-[A-Za-z0-9+/]+={0,2}$/.test(integrity) || tarball !== expectedTarball) return { state: 'malformed', status: numericStatus }
     return { state: 'match', status: numericStatus, integrity, tarball }
   }
   if (registry === 'pypi') {
     if (payload?.info?.name !== 'erpc-sdk' || payload.info.version !== expectedVersion || !Array.isArray(payload.urls)) return { state: 'malformed', status: numericStatus }
     const files = payload.urls.filter(file => expectedArtifacts.includes(file.filename))
-    if (files.some(file => file.yanked === true || file.packagetype === undefined || file.digests?.sha256 === undefined)) return { state: 'malformed', status: numericStatus }
+    if (files.some(file => file.yanked !== false || file.packagetype !== (file.filename?.endsWith('.whl') ? 'bdist_wheel' : 'sdist') || typeof file.url !== 'string' || !file.url.startsWith('https://files.pythonhosted.org/') || !ARCHIVE_SHA256.test(file.digests?.sha256 ?? ''))) return { state: 'malformed', status: numericStatus }
     const unexpected = payload.urls.filter(file => !expectedArtifacts.includes(file.filename))
     if (unexpected.length > 0) return { state: 'conflict', status: numericStatus, unexpected: unexpected.map(file => file.filename) }
     if (files.length === 0) return { state: 'partial', status: numericStatus, files: [] }
     return { state: files.length === expectedArtifacts.length ? 'match' : 'partial', status: numericStatus, files: files.map(file => ({ filename: file.filename, sha256: file.digests.sha256, url: file.url, packagetype: file.packagetype, yanked: file.yanked === true })) }
   }
   if (registry === 'rubygems') {
-    if (payload?.name !== 'erpc-sdk' || payload.version !== expectedVersion || typeof payload.sha !== 'string' || !ARCHIVE_SHA256.test(payload.sha)) return { state: 'malformed', status: numericStatus }
+    if (payload?.name !== 'erpc-sdk' || payload.version !== expectedVersion || payload.platform !== 'ruby' || typeof payload.sha !== 'string' || !ARCHIVE_SHA256.test(payload.sha)) return { state: 'malformed', status: numericStatus }
     if (expectedSha256 !== undefined && payload.sha !== expectedSha256) return { state: 'conflict', status: numericStatus, sha256: payload.sha }
-    return { state: 'match', status: numericStatus, sha256: payload.sha, platform: payload.platform ?? 'ruby' }
+    return { state: 'match', status: numericStatus, sha256: payload.sha, platform: payload.platform }
   }
   if (registry === 'rust') return classifyRegistryResponse({ status: numericStatus, body, expectedVersion: '0.10.0', expectedChecksum: FOUNDATION_RUST_SHA256 })
   return { state: 'malformed', status: numericStatus }
+}
+
+export function validateFoundationPyPIResponse({ body, expectedVersion, expectedFiles, expectedSha256 }) {
+  let payload
+  try { payload = JSON.parse(body) } catch { fail('PyPI response is malformed') }
+  if (payload?.info?.name !== 'erpc-sdk' || payload.info.version !== expectedVersion || !Array.isArray(payload.urls)) fail('PyPI identity/version metadata mismatch')
+  const expected = new Set(expectedFiles)
+  const files = payload.urls.filter(file => expected.has(file.filename))
+  if (files.length !== expected.size || new Set(files.map(file => file.filename)).size !== expected.size || payload.urls.length !== expected.size) fail('PyPI response contains missing or unexpected files')
+  const downloads = []
+  for (const file of files) {
+    const expectedPackagetype = file.filename.endsWith('.whl') ? 'bdist_wheel' : 'sdist'
+    if (file.yanked !== false || file.packagetype !== expectedPackagetype || typeof file.url !== 'string' || !file.url.startsWith('https://files.pythonhosted.org/') || file.digests?.sha256 !== expectedSha256[file.filename]) fail(`PyPI file proof mismatch for ${file.filename}`)
+    downloads.push({ filename: file.filename, url: file.url, sha256: file.digests.sha256 })
+  }
+  return downloads.sort((a, b) => a.filename.localeCompare(b.filename))
 }
 
 export function validateFoundationBinding(binding, expected) {
@@ -824,6 +987,226 @@ export function validateFoundationBinding(binding, expected) {
   if (expected.artifactId !== undefined) requireEqual(String(binding.artifactId), String(expected.artifactId), 'Prepared artifact ID binding mismatch')
   requireEqual(binding?.planSha256, expected.planSha256, 'Prepared plan digest binding mismatch')
   return binding
+}
+
+const requirePositiveId = (value, label) => {
+  if (!/^[1-9][0-9]*$/.test(String(value))) fail(`${label} must be a positive numeric ID`)
+  return String(value)
+}
+
+/**
+ * Validate the read-only GitHub API records for the immutable preparation run
+ * and both artifacts consumed by publication. The binding JSON remains useful
+ * as a plan digest, but it is not treated as evidence of run success.
+ */
+export function validateFoundationPreparationMetadata({ run, artifact, bindingArtifact, expected }) {
+  const runId = requirePositiveId(expected?.runId, 'Prepared run ID')
+  const runAttempt = requirePositiveId(expected?.runAttempt, 'Prepared run attempt')
+  const artifactId = requirePositiveId(expected?.artifactId, 'Prepared artifact ID')
+  const bindingArtifactId = requirePositiveId(expected?.bindingArtifactId, 'Prepared binding artifact ID')
+  requireSha(expected?.sourceCommit, 'Prepared source commit')
+  requireEqual(run?.id, Number(runId), 'Preparation run metadata ID mismatch')
+  requireEqual(run?.run_attempt, Number(runAttempt), 'Preparation run attempt metadata mismatch')
+  requireEqual(run?.status, 'completed', 'Preparation run is not completed')
+  requireEqual(run?.conclusion, 'success', 'Preparation run did not succeed')
+  requireEqual(run?.event, 'workflow_dispatch', 'Preparation run event mismatch')
+  requireEqual(run?.head_branch, 'main', 'Preparation run branch mismatch')
+  requireEqual(run?.head_sha, expected.sourceCommit, 'Preparation run source mismatch')
+  requireEqual(run?.path, FOUNDATION_WORKFLOW, 'Preparation run workflow path mismatch')
+  requireEqual(run?.name, 'Release SDK foundation', 'Preparation run workflow identity mismatch')
+  requireEqual(run?.repository?.full_name, EXPECTED_REPOSITORY, 'Preparation run repository mismatch')
+  requireEqual(String(run?.repository?.id), EXPECTED_REPOSITORY_ID, 'Preparation run repository ID mismatch')
+  if (run?.workflow_id !== undefined) requirePositiveId(run.workflow_id, 'Preparation workflow ID')
+
+  const validateArtifact = (record, expectedId, expectedName) => {
+    requireEqual(record?.id, Number(expectedId), `${expectedName} metadata ID mismatch`)
+    requireEqual(record?.name, expectedName, `${expectedName} metadata name mismatch`)
+    requireEqual(record?.expired, false, `${expectedName} must not be expired`)
+    if (!Number.isSafeInteger(record?.size_in_bytes) || record.size_in_bytes <= 0) fail(`${expectedName} metadata size is invalid`)
+    requireEqual(record?.workflow_run?.id, Number(runId), `${expectedName} preparation run binding mismatch`)
+    requireEqual(record?.workflow_run?.head_sha, expected.sourceCommit, `${expectedName} source binding mismatch`)
+    requireEqual(record?.workflow_run?.head_branch, 'main', `${expectedName} branch binding mismatch`)
+    requireEqual(record?.workflow_run?.event, 'workflow_dispatch', `${expectedName} event binding mismatch`)
+    if (record?.workflow_run?.run_attempt !== undefined) requireEqual(record.workflow_run.run_attempt, Number(runAttempt), `${expectedName} attempt binding mismatch`)
+    if (record?.workflow_run?.path !== undefined) requireEqual(record.workflow_run.path, FOUNDATION_WORKFLOW, `${expectedName} workflow binding mismatch`)
+    if (record?.workflow_run?.repository_id !== undefined) requireEqual(String(record.workflow_run.repository_id), EXPECTED_REPOSITORY_ID, `${expectedName} repository binding mismatch`)
+    if (record?.archive_download_url !== undefined && !String(record.archive_download_url).startsWith('https://api.github.com/')) fail(`${expectedName} archive URL is not a GitHub API URL`)
+    return { id: Number(expectedId), name: expectedName, sizeInBytes: record.size_in_bytes }
+  }
+
+  return {
+    runId: Number(runId),
+    runAttempt: Number(runAttempt),
+    artifact: validateArtifact(artifact, artifactId, `sdk-foundation-bundle-${expected.sourceCommit}`),
+    bindingArtifact: validateArtifact(bindingArtifact, bindingArtifactId, `sdk-foundation-binding-${runId}-${runAttempt}`),
+  }
+}
+
+const foundationProofCommon = (receipt, plan, expected, kind) => {
+  requireEqual(receipt?.schemaVersion, 1, 'Foundation proof schema is unsupported')
+  requireEqual(receipt?.repository, EXPECTED_REPOSITORY, 'Foundation proof repository mismatch')
+  requireEqual(receipt?.sourceCommit, kind === 'rust' ? FOUNDATION_RUST_SOURCE : plan.sourceCommit, 'Foundation proof source mismatch')
+  requireEqual(receipt?.planSha256, sha256Hex(canonicalJson(plan)), 'Foundation proof plan binding mismatch')
+  requireEqual(receipt?.version, kind === 'rust' ? '0.10.0' : kind === 'go' ? 'v0.9.1' : FOUNDATION_VERSION, 'Foundation proof version mismatch')
+  requirePositiveId(receipt?.preparedRunId, 'Foundation proof preparation run ID')
+  requirePositiveId(receipt?.preparedRunAttempt, 'Foundation proof preparation run attempt')
+  requirePositiveId(receipt?.preparedArtifactId, 'Foundation proof preparation artifact ID')
+  requireEqual(String(receipt.preparedRunId), String(expected.runId), 'Foundation proof run binding mismatch')
+  requireEqual(String(receipt.preparedRunAttempt), String(expected.runAttempt), 'Foundation proof attempt binding mismatch')
+  requireEqual(String(receipt.preparedArtifactId), String(expected.artifactId), 'Foundation proof artifact binding mismatch')
+  requirePositiveId(receipt?.observerRunId, 'Foundation proof observer run ID')
+  requirePositiveId(receipt?.observerAttempt, 'Foundation proof observer attempt')
+  if (typeof receipt.observedAt !== 'string' || Number.isNaN(Date.parse(receipt.observedAt))) fail('Foundation proof observation time is invalid')
+}
+
+export function validateFoundationProofReceipt(receipt, { plan, kind, expected }) {
+  foundationProofCommon(receipt, plan, expected, kind)
+  const artifact = plan.artifacts.find(item => item.kind === kind)
+  if (kind === 'npm') {
+    requireEqual(receipt.registry, 'npmjs.org', 'npm proof registry mismatch')
+    requireEqual(receipt.identity, '@elsoul/erpc-sdk', 'npm proof identity mismatch')
+    requireEqual(receipt.state === 'published' || receipt.state === 'reused', true, 'npm proof state is invalid')
+    requireEqual(receipt.expectedSha256, artifact.sha256, 'npm proof expected digest mismatch')
+    requireEqual(receipt.observedSha256, artifact.sha256, 'npm proof observed digest mismatch')
+    requireEqual(receipt.version, artifact.version, 'npm proof version mismatch')
+    if (typeof receipt.tarball !== 'string' || receipt.tarball !== 'https://registry.npmjs.org/@elsoul/erpc-sdk/-/erpc-sdk-0.9.1.tgz') fail('npm proof tarball URL is not canonical')
+    if (typeof receipt.integrity !== 'string' || !/^sha512-[A-Za-z0-9+/]+={0,2}$/.test(receipt.integrity)) fail('npm proof integrity is invalid')
+    if (!receipt.provenance || typeof receipt.provenance !== 'object') fail('npm proof is missing observed provenance')
+    if (receipt.state === 'published') {
+      requireEqual(receipt.auth?.requested, true, 'npm proof lacks an observed publish credential request')
+      requireEqual(receipt.auth?.uploadAttempted, true, 'npm proof lacks an observed upload attempt')
+      if (!['success', 'failure', 'skipped'].includes(receipt.auth?.uploadOutcome)) fail('npm proof upload outcome is invalid')
+    } else {
+      requireEqual(receipt.auth?.requested, false, 'npm reuse proof cannot claim a new credential request')
+      requireEqual(receipt.auth?.uploadAttempted, false, 'npm reuse proof cannot claim an upload attempt')
+    }
+    requireEqual(receipt.auth?.publicProvenanceObserved, true, 'npm proof lacks observed public provenance')
+    const npmClaims = receipt.certificateClaims ?? {}
+    for (const [key, value] of Object.entries({
+      '1.3.6.1.4.1.57264.1.8': 'https://token.actions.githubusercontent.com',
+      '1.3.6.1.4.1.57264.1.9': `https://github.com/${EXPECTED_REPOSITORY}/.github/workflows/release.yml@refs/heads/main`,
+      '1.3.6.1.4.1.57264.1.13': plan.sourceCommit,
+      '1.3.6.1.4.1.57264.1.14': 'refs/heads/main',
+      '1.3.6.1.4.1.57264.1.19': plan.sourceCommit,
+      '1.3.6.1.4.1.57264.1.15': EXPECTED_REPOSITORY_ID,
+      '1.3.6.1.4.1.57264.1.18': `https://github.com/${EXPECTED_REPOSITORY}/.github/workflows/release.yml@refs/heads/main`,
+      '1.3.6.1.4.1.57264.1.20': 'workflow_dispatch',
+    })) requireEqual(npmClaims[key], value, `npm certificate claim ${key} is not bound to the approved source`)
+    const provenanceText = JSON.stringify(receipt.provenance)
+    for (const marker of [EXPECTED_REPOSITORY, FOUNDATION_WORKFLOW, plan.sourceCommit]) if (!provenanceText.includes(marker)) fail(`npm provenance is missing ${marker}`)
+  } else if (kind === 'pypi') {
+    requireEqual(receipt.registry, 'pypi.org', 'PyPI proof registry mismatch')
+    requireEqual(receipt.identity, 'erpc-sdk', 'PyPI proof identity mismatch')
+    requireEqual(receipt.state === 'published' || receipt.state === 'reused' || receipt.state === 'partial-resume', true, 'PyPI proof state is invalid')
+    if (!Array.isArray(receipt.files) || receipt.files.length !== 2) fail('PyPI proof file set is incomplete')
+    const expectedFiles = new Map(plan.artifacts.filter(item => item.kind.startsWith('pypi')).map(item => [item.filename, item.sha256]))
+    const seen = new Set()
+    for (const file of receipt.files) {
+      if (seen.has(file.filename) || !expectedFiles.has(file.filename) || file.sha256 !== expectedFiles.get(file.filename) || file.yanked !== false || typeof file.url !== 'string' || !file.url.startsWith('https://files.pythonhosted.org/') || !Array.isArray(file.attestations) || file.attestations.length === 0 || file.certificateClaims?.['1.3.6.1.4.1.57264.1.8'] !== 'https://token.actions.githubusercontent.com' || file.certificateClaims?.['1.3.6.1.4.1.57264.1.9'] !== `https://github.com/${EXPECTED_REPOSITORY}/.github/workflows/release.yml@refs/heads/main` || file.certificateClaims?.['1.3.6.1.4.1.57264.1.12'] !== `https://github.com/${EXPECTED_REPOSITORY}` || file.certificateClaims?.['1.3.6.1.4.1.57264.1.13'] !== plan.sourceCommit || file.certificateClaims?.['1.3.6.1.4.1.57264.1.14'] !== 'refs/heads/main' || file.certificateClaims?.['1.3.6.1.4.1.57264.1.15'] !== EXPECTED_REPOSITORY_ID || file.certificateClaims?.['1.3.6.1.4.1.57264.1.18'] !== `https://github.com/${EXPECTED_REPOSITORY}/.github/workflows/release.yml@refs/heads/main` || file.certificateClaims?.['1.3.6.1.4.1.57264.1.19'] !== plan.sourceCommit || file.certificateClaims?.['1.3.6.1.4.1.57264.1.20'] !== 'workflow_dispatch') fail('PyPI proof file or attestation binding is invalid')
+      seen.add(file.filename)
+    }
+    if (seen.size !== expectedFiles.size) fail('PyPI proof file set does not match the plan')
+    if (receipt.state === 'reused') {
+      requireEqual(receipt.auth?.requested, false, 'PyPI reuse proof cannot claim a new credential request')
+      requireEqual(receipt.auth?.uploadAttempted, false, 'PyPI reuse proof cannot claim an upload attempt')
+    } else {
+      requireEqual(receipt.auth?.requested, true, 'PyPI proof lacks an observed credential request')
+      requireEqual(receipt.auth?.uploadAttempted, true, 'PyPI proof lacks an observed upload attempt')
+      if (!['success', 'failure', 'skipped'].includes(receipt.auth?.uploadOutcome)) fail('PyPI proof upload outcome is invalid')
+    }
+    requireEqual(receipt.auth?.attestationsVerified, true, 'PyPI proof lacks attestation verification evidence')
+  } else if (kind === 'rubygems') {
+    requireEqual(receipt.registry, 'rubygems.org', 'RubyGems proof registry mismatch')
+    requireEqual(receipt.identity, 'erpc-sdk', 'RubyGems proof identity mismatch')
+    requireEqual(receipt.state === 'published' || receipt.state === 'reused', true, 'RubyGems proof state is invalid')
+    requireEqual(receipt.sha256, artifact.sha256, 'RubyGems proof digest mismatch')
+    if (receipt.state === 'published') {
+      requireEqual(receipt.auth?.requested, true, 'RubyGems proof lacks an observed credential request')
+      requireEqual(receipt.auth?.uploadAttempted, true, 'RubyGems proof lacks an observed upload attempt')
+      requireEqual(receipt.auth?.credentialObserved, true, 'RubyGems proof lacks observed credential material')
+    } else {
+      requireEqual(receipt.auth?.requested, false, 'RubyGems reuse proof cannot claim a new credential request')
+      requireEqual(receipt.auth?.uploadAttempted, false, 'RubyGems reuse proof cannot claim an upload attempt')
+      requireEqual(receipt.auth?.credentialObserved, false, 'RubyGems reuse proof cannot claim credential material')
+    }
+    requireEqual(receipt.credentialCleanup?.envCleared, true, 'RubyGems proof lacks environment cleanup evidence')
+    requireEqual(receipt.credentialCleanup?.filesCleared, true, 'RubyGems proof lacks file cleanup evidence')
+    requireEqual(receipt.consumer?.installed, true, 'RubyGems proof lacks post-cleanup consumer evidence')
+  } else if (kind === 'rust') {
+    requireEqual(receipt.registry, 'crates.io', 'Rust proof registry mismatch')
+    requireEqual(receipt.identity, 'erpc-sdk', 'Rust proof identity mismatch')
+    requireEqual(receipt.version, '0.10.0', 'Rust proof version mismatch')
+    requireEqual(receipt.sourceCommit, FOUNDATION_RUST_SOURCE, 'Rust proof source mismatch')
+    requireEqual(receipt.foundationSourceCommit, plan.sourceCommit, 'Rust proof foundation source mismatch')
+    requireEqual(receipt.sha256, FOUNDATION_RUST_SHA256, 'Rust proof digest mismatch')
+    requireEqual(receipt.registryStatus, 200, 'Rust proof registry status is not 200')
+    requireEqual(receipt.yanked, false, 'Rust proof must observe an unyanked crate')
+    requireEqual(receipt.downloadStatus, 200, 'Rust proof download status is not 200')
+    requireEqual(receipt.auth?.requested, false, 'Rust proof cannot request credentials')
+    requireEqual(receipt.auth?.uploadAttempted, false, 'Rust proof cannot upload')
+  } else if (kind === 'tags') {
+    requireEqual(receipt.registry, 'github.com', 'Tag proof source mismatch')
+    requireEqual(receipt.tags?.release?.sha, plan.sourceCommit, 'Release tag proof target mismatch')
+    requireEqual(receipt.tags?.go?.sha, plan.sourceCommit, 'Go tag proof target mismatch')
+    requireEqual(receipt.tags?.release?.ref, `refs/tags/${FOUNDATION_TAG}`, 'Release tag proof ref mismatch')
+    requireEqual(receipt.tags?.go?.ref, `refs/tags/${FOUNDATION_GO_TAG}`, 'Go tag proof ref mismatch')
+    requireEqual(receipt.auth?.requested, true, 'Tag proof lacks an observed write credential request')
+    requireEqual(receipt.auth?.writeObserved, true, 'Tag proof lacks an observed ref write/read outcome')
+  } else if (kind === 'go') {
+    requireEqual(receipt.registry, 'proxy.golang.org', 'Go proof registry mismatch')
+    requireEqual(receipt.module, 'github.com/elsoul/erpc-sdk/packages/go', 'Go proof module mismatch')
+    requireEqual(receipt.version, 'v0.9.1', 'Go proof version mismatch')
+    requireEqual(receipt.originHash, plan.sourceCommit, 'Go proof proxy origin mismatch')
+    requireEqual(receipt.directOriginHash, plan.sourceCommit, 'Go proof direct origin mismatch')
+    requireEqual(receipt.originSubdir, 'packages/go', 'Go proof proxy subdirectory mismatch')
+    requireEqual(receipt.directOriginSubdir, 'packages/go', 'Go proof direct subdirectory mismatch')
+    if (!/^h1:[A-Za-z0-9+/]{43}=?$/.test(receipt.sum) || !/^h1:[A-Za-z0-9+/]{43}=?$/.test(receipt.goModSum)) fail('Go proof checksum receipt is malformed')
+    requireArchiveSha(receipt.zipSha256, 'Go proof zip digest')
+    requireEqual(receipt.auth?.requested, false, 'Go proof cannot request publication credentials')
+    requireEqual(receipt.auth?.uploadAttempted, false, 'Go proof cannot upload')
+  } else {
+    fail(`Unknown foundation proof kind ${kind}`)
+  }
+  return receipt
+}
+
+export async function verifyFoundationProofSet({ plan, proofDirectory, manifestFile, expected }) {
+  const normalized = validateFoundationPlan(plan)
+  const required = ['npm-proof.json', 'pypi-proof.json', 'rubygems-proof.json', 'rust-proof.json', 'tag-proof.json', 'go-proof.json']
+  const entries = await readdir(proofDirectory, { withFileTypes: true })
+  if (entries.some(entry => !entry.isFile())) fail('Foundation proof directory contains a non-file member')
+  const names = entries.filter(entry => entry.isFile()).map(entry => entry.name).sort()
+  const allowedNames = [...required, 'foundation-proof-manifest.json'].sort()
+  if (names.some(name => !allowedNames.includes(name)) || names.filter(name => required.includes(name)).length !== required.length) fail('Foundation proof receipt set is incomplete or has extras')
+  const receipts = {}
+  for (const [file, kind] of Object.entries({ 'npm-proof.json': 'npm', 'pypi-proof.json': 'pypi', 'rubygems-proof.json': 'rubygems', 'rust-proof.json': 'rust', 'tag-proof.json': 'tags', 'go-proof.json': 'go' })) {
+    receipts[file] = validateFoundationProofReceipt(JSON.parse(await readFile(join(proofDirectory, file), 'utf8')), { plan: normalized, kind, expected })
+  }
+  const receiptDigests = {}
+  for (const file of Object.keys(receipts)) receiptDigests[file] = sha256Hex(await readFile(join(proofDirectory, file)))
+  if (names.includes('foundation-proof-manifest.json')) {
+    const priorManifest = JSON.parse(await readFile(join(proofDirectory, 'foundation-proof-manifest.json'), 'utf8'))
+    requireEqual(priorManifest?.kind, 'erpc-sdk-foundation-proof-manifest', 'Foundation proof manifest kind mismatch')
+    requireEqual(priorManifest?.planSha256, sha256Hex(canonicalJson(normalized)), 'Foundation proof manifest plan mismatch')
+    requireEqual(priorManifest?.sourceCommit, normalized.sourceCommit, 'Foundation proof manifest source mismatch')
+    requireEqual(canonicalJson(priorManifest?.receipts), canonicalJson(receiptDigests), 'Foundation proof manifest receipt bytes mismatch')
+  }
+  const manifest = {
+    schemaVersion: 1,
+    kind: 'erpc-sdk-foundation-proof-manifest',
+    repository: EXPECTED_REPOSITORY,
+    sourceCommit: normalized.sourceCommit,
+    version: FOUNDATION_VERSION,
+    planSha256: sha256Hex(canonicalJson(normalized)),
+    preparedRunId: String(expected.runId),
+    preparedRunAttempt: String(expected.runAttempt),
+    preparedArtifactId: String(expected.artifactId),
+    receipts: receiptDigests,
+    proofAssets: FOUNDATION_PROOF_ASSETS,
+    state: 'complete',
+  }
+  await writeFile(manifestFile, `${canonicalJson(manifest)}\n`)
+  return manifest
 }
 
 /**
@@ -881,8 +1264,11 @@ export function validateFoundationWorkflowContext(context) {
     eventSha,
     expectedCommit,
     checkoutHead,
+    checkoutStatus,
     expectedVersion,
     mode,
+    workflowRef,
+    workflowSha,
   } = context
   requireEqual(repository, EXPECTED_REPOSITORY, 'Unexpected repository')
   requireEqual(String(repositoryId), EXPECTED_REPOSITORY_ID, 'Unexpected repository ID')
@@ -893,6 +1279,9 @@ export function validateFoundationWorkflowContext(context) {
   requireSha(checkoutHead, 'Foundation checkout HEAD')
   requireEqual(expectedCommit, eventSha, 'Foundation expected commit must match event commit')
   requireEqual(expectedCommit, checkoutHead, 'Foundation checkout HEAD must match expected commit')
+  requireEqual(checkoutStatus, '', 'Foundation checkout must be clean')
+  requireEqual(workflowRef, `${EXPECTED_REPOSITORY}/${FOUNDATION_WORKFLOW}@refs/heads/main`, 'Foundation workflow identity must bind to the approved main ref')
+  requireEqual(workflowSha, expectedCommit, 'Foundation workflow definition must bind to the approved source')
   requireFoundationVersion(expectedVersion)
   if (mode !== 'prepare' && mode !== 'publish') fail('Foundation mode must be prepare or publish')
   return { expectedCommit, expectedVersion, mode }
@@ -1051,8 +1440,11 @@ const run = async arguments_ => {
       eventSha: env('EVENT_SHA'),
       expectedCommit: env('EXPECTED_COMMIT'),
       checkoutHead: env('CHECKOUT_HEAD'),
+      checkoutStatus: env('CHECKOUT_STATUS'),
       expectedVersion: env('EXPECTED_VERSION'),
       mode: env('FOUNDATION_MODE'),
+      workflowRef: env('WORKFLOW_REF'),
+      workflowSha: env('WORKFLOW_SHA'),
     })
     console.log('foundation-source-guard-passed')
     return
@@ -1091,6 +1483,24 @@ const run = async arguments_ => {
     return
   }
 
+  if (arguments_[0] === '--foundation-preparation') {
+    requireExactInternalMode(arguments_, '--foundation-preparation')
+    const observed = validateFoundationPreparationMetadata({
+      run: JSON.parse(await readFile(env('FOUNDATION_PREPARATION_RUN_FILE'), 'utf8')),
+      artifact: JSON.parse(await readFile(env('FOUNDATION_PREPARATION_ARTIFACT_FILE'), 'utf8')),
+      bindingArtifact: JSON.parse(await readFile(env('FOUNDATION_PREPARATION_BINDING_ARTIFACT_FILE'), 'utf8')),
+      expected: {
+        runId: env('FOUNDATION_PREPARED_RUN_ID'),
+        runAttempt: env('FOUNDATION_PREPARED_RUN_ATTEMPT'),
+        artifactId: env('FOUNDATION_PREPARED_ARTIFACT_ID'),
+        bindingArtifactId: env('FOUNDATION_PREPARED_BINDING_ARTIFACT_ID'),
+        sourceCommit: env('FOUNDATION_SOURCE_SHA'),
+      },
+    })
+    console.log(`foundation-preparation=${canonicalJson(observed)}`)
+    return
+  }
+
   if (arguments_[0] === '--foundation-verify') {
     requireExactInternalMode(arguments_, '--foundation-verify')
     const plan = JSON.parse(await readFile(env('FOUNDATION_PLAN_FILE'), 'utf8'))
@@ -1111,6 +1521,23 @@ const run = async arguments_ => {
     return
   }
 
+  if (arguments_[0] === '--foundation-proof-verify') {
+    requireExactInternalMode(arguments_, '--foundation-proof-verify')
+    const plan = JSON.parse(await readFile(env('FOUNDATION_PLAN_FILE'), 'utf8'))
+    const manifest = await verifyFoundationProofSet({
+      plan,
+      proofDirectory: env('FOUNDATION_PROOF_DIR'),
+      manifestFile: env('FOUNDATION_PROOF_MANIFEST_FILE'),
+      expected: {
+        runId: env('FOUNDATION_PREPARED_RUN_ID'),
+        runAttempt: env('FOUNDATION_PREPARED_RUN_ATTEMPT'),
+        artifactId: env('FOUNDATION_PREPARED_ARTIFACT_ID'),
+      },
+    })
+    console.log(`foundation-proofs=${sha256Hex(canonicalJson(manifest))}`)
+    return
+  }
+
   if (arguments_[0] === '--foundation-registry') {
     requireExactInternalMode(arguments_, '--foundation-registry')
     const result = classifyFoundationRegistryResponse({
@@ -1122,7 +1549,21 @@ const run = async arguments_ => {
       expectedSha256: process.env.EXPECTED_SHA256 || undefined,
     })
     console.log(result.state)
+    if (process.env.FOUNDATION_REGISTRY === 'rust' && result.state !== 'match') fail(`Rust reuse registry check stopped in ${result.state} state`)
     if (!['absent', 'match', 'partial'].includes(result.state)) fail(`Foundation registry check stopped in ${result.state} state`)
+    return
+  }
+
+  if (arguments_[0] === '--foundation-pypi-proof') {
+    requireExactInternalMode(arguments_, '--foundation-pypi-proof')
+    const downloads = validateFoundationPyPIResponse({
+      body: await readFile(env('REGISTRY_RESPONSE_FILE'), 'utf8'),
+      expectedVersion: env('EXPECTED_VERSION'),
+      expectedFiles: JSON.parse(env('EXPECTED_ARTIFACTS')),
+      expectedSha256: JSON.parse(env('EXPECTED_SHA256S')),
+    })
+    await writeFile(env('FOUNDATION_DOWNLOADS_FILE'), `${downloads.map(file => `${file.filename}\t${file.url}\t${file.sha256}`).join('\n')}\n`)
+    console.log('foundation-pypi-proof-passed')
     return
   }
 
