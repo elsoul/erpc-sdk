@@ -249,6 +249,7 @@ jobs:
           RESPONSE_FILE="$RUNNER_TEMP/erpc-sdk-rust-registry.json"
           set +e
           HTTP_STATUS="$(curl --silent --show-error --max-time 20 --retry 0 \
+            --user-agent 'erpc-sdk-release-verification (https://github.com/elsoul/erpc-sdk)' \
             --output "$RESPONSE_FILE" --write-out '%{http_code}' \
             "https://crates.io/api/v1/crates/erpc-sdk/$EXPECTED_VERSION")"
           CURL_STATUS=$?
@@ -315,6 +316,7 @@ jobs:
               RESPONSE_FILE="$RUNNER_TEMP/erpc-sdk-rust-registry-$attempt.json"
               set +e
               HTTP_STATUS="$(curl --silent --show-error --max-time 20 --retry 0 \
+                --user-agent 'erpc-sdk-release-verification (https://github.com/elsoul/erpc-sdk)' \
                 --output "$RESPONSE_FILE" --write-out '%{http_code}' \
                 "https://crates.io/api/v1/crates/erpc-sdk/$EXPECTED_VERSION")"
               CURL_STATUS=$?
@@ -343,6 +345,7 @@ jobs:
           test -n "$REGISTRY_CHECKSUM"
           DOWNLOAD_PATH="$RUNNER_TEMP/erpc-sdk-$EXPECTED_VERSION.crate"
           curl --fail --silent --show-error --location --max-time 60 --retry 0 \
+            --user-agent 'erpc-sdk-release-verification (https://github.com/elsoul/erpc-sdk)' \
             --output "$DOWNLOAD_PATH" \
             "https://crates.io/api/v1/crates/erpc-sdk/$EXPECTED_VERSION/download"
           DOWNLOADED_SHA256="$(sha256sum "$DOWNLOAD_PATH" | awk '{print $1}')"

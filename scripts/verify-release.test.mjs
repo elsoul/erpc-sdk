@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -19,6 +19,7 @@ import {
 const root = new URL('../', import.meta.url)
 const sha = 'a'.repeat(40)
 const hash = 'b'.repeat(64)
+const RELEASE_USER_AGENT = 'erpc-sdk-release-verification (https://github.com/elsoul/erpc-sdk)'
 const execFileAsync = promisify(execFile)
 const verifierPath = new URL('./verify-release.mjs', import.meta.url)
 
@@ -27,6 +28,28 @@ const runVerifierCli = (arguments_, environment = {}) => execFileAsync(
   [verifierPath.pathname, ...arguments_],
   { env: { ...process.env, ...environment } },
 )
+
+const extractWorkflowCurlInvocations = workflow => {
+  const lines = workflow.split(/\r?\n/)
+  const invocations = []
+  for (let index = 0; index < lines.length; index += 1) {
+    const firstLine = lines[index].trim()
+    if (
+      !firstLine.startsWith('HTTP_STATUS="$(curl ') &&
+      !firstLine.startsWith('curl ')
+    ) {
+      continue
+    }
+    const command = [firstLine]
+    while (command.at(-1).endsWith('\\')) {
+      index += 1
+      assert.notEqual(lines[index], undefined, 'truncated workflow curl invocation')
+      command.push(lines[index].trim())
+    }
+    invocations.push(command.join('\n'))
+  }
+  return invocations
+}
 
 const validContext = () => ({
   repository: 'elsoul/erpc-sdk',
@@ -279,6 +302,97 @@ test('every internal verifier mode rejects extra, duplicate, and conflicting CLI
       /accepts exactly one mode argument/,
     )
   }
+})
+
+test('actual workflow crates.io curl invocations require the fixed UA and preserve 403/404 states', async t => {
+  const workflow = await readFile(new URL('../.github/workflows/release-rust.yml', import.meta.url), 'utf8')
+  const invocations = extractWorkflowCurlInvocations(workflow)
+  assert.equal(invocations.length, 3)
+  const fixtureDirectory = await mkdtemp(join(tmpdir(), 'erpc-sdk-curl-ua-'))
+  t.after(() => rm(fixtureDirectory, { recursive: true, force: true }))
+  const capturePath = join(fixtureDirectory, 'curl-argv.jsonl')
+  const curlPath = join(fixtureDirectory, 'curl')
+  const responsePath = join(fixtureDirectory, 'response.json')
+  const downloadPath = join(fixtureDirectory, 'download.crate')
+  await writeFile(capturePath, '')
+  await writeFile(
+    curlPath,
+    `#!/usr/bin/env node
+const { appendFileSync, writeFileSync } = require('node:fs')
+const args = process.argv.slice(2)
+appendFileSync(process.env.CURL_CAPTURE, JSON.stringify(args) + '\\n')
+const userAgentIndex = args.indexOf('--user-agent')
+if (userAgentIndex < 0 || args[userAgentIndex + 1] !== ${JSON.stringify(RELEASE_USER_AGENT)}) {
+  process.exit(97)
+}
+const outputIndex = args.indexOf('--output')
+if (outputIndex >= 0) writeFileSync(args[outputIndex + 1], process.env.CURL_BODY ?? '')
+const status = Number(process.env.CURL_STATUS ?? '200')
+const writeOutIndex = args.indexOf('--write-out')
+if (writeOutIndex >= 0 && args[writeOutIndex + 1] === '%{http_code}') {
+  process.stdout.write(String(status))
+}
+if (args.includes('--fail') && status >= 400) process.exit(22)
+`,
+  )
+  await chmod(curlPath, 0o755)
+  const responseBody = JSON.stringify({
+    version: { crate: 'erpc-sdk', num: '0.10.0', checksum: hash, yanked: false },
+  })
+  const runCurl = (invocation, status) => execFileAsync(
+    'bash',
+    [
+      '-c',
+      `set -euo pipefail\n${invocation}${invocation.startsWith('HTTP_STATUS=') ? '\nprintf \'%s\\n\' "$HTTP_STATUS"' : ''}`,
+    ],
+    {
+      env: {
+        ...process.env,
+        PATH: `${fixtureDirectory}:${process.env.PATH ?? ''}`,
+        CURL_CAPTURE: capturePath,
+        CURL_BODY: responseBody,
+        CURL_STATUS: String(status),
+        EXPECTED_VERSION: '0.10.0',
+        RESPONSE_FILE: responsePath,
+        DOWNLOAD_PATH: downloadPath,
+      },
+    },
+  )
+
+  const forbidden = await runCurl(invocations[0], 403)
+  assert.equal(forbidden.stdout.trim(), '403')
+  assert.equal(
+    classifyRegistryResponse({
+      status: Number(forbidden.stdout.trim()),
+      body: '',
+      expectedVersion: '0.10.0',
+      expectedChecksum: hash,
+    }).state,
+    'http-error',
+  )
+  const absent = await runCurl(invocations[0], 404)
+  assert.equal(absent.stdout.trim(), '404')
+  assert.equal(
+    classifyRegistryResponse({
+      status: Number(absent.stdout.trim()),
+      body: '',
+      expectedVersion: '0.10.0',
+      expectedChecksum: hash,
+    }).state,
+    'absent',
+  )
+  await runCurl(invocations[1], 200)
+  await runCurl(invocations[2], 200)
+  const capturedArguments = (await readFile(capturePath, 'utf8'))
+    .trim()
+    .split(/\r?\n/)
+    .map(line => JSON.parse(line))
+  assert.equal(capturedArguments.length, 4)
+  for (const arguments_ of capturedArguments) {
+    const userAgentIndex = arguments_.indexOf('--user-agent')
+    assert.equal(arguments_[userAgentIndex + 1], RELEASE_USER_AGENT)
+  }
+  assert.ok(capturedArguments.at(-1).some(argument => argument.endsWith('/download')))
 })
 
 test('release-rust workflow is manual, exact-source, OIDC-only, and dry-run isolated', async () => {
