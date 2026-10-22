@@ -1310,9 +1310,15 @@ const foundationCIRunIsEligible = (run, expected) =>
 export function selectFoundationCIRun({ workflow, runs, expected }) {
   requirePositiveId(workflow?.id, 'CI workflow ID')
   requireEqual(workflow?.path, FOUNDATION_CI_WORKFLOW, 'CI workflow path mismatch')
-  if (workflow?.url !== undefined && workflow.url !== `https://api.github.com/repos/${EXPECTED_REPOSITORY}/actions/workflows/ci.yml`) fail('CI workflow URL is not bound to the expected repository')
-  if (!Array.isArray(runs?.workflow_runs) || !Number.isSafeInteger(runs?.total_count) || runs.total_count < runs.workflow_runs.length || runs.total_count > 100) {
+  if (workflow?.url !== undefined && workflow.url !== `https://api.github.com/repos/${EXPECTED_REPOSITORY}/actions/workflows/${workflow.id}`) fail('CI workflow URL is not bound to the expected repository and workflow ID')
+  if (!Array.isArray(runs?.workflow_runs) || !Number.isSafeInteger(runs?.total_count) || runs.total_count !== runs.workflow_runs.length || runs.total_count > 100) {
     fail('CI workflow run enumeration is missing, truncated, or malformed')
+  }
+  const runIds = new Set()
+  for (const run of runs.workflow_runs) {
+    const id = requirePositiveId(run?.id, 'CI workflow run ID')
+    if (runIds.has(id)) fail('CI workflow run enumeration contains duplicate run identities')
+    runIds.add(id)
   }
   const sourceRuns = runs.workflow_runs.filter(run => run?.head_sha === expected.sourceCommit && String(run?.repository?.id ?? run?.repository_id) === EXPECTED_REPOSITORY_ID)
   if (sourceRuns.some(run => run?.workflow_id === workflow.id && (run?.event === 'pull_request' || run?.head_branch !== 'main' || run?.path !== FOUNDATION_CI_WORKFLOW))) {

@@ -10,7 +10,7 @@ const WORKFLOW_PATH = join(REPOSITORY_ROOT, ".github/workflows/release.yml");
 const REPOSITORY = "elsoul/erpc-sdk";
 const REPOSITORY_ID = "1429568627";
 const SOURCE_SHA = "b".repeat(40);
-const WORKFLOW_ID = 123;
+const WORKFLOW_ID = 392738007;
 const CI_RUN_ID = 42;
 const CI_RUN_ATTEMPT = 3;
 const CI_JOB_ID = 9001;
@@ -80,6 +80,8 @@ let value
 if (mode === "malformed") process.stdout.write("not-json\\n")
 else if (path.includes("/actions/workflows/" + workflowId + "/runs")) {
   if (mode === "older-green-newer-failed") value = { total_count: 2, workflow_runs: [makeRun({ id: 41, run_attempt: 1, run_number: 99, created_at: "2026-10-22T09:00:00Z" }), makeRun({ status: "completed", conclusion: "failure", run_number: 100 })] }
+  else if (mode === "run-count-mismatch") value = { total_count: 2, workflow_runs: [makeRun()] }
+  else if (mode === "duplicate-run-identity") value = { total_count: 2, workflow_runs: [makeRun({ updated_at: "2026-10-22T10:10:00Z" }), makeRun({ conclusion: "failure", updated_at: "2026-10-22T10:11:00Z" })] }
   else {
     const current = makeRun()
     if (mode === "wrong-repository") current.repository = { full_name: "other/example", id: 999999 }
@@ -111,18 +113,22 @@ else if (path.includes("/actions/workflows/" + workflowId + "/runs")) {
 } else if (path.includes("/actions/runs/" + runId)) {
   value = makeRun()
 } else if (path.includes("/actions/workflows/ci.yml")) {
-  value = {
+  const workflowResponse = {
     badge_url: "https://github.com/" + repository + "/workflows/CI/badge.svg",
-    created_at: "2026-01-01T00:00:00Z",
-    html_url: "https://github.com/" + repository + "/actions/workflows/ci.yml",
+    created_at: "2026-10-22T12:10:17.000+02:00",
+    html_url: "https://github.com/" + repository + "/blob/main/.github/workflows/ci.yml",
     id: workflowId,
     name: "CI",
-    node_id: "W_kwDOExample",
+    node_id: "W_kwDOVTV8c84XaLTX",
     path: workflowPath,
     state: "active",
-    updated_at: "2026-10-22T00:00:00Z",
-    url: "https://api.github.com/repos/" + repository + "/actions/workflows/ci.yml",
+    updated_at: "2026-10-22T12:10:17.000+02:00",
+    url: "https://api.github.com/repos/" + repository + "/actions/workflows/" + workflowId,
   }
+  if (mode === "wrong-workflow-url") workflowResponse.url = "https://api.github.com/repos/" + repository + "/actions/workflows/999999999"
+  if (mode === "wrong-workflow-path") workflowResponse.path = ".github/workflows/other.yml"
+  if (mode === "wrong-workflow-id") workflowResponse.id = 999999999
+  value = workflowResponse
 } else {
   process.stderr.write("unexpected fixture API path: " + path + "\\n")
   process.exit(2)
@@ -207,8 +213,8 @@ test("exact-source CI accepts main push and manual release invocations with one 
 test("exact-source CI fails closed for identity, state, attempt, job, and API failures", () => {
   const script = extractRunBlock(CI_PROOF_STEP);
   const modes = [
-    "wrong-repository", "wrong-repository-id", "wrong-workflow", "wrong-workflow-id", "wrong-branch", "wrong-event", "wrong-source", "wrong-attempt",
-    "missing-job", "duplicate-job", "wrong-job-name", "wrong-job-source", "wrong-job-run", "pending", "failed", "cancelled", "skipped", "truncated", "older-green-newer-failed", "malformed", "api-failure",
+    "wrong-repository", "wrong-repository-id", "wrong-workflow", "wrong-workflow-id", "wrong-workflow-url", "wrong-workflow-path", "wrong-branch", "wrong-event", "wrong-source", "wrong-attempt",
+    "missing-job", "duplicate-job", "wrong-job-name", "wrong-job-source", "wrong-job-run", "pending", "failed", "cancelled", "skipped", "truncated", "older-green-newer-failed", "run-count-mismatch", "duplicate-run-identity", "malformed", "api-failure",
   ];
   for (const mode of modes) {
     const result = runProof(script, mode);

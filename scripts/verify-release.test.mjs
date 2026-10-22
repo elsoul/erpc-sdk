@@ -302,7 +302,7 @@ test('preparation metadata requires a successful exact workflow run and both own
 })
 
 test('bounded CI proof selects the newest exact-source attempt and rejects stale or incomplete evidence', () => {
-  const workflow = { id: 77, path: '.github/workflows/ci.yml', url: 'https://api.github.com/repos/elsoul/erpc-sdk/actions/workflows/ci.yml' }
+  const workflow = { id: 77, path: '.github/workflows/ci.yml', url: 'https://api.github.com/repos/elsoul/erpc-sdk/actions/workflows/77' }
   const runs = {
     total_count: 2,
     workflow_runs: [
@@ -924,11 +924,11 @@ test('actual bounded CI proof step parses and fails closed on stale, pending, du
 const args = process.argv.slice(2)
 const endpoint = args[1] || ''
 const sha = process.env.FOUNDATION_SOURCE_SHA
-const workflow = { id: 77, path: '.github/workflows/ci.yml', url: 'https://api.github.com/repos/elsoul/erpc-sdk/actions/workflows/ci.yml' }
+const workflow = { id: 77, path: '.github/workflows/ci.yml', url: 'https://api.github.com/repos/elsoul/erpc-sdk/actions/workflows/77' }
 const oldRun = { id: 100, run_attempt: 1, workflow_id: 77, path: '.github/workflows/ci.yml', repository: { full_name: 'elsoul/erpc-sdk', id: 1429568627 }, head_repository: { full_name: 'elsoul/erpc-sdk', id: 1429568627 }, head_sha: sha, head_branch: 'main', event: 'push', status: 'completed', conclusion: 'success', created_at: '2026-10-22T00:00:00Z' }
 const latestRun = { id: 101, run_attempt: 1, workflow_id: 77, path: '.github/workflows/ci.yml', repository: { full_name: 'elsoul/erpc-sdk', id: 1429568627 }, head_repository: { full_name: 'elsoul/erpc-sdk', id: 1429568627 }, head_sha: sha, head_branch: 'main', event: 'push', status: process.env.CI_CASE === 'pending' ? 'in_progress' : 'completed', conclusion: process.env.CI_CASE === 'pending' ? null : 'success', created_at: '2026-10-22T00:01:00Z' }
 if (endpoint.endsWith('/actions/workflows/ci.yml')) process.stdout.write(JSON.stringify(workflow))
-else if (endpoint.includes('/actions/workflows/77/runs')) process.stdout.write(JSON.stringify(process.env.CI_CASE === 'truncated' ? { total_count: 101, workflow_runs: [latestRun] } : { total_count: 2, workflow_runs: [oldRun, latestRun] }))
+else if (endpoint.includes('/actions/workflows/77/runs')) process.stdout.write(JSON.stringify(process.env.CI_CASE === 'truncated' ? { total_count: 101, workflow_runs: [latestRun] } : process.env.CI_CASE === 'short' ? { total_count: 2, workflow_runs: [latestRun] } : process.env.CI_CASE === 'duplicate-run' ? { total_count: 2, workflow_runs: [latestRun, { ...latestRun, status: 'completed', conclusion: 'failure' }] } : { total_count: 2, workflow_runs: [oldRun, latestRun] }))
 else if (endpoint.includes('/attempts/1/jobs')) {
   const job = { id: 200, name: 'required-ci', status: 'completed', conclusion: process.env.CI_CASE === 'job-failure' ? 'failure' : 'success', run_id: 101, run_attempt: 1, head_sha: sha, repository_id: 1429568627 }
   process.stdout.write(JSON.stringify({ total_count: process.env.CI_CASE === 'duplicate' ? 2 : 1, jobs: process.env.CI_CASE === 'duplicate' ? [job, { ...job, id: 201 }] : [job] }))
@@ -954,7 +954,7 @@ else process.exit(97)
   })
   await runCase()
   assert.equal(JSON.parse(await readFile(join(directory, 'evidence.json'), 'utf8')).requiredJobName, 'required-ci')
-  for (const caseName of ['pending', 'duplicate', 'job-failure', 'truncated']) await assert.rejects(runCase(caseName))
+  for (const caseName of ['pending', 'duplicate', 'job-failure', 'truncated', 'short', 'duplicate-run']) await assert.rejects(runCase(caseName))
 })
 
 test('actual Go proof block rejects wrong module, origin, subdirectory, sums, and zip members', async t => {
