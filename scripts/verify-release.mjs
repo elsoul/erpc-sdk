@@ -1024,9 +1024,10 @@ export function validateFoundationPreparationMetadata({ run, artifact, bindingAr
     requireEqual(record?.expired, false, `${expectedName} must not be expired`)
     if (!Number.isSafeInteger(record?.size_in_bytes) || record.size_in_bytes <= 0) fail(`${expectedName} metadata size is invalid`)
     requireEqual(record?.workflow_run?.id, Number(runId), `${expectedName} preparation run binding mismatch`)
+    requireEqual(String(record?.workflow_run?.repository_id), EXPECTED_REPOSITORY_ID, `${expectedName} repository binding mismatch`)
+    requireEqual(String(record?.workflow_run?.head_repository_id), EXPECTED_REPOSITORY_ID, `${expectedName} source repository binding mismatch`)
     requireEqual(record?.workflow_run?.head_sha, expected.sourceCommit, `${expectedName} source binding mismatch`)
     requireEqual(record?.workflow_run?.head_branch, 'main', `${expectedName} branch binding mismatch`)
-    requireEqual(record?.workflow_run?.event, 'workflow_dispatch', `${expectedName} event binding mismatch`)
     if (record?.workflow_run?.run_attempt !== undefined) requireEqual(record.workflow_run.run_attempt, Number(runAttempt), `${expectedName} attempt binding mismatch`)
     if (record?.workflow_run?.path !== undefined) requireEqual(record.workflow_run.path, FOUNDATION_WORKFLOW, `${expectedName} workflow binding mismatch`)
     if (record?.workflow_run?.repository_id !== undefined) requireEqual(String(record.workflow_run.repository_id), EXPECTED_REPOSITORY_ID, `${expectedName} repository binding mismatch`)
@@ -1082,8 +1083,9 @@ export function validateFoundationProofReceipt(receipt, { plan, kind, expected }
     }
     requireEqual(receipt.auth?.publicProvenanceObserved, true, 'npm proof lacks observed public provenance')
     const npmClaims = receipt.certificateClaims ?? {}
+    const npmIssuerClaim = npmClaims['1.3.6.1.4.1.57264.1.8'] ?? npmClaims['1.3.6.1.4.1.57264.1.1']
+    requireEqual(npmIssuerClaim, 'https://token.actions.githubusercontent.com', 'npm certificate issuer claim is invalid')
     for (const [key, value] of Object.entries({
-      '1.3.6.1.4.1.57264.1.8': 'https://token.actions.githubusercontent.com',
       '1.3.6.1.4.1.57264.1.9': `https://github.com/${EXPECTED_REPOSITORY}/.github/workflows/release.yml@refs/heads/main`,
       '1.3.6.1.4.1.57264.1.13': plan.sourceCommit,
       '1.3.6.1.4.1.57264.1.14': 'refs/heads/main',
@@ -1190,6 +1192,8 @@ export async function verifyFoundationProofSet({ plan, proofDirectory, manifestF
     requireEqual(priorManifest?.planSha256, sha256Hex(canonicalJson(normalized)), 'Foundation proof manifest plan mismatch')
     requireEqual(priorManifest?.sourceCommit, normalized.sourceCommit, 'Foundation proof manifest source mismatch')
     requireEqual(canonicalJson(priorManifest?.receipts), canonicalJson(receiptDigests), 'Foundation proof manifest receipt bytes mismatch')
+    if (priorManifest?.proofReceiptsArtifactId !== undefined) requirePositiveId(priorManifest.proofReceiptsArtifactId, 'Foundation proof receipts artifact ID')
+    if (expected.receiptArtifactId !== undefined && priorManifest?.proofReceiptsArtifactId !== undefined) requireEqual(String(priorManifest.proofReceiptsArtifactId), String(expected.receiptArtifactId), 'Foundation proof receipts artifact binding mismatch')
   }
   const manifest = {
     schemaVersion: 1,
@@ -1201,6 +1205,7 @@ export async function verifyFoundationProofSet({ plan, proofDirectory, manifestF
     preparedRunId: String(expected.runId),
     preparedRunAttempt: String(expected.runAttempt),
     preparedArtifactId: String(expected.artifactId),
+    ...(expected.receiptArtifactId === undefined ? {} : { proofReceiptsArtifactId: String(requirePositiveId(expected.receiptArtifactId, 'Foundation proof receipts artifact ID')) }),
     receipts: receiptDigests,
     proofAssets: FOUNDATION_PROOF_ASSETS,
     state: 'complete',
@@ -1493,6 +1498,7 @@ const run = async arguments_ => {
         runId: env('FOUNDATION_PREPARED_RUN_ID'),
         runAttempt: env('FOUNDATION_PREPARED_RUN_ATTEMPT'),
         artifactId: env('FOUNDATION_PREPARED_ARTIFACT_ID'),
+        receiptArtifactId: process.env.FOUNDATION_PROOF_RECEIPTS_ARTIFACT_ID,
         bindingArtifactId: env('FOUNDATION_PREPARED_BINDING_ARTIFACT_ID'),
         sourceCommit: env('FOUNDATION_SOURCE_SHA'),
       },

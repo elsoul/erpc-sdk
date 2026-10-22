@@ -1,13 +1,14 @@
 # Releasing the ERPC SDK
 
-The historical release process uses one stable `X.Y.Z` version for the
+The historical aligned release process uses one stable `X.Y.Z` version for the
 TypeScript, Rust, Python, and Ruby packages. Go uses the same version through
-its subdirectory module tag. The current reviewed main snapshot is
-intentionally split while the Rust Bitcoin API is released separately:
+its subdirectory module tag. The historical reviewed snapshot was split while
+the Rust Bitcoin API was released separately (`0.10.0` Rust and `0.9.0`
+non-Rust). The current reviewed foundation cohort is a separate manual
+main-only process:
 
-- Rust crate: `0.10.0`
-- TypeScript, Python, and Ruby packages: `0.9.0`
-- Go: unchanged module source; its version comes from a future subdirectory tag
+- Rust receipt: existing `0.10.0`, read-only in the foundation workflow
+- TypeScript, Python, Ruby, and Go cohort: `0.9.1`
 
 The legacy aggregate release check and tag workflow require one shared version.
 They must not be used to publish this mixed-version snapshot; the aggregate
@@ -72,8 +73,9 @@ no swap or bridge behavior.
 
 Rust `0.10.0` is released through the manual
 `.github/workflows/release-rust.yml` workflow. The other package versions stay
-at `0.9.0`; this workflow does not create tags, GitHub Releases, or releases
-for another language.
+at the historical snapshot version; the current foundation cohort is `0.9.1`.
+This workflow does not create tags, GitHub Releases, or releases for another
+language.
 
 Dispatch it from `main` with the exact commit and version that were reviewed:
 
@@ -126,22 +128,11 @@ short-lived publishing credential.
 
 ### crates.io Trusted Publishing
 
-The crate already exists. The legacy aligned-version workflow uses this
-publisher:
-
-| Setting | Value |
-| --- | --- |
-| GitHub owner | `elsoul` |
-| Repository | `erpc-sdk` |
-| Workflow filename | `release.yml` |
-| Environment | `crates-io` |
-
-The current Rust `0.10.0` workflow uses a separate trusted publisher with the
-same owner, repository, and environment, but workflow filename
-`release-rust.yml`. Keep the environment limited to manual dispatches from
-`main` with the named human reviewer. Both workflows use the crates.io
-authentication action to obtain and revoke a temporary token through OIDC. Do
-not store a crates.io token in GitHub.
+The foundation workflow never authenticates to crates.io. It verifies the
+existing Rust `0.10.0` registry receipt and archive read-only. Any Rust
+publication uses only the separate manual `release-rust.yml` workflow with the
+named human reviewer and its pinned short-lived OIDC action. Do not configure
+or store a crates.io token for the foundation workflow.
 
 ### First PyPI publication
 
@@ -178,17 +169,22 @@ GitHub.
 
 ## GitHub Environments
 
-Create `npm`, `crates-io`, `pypi`, and `rubygems` environments. For all four
-configure:
+For the historical aligned release process, create `npm`, `crates-io`,
+`pypi`, and `rubygems` environments with the legacy tag restrictions. The
+current foundation process uses manual `workflow_dispatch` from `main` and
+the `npm`, `pypi`, and `rubygems` environments only. For every environment in
+use, configure:
 
 - required human reviewers;
 - prevention of self-review when two-person approval is required;
-- deployment limited to protected `v*` release tags;
+- historical aligned deployments limited to protected `v*` release tags;
+- foundation deployments limited to the reviewed manual `main` workflow;
 - no long-lived registry token secrets.
 
-The current Rust `crates-io` environment is the exception to the legacy tag
-rule: its new `release-rust.yml` binding is manually dispatched from `main` and
-must retain its named human reviewer and no long-lived secret.
+The current Rust `crates-io` environment is used only by `release-rust.yml`,
+which is manually dispatched from `main` and must retain its named human
+reviewer and no long-lived secret. The foundation workflow has no Rust
+publisher job.
 
 The publish jobs request `id-token: write` only inside their protected
 environment. Source verification has read-only repository permission.

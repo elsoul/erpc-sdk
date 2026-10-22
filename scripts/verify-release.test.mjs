@@ -279,7 +279,7 @@ test('preparation metadata requires a successful exact workflow run and both own
     expired: false,
     size_in_bytes: 100,
     archive_download_url: 'https://api.github.com/repos/elsoul/erpc-sdk/actions/artifacts/45678/zip',
-    workflow_run: { id: Number(runId), run_attempt: Number(runAttempt), head_sha: sha, head_branch: 'main', event: 'workflow_dispatch', path: '.github/workflows/release.yml' },
+    workflow_run: { id: Number(runId), repository_id: 1429568627, head_repository_id: 1429568627, head_sha: sha, head_branch: 'main' },
   }
   const bindingArtifact = {
     ...artifact,
@@ -292,6 +292,7 @@ test('preparation metadata requires a successful exact workflow run and both own
     { run: { ...run, path: '.github/workflows/other.yml' } },
     { run: { ...run, head_sha: 'c'.repeat(40) } },
     { artifact: { ...artifact, workflow_run: { ...artifact.workflow_run, id: 999 } } },
+    { artifact: { ...artifact, workflow_run: { ...artifact.workflow_run, head_repository_id: 999 } } },
     { bindingArtifact: { ...bindingArtifact, expired: true } },
   ]) {
     assert.throws(() => validateFoundationPreparationMetadata({ run: mutation.run ?? run, artifact: mutation.artifact ?? artifact, bindingArtifact: mutation.bindingArtifact ?? bindingArtifact, expected: { runId, runAttempt, artifactId, bindingArtifactId, sourceCommit: sha } }))
@@ -392,6 +393,8 @@ test('foundation proof aggregate binds observed receipts, auth paths, and attest
   const manifestFile = join(directory, 'foundation-proof-manifest.json')
   const manifest = await verifyFoundationProofSet({ plan, proofDirectory: directory, manifestFile, expected: { runId: '12345', runAttempt: '1', artifactId: '45678' } })
   assert.equal(manifest.state, 'complete')
+  const boundManifest = await verifyFoundationProofSet({ plan, proofDirectory: directory, manifestFile, expected: { runId: '12345', runAttempt: '1', artifactId: '45678', receiptArtifactId: '56789' } })
+  assert.equal(boundManifest.proofReceiptsArtifactId, '56789')
   const tampered = { ...receipts['tag-proof.json'], tags: { ...receipts['tag-proof.json'].tags, go: { ref: 'refs/tags/packages/go/v0.9.1', sha: 'c'.repeat(40) } } }
   await writeFile(join(directory, 'tag-proof.json'), JSON.stringify(tampered))
   await assert.rejects(() => verifyFoundationProofSet({ plan, proofDirectory: directory, manifestFile, expected: { runId: '12345', runAttempt: '1', artifactId: '45678' } }))
@@ -797,6 +800,10 @@ printf '%s' 500
   )
 
   const assetBlock = extractWorkflowRunBlock(workflow, 'Reconcile Release assets without overwrite')
+  assert.match(assetBlock, /proofReceiptsArtifactId/)
+  assert.match(assetBlock, /actions\/artifacts\/\$snapshot_receipts_artifact\/zip/)
+  assert.match(assetBlock, /preflight_dir/)
+  assert.ok(assetBlock.indexOf('preflight_dir=') < assetBlock.indexOf('missing=()'))
   const assetDirectory = join(directory, 'assets')
   const assetDownloadDirectory = join(directory, 'asset-downloads')
   const assetBin = join(directory, 'asset-bin')
@@ -826,14 +833,60 @@ process.exit(99)
   })
   await runAssetBlock(JSON.stringify([{ name: 'approved.txt' }]))
   const assetCalls = (await readFile(assetLog, 'utf8')).trim().split(/\r?\n/).map(line => JSON.parse(line))
-  assert.equal(assetCalls.filter(arguments_ => arguments_[0] === 'release' && arguments_[1] === 'download').length, 1)
+  assert.equal(assetCalls.filter(arguments_ => arguments_[0] === 'release' && arguments_[1] === 'download').length, 2)
   await assert.rejects(runAssetBlock(JSON.stringify([{ name: 'approved.txt' }, { name: 'unexpected.txt' }])), /unexpected existing Release asset/)
+  await writeFile(join(assetDirectory, 'missing.txt'), 'missing bytes')
+  await writeFile(join(assetDirectory, 'approved.txt'), 'conflicting local bytes')
+  await writeFile(assetLog, '')
+  await assert.rejects(runAssetBlock(JSON.stringify([{ name: 'approved.txt' }])))
+  const conflictCalls = (await readFile(assetLog, 'utf8')).trim().split(/\r?\n/).filter(Boolean).map(line => JSON.parse(line))
+  assert.equal(conflictCalls.filter(arguments_ => arguments_[0] === 'release' && arguments_[1] === 'upload').length, 0)
+})
+
+test('actual npm Fulcio claim decoder accepts legacy raw issuer OIDs and rejects issuer/source mismatches', async t => {
+  const workflow = await readFile(new URL('../.github/workflows/release.yml', import.meta.url), 'utf8')
+  const pythonCode = extractWorkflowHeredoc(workflow, 'python - "$RUNNER_TEMP/npm-audit.json" "$RUNNER_TEMP/npm-certificate-claims.json" <<\'PY\'', 'PY')
+  const directory = await mkdtemp(join(tmpdir(), 'erpc-sdk-npm-cert-'))
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  const pythonPath = join(directory, 'claims.py')
+  await writeFile(pythonPath, pythonCode)
+  let python = 'python3'
+  try {
+    await execFileAsync(python, ['-c', 'import cryptography'])
+  } catch {
+    const venv = join(directory, 'venv')
+    await execFileAsync('python3', ['-m', 'venv', venv])
+    python = join(venv, 'bin', 'python')
+    await execFileAsync(python, ['-m', 'pip', 'install', '--quiet', '--disable-pip-version-check', 'pypi-attestations==0.0.30'])
+  }
+  const makeCertificate = async (issuer, source) => {
+    const config = join(directory, `cert-${issuer.includes('evil') ? 'wrong-issuer' : source === sha ? 'valid' : 'wrong-source'}.cnf`)
+    const key = `${config}.key`
+    const cert = `${config}.der`
+    const rawIssuer = Buffer.from(issuer).toString('hex')
+    await writeFile(config, `[req]\nprompt = no\ndistinguished_name = dn\nx509_extensions = claims\n[dn]\nCN = Fulcio fixture\n[claims]\n1.3.6.1.4.1.57264.1.1 = DER:${rawIssuer}\n1.3.6.1.4.1.57264.1.9 = ASN1:UTF8String:https://github.com/elsoul/erpc-sdk/.github/workflows/release.yml@refs/heads/main\n1.3.6.1.4.1.57264.1.10 = ASN1:UTF8String:${source}\n1.3.6.1.4.1.57264.1.12 = ASN1:UTF8String:https://github.com/elsoul/erpc-sdk\n1.3.6.1.4.1.57264.1.13 = ASN1:UTF8String:${source}\n1.3.6.1.4.1.57264.1.14 = ASN1:UTF8String:refs/heads/main\n1.3.6.1.4.1.57264.1.15 = ASN1:UTF8String:1429568627\n1.3.6.1.4.1.57264.1.18 = ASN1:UTF8String:https://github.com/elsoul/erpc-sdk/.github/workflows/release.yml@refs/heads/main\n1.3.6.1.4.1.57264.1.19 = ASN1:UTF8String:${source}\n1.3.6.1.4.1.57264.1.20 = ASN1:UTF8String:workflow_dispatch\n`)
+    await execFileAsync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', key, '-out', cert, '-outform', 'DER', '-days', '1', '-config', config], { maxBuffer: 1024 * 1024 })
+    return (await readFile(cert)).toString('base64')
+  }
+  const auditFile = join(directory, 'npm-audit.json')
+  const claimsFile = join(directory, 'claims.json')
+  const run = async (certificate, registry = 'https://registry.npmjs.org/') => {
+    await writeFile(auditFile, JSON.stringify({ invalid: [], missing: [], verified: [{ name: '@elsoul/erpc-sdk', version: FOUNDATION_VERSION, registry, attestationBundles: [{ predicateType: 'https://slsa.dev/provenance/v1', bundle: { verificationMaterial: { certificate: { rawBytes: certificate } } } }] }] }))
+    return execFileAsync(python, [pythonPath, auditFile, claimsFile], { env: { ...process.env, EXPECTED_VERSION: FOUNDATION_VERSION, FOUNDATION_SOURCE_SHA: sha, EXPECTED_REPOSITORY_ID: '1429568627' } })
+  }
+  const validCertificate = await makeCertificate('https://token.actions.githubusercontent.com', sha)
+  await run(validCertificate)
+  await assert.rejects(run(validCertificate, 'https://registry.npmjs.org.evil/'))
+  await assert.rejects(run(await makeCertificate('https://evil.invalid', sha)))
+  await assert.rejects(run(await makeCertificate('https://token.actions.githubusercontent.com', 'c'.repeat(40))))
 })
 
 test('actual Go proof block rejects wrong module, origin, subdirectory, sums, and zip members', async t => {
   const workflow = await readFile(new URL('../.github/workflows/release.yml', import.meta.url), 'utf8')
   const block = extractWorkflowRunBlock(workflow, 'Verify Go proxy, checksum, origin, and exact module members')
   assert.match(block, /GOMODCACHE=\"\$RUNNER_TEMP\/go-mod-cache\"/)
+  assert.match(block, /GOPROXY=direct GOSUMDB=\"\$GOSUMDB\"/)
+  assert.doesNotMatch(block, /GOSUMDB=off/)
   const directory = await mkdtemp(join(tmpdir(), 'erpc-sdk-go-proof-'))
   t.after(() => rm(directory, { recursive: true, force: true }))
   const bundle = join(directory, 'sdk-foundation-bundle')
@@ -930,8 +983,10 @@ test('actual Ruby artifact inspection requires Gem::Package metadata, matching d
   t.after(() => rm(directory, { recursive: true, force: true }))
   const npmRoot = join(directory, 'npm-root')
   const sdistRoot = join(directory, 'sdist-root')
+  const gemRoot = join(directory, 'gem-root')
   await mkdir(join(npmRoot, 'package', 'dist'), { recursive: true })
   await mkdir(join(sdistRoot, 'erpc_sdk-0.9.1'), { recursive: true })
+  await mkdir(join(gemRoot, 'lib', 'erpc_sdk'), { recursive: true })
   await writeFile(join(npmRoot, 'package', 'package.json'), JSON.stringify({ name: '@elsoul/erpc-sdk', version: FOUNDATION_VERSION }))
   await writeFile(join(npmRoot, 'package', 'LICENSE'), 'MIT\n')
   await writeFile(join(npmRoot, 'package', 'README.md'), '# SDK\n')
@@ -939,11 +994,25 @@ test('actual Ruby artifact inspection requires Gem::Package metadata, matching d
   await writeFile(join(sdistRoot, 'erpc_sdk-0.9.1', 'PKG-INFO'), 'Name: erpc-sdk\nVersion: 0.9.1\n')
   await writeFile(join(sdistRoot, 'erpc_sdk-0.9.1', 'LICENSE'), 'MIT\n')
   await writeFile(join(sdistRoot, 'erpc_sdk-0.9.1', 'erpc_sdk.py'), '__version__ = "0.9.1"\n')
+  await writeFile(join(gemRoot, 'lib', 'erpc_sdk.rb'), 'module ERPC; VERSION = "0.9.1"; end\n')
+  await writeFile(join(gemRoot, 'LICENSE'), 'MIT\n')
+  await writeFile(join(gemRoot, 'README.md'), '# SDK\n')
+  await writeFile(join(gemRoot, 'erpc-sdk.gemspec'), `Gem::Specification.new do |spec|
+  spec.name = 'erpc-sdk'
+  spec.version = '0.9.1'
+  spec.summary = 'test fixture'
+  spec.authors = ['fixture']
+  spec.files = Dir['lib/**/*.rb'].sort + %w[LICENSE README.md]
+  spec.require_paths = ['lib']
+  spec.license = 'MIT'
+end
+`)
   await execFileAsync('tar', ['-czf', join(directory, 'elsoul-erpc-sdk-0.9.1.tgz'), '-C', npmRoot, 'package'])
   await execFileAsync('tar', ['-czf', join(directory, 'erpc_sdk-0.9.1.tar.gz'), '-C', sdistRoot, 'erpc_sdk-0.9.1'])
   const wheelScript = `import sys, zipfile\nwith zipfile.ZipFile(sys.argv[1], 'w', zipfile.ZIP_DEFLATED) as archive:\n    archive.writestr('erpc_sdk/__init__.py', '')\n    archive.writestr('erpc_sdk-0.9.1.dist-info/METADATA', 'Name: erpc-sdk\\nVersion: 0.9.1\\n')\n    archive.writestr('erpc_sdk-0.9.1.dist-info/LICENSE', 'MIT\\n')`
   await execFileAsync('python3', ['-c', wheelScript, join(directory, 'erpc_sdk-0.9.1-py3-none-any.whl')])
-  await cp(join(new URL('../', import.meta.url).pathname, 'packages/ruby/pkg/erpc-sdk-0.9.1.gem'), join(directory, 'erpc-sdk-0.9.1.gem'))
+  await execFileAsync('gem', ['build', 'erpc-sdk.gemspec'], { cwd: gemRoot })
+  await cp(join(gemRoot, 'erpc-sdk-0.9.1.gem'), join(directory, 'erpc-sdk-0.9.1.gem'))
   const descriptors = await describeFoundationArtifacts(directory)
   const gemDescriptor = descriptors.find(descriptor => descriptor.kind === 'rubygems')
   assert.equal(gemDescriptor.name, 'erpc-sdk')

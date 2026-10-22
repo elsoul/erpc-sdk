@@ -93,7 +93,7 @@ jobs:
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: 24
-          cache: false
+          package-manager-cache: false
       - name: Install pinned pnpm
         run: |
           corepack enable
@@ -103,6 +103,8 @@ jobs:
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.12'
+      - name: Install pinned attestation verifier for release controls
+        run: python -m pip install --disable-pip-version-check pypi-attestations==0.0.30
       - name: Install pinned Go tooling
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
@@ -467,7 +469,7 @@ jobs:
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
-          cache: false
+          package-manager-cache: false
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.12'
@@ -594,10 +596,19 @@ jobs:
           NPM_CONFIG_USERCONFIG="$RUNNER_TEMP/empty-npmrc" npm audit signatures --json --include-attestations --prefix "$npm_consumer" > "$RUNNER_TEMP/npm-audit.json"
           python - "$RUNNER_TEMP/npm-audit.json" "$RUNNER_TEMP/npm-certificate-claims.json" <<'PY'
           import base64, json, os, sys
+          from urllib.parse import urlsplit
           from cryptography import x509
           audit_file, claims_file = sys.argv[1:]
           audit = json.load(open(audit_file, encoding='utf-8'))
-          target = next((item for item in audit.get('verified', []) if item.get('name') == '@elsoul/erpc-sdk' and item.get('version') == os.environ['EXPECTED_VERSION'] and item.get('registry') == 'https://registry.npmjs.org'), None)
+          def canonical_registry(value):
+              try:
+                  parsed = urlsplit(value)
+                  if parsed.scheme == 'https' and parsed.hostname == 'registry.npmjs.org' and parsed.username is None and parsed.password is None and parsed.port is None and parsed.path in ('', '/') and not parsed.query and not parsed.fragment:
+                      return 'https://registry.npmjs.org'
+              except (TypeError, ValueError):
+                  pass
+              return None
+          target = next((item for item in audit.get('verified', []) if item.get('name') == '@elsoul/erpc-sdk' and item.get('version') == os.environ['EXPECTED_VERSION'] and canonical_registry(item.get('registry')) == 'https://registry.npmjs.org'), None)
           slsa = next((item for item in (target or {}).get('attestationBundles', []) if item.get('predicateType') == 'https://slsa.dev/provenance/v1'), None)
           raw = (((slsa or {}).get('bundle') or {}).get('verificationMaterial') or {}).get('certificate', {}).get('rawBytes')
           if not target or not slsa or not raw: raise SystemExit('npm verified SLSA certificate is missing')
@@ -606,17 +617,20 @@ jobs:
           for extension in certificate.extensions:
               if extension.oid.dotted_string.startswith('1.3.6.1.4.1.57264.1.'):
                   value = extension.value.value
-                  if not value or value[0] != 0x0c: raise SystemExit('npm Fulcio claim is not a UTF-8 extension')
-                  length = value[1]
-                  offset = 2
-                  if length & 0x80:
-                      count = length & 0x7f
-                      length = int.from_bytes(value[offset:offset + count], 'big')
-                      offset += count
-                  claims[extension.oid.dotted_string] = value[offset:offset + length].decode('utf-8')
+                  oid = extension.oid.dotted_string
+                  if oid.endswith(tuple(f'.{index}' for index in range(1, 8))):
+                      claims[oid] = value.decode('utf-8')
+                  else:
+                      if not value or value[0] != 0x0c: raise SystemExit('npm Fulcio claim is not a UTF-8 extension')
+                      length = value[1]
+                      offset = 2
+                      if length & 0x80:
+                          count = length & 0x7f
+                          length = int.from_bytes(value[offset:offset + count], 'big')
+                          offset += count
+                      claims[oid] = value[offset:offset + length].decode('utf-8')
           expected_workflow = 'https://github.com/elsoul/erpc-sdk/.github/workflows/release.yml@refs/heads/main'
           expected = {
-              '1.3.6.1.4.1.57264.1.8': 'https://token.actions.githubusercontent.com',
               '1.3.6.1.4.1.57264.1.9': expected_workflow,
               '1.3.6.1.4.1.57264.1.10': os.environ['FOUNDATION_SOURCE_SHA'],
               '1.3.6.1.4.1.57264.1.12': 'https://github.com/elsoul/erpc-sdk',
@@ -627,7 +641,8 @@ jobs:
               '1.3.6.1.4.1.57264.1.19': os.environ['FOUNDATION_SOURCE_SHA'],
               '1.3.6.1.4.1.57264.1.20': 'workflow_dispatch',
           }
-          if any(claims.get(key) != value for key, value in expected.items()): raise SystemExit('npm Fulcio certificate claims do not bind the approved source/workflow')
+          issuer = claims.get('1.3.6.1.4.1.57264.1.8', claims.get('1.3.6.1.4.1.57264.1.1'))
+          if issuer != 'https://token.actions.githubusercontent.com' or any(claims.get(key) != value for key, value in expected.items()): raise SystemExit('npm Fulcio certificate claims do not bind the approved source/workflow')
           json.dump(claims, open(claims_file, 'w', encoding='utf-8'))
           PY
           node --input-type=module - "$RESPONSE_FILE" "$RUNNER_TEMP/npm-final.tgz" "$RUNNER_TEMP/npm-proof.json" <<'NODE'
@@ -637,7 +652,14 @@ jobs:
           const metadata = JSON.parse(readFileSync(metadataFile, 'utf8'))
           const audit = JSON.parse(readFileSync(`${process.env.RUNNER_TEMP}/npm-audit.json`, 'utf8'))
           if (!Array.isArray(audit.invalid) || audit.invalid.length !== 0 || !Array.isArray(audit.missing) || audit.missing.length !== 0) throw new Error('npm audit signatures reported invalid or missing attestations')
-          const target = audit.verified?.find(item => item.name === metadata.name && item.version === metadata.version && item.registry === 'https://registry.npmjs.org')
+          const canonicalRegistry = value => {
+            try {
+              const url = new URL(value)
+              if (url.protocol !== 'https:' || url.hostname !== 'registry.npmjs.org' || url.username || url.password || url.port || !['', '/'].includes(url.pathname) || url.search || url.hash) return null
+              return 'https://registry.npmjs.org'
+            } catch { return null }
+          }
+          const target = audit.verified?.find(item => item.name === metadata.name && item.version === metadata.version && canonicalRegistry(item.registry) === 'https://registry.npmjs.org')
           const slsa = target?.attestationBundles?.find(item => item.predicateType === 'https://slsa.dev/provenance/v1')
           if (!target || !slsa?.bundle?.dsseEnvelope?.payload) throw new Error('npm audit signatures did not verify the exact target SLSA attestation')
           const provenance = JSON.parse(Buffer.from(slsa.bundle.dsseEnvelope.payload, 'base64').toString('utf8'))
@@ -1027,6 +1049,11 @@ jobs:
           RUBYGEMS_AUTH_OUTCOME: ${{ steps.rubygems_auth.outcome }}
           RUBYGEMS_UPLOAD_OUTCOME: ${{ steps.publish_gem.outcome }}
           CREDENTIAL_OBSERVED_FILE: ${{ runner.temp }}/rubygems-credential-observed.json
+          FOUNDATION_SOURCE_SHA: ${{ inputs.expected_commit }}
+          FOUNDATION_PLAN_SHA256: ${{ inputs.approval_plan_sha256 }}
+          FOUNDATION_PREPARED_RUN_ID: ${{ inputs.prepared_run_id }}
+          FOUNDATION_PREPARED_RUN_ATTEMPT: ${{ inputs.prepared_run_attempt }}
+          FOUNDATION_PREPARED_ARTIFACT_ID: ${{ inputs.prepared_artifact_id }}
         run: |
           set -euo pipefail
           test -z "${GEM_HOST_API_KEY:-}"
@@ -1283,7 +1310,7 @@ jobs:
           done
           mkdir -p "$RUNNER_TEMP/go-direct-consumer"
           printf 'module example.invalid/direct-consumer\n\ngo 1.22\n\nrequire %s %s\n' "$MODULE" "$VERSION" > "$RUNNER_TEMP/go-direct-consumer/go.mod"
-          (cd "$RUNNER_TEMP/go-direct-consumer" && GOMODCACHE="$RUNNER_TEMP/go-direct-mod-cache" GOPROXY=direct GOSUMDB=off go mod download -json "$MODULE@$VERSION") > "$RUNNER_TEMP/go-direct-download.json"
+          (cd "$RUNNER_TEMP/go-direct-consumer" && GOMODCACHE="$RUNNER_TEMP/go-direct-mod-cache" GOPROXY=direct GOSUMDB="$GOSUMDB" go mod download -json "$MODULE@$VERSION") > "$RUNNER_TEMP/go-direct-download.json"
           python - "$RUNNER_TEMP/go-download.json" "$RUNNER_TEMP/go-direct-download.json" "$RUNNER_TEMP/sdk-foundation-bundle/go-inventory.json" "$EXPECTED_COMMIT" <<'PY'
           import base64, hashlib, json, os, re, sys, zipfile
           result = json.load(open(sys.argv[1], encoding='utf-8'))
@@ -1428,6 +1455,26 @@ jobs:
           cp "$RUNNER_TEMP/foundation-proof-downloads/foundation-proof-tags-$GITHUB_RUN_ID/tag-proof.json" "$FOUNDATION_PROOF_DIR/tag-proof.json"
           cp "$RUNNER_TEMP/foundation-proof-downloads/foundation-proof-go-$GITHUB_RUN_ID/go-proof.json" "$FOUNDATION_PROOF_DIR/go-proof.json"
           node scripts/verify-release.mjs --foundation-proof-verify
+          mkdir -p "$RUNNER_TEMP/foundation-proof-receipts"
+          for proof in npm-proof.json pypi-proof.json rubygems-proof.json rust-proof.json tag-proof.json go-proof.json; do cp "$FOUNDATION_PROOF_DIR/$proof" "$RUNNER_TEMP/foundation-proof-receipts/$proof"; done
+      - name: Upload immutable first-snapshot receipts
+        id: receipts
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: foundation-proof-receipts-${{ github.run_id }}
+          path: ${{ runner.temp }}/foundation-proof-receipts
+          if-no-files-found: error
+          retention-days: 365
+      - name: Bind receipt snapshot artifact to the evidence manifest
+        env:
+          FOUNDATION_PLAN_FILE: ${{ runner.temp }}/sdk-foundation-bundle/foundation-plan.json
+          FOUNDATION_PROOF_DIR: ${{ runner.temp }}/foundation-proofs
+          FOUNDATION_PROOF_MANIFEST_FILE: ${{ runner.temp }}/foundation-proofs/foundation-proof-manifest.json
+          FOUNDATION_PREPARED_RUN_ID: ${{ inputs.prepared_run_id }}
+          FOUNDATION_PREPARED_RUN_ATTEMPT: ${{ inputs.prepared_run_attempt }}
+          FOUNDATION_PREPARED_ARTIFACT_ID: ${{ inputs.prepared_artifact_id }}
+          FOUNDATION_PROOF_RECEIPTS_ARTIFACT_ID: ${{ steps.receipts.outputs.artifact-id }}
+        run: node scripts/verify-release.mjs --foundation-proof-verify
       - name: Upload immutable aggregate evidence
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
@@ -1608,14 +1655,41 @@ jobs:
           if grep -Fxq 'foundation-proof-manifest.json' "$remote_assets"; then
             mkdir -p "$snapshot_dir"
             gh release download "$TAG" --repo "$REPOSITORY" --pattern 'foundation-proof-manifest.json' --dir "$snapshot_dir" >/dev/null
+            snapshot_context="$(jq -r '[.preparedRunId, .preparedRunAttempt, .preparedArtifactId, .proofReceiptsArtifactId] | @tsv' "$snapshot_dir/foundation-proof-manifest.json")"
+            IFS=$'\t' read -r snapshot_run snapshot_attempt snapshot_artifact snapshot_receipts_artifact <<< "$snapshot_context"
+            test -n "$snapshot_receipts_artifact" && test "$snapshot_receipts_artifact" != null
+            remote_snapshot_dir="$RUNNER_TEMP/foundation-proof-remote"
+            mkdir -p "$remote_snapshot_dir"
             for proof in npm-proof.json pypi-proof.json rubygems-proof.json rust-proof.json tag-proof.json go-proof.json; do
-              gh release download "$TAG" --repo "$REPOSITORY" --pattern "$proof" --dir "$snapshot_dir" >/dev/null
+              if grep -Fxq "$proof" "$remote_assets"; then
+                gh release download "$TAG" --repo "$REPOSITORY" --pattern "$proof" --dir "$remote_snapshot_dir" >/dev/null
+                expected_digest="$(jq -r --arg name "$proof" '.receipts[$name]' "$snapshot_dir/foundation-proof-manifest.json")"
+                test "$(sha256sum "$remote_snapshot_dir/$proof" | awk '{print $1}')" = "$expected_digest"
+                cp "$remote_snapshot_dir/$proof" "$snapshot_dir/$proof"
+              fi
             done
-            snapshot_context="$(jq -r '[.preparedRunId, .preparedRunAttempt, .preparedArtifactId] | @tsv' "$snapshot_dir/foundation-proof-manifest.json")"
-            IFS=$'\t' read -r snapshot_run snapshot_attempt snapshot_artifact <<< "$snapshot_context"
-            FOUNDATION_PREPARED_RUN_ID="$snapshot_run" FOUNDATION_PREPARED_RUN_ATTEMPT="$snapshot_attempt" FOUNDATION_PREPARED_ARTIFACT_ID="$snapshot_artifact" FOUNDATION_PROOF_DIR="$snapshot_dir" FOUNDATION_PROOF_MANIFEST_FILE="$snapshot_dir/foundation-proof-manifest.json" node scripts/verify-release.mjs --foundation-proof-verify
+            recovery_zip="$RUNNER_TEMP/foundation-proof-receipts.zip"
+            recovery_dir="$RUNNER_TEMP/foundation-proof-receipts-recovery"
+            mkdir -p "$recovery_dir"
+            curl --fail --silent --show-error --location --max-time 60 --retry 0 --user-agent "$RELEASE_USER_AGENT" --header "Authorization: Bearer $GH_TOKEN" --header 'Accept: application/zip' --output "$recovery_zip" "https://api.github.com/repos/$REPOSITORY/actions/artifacts/$snapshot_receipts_artifact/zip"
+            unzip -q "$recovery_zip" -d "$recovery_dir"
+            for proof in npm-proof.json pypi-proof.json rubygems-proof.json rust-proof.json tag-proof.json go-proof.json; do
+              expected_digest="$(jq -r --arg name "$proof" '.receipts[$name]' "$snapshot_dir/foundation-proof-manifest.json")"
+              test -f "$recovery_dir/$proof"
+              test "$(sha256sum "$recovery_dir/$proof" | awk '{print $1}')" = "$expected_digest"
+              cp "$recovery_dir/$proof" "$snapshot_dir/$proof"
+            done
+            FOUNDATION_PREPARED_RUN_ID="$snapshot_run" FOUNDATION_PREPARED_RUN_ATTEMPT="$snapshot_attempt" FOUNDATION_PREPARED_ARTIFACT_ID="$snapshot_artifact" FOUNDATION_PROOF_RECEIPTS_ARTIFACT_ID="$snapshot_receipts_artifact" FOUNDATION_PROOF_DIR="$snapshot_dir" FOUNDATION_PROOF_MANIFEST_FILE="$snapshot_dir/foundation-proof-manifest.json" node scripts/verify-release.mjs --foundation-proof-verify
             cp "$snapshot_dir"/*.json "$ASSET_DIR/"
           fi
+          preflight_dir="$RUNNER_TEMP/release-asset-preflight"
+          mkdir -p "$preflight_dir"
+          while IFS= read -r name; do
+            if grep -Fxq "$name" "$remote_assets"; then
+              gh release download "$TAG" --repo "$REPOSITORY" --pattern "$name" --dir "$preflight_dir" >/dev/null
+              test "$(sha256sum "$preflight_dir/$name" | awk '{print $1}')" = "$(sha256sum "$ASSET_DIR/$name" | awk '{print $1}')"
+            fi
+          done < "$expected_assets"
           missing=()
           while IFS= read -r name; do
             if ! grep -Fxq "$name" "$remote_assets"; then missing+=("$ASSET_DIR/$name"); fi
