@@ -473,12 +473,36 @@ exchange, or transfer operations. The default node history caveat is
 `latest`-only; caller selectors pass through unchanged and there is no archive
 fallback or history promise. Native balances remain raw HYPE quantities.
 
-Arc Mainnet uses arc.erpc.global with edge override edge.erpc.global/arc and
-chain ID 5042 / 0x13b2. Arc native USDC balances use 18-decimal base units,
-while its ERC-20 view uses 6 decimals over the same underlying balance. The
-SDK returns each raw view unchanged and performs no scaling, double counting,
-aggregation, token registration, wrapper claim, or sentinel mapping. Arc
-Testnet is a separate network.
+Arc Mainnet is chain ID `5042` / `0x13b2`, and Arc Testnet is `5042002` /
+`0x4cef52`. The exact hosted default is `https://arc.erpc.global/`, and the
+exact edge override is `https://edge.erpc.global/arc`. A caller-owned direct
+target can be configured with
+`ErpcClientConfig::for_rpc().with_arc_rpc(RpcEndpointConfig::new(...))`:
+
+```rust,no_run
+# use erpc_sdk::{ErpcClient, ErpcClientConfig, RpcEndpointConfig};
+# async fn example() -> erpc_sdk::Result<()> {
+let erpc = ErpcClient::new(
+    ErpcClientConfig::for_rpc().with_arc_rpc(
+        RpcEndpointConfig::new("https://arc-node.example/rpc?tenant=customer")
+            .with_header("authorization", "Bearer node-token"),
+    ),
+)?;
+let chain_id = erpc.arc.rpc.eth_chain_id().send().await?;
+assert_eq!(chain_id, "0x13b2");
+# let _ = erpc;
+# Ok(())
+# }
+```
+
+The direct value is the complete caller-owned HTTP(S) request target: it
+preserves its path and query, uses scoped headers only, injects no ERPC key or
+global headers, and follows no redirects. A custom target's chain ID is
+returned unchanged; callers must verify `0x13b2` before treating it as Arc
+Mainnet. Native USDC balances use 18-decimal base units, while the ERC-20 view
+uses 6 decimals over the same underlying balance. The SDK returns each raw
+view unchanged and performs no conversion, double counting, aggregation, token
+registration, wrapper claim, or sentinel mapping.
 
 Robinhood Chain Public Mainnet uses the exact hosted default
 `https://robinhood.erpc.global/` and exact edge override
