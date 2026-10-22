@@ -1,7 +1,5 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { writeFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 
@@ -12,38 +10,31 @@ import {
   validateBaselineBinding,
 } from "./ci-catalog-baseline.mjs";
 import { computeDigest } from "./token-catalog.mjs";
+import {
+  CANONICAL_APPROVED_SOURCE_SHA,
+  CANONICAL_PAIRED_TAG_PEEL,
+  createGitFixture,
+  createNonAncestorCommit,
+  removeGitFixture,
+} from "./test-git-fixture.mjs";
 
-const SOURCE_COMMIT = "1eed9b24790dfe8267173a06ffdf3155e7c14057";
-const TAG_COMMIT = "d77169fbf9e927d51113af7a2ee51a5c9b10f3fc";
-
-function git(root, args, options = {}) {
-  return execFileSync("git", ["-C", root, ...args], { encoding: "utf8", stdio: options.stdio ?? "pipe" }).trim();
-}
-
-function newFixture() {
-  const root = mkdtempSync(path.join(tmpdir(), "erpc-catalog-baseline-test-"));
-  execFileSync("git", ["worktree", "add", "--detach", root, SOURCE_COMMIT], { encoding: "utf8", stdio: "ignore" });
-  return root;
-}
-
-function removeFixture(root) {
-  try { execFileSync("git", ["worktree", "remove", "--force", root], { encoding: "utf8", stdio: "ignore" }); } catch { rmSync(root, { recursive: true, force: true }); }
-}
+const SOURCE_COMMIT = CANONICAL_APPROVED_SOURCE_SHA;
+const TAG_COMMIT = CANONICAL_PAIRED_TAG_PEEL;
 
 test("baseline resolves from the validated PR base and verifies ancestry", () => {
-  const root = newFixture();
+  const fixture = createGitFixture({ prefix: "erpc-catalog-baseline-test-" });
   try {
-    writeFileSync(path.join(root, "registry/baseline-test-note.md"), "candidate\n");
-    git(root, ["add", "registry/baseline-test-note.md"]);
-    execFileSync("git", ["-C", root, "-c", "user.name=Baseline Test", "-c", "user.email=baseline-test@example.invalid", "commit", "-m", "candidate"], { encoding: "utf8", stdio: "ignore" });
-    const head = git(root, ["rev-parse", "HEAD"]);
-    const result = resolveCatalogBaseline({ root, baseSha: SOURCE_COMMIT, pushBeforeSha: SOURCE_COMMIT, dispatchBaseSha: SOURCE_COMMIT, headSha: head });
+    writeFileSync(path.join(fixture.root, "registry/baseline-test-note.md"), "candidate\n");
+    fixture.git(["add", "registry/baseline-test-note.md"]);
+    fixture.git(["-c", "user.name=Baseline Test", "-c", "user.email=baseline-test@example.invalid", "commit", "-m", "candidate"]);
+    const head = fixture.git(["rev-parse", "HEAD"]);
+    const result = resolveCatalogBaseline({ root: fixture.root, baseSha: SOURCE_COMMIT, pushBeforeSha: SOURCE_COMMIT, dispatchBaseSha: SOURCE_COMMIT, headSha: head, runner: fixture.runner });
     assert.equal(result.baseSha, SOURCE_COMMIT);
     assert.equal(result.headSha, head);
-    const baselineCatalog = JSON.parse(git(root, ["show", `${SOURCE_COMMIT}:${CATALOG_PATH}`]));
+    const baselineCatalog = JSON.parse(fixture.git(["show", `${SOURCE_COMMIT}:${CATALOG_PATH}`]));
     assert.equal(result.catalogDigest, computeDigest(baselineCatalog));
     assert.equal(result.baselinePath, CATALOG_PATH);
-  } finally { removeFixture(root); }
+  } finally { removeGitFixture(fixture); }
 });
 
 test("baseline refs must agree and current HEAD cannot become the baseline", () => {
@@ -52,13 +43,14 @@ test("baseline refs must agree and current HEAD cannot become the baseline", () 
 });
 
 test("missing history and non-ancestor heads are hard failures", () => {
-  const root = newFixture();
+  const fixture = createGitFixture({ prefix: "erpc-catalog-baseline-test-" });
   try {
     const missing = "f".repeat(40);
-    assert.throws(() => resolveCatalogBaseline({ root, baseSha: missing, pushBeforeSha: missing, dispatchBaseSha: missing, headSha: SOURCE_COMMIT }), (error) => error.code === BASELINE_STATUS.MISSING_HISTORY);
-    writeFileSync(path.join(root, "registry/nonancestor-test-note.md"), "candidate\n");
-    git(root, ["add", "registry/nonancestor-test-note.md"]);
-    execFileSync("git", ["-C", root, "-c", "user.name=Baseline Test", "-c", "user.email=baseline-test@example.invalid", "commit", "-m", "nonancestor fixture"], { encoding: "utf8", stdio: "ignore" });
-    assert.throws(() => resolveCatalogBaseline({ root, baseSha: SOURCE_COMMIT, pushBeforeSha: SOURCE_COMMIT, dispatchBaseSha: SOURCE_COMMIT, headSha: TAG_COMMIT }), (error) => error.code === BASELINE_STATUS.NOT_ANCESTOR);
-  } finally { removeFixture(root); }
+    assert.throws(() => resolveCatalogBaseline({ root: fixture.root, baseSha: missing, pushBeforeSha: missing, dispatchBaseSha: missing, headSha: SOURCE_COMMIT, runner: fixture.runner }), (error) => error.code === BASELINE_STATUS.MISSING_HISTORY);
+    writeFileSync(path.join(fixture.root, "registry/nonancestor-test-note.md"), "candidate\n");
+    fixture.git(["add", "registry/nonancestor-test-note.md"]);
+    fixture.git(["-c", "user.name=Baseline Test", "-c", "user.email=baseline-test@example.invalid", "commit", "-m", "candidate"]);
+    const nonAncestor = createNonAncestorCommit(fixture);
+    assert.throws(() => resolveCatalogBaseline({ root: fixture.root, baseSha: SOURCE_COMMIT, pushBeforeSha: SOURCE_COMMIT, dispatchBaseSha: SOURCE_COMMIT, headSha: nonAncestor, runner: fixture.runner }), (error) => error.code === BASELINE_STATUS.NOT_ANCESTOR);
+  } finally { removeGitFixture(fixture); }
 });

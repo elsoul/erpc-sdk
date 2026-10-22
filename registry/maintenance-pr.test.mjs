@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { chmodSync, cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -37,6 +37,7 @@ import {
   parseStableVersion,
   prepareRelease,
 } from "./release-prep.mjs";
+import { createGitFixture, execNodeWithGitShim, removeGitFixture } from "./test-git-fixture.mjs";
 
 const config = JSON.parse(readFileSync(new URL("./observer-config.json", import.meta.url), "utf8"));
 const SOURCE_SHA = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
@@ -91,6 +92,15 @@ async function makePayload(options = {}) {
   const artifacts = options.artifacts ?? await makeArtifacts({ sourceSha: options.sourceSha ?? SOURCE_SHA, baseline: options.observationBaseline ?? null });
   const state = options.state ?? makeState({ baseline: options.trustedBaseline ?? null, priorFindings: options.priorFindings ?? null });
   return { artifacts, payload: buildMaintenancePayload({ observation: artifacts, baseSha: options.baseSha ?? BASE_SHA, expectedSourceSha: options.sourceSha ?? SOURCE_SHA, catalogDigest: artifacts.receipts.catalogDigest, configDigest: artifacts.receipts.configDigest, trustedState: state }) };
+}
+
+function buildMaintenancePayloadInChild(fixture, request) {
+  const script = `import { readFileSync } from "node:fs";
+import { buildMaintenancePayload } from "./registry/maintenance-pr.mjs";
+const request = JSON.parse(readFileSync(0, "utf8"));
+process.stdout.write(JSON.stringify(buildMaintenancePayload(request)));
+`;
+  return JSON.parse(execNodeWithGitShim(fixture, ["--input-type=module", "-e", script], { input: JSON.stringify(request) }));
 }
 
 function makeAdapter({ branch, branchSha = null, metadata = null, pullRequests = [], changedPaths = [], verifyHead = null, failCreatePullRequest = false } = {}) {
@@ -149,23 +159,17 @@ test("complete bootstrap writes a genuine 41-source baseline and never an empty 
 });
 
 test("fresh manual patch preparation is canonicalized and rejects an extra package edit", async () => {
-  const previewRoot = mkdtempSync(join(tmpdir(), "erpc-maintenance-release-test-"));
+  const fixture = createGitFixture({ prefix: "erpc-maintenance-release-test-" });
+  const previewRoot = fixture.root;
   try {
-    execFileSync("git", ["clone", "--local", "--no-hardlinks", process.cwd(), previewRoot], { stdio: "pipe" });
-    cpSync("registry/release-prep.mjs", join(previewRoot, "registry/release-prep.mjs"));
-    cpSync("registry/ruby-lockfile.mjs", join(previewRoot, "registry/ruby-lockfile.mjs"));
-    cpSync("registry/release-plan.json", join(previewRoot, "registry/release-plan.json"));
-    cpSync("registry/observer-config.json", join(previewRoot, "registry/observer-config.json"));
-    // The observer capture below uses the populated checkout's catalog. Keep
-    // the frozen release fixture bound to the same catalog before preparing
-    // its manual release, even when the source catalog is still uncommitted.
-    cpSync("registry/token-catalog.json", join(previewRoot, "registry/token-catalog.json"));
+    fixture.git(["tag", "v0.6.0", fixture.syntheticBaselineSha]);
+    fixture.git(["tag", "packages/go/v0.6.0", fixture.syntheticBaselineSha]);
     const changelogPath = join(previewRoot, "CHANGELOG.md");
     writeFileSync(changelogPath, readFileSync(changelogPath, "utf8").replace("## Unreleased\n", "## Unreleased\n\n- Exercise a manual patch candidate.\n"));
-    execFileSync("git", ["add", "registry/release-prep.mjs", "registry/ruby-lockfile.mjs", "registry/release-plan.json", "registry/observer-config.json", "registry/token-catalog.json", "CHANGELOG.md"], { cwd: previewRoot, stdio: "pipe" });
-    execFileSync("git", ["-c", "user.name=Maintenance Test", "-c", "user.email=maintenance@example.invalid", "commit", "--quiet", "-m", "Add release preparation helpers"], { cwd: previewRoot, stdio: "pipe" });
-    const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: previewRoot, encoding: "utf8" }).trim();
-    const inspection = inspectRelease({ root: previewRoot, expectedHead: head });
+    fixture.git(["add", "CHANGELOG.md"]);
+    fixture.git(["-c", "user.name=Maintenance Test", "-c", "user.email=maintenance@example.invalid", "commit", "--quiet", "-m", "Add release preparation helpers"]);
+    const head = fixture.git(["rev-parse", "HEAD"]);
+    const inspection = inspectRelease({ root: previewRoot, expectedHead: head, runner: fixture.runner });
     assert.ok(inspection.currentVersion);
     const effectiveBaseline = inspection.releasedBaseline?.version ?? inspection.baselineVersion;
     const highestVersion = compareVersions(inspection.currentVersion, effectiveBaseline) >= 0
@@ -175,10 +179,10 @@ test("fresh manual patch preparation is canonicalized and rejects an extra packa
     const candidateVersion = `${parsedHighestVersion.major}.${parsedHighestVersion.minor}.${parsedHighestVersion.patch + 1}`;
     assert.ok(compareVersions(candidateVersion, inspection.currentVersion) > 0);
     assert.ok(compareVersions(candidateVersion, effectiveBaseline) > 0);
-    const report = prepareRelease({ root: previewRoot, expectedHead: head, version: candidateVersion, releaseDate: "2026-09-15" });
+    const report = prepareRelease({ root: previewRoot, expectedHead: head, version: candidateVersion, releaseDate: "2026-09-15", runner: fixture.runner });
     const artifacts = await makeArtifacts({ sourceSha: head });
     const trustedState = readTrustedState(previewRoot);
-    const payload = buildMaintenancePayload({ observation: artifacts, releaseReport: report, baseSha: head, expectedSourceSha: head, catalogDigest: artifacts.receipts.catalogDigest, configDigest: artifacts.receipts.configDigest, trustedState });
+    const payload = buildMaintenancePayloadInChild(fixture, { root: previewRoot, observation: artifacts, releaseReport: report, baseSha: head, expectedSourceSha: head, catalogDigest: artifacts.receipts.catalogDigest, configDigest: artifacts.receipts.configDigest, trustedState });
     assert.equal(payload.branch, RELEASE_BRANCH);
     assert.deepEqual(payload.outputPaths, ["CHANGELOG.md", ...PACKAGE_VERSION_PATHS].sort());
     assert.equal(payload.outputPaths.length, 8);
@@ -190,9 +194,9 @@ test("fresh manual patch preparation is canonicalized and rejects an extra packa
     const packageJson = JSON.parse(readFileSync(packagePath, "utf8"));
     packageJson.description = "untrusted extra edit";
     writeFileSync(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`);
-    assert.throws(() => buildMaintenancePayload({ observation: artifacts, releaseReport: report, baseSha: head, expectedSourceSha: head, catalogDigest: artifacts.receipts.catalogDigest, configDigest: artifacts.receipts.configDigest, trustedState: readTrustedState(previewRoot) }), /canonical B1 preparation|RELEASE_INVALID/u);
+    assert.throws(() => buildMaintenancePayloadInChild(fixture, { root: previewRoot, observation: artifacts, releaseReport: report, baseSha: head, expectedSourceSha: head, catalogDigest: artifacts.receipts.catalogDigest, configDigest: artifacts.receipts.configDigest, trustedState: readTrustedState(previewRoot) }), /canonical B1 preparation|RELEASE_INVALID/u);
   } finally {
-    rmSync(previewRoot, { recursive: true, force: true });
+    removeGitFixture(fixture);
   }
 });
 

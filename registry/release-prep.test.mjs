@@ -15,29 +15,52 @@ import {
   REPOSITORY_ROOT,
   STATUS,
   compareVersions,
-  inspectRelease,
+  inspectRelease as inspectReleaseProduction,
   parseStableVersion,
-  prepareRelease,
+  prepareRelease as prepareReleaseProduction,
 } from "./release-prep.mjs";
 import { computeDigest as computeDexDigest } from "./dex-catalog.mjs";
 import { CATALOG, computeDigest, validateCatalog } from "./token-catalog.mjs";
 import { renderLanguage as renderRankingLanguage } from "./generate-token-rankings.mjs";
 import { replaceRubyLockVersion, rubyLockVersion } from "./ruby-lockfile.mjs";
 import { replayTokenRankings } from "./token-rankings.mjs";
+import {
+  CANONICAL_APPROVED_SOURCE_SHA,
+  CANONICAL_PAIRED_TAG_PEEL,
+  createGitFixture,
+  execNodeWithGitShim,
+  removeGitFixture,
+} from "./test-git-fixture.mjs";
 
-const BASELINE_TAG_COMMIT = "d77169fbf9e927d51113af7a2ee51a5c9b10f3fc";
+const BASELINE_TAG_COMMIT = CANONICAL_PAIRED_TAG_PEEL;
 const WORKTREE_BASE = APPROVED_SOURCE_SHA;
 const HISTORICAL_FIXTURE_TAGS = Object.freeze([
-  ["v0.2.0", "304f1211211ca839423caacc17e09760f0b3b387"],
+  ["v0.2.0", null],
   ["v0.6.0", BASELINE_TAG_COMMIT],
   ["packages/go/v0.6.0", BASELINE_TAG_COMMIT],
 ]);
 
+const FIXTURES = new Map();
+
+function inspectRelease(options = {}) {
+  const fixture = FIXTURES.get(options.root);
+  return inspectReleaseProduction(fixture && options.runner === undefined ? { ...options, runner: fixture.runner } : options);
+}
+
+function prepareRelease(options = {}) {
+  const fixture = FIXTURES.get(options.root);
+  return prepareReleaseProduction(fixture && options.runner === undefined ? { ...options, runner: fixture.runner } : options);
+}
+
 function git(root, args, { stdio = "pipe" } = {}) {
+  const fixture = FIXTURES.get(root);
+  if (fixture) return fixture.git(args, { stdio });
   return execFileSync("git", ["-C", root, ...args], { encoding: "utf8", stdio }).trim();
 }
 
 function gitRunner(command, args, { cwd } = {}) {
+  const fixture = FIXTURES.get(cwd);
+  if (fixture) return fixture.runner(command, args, { cwd });
   const result = spawnSync(command, args, { cwd, encoding: "utf8", stdio: "pipe" });
   return {
     status: result.status === null ? 1 : result.status,
@@ -52,29 +75,33 @@ function historicalTokenCatalog(root) {
 }
 
 function seedHistoricalFixtureTags(root) {
+  const fixture = FIXTURES.get(root);
   for (const [tag, commit] of HISTORICAL_FIXTURE_TAGS) {
-    execFileSync("git", ["-C", root, "tag", tag, commit], { encoding: "utf8", stdio: "ignore" });
+    const target = commit === null ? fixture.syntheticB2Sha : fixture.syntheticBaselineSha;
+    fixture.git(["tag", tag, target]);
   }
 }
 
 function newFixtureRepo(prefix) {
-  const root = mkdtempSync(path.join(tmpdir(), prefix));
-  execFileSync("git", ["clone", "--local", "--no-hardlinks", "--no-tags", REPOSITORY_ROOT, root], { encoding: "utf8", stdio: "ignore" });
-  try {
-    execFileSync("git", ["-C", root, "checkout", "--detach", WORKTREE_BASE], { encoding: "utf8", stdio: "ignore" });
-  } catch (error) {
-    throw new Error(`isolated fixture cannot checkout approved source ${WORKTREE_BASE}: ${error.message}`);
-  }
+  const fixture = createGitFixture({ prefix });
+  const root = fixture.root;
+  FIXTURES.set(root, fixture);
   const initialHead = git(root, ["rev-parse", "HEAD"]);
-  assert.equal(initialHead, WORKTREE_BASE, "isolated fixture must start at the approved historical source");
-  assert.equal(git(root, ["rev-parse", "--abbrev-ref", "HEAD"]), "HEAD", "isolated fixture must be detached at the historical source");
+  assert.equal(initialHead, fixture.syntheticPlanSha, "isolated fixture must end at synthetic release-plan candidate");
+  assert.equal(git(root, ["rev-parse", "--abbrev-ref", "HEAD"]), "HEAD", "isolated fixture must remain detached");
   assert.equal(git(root, ["tag", "--list"]), "", "isolated fixture must not inherit source tags");
-  const planTarget = path.join(root, "registry/release-plan.json");
-  writeFileSync(planTarget, readFileSync(path.join(REPOSITORY_ROOT, "registry/release-plan.json"), "utf8"));
-  commitAll(root, "fixture approved release plan");
+  assert.notEqual(fixture.syntheticB2Sha, fixture.syntheticBaselineSha);
+  assert.notEqual(fixture.syntheticBaselineSha, fixture.syntheticSourceSha);
+  assert.notEqual(fixture.syntheticSourceSha, fixture.syntheticPlanSha);
+  assert.notEqual(fixture.syntheticBaselineSha, CANONICAL_PAIRED_TAG_PEEL);
+  assert.notEqual(fixture.syntheticSourceSha, CANONICAL_APPROVED_SOURCE_SHA);
+  for (const [ancestor, descendant] of [
+    [fixture.syntheticB2Sha, fixture.syntheticBaselineSha],
+    [fixture.syntheticBaselineSha, fixture.syntheticSourceSha],
+    [fixture.syntheticSourceSha, fixture.syntheticPlanSha],
+  ]) assert.equal(fixture.runner("git", ["merge-base", "--is-ancestor", ancestor, descendant], { cwd: root }).status, 0);
   seedHistoricalFixtureTags(root);
   assert.equal(git(root, ["status", "--porcelain"]), "", "isolated fixture must be clean after plan checkout");
-  assert.equal(git(root, ["rev-parse", "--abbrev-ref", "HEAD"]), "HEAD", "isolated fixture must remain detached after plan checkout");
   return root;
 }
 
@@ -85,7 +112,11 @@ function removeWorktree(root) { removeIsolatedRepo(root); }
 function newIsolatedRepo() { return newFixtureRepo("erpc-release-prep-repo-"); }
 
 function removeIsolatedRepo(root) {
-  rmSync(root, { recursive: true, force: true });
+  const fixture = FIXTURES.get(root);
+  if (fixture) {
+    FIXTURES.delete(root);
+    removeGitFixture(fixture);
+  } else rmSync(root, { recursive: true, force: true });
 }
 
 async function withWorktree(callback) {
@@ -140,8 +171,6 @@ test("strict stable versions reject prereleases and leading zeroes", () => {
 
 test("historical fixtures isolate newer source tags and leave source refs untouched", () => {
   const sourceRefsBefore = git(REPOSITORY_ROOT, ["for-each-ref", "--format=%(refname) %(objectname)", "refs/tags"]);
-  assert.match(sourceRefsBefore, /^refs\/tags\/v0\.7\.0 /mu);
-  assert.match(sourceRefsBefore, /^refs\/tags\/packages\/go\/v0\.7\.0 /mu);
   const root = newIsolatedRepo();
   try {
     assert.equal(git(root, ["tag", "--list", "v0.7.0"]), "");
@@ -171,6 +200,21 @@ test("clean released baseline reports the approved catalog candidate through lat
     assert.ok(report.tags.warnings.some((warning) => warning.includes("v0.2.0")));
     assert.equal(report.tags.pairs.find((pair) => pair.version === BASELINE_VERSION).rootPeel, BASELINE_TAG_COMMIT);
   });
+});
+
+test("retargeted pinned baseline tags remain blocked instead of inheriting the synthetic peel", async () => {
+  const root = newIsolatedRepo();
+  const fixture = FIXTURES.get(root);
+  try {
+    const expectedHead = git(root, ["rev-parse", "HEAD"]);
+    fixture.git(["tag", "--force", "v0.6.0", fixture.syntheticSourceSha]);
+    fixture.git(["tag", "--force", "packages/go/v0.6.0", fixture.syntheticSourceSha]);
+    const report = inspectRelease({ root, expectedHead, runner: fixture.runner });
+    assert.equal(report.status, STATUS.BLOCKED_TAG_HISTORY);
+    assert.ok(report.tags.problems.some((problem) => problem.includes("must both peel to")));
+  } finally {
+    removeIsolatedRepo(root);
+  }
 });
 
 test("missing release plan never fabricates an approved version", async () => {
@@ -551,6 +595,7 @@ test("runtime patches remain automatic after an unrelated 0.8 shipping release",
 
 test("CLI normalizes an omitted version and reports new post-release shipping code as manual", async () => {
   const root = newIsolatedRepo();
+  const fixture = FIXTURES.get(root);
   try {
     const expectedHead = git(root, ["rev-parse", "HEAD"]);
     const prepared = prepareRelease({ root, expectedHead, releaseDate: "2026-09-20" });
@@ -560,12 +605,12 @@ test("CLI normalizes an omitted version and reports new post-release shipping co
     try {
       writeFileSync(path.join(root, "packages/typescript/src/index.ts"), `${readFileSync(path.join(root, "packages/typescript/src/index.ts"), "utf8")}\n// unplanned post-release shipping code\n`);
       const codeHead = commitAll(root, "unplanned post-release shipping code");
-      const output = execFileSync(process.execPath, [path.join(REPOSITORY_ROOT, "registry/release-prep.mjs"), "inspect", "--expected-head", codeHead, "--root", root, "--format=json"], { encoding: "utf8" });
+      const output = execNodeWithGitShim(fixture, [path.join(REPOSITORY_ROOT, "registry/release-prep.mjs"), "inspect", "--expected-head", codeHead, "--root", root, "--format=json"]);
       const report = JSON.parse(output);
       assert.equal(report.status, STATUS.MANUAL_VERSION_REQUIRED);
       assert.equal(report.selectedVersion, null);
       writeFileSync(path.join(root, "CHANGELOG.md"), readFileSync(path.join(root, "CHANGELOG.md"), "utf8").replace("## Unreleased\n", "## Unreleased\n\n- Manual 0.8 release note.\n"));
-      const manualOutput = execFileSync(process.execPath, [path.join(REPOSITORY_ROOT, "registry/release-prep.mjs"), "inspect", "--expected-head", codeHead, "--root", root, "--version", "0.8.0", "--format=json"], { encoding: "utf8" });
+      const manualOutput = execNodeWithGitShim(fixture, [path.join(REPOSITORY_ROOT, "registry/release-prep.mjs"), "inspect", "--expected-head", codeHead, "--root", root, "--version", "0.8.0", "--format=json"]);
       const manualReport = JSON.parse(manualOutput);
       assert.equal(manualReport.status, STATUS.PATCH_READY);
       assert.equal(manualReport.selectedVersion, "0.8.0");
