@@ -27,5 +27,8 @@
     "ruby:pack:check": "cd packages/ruby && bundle exec rake package && ruby scripts/verify-package.rb",
     "release:check": "corepack pnpm check && corepack pnpm test && corepack pnpm build && corepack pnpm pack:check && corepack pnpm method:parity && corepack pnpm rust:check && corepack pnpm rust:test && corepack pnpm rust:build && corepack pnpm rust:pack:check && corepack pnpm python:check && corepack pnpm python:test && corepack pnpm python:pack:check && corepack pnpm go:check && corepack pnpm go:test && corepack pnpm go:pack:check && corepack pnpm ruby:check && corepack pnpm ruby:test && corepack pnpm ruby:pack:check && node --test scripts/release-version.test.mjs && node scripts/verify-release.mjs",
     "release": "node scripts/release.mjs"
+  },
+  "devDependencies": {
+    "lefthook": "2.2.2"
   }
 }

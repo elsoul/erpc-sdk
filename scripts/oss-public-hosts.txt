@@ -1,0 +1,6 @@
+ava-rpc.erpc.global
+base.erpc.global
+edge.erpc.global
+solana-rpc.erpc.global
+storage.erpc.global
+user-api.erpc.global

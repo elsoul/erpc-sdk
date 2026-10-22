@@ -70,6 +70,95 @@ jobs:
               ;;
           esac
 
+  oss-hygiene:
+    name: OSS hygiene and secret scan (Linux Bash 5)
+    needs: validate-source
+    if: needs.validate-source.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Assert immutable hygiene checkout
+        env:
+          EXPECTED_HEAD_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
+          test -z "$(git status --porcelain)"
+      - name: Confirm Bash 5
+        run: |
+          set -euo pipefail
+          test "$(bash -c 'printf "%s" "${BASH_VERSINFO[0]}"')" = 5
+      - name: Generate the required UTF-8 locale
+        run: |
+          set -euo pipefail
+          sudo locale-gen en_US.UTF-8
+          locale -a | grep -E '^en_US\.(UTF-8|utf8)$'
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+      - name: Install the pinned pnpm workspace
+        run: |
+          set -euo pipefail
+          corepack enable
+          corepack prepare pnpm@11.24.0 --activate
+          corepack pnpm install --frozen-lockfile
+      - name: Run gitleaks over the complete history
+        env:
+          LANG: en_US.UTF-8
+          LC_ALL: en_US.UTF-8
+        run: bash scripts/run-gitleaks.sh git --redact --config .gitleaks.toml --log-opts=--all .
+      - name: Run the tracked-file OSS hygiene gate
+        env:
+          LANG: en_US.UTF-8
+          LC_ALL: en_US.UTF-8
+        run: bash scripts/check-oss-hygiene.sh
+      - name: Run the OSS hygiene self-test harness
+        run: bash scripts/tests/check-oss-hygiene.test.sh
+      - name: Run OSS control wiring and mutation tests
+        run: node --test scripts/tests/oss-controls.test.mjs
+      - name: Run the gitleaks wrapper tests
+        run: bash scripts/tests/run-gitleaks.test.sh
+      - name: Run the OSS hook tests
+        run: bash scripts/tests/oss-hooks.test.sh
+
+  oss-hygiene-bash32:
+    name: OSS hygiene (macOS /bin/bash 3.2)
+    needs: validate-source
+    if: needs.validate-source.result == 'success'
+    runs-on: macos-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: /bin/bash --noprofile --norc -eo pipefail {0}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Assert immutable hygiene checkout
+        env:
+          EXPECTED_HEAD_SHA: ${{ github.sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD_SHA"
+          test -z "$(git status --porcelain)"
+      - name: Confirm /bin/bash 3.2
+        run: |
+          test -x /bin/bash
+          test "$(/bin/bash -c 'printf "%s.%s" "${BASH_VERSINFO[0]}" "${BASH_VERSINFO[1]}"')" = 3.2
+      - name: Run the tracked-file OSS hygiene gate
+        env:
+          LANG: en_US.UTF-8
+          LC_ALL: en_US.UTF-8
+        run: /bin/bash scripts/check-oss-hygiene.sh
+      - name: Run the OSS hygiene self-test harness
+        run: /bin/bash scripts/tests/check-oss-hygiene.test.sh
+
   catalog:
     name: Catalog and maintenance checks
     needs: validate-source
@@ -1096,6 +1185,8 @@ jobs:
       - ranking-parity
       - swap-execution-parity
       - bridge-parity
+      - oss-hygiene
+      - oss-hygiene-bash32
     if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -1115,6 +1206,8 @@ jobs:
           RANKING_PARITY_RESULT: ${{ needs.ranking-parity.result }}
           SWAP_EXECUTION_PARITY_RESULT: ${{ needs.swap-execution-parity.result }}
           BRIDGE_PARITY_RESULT: ${{ needs.bridge-parity.result }}
+          OSS_HYGIENE_RESULT: ${{ needs.oss-hygiene.result }}
+          OSS_HYGIENE_BASH32_RESULT: ${{ needs.oss-hygiene-bash32.result }}
         run: |
           set -euo pipefail
           test "$VALIDATE_SOURCE_RESULT" = success
@@ -1128,6 +1221,8 @@ jobs:
           test "$RANKING_PARITY_RESULT" = success
           test "$SWAP_EXECUTION_PARITY_RESULT" = success
           test "$BRIDGE_PARITY_RESULT" = success
+          test "$OSS_HYGIENE_RESULT" = success
+          test "$OSS_HYGIENE_BASH32_RESULT" = success
 
   source-binding:
     name: Emit immutable CI source binding

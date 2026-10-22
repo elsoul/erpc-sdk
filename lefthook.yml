@@ -1,0 +1,47 @@
+# SPDX-FileCopyrightText: 2026 ELSOUL LABO B.V.
+# SPDX-License-Identifier: Apache-2.0
+# Modified for the SDK: pinned binary wrapper, index hygiene and language checks.
+# Install explicitly with `pnpm lefthook install`; see CONTRIBUTING.md.
+
+pre-commit:
+  parallel: true
+  commands:
+    gitleaks:
+      run: bash scripts/run-gitleaks.sh protect --staged --redact --config .gitleaks.toml
+    oss-hygiene:
+      run: bash scripts/check-oss-hygiene.sh --staged
+    typescript-check:
+      glob: 'packages/typescript/**/*.{ts,js,mjs}'
+      run: corepack pnpm check
+    rust-format:
+      glob: '*.rs'
+      run: cargo fmt --all -- --check
+    python-check:
+      glob: '*.py'
+      run: corepack pnpm python:check
+    go-format:
+      glob: '*.go'
+      run: node scripts/check-go-format.mjs
+    ruby-check:
+      glob: '*.{rb,gemspec}'
+      run: corepack pnpm ruby:check
+
+pre-push:
+  parallel: true
+  commands:
+    gitleaks-history:
+      run: bash scripts/run-gitleaks.sh git --redact --config .gitleaks.toml --log-opts=--all .
+    oss-hygiene-all:
+      run: bash scripts/check-oss-hygiene.sh
+    gate-self-tests:
+      run: bash scripts/tests/check-oss-hygiene.test.sh && bash scripts/tests/run-gitleaks.test.sh && bash scripts/tests/oss-hooks.test.sh && node --test scripts/tests/oss-controls.test.mjs
+    typescript:
+      run: corepack pnpm check && corepack pnpm test
+    rust:
+      run: corepack pnpm rust:check && corepack pnpm rust:test
+    python:
+      run: corepack pnpm python:check && corepack pnpm python:test
+    go:
+      run: corepack pnpm go:check && corepack pnpm go:test
+    ruby:
+      run: corepack pnpm ruby:check && corepack pnpm ruby:test
