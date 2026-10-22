@@ -774,6 +774,96 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  ruby34-compat:
+    name: Ruby 3.4 compatibility and clean gem consumer
+    needs: validate-source
+    if: needs.validate-source.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: packages/ruby
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Install Ruby 3.4
+        uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b # v1
+        with:
+          ruby-version: '3.4'
+          bundler-cache: true
+          working-directory: packages/ruby
+      - name: Record Ruby and Bundler versions
+        run: |
+          ruby --version
+          bundle --version
+      - name: Check syntax
+        run: bundle exec rake check
+      - name: Test
+        run: bundle exec rake test
+      - name: Build and inspect gem
+        run: |
+          bundle exec rake package
+          ruby scripts/verify-package.rb
+      - name: Verify fresh installed gem consumer
+        run: |
+          set -euo pipefail
+          mapfile -t GEM_PACKAGES < <(compgen -G "$GITHUB_WORKSPACE/packages/ruby/pkg/erpc-sdk-*.gem" || true)
+          test "${#GEM_PACKAGES[@]}" -eq 1
+          GEM_PACKAGE="$(realpath "${GEM_PACKAGES[0]}")"
+          test -f "$GEM_PACKAGE"
+          GEM_HOME="$(mktemp -d "$RUNNER_TEMP/ruby34-gem-home.XXXXXX")"
+          GEM_PATH="$GEM_HOME"
+          export GEM_HOME GEM_PATH
+          while IFS='=' read -r VARIABLE _; do
+            case "$VARIABLE" in
+              BUNDLE_*|BUNDLER_ORIG_*|RUBYOPT|RUBYLIB|RUBYGEMS_GEMDEPS)
+                unset "$VARIABLE"
+                ;;
+            esac
+          done < <(env)
+          cd "$GEM_HOME"
+          gem install "$GEM_PACKAGE" --no-document --norc --clear-sources --source https://rubygems.org
+          ruby <<'RUBY'
+          require "base64"
+          require "digest/keccak"
+          require "erpc_sdk"
+
+          gem_home = File.realpath(ENV.fetch("GEM_HOME"))
+          gem_home_prefix = "#{gem_home}#{File::SEPARATOR}"
+          beneath_gem_home = lambda do |path|
+            File.realpath(path).start_with?(gem_home_prefix)
+          end
+
+          sdk_spec = Gem.loaded_specs.fetch("erpc-sdk")
+          base64_spec = Gem.loaded_specs.fetch("base64")
+          digest_spec = Gem.loaded_specs.fetch("digest-keccak")
+          abort "SDK version mismatch" unless ERPC::VERSION == "0.9.1"
+          abort "base64 version mismatch" unless base64_spec.version == Gem::Version.new("0.2.0")
+          abort "digest-keccak version mismatch" unless digest_spec.version == Gem::Version.new("0.0.7")
+
+          [sdk_spec, base64_spec, digest_spec].each do |spec|
+            unless beneath_gem_home.call(spec.full_gem_path)
+              abort "#{spec.name} was loaded outside the fresh gem home: #{spec.full_gem_path}"
+            end
+          end
+
+          expected_sdk = File.realpath(File.join(sdk_spec.full_gem_path, "lib", "erpc_sdk.rb"))
+          loaded_sdk = $LOADED_FEATURES.filter_map do |feature|
+            begin
+              File.realpath(feature)
+            rescue Errno::ENOENT, TypeError
+              nil
+            end
+          end.find { |feature| File.basename(feature) == "erpc_sdk.rb" }
+          abort "SDK entrypoint was not loaded from the installed gem" unless loaded_sdk == expected_sdk
+
+          encoded = Base64.strict_encode64("erpc-sdk ruby 3.4")
+          abort "Base64 round trip failed" unless Base64.strict_decode64(encoded) == "erpc-sdk ruby 3.4"
+          RUBY
+
   dex-parity:
     name: Verify native DEX runtime parity
     needs:
@@ -1181,6 +1271,7 @@ jobs:
       - python
       - go
       - ruby
+      - ruby34-compat
       - dex-parity
       - ranking-parity
       - swap-execution-parity
@@ -1202,6 +1293,7 @@ jobs:
           PYTHON_RESULT: ${{ needs.python.result }}
           GO_RESULT: ${{ needs.go.result }}
           RUBY_RESULT: ${{ needs.ruby.result }}
+          RUBY34_COMPAT_RESULT: ${{ needs.ruby34-compat.result }}
           DEX_PARITY_RESULT: ${{ needs.dex-parity.result }}
           RANKING_PARITY_RESULT: ${{ needs.ranking-parity.result }}
           SWAP_EXECUTION_PARITY_RESULT: ${{ needs.swap-execution-parity.result }}
@@ -1217,6 +1309,7 @@ jobs:
           test "$PYTHON_RESULT" = success
           test "$GO_RESULT" = success
           test "$RUBY_RESULT" = success
+          test "$RUBY34_COMPAT_RESULT" = success
           test "$DEX_PARITY_RESULT" = success
           test "$RANKING_PARITY_RESULT" = success
           test "$SWAP_EXECUTION_PARITY_RESULT" = success
