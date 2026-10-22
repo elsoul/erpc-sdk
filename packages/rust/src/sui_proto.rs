@@ -38,8 +38,8 @@ pub(crate) struct GetServiceInfoResponse {
 /// Request for the selected object identity projection.
 #[derive(Clone, PartialEq, Message)]
 pub(crate) struct GetObjectRequest {
-    #[prost(string, tag = "1")]
-    pub(crate) object_id: String,
+    #[prost(string, optional, tag = "1")]
+    pub(crate) object_id: Option<String>,
     #[prost(uint64, optional, tag = "2")]
     pub(crate) version: Option<u64>,
 }
@@ -65,10 +65,10 @@ pub(crate) struct Object {
 /// Request for one owner's balance in one coin type.
 #[derive(Clone, PartialEq, Message)]
 pub(crate) struct GetBalanceRequest {
-    #[prost(string, tag = "1")]
-    pub(crate) owner: String,
-    #[prost(string, tag = "2")]
-    pub(crate) coin_type: String,
+    #[prost(string, optional, tag = "1")]
+    pub(crate) owner: Option<String>,
+    #[prost(string, optional, tag = "2")]
+    pub(crate) coin_type: Option<String>,
 }
 
 /// Response containing one balance.

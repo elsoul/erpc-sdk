@@ -306,7 +306,7 @@ fn validate_trailer(trailer: &[u8]) -> Result<()> {
             return Err(invalid_response("Sui gRPC-Web response trailer is invalid"));
         }
         let value = value.trim_matches([' ', '\t']);
-        if name.eq_ignore_ascii_case("grpc-status") {
+        if name == "grpc-status" {
             if status_seen || value != "0" {
                 return Err(invalid_response("Sui gRPC-Web response status is invalid"));
             }
@@ -322,7 +322,10 @@ fn validate_trailer(trailer: &[u8]) -> Result<()> {
 fn is_header_name(name: &str) -> bool {
     !name.is_empty()
         && name.bytes().all(|byte| {
-            byte.is_ascii_alphanumeric() || b"!#$%&'*+-.^_|~".contains(&byte) || byte == 96
+            byte.is_ascii_lowercase()
+                || byte.is_ascii_digit()
+                || b"!#$%&'*+-.^_|~".contains(&byte)
+                || byte == 96
         })
 }
 

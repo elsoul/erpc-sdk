@@ -75,6 +75,75 @@ impl SuiClient {
 }
 
 /// Read-only Sui gRPC-Web client.
+///
+/// The namespace intentionally has no arbitrary request or transport escape
+/// hatch. Each boundary below is checked independently by rustdoc.
+///
+/// ~~~compile_fail
+/// use erpc_sdk::SuiGrpcWebClient;
+/// let client: SuiGrpcWebClient = todo!();
+/// let _ = client.raw("method", None);
+/// ~~~
+///
+/// ~~~compile_fail
+/// use erpc_sdk::SuiGrpcWebClient;
+/// let client: SuiGrpcWebClient = todo!();
+/// let _ = client.request("method", ());
+/// ~~~
+///
+/// ~~~compile_fail
+/// use erpc_sdk::SuiGrpcWebClient;
+/// let client: SuiGrpcWebClient = todo!();
+/// let _ = client.path("/arbitrary");
+/// ~~~
+///
+/// ~~~compile_fail
+/// use erpc_sdk::SuiGrpcWebClient;
+/// let client: SuiGrpcWebClient = todo!();
+/// let _ = client.bytes(Vec::<u8>::new());
+/// ~~~
+///
+/// ~~~compile_fail
+/// use erpc_sdk::SuiGrpcWebClient;
+/// let client: SuiGrpcWebClient = todo!();
+/// let _ = client.batch(Vec::<()>::new());
+/// ~~~
+///
+/// ~~~compile_fail
+/// use erpc_sdk::SuiGrpcWebClient;
+/// let client: SuiGrpcWebClient = todo!();
+/// let _ = client.stream();
+/// ~~~
+///
+/// ~~~compile_fail
+/// use erpc_sdk::SuiGrpcWebClient;
+/// let client: SuiGrpcWebClient = todo!();
+/// let _ = client.subscription();
+/// ~~~
+///
+/// ~~~compile_fail
+/// use erpc_sdk::SuiGrpcWebClient;
+/// let client: SuiGrpcWebClient = todo!();
+/// let _ = client.verify_signature(Vec::<u8>::new());
+/// ~~~
+///
+/// ~~~compile_fail
+/// use erpc_sdk::SuiGrpcWebClient;
+/// let client: SuiGrpcWebClient = todo!();
+/// let _ = client.simulate_transaction(Vec::<u8>::new());
+/// ~~~
+///
+/// ~~~compile_fail
+/// use erpc_sdk::SuiGrpcWebClient;
+/// let client: SuiGrpcWebClient = todo!();
+/// let _ = client.execute_transaction(Vec::<u8>::new());
+/// ~~~
+///
+/// ~~~compile_fail
+/// use erpc_sdk::SuiGrpcWebClient;
+/// let client: SuiGrpcWebClient = todo!();
+/// let _ = client.transport();
+/// ~~~
 #[derive(Clone)]
 pub struct SuiGrpcWebClient {
     transport: Arc<sui_grpc_web::SuiGrpcWebTransport>,
@@ -108,7 +177,7 @@ impl SuiGrpcWebClient {
         let object_id = object_id.into();
         validate_input(&object_id)?;
         let body = sui_grpc_web::frame_request(&crate::sui_proto::GetObjectRequest {
-            object_id,
+            object_id: Some(object_id),
             version,
         })?;
         Ok(PendingSuiGrpcWebRequest {
@@ -130,8 +199,10 @@ impl SuiGrpcWebClient {
         let coin_type = coin_type.into();
         validate_input(&owner)?;
         validate_input(&coin_type)?;
-        let body =
-            sui_grpc_web::frame_request(&crate::sui_proto::GetBalanceRequest { owner, coin_type })?;
+        let body = sui_grpc_web::frame_request(&crate::sui_proto::GetBalanceRequest {
+            owner: Some(owner),
+            coin_type: Some(coin_type),
+        })?;
         Ok(PendingSuiGrpcWebRequest {
             transport: Arc::clone(&self.transport),
             method: SUI_GRPC_WEB_METHODS[2],

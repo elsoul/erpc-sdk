@@ -948,7 +948,7 @@ impl TryFrom<ErpcClientConfig> for ResolvedErpcClientConfig {
             near_rpc,
             tron_endpoint: endpoint(&config.tron_endpoint, false)?,
             tron_rpc,
-            sui_endpoint: endpoint(&config.sui_endpoint, false)?,
+            sui_endpoint: resolve_sui_hosted_endpoint(&config.sui_endpoint)?,
             sui_grpc_web,
         })
     }
@@ -992,6 +992,28 @@ pub(crate) fn endpoint(value: &str, local_http_only: bool) -> Result<Url> {
         &normalized
     });
     Ok(url)
+}
+
+fn resolve_sui_hosted_endpoint(value: &str) -> Result<Url> {
+    let parsed = Url::parse(value).map_err(|_| {
+        ErpcError::Config("Sui hosted endpoint must be an absolute HTTP(S) URL".to_owned())
+    })?;
+    let authority_has_userinfo = value.trim().find("://").is_some_and(|scheme_end| {
+        let authority = &value.trim()[scheme_end + 3..];
+        let authority_end = authority.find(['/', '?', '#']).unwrap_or(authority.len());
+        authority[..authority_end].contains('@')
+    });
+    if authority_has_userinfo || !parsed.username().is_empty() || parsed.password().is_some() {
+        return Err(ErpcError::Config(
+            "Sui hosted endpoint must not contain userinfo".to_owned(),
+        ));
+    }
+    if parsed.fragment().is_some() {
+        return Err(ErpcError::Config(
+            "Sui hosted endpoint must not contain a fragment".to_owned(),
+        ));
+    }
+    endpoint(value, false)
 }
 
 fn resolve_rpc_endpoint(config: &RpcEndpointConfig) -> Result<ResolvedRpcEndpoint> {
