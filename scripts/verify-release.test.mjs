@@ -1267,3 +1267,160 @@ test('CI invokes split release cohorts and runs release behavior tests', async (
   assert.match(ci, /node scripts\/verify-release\.mjs --scope non-rust/)
   assert.match(ci, /node --test scripts\/verify-release\.test\.mjs/)
 })
+
+test('recovery workflow is manual, M-bound, read-only for registries, and keeps the fifteen-asset boundary', async () => {
+  const workflow = await readFile(new URL('../.github/workflows/reconcile-foundation.yml', import.meta.url), 'utf8')
+  const originalWorkflow = await readFile(new URL('../.github/workflows/release.yml', import.meta.url), 'utf8')
+  const originalVerifier = await readFile(new URL('./verify-release.mjs', import.meta.url), 'utf8')
+  const expectedWorkflow = (await execFileAsync('git', ['show', 'HEAD:.github/workflows/release.yml'])).stdout
+  const expectedVerifier = (await execFileAsync('git', ['show', 'HEAD:scripts/verify-release.mjs'])).stdout
+  assert.equal(originalWorkflow, expectedWorkflow)
+  assert.equal(originalVerifier, expectedVerifier)
+  assert.match(workflow, /workflow_dispatch:/)
+  assert.doesNotMatch(workflow, /^\s+(schedule|push|pull_request|pull_request_target|workflow_call|release):/m)
+  assert.match(workflow, /expected_control_commit:/)
+  assert.match(workflow, /cancel-in-progress:\s*false/)
+  assert.match(workflow, /permissions:\n\s+contents: read/)
+  assert.match(workflow, /GH_TOKEN: \$\{\{ github\.token \}\}[\s\S]*CONTROL_COMMIT: \$\{\{ steps\.guard\.outputs\.control_commit \}\}/)
+  assert.match(workflow, /Recheck main remains C at the read-before-write boundary[\s\S]*CONTROL_COMMIT: \$\{\{ steps\.guard\.outputs\.control_commit \}\}/)
+  assert.doesNotMatch(workflow, /id-token:\s*write/)
+  assert.doesNotMatch(workflow, /npm\s+publish|npm\s+dist-tag|twine\s+upload|gem\s+push|pypa\/gh-action-pypi-publish|configure-rubygems-credentials/)
+  assert.doesNotMatch(workflow, /--local(?:\s|$)/m)
+  assert.match(workflow, /SOURCE_M:\s*4677d67d14c8fbb17ada3ba824d1623180c6b4d9/)
+  assert.match(workflow, /PUBLISH_RUN_ID:\s*'39871872971'/)
+  assert.match(workflow, /PREPARED_ARTIFACT_ID:\s*'12461868771'/)
+  assert.match(workflow, /PREPARED_BINDING_ARTIFACT_ID:\s*'12463070497'/)
+  assert.match(workflow, /foundation-recovery-context-\$\{\{ github\.run_id \}\}/)
+  assert.match(workflow, /gem install [^\n]*--both[^\n]*--clear-sources --source https:\/\/rubygems\.org\//)
+  assert.match(workflow, /npm audit signatures --json --include-attestations/)
+  assert.match(workflow, /pypi_attestations import Distribution, GitHubPublisher, Provenance/)
+  assert.match(workflow, /test "\$\(find "\$ASSET_DIR" -maxdepth 1 -type f \| wc -l \| tr -d ' '\)" = 15/)
+  const aggregateStep = workflow.slice(workflow.indexOf('- name: Verify current receipt/context artifact metadata and both Ruby consumers'), workflow.indexOf('\n      - name:', workflow.indexOf('- name: Verify current receipt/context artifact metadata and both Ruby consumers') + 1))
+  assert.match(aggregateStep, /FOUNDATION_PLAN_FILE:/)
+  assert.match(aggregateStep, /--foundation-verify/)
+  assert.match(aggregateStep, /--foundation-proof-verify/)
+  assert.match(workflow, /compare_consumed \"foundation-ruby-consumer-\$GITHUB_RUN_ID-3\.1\"/)
+})
+
+test('recovery control guard executes valid C/M fixtures and rejects event and projection changes', async t => {
+  const workflow = await readFile(new URL('../.github/workflows/reconcile-foundation.yml', import.meta.url), 'utf8')
+  const block = extractWorkflowRunBlock(workflow, 'Guard repository, event, control C, source M, and exact projection')
+  const directory = await mkdtemp(join(tmpdir(), 'erpc-sdk-recovery-guard-'))
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  const runGit = arguments_ => execFileAsync('git', arguments_, { cwd: directory })
+  await runGit(['init', '-q'])
+  await runGit(['config', 'user.email', 'fixture@example.invalid'])
+  await runGit(['config', 'user.name', 'fixture'])
+  await mkdir(join(directory, '.github', 'workflows'), { recursive: true })
+  await mkdir(join(directory, 'scripts'), { recursive: true })
+  await mkdir(join(directory, 'docs'), { recursive: true })
+  await writeFile(join(directory, '.github/workflows/release.yml'), 'immutable release\n')
+  await writeFile(join(directory, 'scripts/verify-release.mjs'), 'immutable verifier\n')
+  await writeFile(join(directory, 'scripts/verify-release.test.mjs'), 'old test\n')
+  await writeFile(join(directory, 'docs/RELEASING.md'), 'old docs\n')
+  const gh = join(directory, 'gh')
+  await writeFile(gh, '#!/usr/bin/env node\n' +
+    'const args = process.argv.slice(2)\n' +
+    'if (args.includes("--jq")) process.stdout.write(process.env.CONTROL_COMMIT + "\\n")\n' +
+    'else process.stdout.write(JSON.stringify({ object: { sha: process.env.CONTROL_COMMIT } }))\n')
+  await chmod(gh, 0o755)
+  await runGit(['add', '.'])
+  await runGit(['commit', '-qm', 'M fixture'])
+  const sourceCommit = (await runGit(['rev-parse', 'HEAD'])).stdout.trim()
+  await writeFile(join(directory, '.github/workflows/reconcile-foundation.yml'), 'recovery workflow\n')
+  await writeFile(join(directory, 'scripts/verify-release.test.mjs'), 'new test\n')
+  await writeFile(join(directory, 'docs/RELEASING.md'), 'new docs\n')
+  await runGit(['add', '.'])
+  await runGit(['commit', '-qm', 'C fixture'])
+  const controlCommit = (await runGit(['rev-parse', 'HEAD'])).stdout.trim()
+  const outputFile = join(directory, 'output')
+  const runGuard = (overrides = {}) => execFileAsync('bash', ['-c', 'set -euo pipefail\n' + block], {
+    cwd: directory,
+    env: {
+      ...process.env,
+      PATH: directory + ':' + (process.env.PATH ?? ''),
+      CONTROL_COMMIT: controlCommit,
+      EVENT_SHA: controlCommit,
+      WORKFLOW_SHA: controlCommit,
+      WORKFLOW_REF: 'elsoul/erpc-sdk/.github/workflows/reconcile-foundation.yml@refs/heads/main',
+      EVENT_NAME: 'workflow_dispatch',
+      EVENT_REF: 'refs/heads/main',
+      REPOSITORY: 'elsoul/erpc-sdk',
+      REPOSITORY_ID: '1429568627',
+      EXPECTED_REPOSITORY: 'elsoul/erpc-sdk',
+      EXPECTED_REPOSITORY_ID: '1429568627',
+      SOURCE_M: sourceCommit,
+      GITHUB_OUTPUT: outputFile,
+      ...overrides,
+    },
+  })
+  await runGuard()
+  assert.match(await readFile(outputFile, 'utf8'), new RegExp('control_commit=' + controlCommit))
+  await assert.rejects(runGuard({ EVENT_NAME: 'push' }))
+  await writeFile(join(directory, 'packages-extra.txt'), 'unapproved path\n')
+  await runGit(['add', 'packages-extra.txt'])
+  await runGit(['commit', '-qm', 'unapproved projection'])
+  const hostileCommit = (await runGit(['rev-parse', 'HEAD'])).stdout.trim()
+  await assert.rejects(runGuard({ CONTROL_COMMIT: hostileCommit, EVENT_SHA: hostileCommit, WORKFLOW_SHA: hostileCommit }))
+})
+
+test('recovery Ruby consumer block executes the isolated dependency path and fails on install errors', async t => {
+  const workflow = await readFile(new URL('../.github/workflows/reconcile-foundation.yml', import.meta.url), 'utf8')
+  const block = extractWorkflowRunBlock(workflow, 'Run the exact gem with declared dependencies from only RubyGems.org')
+  const directory = await mkdtemp(join(tmpdir(), 'erpc-sdk-recovery-ruby-'))
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  const gemFile = join(directory, 'erpc-sdk-0.9.1.gem')
+  await writeFile(gemFile, 'approved gem fixture\n')
+  const gemArgs = join(directory, 'gem-args')
+  const gem = join(directory, 'gem')
+  await writeFile(gem, '#!/bin/sh\n' +
+    'printf "%s\\n" "$@" > "$GEM_ARGS"\n' +
+    'if [ "$GEM_FAIL" = 1 ]; then exit 23; fi\n')
+  await chmod(gem, 0o755)
+  const ruby = join(directory, 'ruby')
+  await writeFile(ruby, '#!/bin/sh\n' +
+    'cat > "$RUBY_STDIN"\n' +
+    'if [ "$RUBY_FAIL" = 1 ]; then exit 24; fi\n')
+  await chmod(ruby, 0o755)
+  const proof = join(directory, 'rubygems-proof.json')
+  const baseEnvironment = {
+    ...process.env,
+    PATH: directory + ':' + (process.env.PATH ?? ''),
+    RUNNER_TEMP: directory,
+    GEM_FILE: gemFile,
+    GEM_SHA256: '9af4312d655206e3f71481a2414382095cf8857fd481fed878503577b2a946d2',
+    RUBY_VERSION_UNDER_TEST: '3.4',
+    GEM_ARGS: gemArgs,
+    RUBY_STDIN: join(directory, 'ruby-stdin'),
+    RUBY_EVIDENCE_FILE: join(directory, 'ruby-consumer-3.4.json'),
+    EXPECTED_REPOSITORY: 'elsoul/erpc-sdk',
+    SOURCE_M: '4677d67d14c8fbb17ada3ba824d1623180c6b4d9',
+    PLAN_SHA256: '779aa1c48dc9ba2178fcfe021e102a12df85e4098c66120b1a3d2e8d7ca1911c',
+    PREPARED_RUN_ID: '39862319930',
+    PREPARED_RUN_ATTEMPT: '1',
+    PREPARED_ARTIFACT_ID: '12461868771',
+    GITHUB_RUN_ID: '777777',
+    GITHUB_RUN_ATTEMPT: '1',
+  }
+  for (const key of ['GEM_HOST_API_KEY', 'BUNDLE_GEM__PUSH_KEY', 'RUBYGEMS_API_KEY', 'RUBYGEMS_GEMDEPS', 'BUNDLER_ORIG_BUNDLE_BIN_PATH', 'BUNDLER_ORIG_BUNDLE_GEMFILE', 'BUNDLER_ORIG_BUNDLE_PATH', 'BUNDLER_ORIG_BUNDLE_WITH', 'BUNDLER_ORIG_BUNDLE_WITHOUT', 'BUNDLER_ORIG_RUBYOPT', 'BUNDLER_ORIG_RUBYLIB', 'BUNDLE_GEMFILE', 'BUNDLE_PATH', 'BUNDLE_WITH', 'BUNDLE_WITHOUT', 'RUBYOPT', 'RUBYLIB']) delete baseEnvironment[key]
+  const runConsumer = (overrides = {}) => execFileAsync('bash', ['-c', 'set -euo pipefail\n' + block], {
+    cwd: directory,
+    env: { ...baseEnvironment, ...overrides },
+  })
+  await runConsumer()
+  const arguments_ = (await readFile(gemArgs, 'utf8')).trim().split(/\r?\n/)
+  assert.ok(arguments_.includes(gemFile))
+  assert.ok(arguments_.includes('--both'))
+  assert.ok(arguments_.includes('--clear-sources'))
+  assert.ok(arguments_.includes('--source'))
+  assert.ok(arguments_.includes('https://rubygems.org/'))
+  assert.equal(arguments_.includes('--local'), false)
+  assert.equal(arguments_.includes('--ignore-dependencies'), false)
+  const receipt = JSON.parse(await readFile(proof, 'utf8'))
+  assert.equal(receipt.state, 'reused')
+  assert.deepEqual(receipt.auth, { requested: false, uploadAttempted: false, credentialObserved: false })
+  await rm(proof, { force: true })
+  await assert.rejects(runConsumer({ GEM_FAIL: '1' }))
+  await assert.rejects(runConsumer({ RUBY_FAIL: '1' }))
+  await assert.rejects(runConsumer({ RUBYGEMS_GEMDEPS: join(directory, 'Gemfile') }))
+})
