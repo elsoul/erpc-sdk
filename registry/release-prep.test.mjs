@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -169,6 +169,14 @@ test("strict stable versions reject prereleases and leading zeroes", () => {
   for (const value of ["01.2.3", "0.07.0", "0.7.00", "0.7.0-beta.1", "v0.7.0", "0.7"]) assert.throws(() => parseStableVersion(value));
 });
 
+test("fixture construction cleans its temporary root when source archiving fails", () => {
+  const prefix = `erpc-fixture-constructor-failure-${process.pid}-`;
+  const before = new Set(readdirSync(tmpdir()).filter((name) => name.startsWith(prefix)));
+  assert.throws(() => createGitFixture({ sourceRoot: path.join(tmpdir(), `${prefix}missing-source`), prefix }), /fatal|cannot|does not exist/u);
+  const after = new Set(readdirSync(tmpdir()).filter((name) => name.startsWith(prefix)));
+  assert.deepEqual(after, before);
+});
+
 test("historical fixtures isolate newer source tags and leave source refs untouched", () => {
   const sourceRefsBefore = git(REPOSITORY_ROOT, ["for-each-ref", "--format=%(refname) %(objectname)", "refs/tags"]);
   const root = newIsolatedRepo();
@@ -212,6 +220,39 @@ test("retargeted pinned baseline tags remain blocked instead of inheriting the s
     const report = inspectRelease({ root, expectedHead, runner: fixture.runner });
     assert.equal(report.status, STATUS.BLOCKED_TAG_HISTORY);
     assert.ok(report.tags.problems.some((problem) => problem.includes("must both peel to")));
+  } finally {
+    removeIsolatedRepo(root);
+  }
+});
+
+test("fixture aliases leave canonical pathspecs and unrelated B6 tags opaque in runners and child shims", async () => {
+  const root = newIsolatedRepo();
+  const fixture = FIXTURES.get(root);
+  try {
+    const literalPath = CANONICAL_APPROVED_SOURCE_SHA;
+    writeFileSync(path.join(root, literalPath), "literal canonical SHA filename\n");
+    const head = commitAll(root, "literal canonical SHA filename");
+    const diffArgs = ["diff", "--name-only", fixture.syntheticPlanSha, head, "--", literalPath];
+    fixture.git(["tag", "unrelated-control", fixture.syntheticBaselineSha]);
+    const runnerDiff = fixture.runner("git", diffArgs, { cwd: root });
+    assert.equal(runnerDiff.status, 0, runnerDiff.stderr);
+    assert.equal(runnerDiff.stdout.trim(), literalPath);
+    const runnerPeel = fixture.runner("git", ["rev-parse", "unrelated-control^{commit}"], { cwd: root });
+    assert.equal(runnerPeel.status, 0, runnerPeel.stderr);
+    assert.equal(runnerPeel.stdout.trim(), fixture.syntheticBaselineSha);
+
+    const childScript = `import { spawnSync } from "node:child_process";
+const run = (args) => {
+  const result = spawnSync("git", args, { encoding: "utf8", stdio: "pipe" });
+  return { status: result.status, stdout: result.stdout, stderr: result.stderr };
+};
+process.stdout.write(JSON.stringify({ diff: run(${JSON.stringify(diffArgs)}), peel: run(["rev-parse", "unrelated-control^{commit}"]) }));
+`;
+    const child = JSON.parse(execNodeWithGitShim(fixture, ["--input-type=module", "-e", childScript], { cwd: root }));
+    assert.equal(child.diff.status, 0, child.diff.stderr);
+    assert.equal(child.diff.stdout.trim(), literalPath);
+    assert.equal(child.peel.status, 0, child.peel.stderr);
+    assert.equal(child.peel.stdout.trim(), fixture.syntheticBaselineSha);
   } finally {
     removeIsolatedRepo(root);
   }

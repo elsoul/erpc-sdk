@@ -36,6 +36,14 @@ const CATALOG_RUNTIME_PATHS = Object.freeze([
 
 const RELEASE_PLAN_PATH = "registry/release-plan.json";
 
+const PINNED_BASELINE_TAG_IDENTITIES = new Set([
+  "v0.6.0",
+  "packages/go/v0.6.0",
+  "refs/tags/v0.6.0",
+  "refs/tags/packages/go/v0.6.0",
+]);
+const COMMIT_PEEL_SUFFIX = "^{commit}";
+
 const BASELINE_CHANGELOG = `# Changelog
 
 ## Unreleased
@@ -143,15 +151,53 @@ function mapRevisionToken(token, fixture) {
   return token;
 }
 
+function isOption(argument) {
+  return typeof argument === "string" && argument.startsWith("-");
+}
+
+function nonOptionIndices(args, start, end) {
+  const result = [];
+  for (let index = start; index < end; index += 1) if (!isOption(args[index])) result.push(index);
+  return result;
+}
+
+/** Map only Git revision operands; pathspecs after `--` are data. */
 function mappedArgs(args, fixture) {
-  return args.map((argument) => mapRevisionToken(argument, fixture));
+  if (!Array.isArray(args) || args.length === 0) return args;
+  const command = args[0];
+  const separator = args.indexOf("--");
+  const end = separator === -1 ? args.length : separator;
+  const mapped = [...args];
+  const mapAt = (index) => { mapped[index] = mapRevisionToken(mapped[index], fixture); };
+  if (command === "diff") {
+    for (const index of nonOptionIndices(args, 1, end).slice(-2)) mapAt(index);
+  } else if (command === "show") {
+    const candidates = nonOptionIndices(args, 1, end);
+    if (candidates.length > 0) mapAt(candidates.at(-1));
+  } else if (command === "ls-tree") {
+    const candidates = nonOptionIndices(args, 1, end);
+    if (candidates.length > 0) mapAt(candidates[0]);
+  } else if (command === "merge-base") {
+    for (const index of nonOptionIndices(args, 1, end).slice(-2)) mapAt(index);
+  } else if (command === "cat-file") {
+    const candidates = nonOptionIndices(args, 1, end);
+    if (candidates.length > 0) mapAt(candidates.at(-1));
+  } else if (command === "rev-parse" || command === "checkout") {
+    for (const index of nonOptionIndices(args, 1, end)) mapAt(index);
+  }
+  return mapped;
+}
+
+function isPinnedBaselineTagIdentity(argument) {
+  const unpeeled = argument.endsWith(COMMIT_PEEL_SUFFIX) ? argument.slice(0, -COMMIT_PEEL_SUFFIX.length) : argument;
+  return PINNED_BASELINE_TAG_IDENTITIES.has(unpeeled);
 }
 
 function shouldTranslateBaselineTagPeel(command, args, output, fixture) {
   if (command !== "git" || args[0] !== "rev-parse" || output.trim() !== fixture.syntheticBaselineSha) return false;
-  // Only a tag/ref peel is translated. A plain HEAD read must continue to
-  // expose the actual synthetic commit, preserving stale/non-ancestor checks.
-  return args.some((argument) => argument.startsWith("refs/tags/") || argument.endsWith("^{commit}"));
+  // Only the two pinned v0.6.0 tag identities are translated. A plain HEAD
+  // read and every unrelated tag must expose the actual synthetic commit.
+  return args.some(isPinnedBaselineTagIdentity);
 }
 
 function normalizeResult(result, command, args, fixture) {
@@ -207,8 +253,8 @@ export function fixtureRunner(fixture) {
  */
 export function createGitFixture({ sourceRoot = process.cwd(), prefix = "erpc-registry-fixture-" } = {}) {
   const root = mkdtempSync(join(tmpdir(), prefix));
-  const archive = archiveTrackedSnapshot(sourceRoot);
   try {
+    const archive = archiveTrackedSnapshot(sourceRoot);
     gitCommand(root, ["init", "--quiet"]);
     gitCommand(root, ["config", "user.name", "Registry fixture"]);
     gitCommand(root, ["config", "user.email", "registry-fixture@example.invalid"]);
@@ -280,7 +326,9 @@ const sourceActual = process.env.ERPC_FIXTURE_SYNTHETIC_SOURCE;
 const baseline = process.env.ERPC_FIXTURE_CANONICAL_BASELINE;
 const baselineActual = process.env.ERPC_FIXTURE_SYNTHETIC_BASELINE;
 const realGit = process.env.ERPC_FIXTURE_REAL_GIT;
-const map = (value) => {
+const pinnedTags = new Set(["v0.6.0", "packages/go/v0.6.0", "refs/tags/v0.6.0", "refs/tags/packages/go/v0.6.0"]);
+const commitPeelSuffix = "^{commit}";
+const mapRevision = (value) => {
   if (value === source) return sourceActual;
   if (value === source + "^{commit}") return sourceActual + "^{commit}";
   if (value === baseline) return baselineActual;
@@ -289,10 +337,25 @@ const map = (value) => {
   if (value.startsWith(baseline + ":")) return baselineActual + value.slice(baseline.length);
   return value;
 };
-const mapped = args.map(map);
+const isOption = (value) => value.startsWith("-");
+const separator = args.indexOf("--");
+const end = separator === -1 ? args.length : separator;
+const candidates = (start) => args.map((value, index) => ({ value, index })).filter(({ value, index }) => index >= start && index < end && !isOption(value)).map(({ index }) => index);
+const mapped = [...args];
+const mapAt = (index) => { mapped[index] = mapRevision(mapped[index]); };
+if (args[0] === "diff") for (const index of candidates(1).slice(-2)) mapAt(index);
+else if (args[0] === "show") { const values = candidates(1); if (values.length > 0) mapAt(values.at(-1)); }
+else if (args[0] === "ls-tree") { const values = candidates(1); if (values.length > 0) mapAt(values[0]); }
+else if (args[0] === "merge-base") for (const index of candidates(1).slice(-2)) mapAt(index);
+else if (args[0] === "cat-file") { const values = candidates(1); if (values.length > 0) mapAt(values.at(-1)); }
+else if (args[0] === "rev-parse" || args[0] === "checkout") for (const index of candidates(1)) mapAt(index);
 const result = spawnSync(realGit, mapped, { cwd: process.cwd(), encoding: "utf8", stdio: "pipe" });
 let stdout = result.stdout ?? "";
-if (result.status === 0 && mapped.length > 0 && mapped[0] === "rev-parse" && stdout.trim() === baselineActual && args.some((value) => value.startsWith("refs/tags/") || value.endsWith("^{commit}"))) stdout = stdout.replace(baselineActual, baseline);
+const isPinnedTag = (value) => {
+  const unpeeled = value.endsWith(commitPeelSuffix) ? value.slice(0, -commitPeelSuffix.length) : value;
+  return pinnedTags.has(unpeeled);
+};
+if (result.status === 0 && mapped.length > 0 && mapped[0] === "rev-parse" && stdout.trim() === baselineActual && args.some(isPinnedTag)) stdout = stdout.replace(baselineActual, baseline);
 process.stdout.write(stdout);
 process.stderr.write(result.stderr ?? "");
 process.exit(result.status === null ? 1 : result.status);
@@ -301,19 +364,19 @@ process.exit(result.status === null ? 1 : result.status);
 
 function withGitShim(fixture, callback) {
   const shimRoot = mkdtempSync(join(tmpdir(), "erpc-git-shim-"));
-  const shimPath = join(shimRoot, "git");
-  writeFileSync(shimPath, shimSource(), { mode: 0o755 });
-  chmodSync(shimPath, 0o755);
-  const env = {
-    ...process.env,
-    PATH: `${shimRoot}${delimiter}${process.env.PATH ?? ""}`,
-    ERPC_FIXTURE_CANONICAL_SOURCE: fixture.canonicalSourceSha,
-    ERPC_FIXTURE_SYNTHETIC_SOURCE: fixture.syntheticSourceSha,
-    ERPC_FIXTURE_CANONICAL_BASELINE: fixture.canonicalBaselineSha,
-    ERPC_FIXTURE_SYNTHETIC_BASELINE: fixture.syntheticBaselineSha,
-    ERPC_FIXTURE_REAL_GIT: GIT_BINARY,
-  };
   try {
+    const shimPath = join(shimRoot, "git");
+    writeFileSync(shimPath, shimSource(), { mode: 0o755 });
+    chmodSync(shimPath, 0o755);
+    const env = {
+      ...process.env,
+      PATH: `${shimRoot}${delimiter}${process.env.PATH ?? ""}`,
+      ERPC_FIXTURE_CANONICAL_SOURCE: fixture.canonicalSourceSha,
+      ERPC_FIXTURE_SYNTHETIC_SOURCE: fixture.syntheticSourceSha,
+      ERPC_FIXTURE_CANONICAL_BASELINE: fixture.canonicalBaselineSha,
+      ERPC_FIXTURE_SYNTHETIC_BASELINE: fixture.syntheticBaselineSha,
+      ERPC_FIXTURE_REAL_GIT: GIT_BINARY,
+    };
     return callback(env);
   } finally {
     rmSync(shimRoot, { recursive: true, force: true });
