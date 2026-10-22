@@ -25,6 +25,40 @@ test('harness, future assets, and CI route correctly', () => {
   for (const target of ['assets/tokens.json', 'registry/pools.json']) assert.equal(route(registry, target, { taskBrief: brief(target, selected(target)) }).candidateImplementer, 'sdk-l3-registry');
   const ci = '.github/workflows/release.yml'; assert.deepEqual(route(registry, ci, { taskBrief: brief(ci, selected(ci)) }).requiredGates, ['cyan']);
 });
+test('CI release exact paths route through bounded release ownership', () => {
+  const targets = ['scripts/verify-release.test.mjs', 'docs/RELEASING.md', 'CHANGELOG.md'];
+  for (const target of targets) {
+    const rule = selected(target);
+    assert.equal(rule.id, 'ci-release');
+    const planning = route(registry, target, { phase: 'planning' });
+    assert.deepEqual(planning.roles, ['edgar', 'bahamut', 'cyan']);
+    assert.deepEqual(planning.requiredGates, ['cyan']);
+    assert.equal(planning.dispatchL3, false);
+
+    const required = route(registry, target);
+    assert.equal(required.status, 'BRIEF_REQUIRED');
+    assert.equal(required.candidateImplementer, 'backend-l3-pokemon-wanriky');
+    assert.equal(required.dispatchL3, false);
+
+    const ready = route(registry, target, { taskBrief: brief(target, rule) });
+    assert.equal(ready.status, 'READY');
+    assert.equal(ready.candidateImplementer, 'backend-l3-pokemon-wanriky');
+    assert.deepEqual(ready.roles, ['edgar', 'bahamut', 'backend-l3-pokemon-wanriky']);
+    assert.deepEqual(ready.requiredGates, ['cyan']);
+    assert.equal(ready.dispatchL3, true);
+
+    const invalid = route(registry, target, { taskBrief: { ...brief(target, rule), approvedBy: 'luida' } });
+    assert.equal(invalid.status, 'BRIEF_INVALID');
+    assert.deepEqual(invalid.roles, ['edgar', 'bahamut']);
+    assert.equal(invalid.dispatchL3, false);
+  }
+  for (const target of ['scripts/verify-release.test.mjs.bak', 'docs/RELEASING.md.bak', 'archive/CHANGELOG.md']) {
+    const unresolved = route(registry, target);
+    assert.equal(unresolved.status, 'ROUTE_UNRESOLVED');
+    assert.deepEqual(unresolved.roles, ['el', 'edgar']);
+    assert.equal(unresolved.dispatchL3, false);
+  }
+});
 test('root README and ROADMAP route through the future assets registry with a Cyan gate', () => {
   for (const target of ['README.md', 'ROADMAP.md']) {
     const rule = selected(target); assert.equal(rule.id, 'future-assets-registry');

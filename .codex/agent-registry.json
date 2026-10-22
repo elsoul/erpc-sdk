@@ -334,7 +334,10 @@
         "exactPaths": [
           "scripts/release.mjs",
           "scripts/verify-release.mjs",
-          "scripts/release-version.mjs"
+          "scripts/release-version.mjs",
+          "scripts/verify-release.test.mjs",
+          "docs/RELEASING.md",
+          "CHANGELOG.md"
         ],
         "pathPrefixes": [
           ".github/workflows/"
