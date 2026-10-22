@@ -7,8 +7,11 @@ account information, usage, and Cloud APIs.
 ## Install
 
 ```bash
-go get github.com/elsoul/erpc-sdk/packages/go@v0.8.1
+go get github.com/elsoul/erpc-sdk/packages/go@v0.9.1
 ```
+
+This is the planned 0.9.1 cohort command; use it after that module version
+becomes publicly resolvable.
 
 Go 1.22 or later is supported.
 
@@ -356,7 +359,7 @@ See the [common wallets and signing boundary](https://github.com/elsoul/erpc-sdk
 and the [TypeScript signing and broadcast guide](https://github.com/elsoul/erpc-sdk/blob/main/packages/typescript/docs/signing-and-broadcast.md)
 for the shared transaction handoff and initialized external-signer examples.
 
-## Optional Mayan Swift v2 bridge (EURC in 0.8.1; USDC source addition and local builders unreleased)
+## Optional Mayan Swift v2 bridge (EURC in 0.8.1; native USDC and local builders available since 0.9.0)
 
 The published `0.8.1` API's `NewMayanSwiftV2BridgeClient` creates a standalone, explicit opt-in adapter for
 native issued EURC between Ethereum and Solana. It calls the configured Mayan
@@ -422,26 +425,24 @@ checked. Ethereum builds expose the caller-owned EURC allowance requirement;
 the caller controls approval policy and signing. `GetStatus` reports the
 provider-indexed state and does not prove on-chain settlement.
 
-The current source tree also contains an unreleased native USDC addition for
-Ethereum mainnet (`deployment-0008`) and Solana mainnet (`deployment-0010`).
-Use the exact four-field route tuple to select it. Direct USDC quotes set
+The public `0.9.0` module includes a native USDC addition for Ethereum mainnet
+(`deployment-0008`) and Solana mainnet (`deployment-0010`). Use the exact
+four-field route tuple to select it. Direct USDC quotes set
 `sourceSwap.required` to `false`, identify the native source USDC in the input
 and intermediate fields, and emit `routerKind` and `routerAddress` as JSON
 `null`. They use the direct Swift dependency set without Jupiter or hosted 0x
 source-swap dependencies; Ethereum builds use selector `0xe4269fc4` and expose
-an allowance for the matched USDC deployment. The published `0.8.1` Worker
-patch does not include this native USDC addition; a future release must
-explicitly include it.
+an allowance for the matched USDC deployment.
 
 Because direct USDC router fields are nullable, Go represents
 `MayanSwiftV2SourceSwap.RouterKind` and `.RouterAddress` as `*string`. The JSON
 keys remain present with `null` for direct routes; existing EURC values remain
 non-null. Consumers using the previous non-null source type must handle nil
-pointers before using this unreleased addition.
+pointers before using native USDC routes.
 
-### Local unsigned construction (unreleased)
+### Local unsigned construction (available since 0.9.0)
 
-The unreleased native EURC and USDC local path separates source-swap
+The native EURC and USDC local path available since 0.9.0 separates source-swap
 preparation from unsigned transaction construction. Configure the matching
 source-chain RPC under `LocalBuild`; the RPC URL and its explicit headers stay
 caller-owned. `PrepareSourceSwap` makes an anonymous EURC source-swap request
@@ -449,7 +450,7 @@ when the route needs one, while direct USDC returns `{kind: "none"}` without
 source-swap I/O. `BuildLocalUnsigned` validates the quote, context, plan, and
 configured source RPC evidence, then constructs the unsigned EVM or Solana
 transaction locally. It never falls back to the hosted `/build` endpoint. The
-published `0.8.1` Worker patch does not include this local builder path.
+public `0.9.0` module includes this local builder path.
 
 The caller supplies public source and destination addresses and a fresh public
 32-hex-digit nonce for each order. The nonce is order data, never a private

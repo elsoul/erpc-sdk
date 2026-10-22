@@ -5,11 +5,17 @@ Avalanche C/P/X-chain JSON-RPC, indexed data, analytics, WebSocket subscriptions
 price REST and server-sent events, account usage, and scoped Cloud reads.
 
 ```bash
-gem install erpc-sdk
+# After RubyGems lists 0.9.1:
+gem install erpc-sdk -v 0.9.1
+# For local validation, use the public 0.9.0 gem or this source checkout.
 ```
 
 Ruby 3.1 or newer is required. Local Mayan unsigned construction uses the
 approved native `digest-keccak` 0.0.7 runtime dependency.
+
+This source/release cohort targets `0.9.1`; check the
+[RubyGems release metadata](https://rubygems.org/api/v1/versions/erpc-sdk.json)
+for current package availability.
 
 ## Quick start
 
@@ -243,10 +249,10 @@ See the [Solana v1 guide](https://github.com/elsoul/erpc-sdk/blob/main/packages/
 
 ## Optional Mayan Swift v2 bridge (introduced in 0.8.0)
 
-The published `0.8.1` API's `MayanSwiftV2BridgeClient` is an explicit standalone adapter for the
-reviewed issued EURC routes between Ethereum mainnet and Solana mainnet. The current source
-checkout contains unreleased native USDC and local-builder additions alongside EURC. The
-published `0.8.1` Worker patch does not include those native USDC or local-builder additions.
+`MayanSwiftV2BridgeClient` is an explicit standalone adapter for the reviewed issued EURC
+routes between Ethereum mainnet and Solana mainnet. The public `0.9.0` gem contains
+the native USDC and local-builder additions alongside EURC. The `0.9.1` package
+also includes these APIs as the source/release cohort target.
 The adapter does not
 attach to `ERPC::Client`, inherit eRPC credentials or headers, or make any
 request during construction. Configure the Mayan builder and Explorer
@@ -304,8 +310,8 @@ quotes = bridge.quote_exact_input(
 )
 ```
 
-The published `0.8.1` gem supports the EURC bridge only. Native USDC and local-builder
-support are currently source-only and have not been published.
+The public `0.9.0` gem supports the EURC bridge, native USDC, and local-builder
+support. The `0.9.1` package carries these APIs as the source/release cohort target.
 
 ### Local unsigned Mayan construction
 

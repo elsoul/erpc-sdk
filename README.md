@@ -17,9 +17,15 @@
   Built for Developers. Ready for AI Agents.</strong>
 </p>
 
-The current published `0.8.1` line includes the Cloudflare Workers fetch
-receiver fix. It does not include the unreleased native-USDC bridge or local
-unsigned builders; those remain source-checkout work under separate review.
+The public baseline before the non-Rust proof cohort is TypeScript, Python,
+Go, and Ruby `0.9.0`, with Rust `0.10.0`. The proof cohort targets `0.9.1`
+for the four non-Rust packages and verifies the existing Rust artifact without
+republishing it. A target is not a completed publication: each package must
+resolve from its registry or module source, and the GitHub Release is created
+only after every required proof succeeds. Bitcoin Core HTTP JSON-RPC remains
+available only in Rust `0.10.0`; the non-Rust `0.9.1` cohort adds no Bitcoin
+support. This release-identity correction does not change the separately
+documented swap or bridge constraints below.
 
 With an eRPC API key, one client provides eRPC-backed access to Solana,
 Ethereum, Avalanche C/P/X-chain, price data, indexed data, leader and validator
@@ -34,21 +40,28 @@ DEX/pool, and ranking catalog reads do not require an eRPC API key.
 
 ## Packages
 
-| Language | Package | Version availability |
-| --- | --- | --- |
-| TypeScript | [`@elsoul/erpc-sdk`](https://www.npmjs.com/package/@elsoul/erpc-sdk) | `0.8.1` release line |
-| Rust | [`erpc-sdk`](https://crates.io/crates/erpc-sdk) | `0.8.1` release line |
-| Python | [`erpc-sdk`](https://pypi.org/project/erpc-sdk/) | `0.8.1` release line |
-| Go | [`github.com/elsoul/erpc-sdk/packages/go`](https://pkg.go.dev/github.com/elsoul/erpc-sdk/packages/go) | `0.8.1` release line |
-| Ruby | [`erpc-sdk`](https://rubygems.org/gems/erpc-sdk) | `0.8.1` release line |
+| Language | Package | Public baseline before proof | Proof-cohort identity |
+| --- | --- | --- | --- |
+| TypeScript | [`@elsoul/erpc-sdk`](https://www.npmjs.com/package/@elsoul/erpc-sdk) | `0.9.0` | `0.9.1` target |
+| Rust | [`erpc-sdk`](https://crates.io/crates/erpc-sdk) | `0.10.0` | existing `0.10.0`; verify only |
+| Python | [`erpc-sdk`](https://pypi.org/project/erpc-sdk/) | `0.9.0` | `0.9.1` target |
+| Go | [`github.com/elsoul/erpc-sdk/packages/go`](https://pkg.go.dev/github.com/elsoul/erpc-sdk/packages/go) | `v0.9.0` | `v0.9.1` target |
+| Ruby | [`erpc-sdk`](https://rubygems.org/gems/erpc-sdk) | `0.9.0` | `0.9.1` target |
 
-The package registries expose live version badges for [npm](https://img.shields.io/npm/v/%40elsoul%2Ferpc-sdk.svg), [crates.io](https://img.shields.io/crates/v/erpc-sdk.svg), [PyPI](https://img.shields.io/pypi/v/erpc-sdk.svg), [Go](https://pkg.go.dev/badge/github.com/elsoul/erpc-sdk/packages/go.svg), and [RubyGems](https://img.shields.io/gem/v/erpc-sdk.svg); the [latest GitHub release](https://github.com/elsoul/erpc-sdk/releases/latest) is the shared release record.
+The package links and live badges show registry availability. A package target
+becomes installable only after its exact registry artifact or Go module tag
+resolves and passes the release proof. The cohort is complete only when the
+reviewed `SDK release state: non-Rust 0.9.1 / Rust 0.10.0` GitHub Release is
+created after all required proofs. That record combines four new non-Rust
+artifacts with one pre-existing Rust receipt; it does not claim a common source
+tag or five-language Bitcoin capability.
 
 The bounded token, DEX, pool, ranking, and reviewed EVM RPC-only quote APIs are
 the `0.7.0` history baseline. The direct RPC overrides, unsigned EVM swap
 preparation and simulation, and optional Mayan adapter are introduced in
-`0.8.0`; install those APIs only when `0.8.0` is shown by the package registry
-badge and the [latest GitHub release](https://github.com/elsoul/erpc-sdk/releases/latest).
+`0.8.0`; confirm the exact language-specific version through its package
+registry; the historical introduction version does not imply that all five
+registries are aligned.
 
 ## Install
 
@@ -79,7 +92,7 @@ python -m pip install erpc-sdk
 Go:
 
 ```bash
-go get github.com/elsoul/erpc-sdk/packages/go@v0.8.1
+go get github.com/elsoul/erpc-sdk/packages/go@latest
 ```
 
 Ruby:
@@ -95,9 +108,11 @@ versions are Rust 1.85, Python 3.11, Go 1.22, and Ruby 3.1.
 
 ## Availability
 
-The current published baseline is `0.8.1`. It carries the Workers fetch
-receiver fix while the native-USDC bridge and local unsigned builders remain
-unreleased source-checkout work.
+The package state is intentionally split: TypeScript, Python, Go, and Ruby
+use the `0.9.x` line, while Rust uses `0.10.0`. Exact live versions come from
+the language registries above. Rust `0.10.0` alone includes Bitcoin Core HTTP
+JSON-RPC; the non-Rust `0.9.1` proof cohort introduces no Bitcoin support and
+no new runtime capability.
 
 | Capability | `0.7.0` package | `0.8.0` package |
 | --- | --- | --- |
@@ -110,16 +125,19 @@ unreleased source-checkout work.
 | Mayan Swift v2 native USDC bridge directions | Not included | Source addition pending publication; current `0.8.0` packages remain EURC-only |
 | Solana CLMM quotes; multi-hop routing; SDK signing/sending | Future work | Future work |
 
-The `0.7.0` column records the published history baseline. The `0.8.0` column
-describes the version that introduced each API; live publication status follows
-the package registry badges and the [latest GitHub release](https://github.com/elsoul/erpc-sdk/releases/latest).
+The `0.7.0` and `0.8.0` columns record API introduction history. They do not
+imply a shared current version, source tag, or capability set across all five
+languages. Live publication status follows each package registry; completed
+cohort status follows the reviewed GitHub Release created after all required
+proofs succeed.
 
 ## Direct RPC endpoints
 
 The direct RPC configuration introduced in `0.8.0` lets a caller route selected
 chain JSON-RPC traffic to a dedicated node without an eRPC API key. A package
-consumer needs the current published `0.8.1` line for this API; source-checkout
-examples remain available for reviewed unreleased work.
+consumer needs a language-specific release that includes this API; confirm the
+exact version through its package registry. Source-checkout examples remain
+available for reviewed unreleased work.
 
 | Config field | Direct namespace(s) |
 | --- | --- |

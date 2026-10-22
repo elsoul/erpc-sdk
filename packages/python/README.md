@@ -6,10 +6,16 @@ WebSocket subscriptions, price REST and server-sent events, account usage, and
 scoped Cloud reads.
 
 ```bash
-python -m pip install erpc-sdk
+# After PyPI lists 0.9.1:
+python -m pip install erpc-sdk==0.9.1
+# For local validation, use the public 0.9.0 package or this source checkout.
 ```
 
 Python 3.11 or newer is required.
+
+This source/release cohort targets `0.9.1`; check the
+[PyPI release metadata](https://pypi.org/pypi/erpc-sdk/json) for current
+package availability.
 
 ## Quick start
 
@@ -292,20 +298,20 @@ returned HTTP 401 `UNAUTHORIZED`. The provider deployment revision was
 unknown, so this observation does not establish a universal or permanent key
 requirement. No authenticated build or settlement evidence was captured.
 
-Native USDC Ethereum mainnet and Solana mainnet directions are an unreleased
-source addition in this tree. They use direct Swift bridging with
-`sourceSwap.required` set to `False`, null router fields, and no Jupiter or
-0x source-swap dependency. Do not rely on USDC support from a published
-`0.8.1` wheel until a release explicitly includes this addition. The published
-`0.8.1` Worker patch does not include the new native USDC or local-builder
-additions in this tree; those remain unpublished. The bridge adapter remains
-separate from the RPC-only swap helpers.
+The public `0.9.0` package includes native USDC Ethereum mainnet and Solana
+mainnet directions. They use direct Swift bridging with `sourceSwap.required`
+set to `False`, null router fields, and no Jupiter or 0x source-swap
+dependency. Its wheel contains `bridge_local.py` and the local-construction
+types and methods described below, including `prepare_source_swap` and
+`build_local_unsigned`. The bridge adapter remains separate from the RPC-only
+swap helpers.
 
 ### Local unsigned construction
 
-`prepare_source_swap` and `build_local_unsigned` are explicit local operations
-for the same four reviewed routes. Preparation returns a hash-bound source
-swap plan; direct USDC returns `{ "kind": "none" }` without source-swap I/O.
+The public `0.9.0` wheel exposes `prepare_source_swap` and
+`build_local_unsigned` as explicit local operations for the same four reviewed
+routes. Preparation returns a hash-bound source swap plan; direct USDC returns
+`{ "kind": "none" }` without source-swap I/O.
 Local builds require a matching caller-configured `ethereum_rpc` or
 `solana_rpc` endpoint under `local_build` and use read-only chain/code or
 blockhash/lookup-table checks. There is no public-RPC fallback and no fallback
