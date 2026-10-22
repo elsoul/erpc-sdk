@@ -19,6 +19,7 @@ mod generated;
 mod hyperliquid;
 mod kaia;
 mod monad;
+mod near;
 mod optimism;
 mod polygon;
 mod price;
@@ -28,9 +29,13 @@ mod rpc;
 mod solana;
 mod soneium;
 mod subscriptions;
+mod sui;
+mod sui_grpc_web;
+mod sui_proto;
 mod swap;
 pub mod token_catalog;
 pub mod token_rankings;
+mod tron;
 mod usage;
 
 pub use account::{AccountClient, ErpcPlan, TokenBalance};
@@ -73,9 +78,10 @@ pub use config::{
     DEFAULT_ACCOUNT_ENDPOINT, DEFAULT_ARBITRUM_ENDPOINT, DEFAULT_ARC_ENDPOINT,
     DEFAULT_AVALANCHE_ENDPOINT, DEFAULT_BASE_ENDPOINT, DEFAULT_BSC_ENDPOINT, DEFAULT_ENDPOINT,
     DEFAULT_HYPERLIQUID_ENDPOINT, DEFAULT_KAIA_ENDPOINT, DEFAULT_MONAD_ENDPOINT,
-    DEFAULT_OPTIMISM_ENDPOINT, DEFAULT_POLYGON_ENDPOINT, DEFAULT_ROBINHOOD_ENDPOINT,
-    DEFAULT_SONEIUM_ENDPOINT, DEFAULT_TIMEOUT, DEFAULT_USER_ENDPOINT, ErpcClientConfig,
-    RpcEndpointConfig,
+    DEFAULT_NEAR_ENDPOINT, DEFAULT_OPTIMISM_ENDPOINT, DEFAULT_POLYGON_ENDPOINT,
+    DEFAULT_ROBINHOOD_ENDPOINT, DEFAULT_SONEIUM_ENDPOINT, DEFAULT_SUI_ENDPOINT, DEFAULT_TIMEOUT,
+    DEFAULT_TRON_ENDPOINT, DEFAULT_USER_ENDPOINT, ErpcClientConfig, RpcEndpointConfig,
+    SuiGrpcWebEndpointConfig,
 };
 pub use dex_catalog::{
     DEX_ALIASES, DEX_CATALOG_AS_OF_DATE, DEX_CATALOG_CONTENT_DIGEST, DEX_CATALOG_VERSION,
@@ -93,6 +99,11 @@ pub use ethereum::{
 pub use hyperliquid::{HYPERLIQUID_RPC_METHODS, HyperliquidClient, HyperliquidRpcClient};
 pub use kaia::{KAIA_RPC_METHODS, KaiaClient, KaiaRpcClient};
 pub use monad::{MONAD_RPC_METHODS, MonadClient, MonadRpcClient};
+pub use near::{
+    NEAR_RPC_METHODS, NearAccountView, NearBlockHeader, NearBlockId, NearBlockReference,
+    NearBlockView, NearClient, NearFinality, NearNodeVersion, NearRpcClient, NearStatus,
+    NearSyncInfo,
+};
 pub use optimism::{OPTIMISM_RPC_METHODS, OptimismClient, OptimismRpcClient};
 pub use polygon::{POLYGON_RPC_METHODS, PolygonClient, PolygonRpcClient};
 pub use price::{
@@ -122,6 +133,10 @@ pub use solana::{
 };
 pub use soneium::{SONEIUM_RPC_METHODS, SoneiumClient, SoneiumRpcClient};
 pub use subscriptions::{RpcNotification, RpcSubscription, SubscriptionId};
+pub use sui::{
+    PendingSuiGrpcWebRequest, SUI_GRPC_WEB_CONTENT_TYPE, SUI_GRPC_WEB_METHODS, SuiBalance,
+    SuiClient, SuiGrpcWebClient, SuiObjectSummary, SuiServiceInfo,
+};
 pub use swap::{
     EvmBlockSnapshot, EvmUnsignedTransaction, ExactInputQuoteRequest, ExactInputQuoteResult,
     ExactInputSwapPathEntry, ExactInputSwapPreparation, ExactInputSwapRequest,
@@ -145,6 +160,7 @@ pub use token_rankings::{
     TokenRankingMetadata, list_token_rankings,
 };
 pub use tokio_util::sync::CancellationToken;
+pub use tron::{TRON_RPC_METHODS, TronClient, TronRpcClient};
 pub use usage::{
     MonthlyApiKeyChainUsage, MonthlyApiKeyMethodUsage, MonthlyApiKeyUsage, MonthlyApiKeyUsageEntry,
     MonthlyApiKeyUsageParams, UsageClient,
@@ -384,6 +400,56 @@ fn robinhood_rpc_transport(
     )
 }
 
+fn near_rpc_transport(
+    resolved: &ResolvedErpcClientConfig,
+    client: &reqwest::Client,
+    direct_client: &reqwest::Client,
+) -> Arc<HttpJsonRpcTransport> {
+    if let Some(endpoint) = &resolved.near_rpc {
+        return direct_rpc_transport(endpoint, direct_client, "near.rpc", resolved.timeout);
+    }
+    legacy_rpc_transport(resolved, resolved.near_endpoint.clone(), client, "near.rpc")
+}
+
+fn tron_rpc_transport(
+    resolved: &ResolvedErpcClientConfig,
+    client: &reqwest::Client,
+    direct_client: &reqwest::Client,
+) -> Arc<HttpJsonRpcTransport> {
+    if let Some(endpoint) = &resolved.tron_rpc {
+        return direct_rpc_transport(endpoint, direct_client, "tron.rpc", resolved.timeout);
+    }
+    legacy_rpc_transport(resolved, resolved.tron_endpoint.clone(), client, "tron.rpc")
+}
+
+fn sui_grpc_web_transport(
+    resolved: &ResolvedErpcClientConfig,
+    client: &reqwest::Client,
+    direct_client: &reqwest::Client,
+) -> Result<Arc<sui_grpc_web::SuiGrpcWebTransport>> {
+    if let Some(endpoint) = &resolved.sui_grpc_web {
+        return Ok(Arc::new(sui_grpc_web::SuiGrpcWebTransport::new_direct(
+            endpoint.base_url.clone(),
+            endpoint.headers.clone(),
+            resolved.timeout,
+            direct_client.clone(),
+        )));
+    }
+    if let Some(api_key) = &resolved.api_key {
+        return Ok(Arc::new(sui_grpc_web::SuiGrpcWebTransport::new_hosted(
+            api_key.clone(),
+            resolved.sui_endpoint.clone(),
+            resolved.headers.clone(),
+            resolved.timeout,
+            direct_client.clone(),
+        )?));
+    }
+    Ok(Arc::new(sui_grpc_web::SuiGrpcWebTransport::unavailable(
+        resolved.timeout,
+        client.clone(),
+    )))
+}
+
 fn websocket_transport(
     resolved: &ResolvedErpcClientConfig,
     direct: Option<&ResolvedRpcEndpoint>,
@@ -479,6 +545,12 @@ pub struct ErpcClient {
     pub swap: SwapClient,
     /// Monthly API key usage API.
     pub usage: UsageClient,
+    /// NEAR mainnet read-only HTTP JSON-RPC.
+    pub near: NearClient,
+    /// TRON mainnet read-only HTTP JSON-RPC.
+    pub tron: TronClient,
+    /// Sui mainnet read-only binary gRPC-Web.
+    pub sui: SuiClient,
 }
 
 impl ErpcClient {
@@ -499,6 +571,9 @@ impl ErpcClient {
         let hyperliquid_transport = hyperliquid_rpc_transport(&resolved, &http, &direct_http);
         let arc_transport = arc_rpc_transport(&resolved, &http, &direct_http);
         let robinhood_transport = robinhood_rpc_transport(&resolved, &http, &direct_http);
+        let near_transport = near_rpc_transport(&resolved, &http, &direct_http);
+        let tron_transport = tron_rpc_transport(&resolved, &http, &direct_http);
+        let sui_transport = sui_grpc_web_transport(&resolved, &http, &direct_http)?;
         let bitcoin_transport = bitcoin_rpc_transport(&resolved, &http, &direct_http)?;
         let solana_transport = resolved.solana_rpc.as_ref().map_or_else(
             || legacy_rpc_transport(&resolved, resolved.endpoint.clone(), &http, "solana.rpc"),
@@ -619,6 +694,9 @@ impl ErpcClient {
             soneium: SoneiumClient::new(soneium_transport),
             swap,
             usage: UsageClient::new(user_rest),
+            near: NearClient::new(near_transport),
+            tron: TronClient::new(tron_transport),
+            sui: SuiClient::new(sui_transport),
         })
     }
 

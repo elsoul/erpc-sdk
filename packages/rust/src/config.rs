@@ -36,6 +36,12 @@ pub const DEFAULT_HYPERLIQUID_ENDPOINT: &str = "https://hyperliquid.erpc.global"
 pub const DEFAULT_ARC_ENDPOINT: &str = "https://arc.erpc.global";
 /// Default Robinhood Chain Public Mainnet JSON-RPC endpoint.
 pub const DEFAULT_ROBINHOOD_ENDPOINT: &str = "https://robinhood.erpc.global";
+/// Default NEAR mainnet JSON-RPC endpoint.
+pub const DEFAULT_NEAR_ENDPOINT: &str = "https://near.erpc.global";
+/// Default TRON mainnet JSON-RPC endpoint.
+pub const DEFAULT_TRON_ENDPOINT: &str = "https://tron.erpc.global";
+/// Default Sui mainnet binary gRPC-Web endpoint.
+pub const DEFAULT_SUI_ENDPOINT: &str = "https://sui.erpc.global";
 /// Default request and connection-establishment timeout.
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -147,6 +153,87 @@ impl Default for RpcEndpointConfig {
     }
 }
 
+/// Configuration for one caller-owned binary Sui gRPC-Web endpoint.
+///
+/// The URL is a base prefix. Each supported Sui method is appended to it at
+/// request time while preserving its encoded path and query string.
+#[derive(Clone)]
+pub struct SuiGrpcWebEndpointConfig {
+    /// Base HTTP(S) URL for the caller-owned binary gRPC-Web service.
+    pub base_url: String,
+    /// Headers scoped to this Sui endpoint only.
+    pub headers: Vec<(String, String)>,
+}
+
+impl fmt::Debug for SuiGrpcWebEndpointConfig {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("SuiGrpcWebEndpointConfig")
+            .field("origin", &debug_origin(&self.base_url))
+            .field(
+                "header_names",
+                &self
+                    .headers
+                    .iter()
+                    .map(|(name, _)| name)
+                    .collect::<Vec<_>>(),
+            )
+            .finish()
+    }
+}
+
+impl SuiGrpcWebEndpointConfig {
+    /// Starts a Sui configuration with a base HTTP(S) URL.
+    #[must_use]
+    pub fn new(base_url: impl Into<String>) -> Self {
+        Self {
+            base_url: base_url.into(),
+            headers: Vec::new(),
+        }
+    }
+
+    /// Replaces the base HTTP(S) URL.
+    #[must_use]
+    pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
+        self.base_url = base_url.into();
+        self
+    }
+
+    /// Adds a header scoped to this Sui endpoint.
+    #[must_use]
+    pub fn with_header(mut self, name: impl Into<String>, value: impl Into<String>) -> Self {
+        self.headers.push((name.into(), value.into()));
+        self
+    }
+
+    /// Replaces the endpoint-scoped headers.
+    #[must_use]
+    pub fn with_headers<I, N, V>(mut self, headers: I) -> Self
+    where
+        I: IntoIterator<Item = (N, V)>,
+        N: Into<String>,
+        V: Into<String>,
+    {
+        self.headers = headers
+            .into_iter()
+            .map(|(name, value)| (name.into(), value.into()))
+            .collect();
+        self
+    }
+}
+
+impl From<&str> for SuiGrpcWebEndpointConfig {
+    fn from(base_url: &str) -> Self {
+        Self::new(base_url)
+    }
+}
+
+impl From<String> for SuiGrpcWebEndpointConfig {
+    fn from(base_url: String) -> Self {
+        Self::new(base_url)
+    }
+}
+
 /// Configuration used to create an [`crate::ErpcClient`].
 #[derive(Clone)]
 pub struct ErpcClientConfig {
@@ -216,6 +303,18 @@ pub struct ErpcClientConfig {
     pub robinhood_endpoint: String,
     /// Optional caller-owned Robinhood Chain Public Mainnet JSON-RPC endpoint.
     pub robinhood_rpc: Option<RpcEndpointConfig>,
+    /// Hosted NEAR mainnet endpoint override.
+    pub near_endpoint: String,
+    /// Optional caller-owned NEAR JSON-RPC endpoint.
+    pub near_rpc: Option<RpcEndpointConfig>,
+    /// Hosted TRON mainnet endpoint override.
+    pub tron_endpoint: String,
+    /// Optional caller-owned TRON JSON-RPC endpoint.
+    pub tron_rpc: Option<RpcEndpointConfig>,
+    /// Hosted Sui binary gRPC-Web endpoint override.
+    pub sui_endpoint: String,
+    /// Optional caller-owned Sui binary gRPC-Web endpoint.
+    pub sui_grpc_web: Option<SuiGrpcWebEndpointConfig>,
 }
 
 impl fmt::Debug for ErpcClientConfig {
@@ -280,6 +379,12 @@ impl fmt::Debug for ErpcClientConfig {
                 "robinhood_rpc",
                 &self.robinhood_rpc.as_ref().map(RobinhoodRpcDebug),
             )
+            .field("near_endpoint", &debug_origin(&self.near_endpoint))
+            .field("near_rpc", &self.near_rpc.as_ref().map(NearRpcDebug))
+            .field("tron_endpoint", &debug_origin(&self.tron_endpoint))
+            .field("tron_rpc", &self.tron_rpc.as_ref().map(TronRpcDebug))
+            .field("sui_endpoint", &debug_origin(&self.sui_endpoint))
+            .field("sui_grpc_web", &self.sui_grpc_web)
             .field(
                 "header_names",
                 &self
@@ -331,6 +436,12 @@ impl ErpcClientConfig {
             arc_rpc: None,
             robinhood_endpoint: DEFAULT_ROBINHOOD_ENDPOINT.to_owned(),
             robinhood_rpc: None,
+            near_endpoint: DEFAULT_NEAR_ENDPOINT.to_owned(),
+            near_rpc: None,
+            tron_endpoint: DEFAULT_TRON_ENDPOINT.to_owned(),
+            tron_rpc: None,
+            sui_endpoint: DEFAULT_SUI_ENDPOINT.to_owned(),
+            sui_grpc_web: None,
         }
     }
 
@@ -579,6 +690,48 @@ impl ErpcClientConfig {
         self.robinhood_rpc = Some(endpoint.into());
         self
     }
+
+    /// Overrides the hosted NEAR endpoint.
+    #[must_use]
+    pub fn with_near_endpoint(mut self, endpoint: impl Into<String>) -> Self {
+        self.near_endpoint = endpoint.into();
+        self
+    }
+
+    /// Selects a caller-owned NEAR JSON-RPC endpoint.
+    #[must_use]
+    pub fn with_near_rpc(mut self, endpoint: impl Into<RpcEndpointConfig>) -> Self {
+        self.near_rpc = Some(endpoint.into());
+        self
+    }
+
+    /// Overrides the hosted TRON endpoint.
+    #[must_use]
+    pub fn with_tron_endpoint(mut self, endpoint: impl Into<String>) -> Self {
+        self.tron_endpoint = endpoint.into();
+        self
+    }
+
+    /// Selects a caller-owned TRON JSON-RPC endpoint.
+    #[must_use]
+    pub fn with_tron_rpc(mut self, endpoint: impl Into<RpcEndpointConfig>) -> Self {
+        self.tron_rpc = Some(endpoint.into());
+        self
+    }
+
+    /// Overrides the hosted Sui binary gRPC-Web endpoint.
+    #[must_use]
+    pub fn with_sui_endpoint(mut self, endpoint: impl Into<String>) -> Self {
+        self.sui_endpoint = endpoint.into();
+        self
+    }
+
+    /// Selects a caller-owned Sui binary gRPC-Web endpoint.
+    #[must_use]
+    pub fn with_sui_grpc_web(mut self, endpoint: impl Into<SuiGrpcWebEndpointConfig>) -> Self {
+        self.sui_grpc_web = Some(endpoint.into());
+        self
+    }
 }
 
 pub(crate) struct ResolvedRpcEndpoint {
@@ -622,6 +775,17 @@ pub(crate) struct ResolvedErpcClientConfig {
     pub arc_rpc: Option<ResolvedRpcEndpoint>,
     pub robinhood_endpoint: Url,
     pub robinhood_rpc: Option<ResolvedRpcEndpoint>,
+    pub near_endpoint: Url,
+    pub near_rpc: Option<ResolvedRpcEndpoint>,
+    pub tron_endpoint: Url,
+    pub tron_rpc: Option<ResolvedRpcEndpoint>,
+    pub sui_endpoint: Url,
+    pub sui_grpc_web: Option<ResolvedSuiGrpcWebEndpoint>,
+}
+
+pub(crate) struct ResolvedSuiGrpcWebEndpoint {
+    pub base_url: Url,
+    pub headers: HeaderMap,
 }
 
 impl TryFrom<ErpcClientConfig> for ResolvedErpcClientConfig {
@@ -646,6 +810,9 @@ impl TryFrom<ErpcClientConfig> for ResolvedErpcClientConfig {
             && config.hyperliquid_rpc.is_none()
             && config.arc_rpc.is_none()
             && config.robinhood_rpc.is_none()
+            && config.near_rpc.is_none()
+            && config.tron_rpc.is_none()
+            && config.sui_grpc_web.is_none()
         {
             return Err(ErpcError::Config("api_key must not be empty".to_owned()));
         }
@@ -728,6 +895,21 @@ impl TryFrom<ErpcClientConfig> for ResolvedErpcClientConfig {
             .as_ref()
             .map(resolve_robinhood_rpc_endpoint)
             .transpose()?;
+        let near_rpc = config
+            .near_rpc
+            .as_ref()
+            .map(resolve_near_rpc_endpoint)
+            .transpose()?;
+        let tron_rpc = config
+            .tron_rpc
+            .as_ref()
+            .map(resolve_tron_rpc_endpoint)
+            .transpose()?;
+        let sui_grpc_web = config
+            .sui_grpc_web
+            .as_ref()
+            .map(resolve_sui_grpc_web_endpoint)
+            .transpose()?;
         Ok(Self {
             api_key: (!api_key.is_empty()).then_some(api_key),
             endpoint: endpoint(&config.endpoint, false)?,
@@ -762,6 +944,12 @@ impl TryFrom<ErpcClientConfig> for ResolvedErpcClientConfig {
             arc_rpc,
             robinhood_endpoint: endpoint(&config.robinhood_endpoint, false)?,
             robinhood_rpc,
+            near_endpoint: endpoint(&config.near_endpoint, false)?,
+            near_rpc,
+            tron_endpoint: endpoint(&config.tron_endpoint, false)?,
+            tron_rpc,
+            sui_endpoint: endpoint(&config.sui_endpoint, false)?,
+            sui_grpc_web,
         })
     }
 }
@@ -957,6 +1145,36 @@ fn resolve_robinhood_rpc_endpoint(config: &RpcEndpointConfig) -> Result<Resolved
     Ok(endpoint)
 }
 
+fn resolve_near_rpc_endpoint(config: &RpcEndpointConfig) -> Result<ResolvedRpcEndpoint> {
+    if config.websocket_url.is_some() {
+        return Err(ErpcError::Config(
+            "NEAR RPC is HTTP-only; websocket_url is not supported".to_owned(),
+        ));
+    }
+    let mut endpoint = resolve_rpc_endpoint(config)?;
+    collect_path_values(&endpoint.http_url, &mut endpoint.redaction_secrets);
+    Ok(endpoint)
+}
+
+fn resolve_tron_rpc_endpoint(config: &RpcEndpointConfig) -> Result<ResolvedRpcEndpoint> {
+    if config.websocket_url.is_some() {
+        return Err(ErpcError::Config(
+            "TRON RPC is HTTP-only; websocket_url is not supported".to_owned(),
+        ));
+    }
+    let mut endpoint = resolve_rpc_endpoint(config)?;
+    collect_path_values(&endpoint.http_url, &mut endpoint.redaction_secrets);
+    Ok(endpoint)
+}
+
+fn resolve_sui_grpc_web_endpoint(
+    config: &SuiGrpcWebEndpointConfig,
+) -> Result<ResolvedSuiGrpcWebEndpoint> {
+    let base_url = direct_sui_endpoint(&config.base_url)?;
+    let headers = parse_headers(&config.headers)?;
+    Ok(ResolvedSuiGrpcWebEndpoint { base_url, headers })
+}
+
 fn parse_headers(values: &[(String, String)]) -> Result<HeaderMap> {
     let mut headers = HeaderMap::new();
     for (name, value) in values {
@@ -972,6 +1190,12 @@ fn parse_headers(values: &[(String, String)]) -> Result<HeaderMap> {
 fn direct_http_endpoint(value: &str) -> Result<Url> {
     direct_endpoint(value, false)
         .map_err(|_| ErpcError::Config("rpc http_url must be an absolute HTTP(S) URL".to_owned()))
+}
+
+fn direct_sui_endpoint(value: &str) -> Result<Url> {
+    direct_endpoint(value, false).map_err(|_| {
+        ErpcError::Config("Sui gRPC-Web base_url must be an absolute HTTP(S) URL".to_owned())
+    })
 }
 
 fn direct_websocket_endpoint(value: &str) -> Result<Url> {
@@ -1410,6 +1634,48 @@ impl fmt::Debug for RobinhoodRpcDebug<'_> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("RobinhoodRpcEndpointConfig")
+            .field("origin", &debug_origin(&self.0.http_url))
+            .field("has_websocket_url", &self.0.websocket_url.is_some())
+            .field(
+                "header_names",
+                &self
+                    .0
+                    .headers
+                    .iter()
+                    .map(|(name, _)| name)
+                    .collect::<Vec<_>>(),
+            )
+            .finish()
+    }
+}
+
+struct NearRpcDebug<'a>(&'a RpcEndpointConfig);
+
+impl fmt::Debug for NearRpcDebug<'_> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("NearRpcEndpointConfig")
+            .field("origin", &debug_origin(&self.0.http_url))
+            .field("has_websocket_url", &self.0.websocket_url.is_some())
+            .field(
+                "header_names",
+                &self
+                    .0
+                    .headers
+                    .iter()
+                    .map(|(name, _)| name)
+                    .collect::<Vec<_>>(),
+            )
+            .finish()
+    }
+}
+
+struct TronRpcDebug<'a>(&'a RpcEndpointConfig);
+
+impl fmt::Debug for TronRpcDebug<'_> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("TronRpcEndpointConfig")
             .field("origin", &debug_origin(&self.0.http_url))
             .field("has_websocket_url", &self.0.websocket_url.is_some())
             .field(

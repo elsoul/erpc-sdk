@@ -193,15 +193,20 @@ For Solana transaction-version options and response handling, see the
 | erpc.hyperliquid.rpc | Hyperliquid HyperEVM mainnet HTTP read-only JSON-RPC (target Rust 0.11.0) |
 | erpc.arc.rpc | Arc mainnet HTTP read-only JSON-RPC (target Rust 0.11.0) |
 | erpc.robinhood.rpc | Robinhood Chain Public Mainnet HTTP read-only JSON-RPC (target Rust 0.11.0) |
+| `erpc.near.rpc` | NEAR mainnet HTTP read-only JSON-RPC (target Rust 0.11.0) |
+| `erpc.tron.rpc` | TRON mainnet HTTP read-only JSON-RPC (target Rust 0.11.0) |
+| `erpc.sui.grpc` | Sui mainnet limited unary binary gRPC-Web reads (target Rust 0.11.0) |
 | `erpc.price` | Price metadata, updates, and SSE streams |
 | `erpc.account` | Token balance |
 | `erpc.usage` | Masked monthly API-key usage |
 
 Most JSON-RPC namespaces expose `request`, `raw`, and `batch` for typed results
 and forward-compatible methods. Base, Arbitrum, Polygon, BSC, Optimism, Kaia,
-Soneium, Monad, Hyperliquid, Arc, and Robinhood are deliberate sealed
-read-only exceptions: each exposes
-only its three typed reads and no raw/request/batch escape hatch.
+Soneium, Monad, Hyperliquid, Arc, Robinhood, NEAR, and TRON are deliberate
+sealed read-only exceptions: each exposes only its approved typed reads and no
+raw/request/batch escape hatch. Sui is a separate sealed gRPC-Web namespace
+with three limited unary reads and no JSON-RPC or generic protobuf escape
+hatch.
 Avalanche uses the Ethereum-compatible
 typed catalog and defaults to `https://ava-rpc.erpc.global`; the SDK uses its
 `/ava` HTTP route and `/ava-ws` WebSocket route. Native namespaces provide
@@ -539,6 +544,173 @@ returning raw hex String results. They have no request, raw, batch,
 WebSocket/subscription, sign, send, broadcast, swap, or bridge surface. Verify
 the expected chain ID before trusting a custom endpoint. Native balances remain
 raw quantities: HyperEVM HYPE, Arc native USDC, and Robinhood native ETH.
+
+## NEAR, TRON, and Sui reads (target Rust 0.11.0)
+
+These three namespaces are unreleased source work targeting the same Rust
+`0.11.0` candidate. The published `erpc-sdk 0.10.0` crate does not contain
+them; keep the install line above at `erpc-sdk = "0.10"` until a later,
+separately approved promotion and release proof. They make no billing, price,
+quota, support, or availability promise.
+
+Every new namespace is read-only and exposes origin-only endpoint metadata:
+`https://near.erpc.global/`, `https://tron.erpc.global/`, or
+`https://sui.erpc.global/` for the dedicated hosted defaults. The reviewed edge
+overrides are `https://edge.erpc.global/near`,
+`https://edge.erpc.global/tron`, and `https://edge.erpc.global/sui`. The
+accessors omit route prefixes, paths, queries, fragments, userinfo, and header
+values; an unavailable namespace reports an empty string. Caller-owned direct
+configuration uses only its scoped headers and follows no HTTP redirects.
+
+### NEAR HTTP JSON-RPC
+
+`erpc.near.rpc` provides `status`, `block`, and one fixed `view_account` query.
+The hosted default is `https://near.erpc.global`; an ERPC-compatible edge
+override is `https://edge.erpc.global/near`. A direct configuration preserves
+the complete caller-owned URL, including its encoded path and query:
+
+```rust,no_run
+# use erpc_sdk::{ErpcClient, ErpcClientConfig, NearBlockReference, NearFinality,
+#     RpcEndpointConfig};
+# async fn example() -> erpc_sdk::Result<()> {
+let erpc = ErpcClient::new(ErpcClientConfig::new("api-key"))?;
+let status = erpc.near.rpc.status().send().await?;
+assert_eq!(status.chain_id, "mainnet");
+let account = erpc.near.rpc.view_account(
+    "near",
+    NearBlockReference::Finality { finality: NearFinality::Final },
+)?.send().await?;
+assert!(!account.block_hash.is_empty());
+
+let direct = ErpcClient::new(ErpcClientConfig::for_rpc().with_near_rpc(
+    RpcEndpointConfig::new("https://near-node.example/rpc?tenant=customer")
+        .with_header("authorization", "Bearer node-token"),
+))?;
+let _ = direct.near.rpc.status().send().await?;
+# Ok(())
+# }
+```
+
+NEAR account IDs are opaque input strings: named accounts, implicit IDs, and
+`0x`/`0s`/`0u` forms are passed through without local grammar or conversion.
+`NearBlockReference` is exclusive: choose one `Final` or `Optimistic` finality
+selector, or one explicit height or hash. An explicit ID identifies the
+requested block and does not imply finality or archival availability; a
+pruned-history error is returned without fallback. JSON integer fields remain
+`u64`, while gas price, total supply, balances, and other decimal protocol
+strings remain exact strings.
+
+`view_account` always sends the named parameters
+`{"request_type":"view_account","account_id":...,<one selector>}`. The
+transport inherits the established JSON-RPC compatibility behavior: a present
+`error`, including `null`, is invalid under the current strict decoder; a
+non-null error wins over a simultaneous result; `result: null` is invalid for
+these non-null projections; and the response `jsonrpc` value is not
+independently validated. This documents inherited behavior and is not a claim
+of full JSON-RPC envelope validation. The surface has no generic query,
+raw/request, batch, subscription, function-call, transaction, signing, or
+broadcast operation.
+
+### TRON HTTP JSON-RPC
+
+`erpc.tron.rpc` provides only `eth_chain_id`, `eth_get_balance`, and
+read-only `eth_call`. The hosted default is `https://tron.erpc.global`; the
+edge override is `https://edge.erpc.global/tron`. The provider maps its hosted
+root alias to upstream `/jsonrpc`, so the SDK appends no suffix. A direct URL
+is the complete caller-owned target; include `/jsonrpc` when the node requires
+it, and the SDK preserves that path and query:
+
+```rust,no_run
+# use erpc_sdk::{ErpcClient, ErpcClientConfig, RpcEndpointConfig};
+# async fn example() -> erpc_sdk::Result<()> {
+let erpc = ErpcClient::new(ErpcClientConfig::new("api-key"))?;
+let chain_id = erpc.tron.rpc.eth_chain_id().send().await?;
+assert_eq!(chain_id, "0x2b6653dc");
+let balance = erpc.tron.rpc.eth_get_balance([
+    "0x1111111111111111111111111111111111111111", "latest",
+])?.send().await?;
+let call = erpc.tron.rpc.eth_call(serde_json::json!([{
+    "to": "0x2222222222222222222222222222222222222222",
+    "data": "0x"
+}, "latest"]))?.send().await?;
+
+let direct = ErpcClient::new(ErpcClientConfig::for_rpc().with_tron_rpc(
+    RpcEndpointConfig::new("https://tron-node.example/jsonrpc?tenant=customer")
+        .with_header("authorization", "Bearer node-token"),
+))?;
+let _ = direct.tron.rpc.eth_chain_id().send().await?;
+# let _ = (balance, call);
+# Ok(())
+# }
+```
+
+TRON mainnet is chain ID `728126428` / `0x2b6653dc`; custom or testnet IDs
+pass through unchanged. Examples use the documented 20-byte `0x` hexadecimal
+addresses. Base58Check and the `41`-prefixed native representation are
+different address forms; the SDK performs no conversion or validation and does
+not add or remove `41`. `eth_get_balance` returns the raw lowercase `sun`
+quantity (`1 TRX = 1,000,000 sun`) without scaling or calling it `wei`.
+The typed read contract targets the latest state and makes no archive-history
+promise. It has no REST, generic JSON-RPC, batch, WebSocket, transaction,
+signing, or broadcast operation.
+
+### Sui binary gRPC-Web
+
+`erpc.sui.grpc` is a separate limited binary gRPC-Web namespace. Its hosted
+default is `https://sui.erpc.global`; the edge prefix is
+`https://edge.erpc.global/sui`. It supports exactly these case-sensitive unary
+paths, with `content-type: application/grpc-web+proto`:
+
+```text
+/sui.rpc.v2.LedgerService/GetServiceInfo
+/sui.rpc.v2.LedgerService/GetObject
+/sui.rpc.v2.StateService/GetBalance
+```
+
+`GetServiceInfo` is the identity check. Sui mainnet uses the full Base58
+genesis digest `4btiuiMPvEENsttpZC7CZ53DruC3MAgfznDbASZ7DR6S`; the short
+`35834a8a` value is not the gRPC `chain_id`. A direct
+`SuiGrpcWebEndpointConfig` value is a compatible endpoint base prefix, not a
+complete method target: a path such as `/tenant%2Fone?token=...` remains a
+prefix and query while the SDK appends exactly one selected service path. It
+does not detect or fall back to native gRPC or legacy Sui JSON-RPC. Hosted
+requests use bearer authentication, direct requests use only scoped headers,
+and both modes use a no-redirect client.
+
+```rust,no_run
+# use erpc_sdk::{ErpcClient, ErpcClientConfig, SuiGrpcWebEndpointConfig};
+# async fn example() -> erpc_sdk::Result<()> {
+let erpc = ErpcClient::new(ErpcClientConfig::new("api-key"))?;
+let info = erpc.sui.grpc.get_service_info().send().await?;
+assert_eq!(info.chain, "mainnet");
+assert_eq!(info.chain_id,
+    "4btiuiMPvEENsttpZC7CZ53DruC3MAgfznDbASZ7DR6S");
+let balance = erpc.sui.grpc.get_balance("0xowner", "0x2::sui::SUI")?
+    .send().await?;
+assert_eq!(balance.balance, balance.address_balance + balance.coin_balance);
+
+let direct = ErpcClient::new(ErpcClientConfig::for_rpc().with_sui_grpc_web(
+    SuiGrpcWebEndpointConfig::new("https://sui-node.example/tenant?token=customer")
+        .with_header("authorization", "Bearer node-token"),
+))?;
+let _ = direct.sui.grpc.get_service_info().send().await?;
+# Ok(())
+# }
+```
+
+Balances remain exact `u64` base units. `GetObject` returns only object ID,
+version, and digest; `GetBalance` returns the coin type plus total, address,
+and coin balances, with their checked sum validated. Inputs are opaque strings
+with only non-empty and no-ASCII-control checks. Requests are unary and
+read-only: there is no generic protobuf decoder, raw bytes/path escape, field
+mask, batch, stream, subscription, transaction, execution, signing, or
+broadcast surface.
+
+The adapted Sui schema projection retains its upstream Apache-2.0 provenance;
+original SDK source remains MIT. See
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) and the adjacent
+[`LICENSES/Apache-2.0.txt`](LICENSES/Apache-2.0.txt) for the pinned source and
+dependency attribution.
 
 ## Bitcoin HTTP JSON-RPC
 

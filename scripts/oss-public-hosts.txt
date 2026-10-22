@@ -14,3 +14,6 @@ monad.erpc.global
 hyperliquid.erpc.global
 arc.erpc.global
 robinhood.erpc.global
+near.erpc.global
+tron.erpc.global
+sui.erpc.global

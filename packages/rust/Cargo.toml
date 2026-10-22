@@ -4,7 +4,7 @@ version = "0.10.0"
 edition = "2024"
 rust-version = "1.85"
 description = "Async multi-network Rust SDK for ERPC"
-license = "MIT"
+license = "MIT AND Apache-2.0"
 authors = ["ELSOUL LABO B.V."]
 homepage = "https://erpc.global"
 repository = "https://github.com/elsoul/erpc-sdk"
@@ -13,13 +13,15 @@ readme = "README.md"
 keywords = ["avalanche", "erpc", "ethereum", "json-rpc", "solana"]
 categories = ["api-bindings", "asynchronous", "web-programming::http-client"]
 publish = ["crates-io"]
-include = ["Cargo.toml", "LICENSE", "README.md", "examples/**/*.rs", "src/**/*.rs", "tests/**/*.rs"]
+include = ["Cargo.toml", "LICENSE", "README.md", "LICENSES/Apache-2.0.txt", "THIRD_PARTY_NOTICES.md", "examples/**/*.rs", "src/**/*.rs", "tests/**/*.rs"]
 
 [dependencies]
 async-stream = "0.3.6"
 futures-util = "0.3.31"
 num-bigint = { version = "=0.5.1", default-features = false, features = ["std"] }
 percent-encoding = "2.3.1"
+prost = { version = "=0.14.4", default-features = false, features = ["derive", "std"] }
+prost-types = { version = "=0.14.4", default-features = false, features = ["std"] }
 reqwest = { version = "0.12.15", default-features = false, features = ["json", "rustls-tls", "stream"] }
 sha2 = "=0.10.9"
 sha3 = "=0.10.8"
