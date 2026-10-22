@@ -2,12 +2,13 @@
 
 mod support;
 
-use std::time::Duration;
+use std::{collections::HashMap, time::Duration};
 
 use erpc_sdk::{
     BITCOIN_RPC_METHODS, CancellationToken, ErpcClient, ErpcClientConfig, ErpcError, ErpcErrorCode,
     RpcBatchCall, RpcEndpointConfig,
 };
+use serde::Deserialize;
 use serde_json::{Value, json};
 use wiremock::{
     Mock, MockServer, Request, Respond, ResponseTemplate,
@@ -437,10 +438,10 @@ async fn bitcoin_numeric_values_keep_received_tokens_and_count_is_u64() {
         .send()
         .await
         .unwrap();
-    assert_eq!(
-        values["tiny"].as_number().unwrap().to_string(),
-        "0.00000001"
-    );
+    assert!(matches!(
+        values["tiny"].as_number().unwrap().to_string().as_str(),
+        "0.00000001" | "1e-8"
+    ));
     assert_eq!(
         values["large"].as_number().unwrap().to_string(),
         "20999999.99999999"
@@ -673,4 +674,323 @@ async fn bitcoin_batch_null_errors_are_accepted_and_ids_are_validated() {
         .await
         .unwrap_err();
     assert_eq!(error.code(), ErpcErrorCode::InvalidResponse);
+}
+
+#[tokio::test]
+async fn ordinary_marker_objects_stay_objects_and_serializer_keys_fail_closed() {
+    let ordinary_server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_raw(
+            r#"{"jsonrpc":"2.0","id":1,"result":{"__erpc_sdk_number__":"123","nested":[{"text":"$serde_json::private::Number","nan":"NaN","invalid":"not-a-number"}]},"error":null}"#,
+            "application/json",
+        ))
+        .expect(1)
+        .mount(&ordinary_server)
+        .await;
+    let client =
+        ErpcClient::new(ErpcClientConfig::new("key").with_endpoint(ordinary_server.uri())).unwrap();
+    let result = client
+        .bitcoin
+        .rpc
+        .get_block(Vec::<Value>::new())
+        .unwrap()
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(result["__erpc_sdk_number__"], "123");
+    assert_eq!(result["nested"][0]["text"], "$serde_json::private::Number");
+    assert_eq!(result["nested"][0]["nan"], "NaN");
+    assert_eq!(result["nested"][0]["invalid"], "not-a-number");
+
+    let invalid_bodies = [
+        r#"{"jsonrpc":"2.0","id":{"__erpc_sdk_number__":"1"},"result":1,"error":null}"#,
+        r#"{"jsonrpc":"2.0","id":{"$serde_json::private::Number":"1"},"result":1,"error":null}"#,
+        r#"{"jsonrpc":"2.0","id":{"$serde_json::private::RawValue":"1"},"result":1,"error":null}"#,
+        r#"{"jsonrpc":"2.0","id":{"\u0024serde_json::private::Number":"1"},"result":1,"error":null}"#,
+        r#"{"jsonrpc":"2.0","id":null,"result":1,"error":null}"#,
+        r#"{"jsonrpc":"2.0","id":[],"result":1,"error":null}"#,
+        r#"{"jsonrpc":"2.0","id":true,"result":1,"error":null}"#,
+        r#"{"jsonrpc":"2.0","id":1.5,"result":1,"error":null}"#,
+        r#"{"jsonrpc":"2.0","id":-1,"result":1,"error":null}"#,
+        r#"{"jsonrpc":"2.0","id":18446744073709551616,"result":1,"error":null}"#,
+        r#"{"jsonrpc":"2.0","id":1e0,"result":1,"error":null}"#,
+        r#"{"jsonrpc":"2.0","id":"1","result":1,"error":null}"#,
+        r#"{"jsonrpc":"2.0","id":1,"result":1,"error":null} trailing"#,
+    ];
+    for body in invalid_bodies {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200).set_body_raw(body, "application/json"))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let client =
+            ErpcClient::new(ErpcClientConfig::new("key").with_endpoint(server.uri())).unwrap();
+        let error = client
+            .bitcoin
+            .rpc
+            .get_block_count()
+            .send()
+            .await
+            .unwrap_err();
+        assert_eq!(error.code(), ErpcErrorCode::InvalidResponse);
+        assert!(!error.to_string().contains("private::"));
+    }
+}
+
+#[tokio::test]
+async fn shared_rpc_guard_keeps_solana_marker_objects_and_rejects_private_keys() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_raw(
+            r#"{"jsonrpc":"2.0","id":1,"result":{"__erpc_sdk_number__":"123"}}"#,
+            "application/json",
+        ))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let client = ErpcClient::new(ErpcClientConfig::new("key").with_endpoint(server.uri())).unwrap();
+    let result: Value = client.solana.rpc.raw("marker", None).send().await.unwrap();
+    assert_eq!(result["__erpc_sdk_number__"], "123");
+
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_raw(
+            r#"{"jsonrpc":"2.0","id":1,"result":{"$serde_json::private::Number":"123"}}"#,
+            "application/json",
+        ))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let client = ErpcClient::new(ErpcClientConfig::new("key").with_endpoint(server.uri())).unwrap();
+    let error = client
+        .solana
+        .rpc
+        .raw::<Value>("private", None)
+        .send()
+        .await
+        .unwrap_err();
+    assert_eq!(error.code(), ErpcErrorCode::InvalidResponse);
+}
+
+#[tokio::test]
+async fn reserved_keys_are_rejected_in_nested_results_errors_and_batches() {
+    let nested_bodies = [
+        r#"{"jsonrpc":"2.0","id":1,"result":{"outer":{"$serde_json::private::Number":"1"}},"error":null}"#,
+        r#"{"jsonrpc":"2.0","id":1,"result":{"outer":{"ordinary":1,"$serde_json::private::RawValue":"1"}},"error":null}"#,
+        r#"{"jsonrpc":"2.0","id":1,"result":1,"error":{"code":-32000,"message":"bad","data":{"outer":{"$serde_json::private::RawValue":"secret"}}}}"#,
+        r#"{"jsonrpc":"2.0","id":1,"result":1,"error":{"code":{"$serde_json::private::Number":"-32000"},"message":"bad"}}"#,
+    ];
+    for body in nested_bodies {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200).set_body_raw(body, "application/json"))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let client =
+            ErpcClient::new(ErpcClientConfig::new("key").with_endpoint(server.uri())).unwrap();
+        let error = client
+            .bitcoin
+            .rpc
+            .get_block_count()
+            .send()
+            .await
+            .unwrap_err();
+        assert_eq!(error.code(), ErpcErrorCode::InvalidResponse);
+        assert!(!format!("{error:?}").contains("secret"));
+    }
+
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_raw(
+            r#"[{"jsonrpc":"2.0","id":{"$serde_json::private::Number":"1"},"result":1},{"jsonrpc":"2.0","id":{"$serde_json::private::RawValue":"2"},"result":2}]"#,
+            "application/json",
+        ))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let client = ErpcClient::new(ErpcClientConfig::new("key").with_endpoint(server.uri())).unwrap();
+    let error = client
+        .bitcoin
+        .rpc
+        .batch(vec![
+            RpcBatchCall::without_params("first"),
+            RpcBatchCall::without_params("second"),
+        ])
+        .unwrap()
+        .send()
+        .await
+        .unwrap_err();
+    assert_eq!(error.code(), ErpcErrorCode::InvalidResponse);
+}
+
+#[tokio::test]
+async fn digit_only_credentials_remain_strings_for_nested_error_redaction() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_raw(
+            r#"{"jsonrpc":"2.0","id":1,"error":{"code":-32000,"message":"failure 246813579","data":{"credential":"246813579","nested":{"credential":"246813579"},"__erpc_sdk_number__":"246813579"}}}"#,
+            "application/json",
+        ))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let client =
+        ErpcClient::new(ErpcClientConfig::new("246813579").with_endpoint(server.uri())).unwrap();
+    let error = client
+        .bitcoin
+        .rpc
+        .get_block_count()
+        .send()
+        .await
+        .unwrap_err();
+    let ErpcError::JsonRpc {
+        data: Some(data), ..
+    } = error
+    else {
+        panic!("expected a redacted JSON-RPC error");
+    };
+    assert!(data["credential"].is_string());
+    assert_eq!(data["credential"], "[REDACTED]");
+    assert_eq!(data["nested"]["credential"], "[REDACTED]");
+    assert_eq!(data["__erpc_sdk_number__"], "[REDACTED]");
+}
+
+#[derive(Debug, Deserialize)]
+struct NumericNested {
+    exact: Value,
+}
+
+#[derive(Debug, Deserialize)]
+struct NumericEnvelope {
+    tiny: Value,
+    fraction: Value,
+    above_u64: Value,
+    integer: Value,
+    nested: NumericNested,
+    list: Vec<Value>,
+    optional: Option<Value>,
+}
+
+const NUMERIC_OBJECT: &str = r#"{"tiny":0.00000001,"fraction":1.2345678901234567890123456789,"above_u64":18446744073709551616,"integer":9007199254740993,"nested":{"exact":1.2345678901234567890123456789},"list":[9007199254740993],"optional":{"exact":20999999.99999999}}"#;
+
+fn numeric_response(request: &Request) -> ResponseTemplate {
+    let body = request.body_json::<Value>().expect("JSON-RPC body");
+    let result = if body["method"] == "numeric_list" {
+        format!("[{NUMERIC_OBJECT}]")
+    } else {
+        NUMERIC_OBJECT.to_owned()
+    };
+    ResponseTemplate::new(200).set_body_raw(
+        format!(
+            "{{\"jsonrpc\":\"2.0\",\"id\":{},\"result\":{},\"error\":null}}",
+            body["id"], result
+        ),
+        "application/json",
+    )
+}
+
+fn assert_exact_fraction(value: &Value) {
+    assert_eq!(
+        value.as_number().unwrap().to_string(),
+        "1.2345678901234567890123456789"
+    );
+}
+
+#[tokio::test]
+#[allow(clippy::too_many_lines)]
+async fn standard_serde_preserves_real_precision_across_generic_shapes() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(numeric_response)
+        .expect(5)
+        .mount(&server)
+        .await;
+    let client = ErpcClient::new(ErpcClientConfig::new("key").with_endpoint(server.uri())).unwrap();
+
+    let direct: Value = client
+        .bitcoin
+        .rpc
+        .raw("numeric_direct", None)
+        .send()
+        .await
+        .unwrap();
+    assert_exact_fraction(&direct["fraction"]);
+    assert_eq!(
+        direct["above_u64"].as_number().unwrap().to_string(),
+        "18446744073709551616"
+    );
+    assert_eq!(
+        direct["integer"].as_number().unwrap().to_string(),
+        "9007199254740993"
+    );
+    assert!(matches!(
+        direct["tiny"].as_number().unwrap().to_string().as_str(),
+        "0.00000001" | "1e-8"
+    ));
+
+    let optional: Option<Value> = client
+        .bitcoin
+        .rpc
+        .raw("numeric_optional", None)
+        .send()
+        .await
+        .unwrap();
+    assert_exact_fraction(&optional.unwrap()["fraction"]);
+
+    let map: HashMap<String, Value> = client
+        .bitcoin
+        .rpc
+        .raw("numeric_map", None)
+        .send()
+        .await
+        .unwrap();
+    assert_exact_fraction(&map["fraction"]);
+
+    let list: Vec<Value> = client
+        .bitcoin
+        .rpc
+        .raw("numeric_list", None)
+        .send()
+        .await
+        .unwrap();
+    assert_exact_fraction(&list[0]["fraction"]);
+
+    let envelope: NumericEnvelope = client
+        .bitcoin
+        .rpc
+        .raw("numeric_struct", None)
+        .send()
+        .await
+        .unwrap();
+    assert_exact_fraction(&envelope.fraction);
+    assert_exact_fraction(&envelope.nested.exact);
+    assert_eq!(
+        envelope.list[0].as_number().unwrap().to_string(),
+        "9007199254740993"
+    );
+    assert_eq!(
+        envelope.integer.as_number().unwrap().to_string(),
+        "9007199254740993"
+    );
+    assert!(envelope.optional.is_some());
+    assert_eq!(
+        envelope.tiny.as_number().unwrap().to_string(),
+        direct["tiny"].as_number().unwrap().to_string()
+    );
+    assert_eq!(
+        envelope.above_u64.as_number().unwrap().to_string(),
+        "18446744073709551616"
+    );
+    assert!(
+        server
+            .received_requests()
+            .await
+            .unwrap()
+            .iter()
+            .all(|request| {
+                !String::from_utf8_lossy(&request.body).contains("$serde_json::private")
+            })
+    );
 }

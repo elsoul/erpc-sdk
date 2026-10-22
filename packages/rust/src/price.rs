@@ -5,7 +5,7 @@ use percent_encoding::{NON_ALPHANUMERIC, utf8_percent_encode};
 use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
 
-use crate::{ErpcError, Result, rest::RestTransport};
+use crate::{ErpcError, Result, rest::RestTransport, rpc::decode_json};
 
 /// Binary encoding requested from the price API.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -411,7 +411,7 @@ fn parse_sse_block(block: &str) -> Result<Option<PriceStreamEvent>> {
     if data.is_empty() {
         return Ok(None);
     }
-    let response = serde_json::from_str(&data.join("\n")).map_err(|_| {
+    let response = decode_json(&data.join("\n")).map_err(|_| {
         ErpcError::InvalidResponse("ERPC returned malformed stream data".to_owned())
     })?;
     Ok(Some(PriceStreamEvent {

@@ -12,7 +12,10 @@ use reqwest::{
     Client,
     header::{AUTHORIZATION, HeaderMap, HeaderValue},
 };
-use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde::{
+    Deserialize, Serialize,
+    de::{DeserializeOwned, IgnoredAny},
+};
 use serde_json::Value;
 use tokio_util::sync::CancellationToken;
 use url::Url;
@@ -345,7 +348,7 @@ impl HttpJsonRpcTransport {
                 .get("id")
                 .cloned()
                 .ok_or_else(|| invalid_response("ERPC returned an invalid batch item"))?;
-            let id: JsonRpcId = serde_json::from_value(id)
+            let id = parse_json_rpc_id(&id)
                 .map_err(|_| invalid_response("ERPC returned an invalid batch id"))?;
             if by_id.insert(id, response).is_some() {
                 return Err(invalid_response("ERPC returned a duplicate batch id"));
@@ -403,7 +406,7 @@ impl HttpJsonRpcTransport {
                 .text()
                 .await
                 .map_err(|_| ErpcError::Transport("Unable to read ERPC response".to_owned()))?;
-            parse_json_response(&text)
+            decode_json(&text)
         };
         let timed = tokio::time::timeout(self.timeout, operation);
         let result = if let Some(cancellation) = &options.cancellation {
@@ -422,10 +425,9 @@ impl HttpJsonRpcTransport {
         let object = response
             .as_object()
             .ok_or_else(|| invalid_response("ERPC returned an invalid response"))?;
-        let id: JsonRpcId = serde_json::from_value(
+        let id = parse_json_rpc_id(
             object
                 .get("id")
-                .cloned()
                 .ok_or_else(|| invalid_response("ERPC returned an invalid response"))?,
         )
         .map_err(|_| invalid_response("ERPC returned an invalid response id"))?;
@@ -443,8 +445,8 @@ impl HttpJsonRpcTransport {
             .get("result")
             .cloned()
             .ok_or_else(|| invalid_response("ERPC returned an invalid response"))?;
-        decode_result(result)
-            .map_err(|()| invalid_response("ERPC returned an unexpected result shape"))
+        serde_json::from_value(result)
+            .map_err(|_| invalid_response("ERPC returned an unexpected result shape"))
     }
 
     pub(crate) fn ensure_configured(&self) -> Result<()> {
@@ -465,125 +467,79 @@ fn merge_secrets(mut secrets: Vec<String>, headers: &HeaderMap) -> Vec<String> {
     secrets
 }
 
-const PRESERVED_NUMBER_MARKER: &str = "__erpc_sdk_number__";
+const SERDE_PRIVATE_NUMBER_KEY: &str = "$serde_json::private::Number";
+const SERDE_PRIVATE_RAW_VALUE_KEY: &str = "$serde_json::private::RawValue";
 
-fn parse_json_response(text: &str) -> Result<Value> {
-    serde_json::from_str::<Value>(text)
+/// Deserializes a complete JSON document after rejecting serde's private
+/// serializer object keys at their original wire boundary.
+pub(crate) fn decode_json<T: DeserializeOwned>(text: &str) -> Result<T> {
+    serde_json::from_str::<IgnoredAny>(text)
         .map_err(|_| invalid_response("ERPC returned malformed JSON"))?;
-    let protected = protect_json_numbers(text);
-    let value = serde_json::from_str::<Value>(&protected)
-        .map_err(|_| invalid_response("ERPC returned malformed JSON"))?;
-    restore_json_numbers(value)
+    reject_serde_private_keys(text)?;
+    serde_json::from_str(text).map_err(|_| invalid_response("ERPC returned malformed JSON"))
 }
 
-fn protect_json_numbers(text: &str) -> String {
-    let characters = text.chars().collect::<Vec<_>>();
-    let mut protected = String::with_capacity(text.len());
-    let mut in_string = false;
-    let mut escaped = false;
+pub(crate) fn parse_json_rpc_id(value: &Value) -> Result<JsonRpcId> {
+    match value {
+        Value::Number(number) => number
+            .as_u64()
+            .map(JsonRpcId::Number)
+            .ok_or_else(|| invalid_response("ERPC returned an invalid response id")),
+        Value::String(value) => Ok(JsonRpcId::String(value.clone())),
+        _ => Err(invalid_response("ERPC returned an invalid response id")),
+    }
+}
+
+fn reject_serde_private_keys(text: &str) -> Result<()> {
+    let bytes = text.as_bytes();
     let mut index = 0;
-    while index < characters.len() {
-        let character = characters[index];
-        if in_string {
-            protected.push(character);
+    while index < bytes.len() {
+        if bytes[index] != b'"' {
+            index += 1;
+            continue;
+        }
+        let start = index;
+        index += 1;
+        let mut escaped = false;
+        let mut closed = false;
+        while index < bytes.len() {
+            let byte = bytes[index];
+            index += 1;
             if escaped {
                 escaped = false;
-            } else if character == '\\' {
+            } else if byte == b'\\' {
                 escaped = true;
-            } else if character == '"' {
-                in_string = false;
+            } else if byte == b'"' {
+                closed = true;
+                break;
             }
-            index += 1;
+        }
+        if !closed {
+            return Err(invalid_response("ERPC returned malformed JSON"));
+        }
+        let mut next = index;
+        while next < bytes.len() && is_json_whitespace(bytes[next]) {
+            next += 1;
+        }
+        if next >= bytes.len() || bytes[next] != b':' {
             continue;
         }
-        if character == '"' {
-            in_string = true;
-            protected.push(character);
-            index += 1;
-            continue;
+        let decoded: String = serde_json::from_str(&text[start..index])
+            .map_err(|_| invalid_response("ERPC returned malformed JSON"))?;
+        if matches!(
+            decoded.as_str(),
+            SERDE_PRIVATE_NUMBER_KEY | SERDE_PRIVATE_RAW_VALUE_KEY
+        ) {
+            return Err(invalid_response(
+                "ERPC returned unsupported serializer-private object key",
+            ));
         }
-        if character == '-' || character.is_ascii_digit() {
-            let start = index;
-            index += 1;
-            while index < characters.len() && is_json_number_character(characters[index]) {
-                index += 1;
-            }
-            let number = characters[start..index].iter().collect::<String>();
-            protected.push_str("{\"");
-            protected.push_str(PRESERVED_NUMBER_MARKER);
-            protected.push_str("\":\"");
-            protected.push_str(&number);
-            protected.push_str("\"}");
-            continue;
-        }
-        protected.push(character);
-        index += 1;
     }
-    protected
+    Ok(())
 }
 
-fn is_json_number_character(character: char) -> bool {
-    character.is_ascii_digit() || matches!(character, '.' | 'e' | 'E' | '+' | '-')
-}
-
-fn restore_json_numbers(value: Value) -> Result<Value> {
-    match value {
-        Value::Array(values) => values
-            .into_iter()
-            .map(restore_json_numbers)
-            .collect::<Result<Vec<_>>>()
-            .map(Value::Array),
-        Value::Object(mut object) => {
-            if object.len() == 1 {
-                if let Some(Value::String(number)) = object.get(PRESERVED_NUMBER_MARKER) {
-                    return Ok(Value::Number(serde_json::Number::from_string_unchecked(
-                        number.clone(),
-                    )));
-                }
-            }
-            for value in object.values_mut() {
-                *value = restore_json_numbers(std::mem::take(value))?;
-            }
-            Ok(Value::Object(object))
-        }
-        value => Ok(value),
-    }
-}
-
-fn decode_result<T: DeserializeOwned>(value: Value) -> std::result::Result<T, ()> {
-    let type_name = std::any::type_name::<T>();
-    if type_name == "serde_json::value::Value"
-        || type_name == "core::option::Option<serde_json::value::Value>"
-    {
-        return serde_json::from_value(mark_numbers_for_deserialize(value)).map_err(|_| ());
-    }
-    serde_json::from_value(value).map_err(|_| ())
-}
-
-fn mark_numbers_for_deserialize(value: Value) -> Value {
-    match value {
-        Value::Array(values) => Value::Array(
-            values
-                .into_iter()
-                .map(mark_numbers_for_deserialize)
-                .collect(),
-        ),
-        Value::Object(values) => Value::Object(
-            values
-                .into_iter()
-                .map(|(key, value)| (key, mark_numbers_for_deserialize(value)))
-                .collect(),
-        ),
-        Value::Number(number) => Value::Object(
-            [(
-                "$serde_json::private::Number".to_owned(),
-                Value::String(number.as_str().to_owned()),
-            )]
-            .into_iter()
-            .collect(),
-        ),
-        value => value,
-    }
+const fn is_json_whitespace(byte: u8) -> bool {
+    matches!(byte, b' ' | b'\n' | b'\r' | b'\t')
 }
 
 impl std::fmt::Display for JsonRpcId {

@@ -11,6 +11,7 @@ use url::Url;
 use crate::{
     ErpcError, JsonRpcErrorObject, Result,
     error::{invalid_response, rpc_error_with_secrets, timeout},
+    rpc::{decode_json, parse_json_rpc_id},
 };
 
 /// JSON-RPC subscription identifier.
@@ -166,7 +167,7 @@ impl WebSocketJsonRpcTransport {
                     Message::Close(_) => break,
                     _ => continue,
                 };
-                let Ok(value) = serde_json::from_str::<Value>(&text) else {
+                let Ok(value) = decode_json::<Value>(&text) else {
                     continue;
                 };
                 if let Value::Array(values) = value {
@@ -271,7 +272,13 @@ async fn dispatch(
     let Some(object) = value.as_object() else {
         return;
     };
-    if let Some(id) = object.get("id").and_then(Value::as_u64) {
+    if object.contains_key("id") {
+        let Some(crate::JsonRpcId::Number(id)) = object
+            .get("id")
+            .and_then(|value| parse_json_rpc_id(value).ok())
+        else {
+            return;
+        };
         let Some(response) = pending.lock().await.remove(&id) else {
             return;
         };

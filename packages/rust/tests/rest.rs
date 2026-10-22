@@ -317,3 +317,77 @@ async fn every_cloud_rest_operation_exposes_cancellation() {
         Err(ErpcError::Aborted)
     ));
 }
+
+#[tokio::test]
+async fn rest_json_boundary_rejects_serializer_private_keys_and_accepts_literal_strings() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/v2/price_feeds"))
+        .respond_with(ResponseTemplate::new(200).set_body_raw(
+            r#"[{"id":"feed","attributes":{"nested":{"$serde_json::private::Number":"secret"}}}]"#,
+            "application/json",
+        ))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let client = erpc_sdk::ErpcClient::new(
+        erpc_sdk::ErpcClientConfig::new("key").with_endpoint(server.uri()),
+    )
+    .unwrap();
+    let error = client.price.get_price_feeds(None, None).await.unwrap_err();
+    assert_eq!(error.code(), ErpcErrorCode::InvalidResponse);
+    assert!(!error.to_string().contains("secret"));
+
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/v2/price_feeds"))
+        .respond_with(ResponseTemplate::new(200).set_body_raw(
+            r#"[{"id":"feed","attributes":{"text":"$serde_json::private::Number","json":"{\"$serde_json::private::RawValue\":\"text\"}","marker":"__erpc_sdk_number__"}}]"#,
+            "application/json",
+        ))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let client = erpc_sdk::ErpcClient::new(
+        erpc_sdk::ErpcClientConfig::new("key").with_endpoint(server.uri()),
+    )
+    .unwrap();
+    let feeds = client.price.get_price_feeds(None, None).await.unwrap();
+    assert_eq!(
+        feeds[0].attributes.as_ref().unwrap()["marker"],
+        "__erpc_sdk_number__"
+    );
+    assert!(feeds[0].attributes.as_ref().unwrap()["text"].contains("private::Number"));
+}
+
+#[tokio::test]
+async fn price_sse_boundary_rejects_serializer_private_keys() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/v2/updates/price/stream"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "text/event-stream")
+                .set_body_raw(
+                    concat!(
+                        "data: {\"binary\":{\"data\":[],\"encoding\":\"base64\"},\"nested\":{\"$serde_json::private::RawValue\":\"secret\"}}\n\n"
+                    ),
+                    "text/event-stream",
+                ),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+    let client = erpc_sdk::ErpcClient::new(
+        erpc_sdk::ErpcClientConfig::new("key").with_endpoint(server.uri()),
+    )
+    .unwrap();
+    let mut stream = client
+        .price
+        .stream_price_updates(&PriceStreamOptions::default(), None)
+        .await
+        .unwrap();
+    let error = stream.next().await.unwrap().unwrap_err();
+    assert_eq!(error.code(), ErpcErrorCode::InvalidResponse);
+    assert!(!error.to_string().contains("secret"));
+}

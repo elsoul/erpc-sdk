@@ -216,3 +216,84 @@ async fn direct_subscription_without_websocket_url_fails_locally_even_with_key()
     assert!(error.to_string().contains("ethereum.subscriptions"));
     assert!(client.ethereum.subscriptions.endpoint().is_empty());
 }
+
+#[tokio::test]
+async fn websocket_private_object_id_cannot_complete_pending_request() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move {
+        let (stream, _) = listener.accept().await.unwrap();
+        let mut socket = accept_hdr_async(stream, |_: &Request, response: Response| Ok(response))
+            .await
+            .unwrap();
+        let subscribe = socket.next().await.unwrap().unwrap();
+        let Message::Text(subscribe) = subscribe else {
+            panic!("expected text subscribe request");
+        };
+        let subscribe: Value = serde_json::from_str(&subscribe).unwrap();
+        let id = subscribe["id"].clone();
+        socket
+            .send(Message::Text(
+                json!({
+                    "jsonrpc": "2.0",
+                    "id": {"$serde_json::private::Number": "1"},
+                    "result": "forged"
+                })
+                .to_string()
+                .into(),
+            ))
+            .await
+            .unwrap();
+        socket
+            .send(Message::Text(
+                json!({"jsonrpc": "2.0", "id": id, "result": "sub-valid"})
+                    .to_string()
+                    .into(),
+            ))
+            .await
+            .unwrap();
+        socket
+            .send(Message::Text(
+                json!({
+                    "jsonrpc": "2.0",
+                    "method": "eth_subscription",
+                    "params": {
+                        "subscription": "sub-valid",
+                        "result": {"__erpc_sdk_number__": "123"}
+                    }
+                })
+                .to_string()
+                .into(),
+            ))
+            .await
+            .unwrap();
+
+        let unsubscribe = socket.next().await.unwrap().unwrap();
+        let Message::Text(unsubscribe) = unsubscribe else {
+            panic!("expected text unsubscribe request");
+        };
+        let unsubscribe: Value = serde_json::from_str(&unsubscribe).unwrap();
+        socket
+            .send(Message::Text(
+                json!({"jsonrpc": "2.0", "id": unsubscribe["id"], "result": true})
+                    .to_string()
+                    .into(),
+            ))
+            .await
+            .unwrap();
+    });
+
+    let client =
+        ErpcClient::new(ErpcClientConfig::new("key").with_endpoint(format!("http://{address}")))
+            .unwrap();
+    let subscription = client
+        .ethereum
+        .subscriptions
+        .subscribe("newHeads", Vec::new())
+        .await
+        .unwrap();
+    let notification: Value = subscription.next().await.unwrap();
+    assert_eq!(notification, json!({"__erpc_sdk_number__": "123"}));
+    assert!(subscription.unsubscribe().await.unwrap());
+    server.await.unwrap();
+}

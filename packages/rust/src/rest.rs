@@ -5,7 +5,7 @@ use serde::de::DeserializeOwned;
 use tokio_util::sync::CancellationToken;
 use url::Url;
 
-use crate::{ErpcError, Result, error::timeout};
+use crate::{ErpcError, Result, error::timeout, rpc::decode_json};
 
 pub(crate) type Query = Vec<(String, String)>;
 
@@ -73,8 +73,7 @@ impl RestTransport {
                 .text()
                 .await
                 .map_err(|_| ErpcError::Transport("Unable to read ERPC response".to_owned()))?;
-            serde_json::from_str(&body)
-                .map_err(|_| ErpcError::InvalidResponse("ERPC returned malformed JSON".to_owned()))
+            decode_json(&body)
         };
         self.run(operation, cancellation).await
     }

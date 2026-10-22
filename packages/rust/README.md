@@ -218,11 +218,19 @@ The 12 convenience helpers are `estimate_smart_fee`, `get_best_block_hash`,
 responses vary by verbosity or version; `get_block_count` uses `u64`, hashes use
 `String`, and an absent `gettxout` result is `None`. The SDK enables
 `serde_json`'s `arbitrary_precision` feature, so received JSON numbers in
-`Value` retain their token for `Number::to_string()`. Exact amount or fee
-arithmetic belongs to the caller's decimal or base-unit parser; the SDK never
-converts these fields through `f64`. This preservation starts at the SDK HTTP
-response boundary, so an upstream proxy that already parsed and reserialized a
-number may have changed its representation.
+`Value` retain significant digits. Standard numeric normalization is allowed;
+for example, `0.00000001` may render as `1e-8` without changing its value.
+Exact amount or fee arithmetic belongs to the caller's decimal or base-unit
+parser; the SDK never converts these fields through `f64`. Precision starts at
+the SDK HTTP response boundary, so an upstream proxy that already parsed and
+reserialized a number may have changed its representation.
+
+At SDK JSON network boundaries, objects containing serde's reserved serializer
+keys `$serde_json::private::Number` or `$serde_json::private::RawValue` are
+rejected before deserialization. This prevents wire objects from being
+reinterpreted as numbers or raw JSON. Ordinary objects, strings, and the
+`__erpc_sdk_number__` key remain valid; this reserved-key restriction applies
+to SDK network responses only.
 
 BTC batches remain one unsplit POST with at most 100 calls, and every request
 has one attempt. The raw escape hatch remains server-authoritative and does not
