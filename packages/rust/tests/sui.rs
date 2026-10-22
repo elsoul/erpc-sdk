@@ -1061,14 +1061,31 @@ async fn protobuf_required_presence_zero_values_and_unknown_fields_are_checked()
     assert!(balance.coin_type.is_empty());
     assert_eq!(balance.balance, 0);
 
-    let missing_cases = [
-        ("chain id", field_string(2, "mainnet")),
-        ("chain", field_string(1, "chain")),
-        ("timestamp", {
-            let mut value = field_string(1, "chain");
-            value.extend(field_string(2, "mainnet"));
+    let complete_service_info =
+        |include_chain_id: bool, include_chain: bool, include_timestamp: bool| {
+            let mut value = Vec::new();
+            if include_chain_id {
+                value.extend(field_string(1, "chain-id"));
+            }
+            if include_chain {
+                value.extend(field_string(2, "mainnet"));
+            }
+            value.extend(field_u64(3, 1));
+            value.extend(field_u64(4, 2));
+            if include_timestamp {
+                let timestamp = field_u64(1, 1);
+                value.extend(field_bytes(5, &timestamp));
+            }
+            value.extend(field_u64(6, 3));
+            value.extend(field_u64(7, 4));
+            value.extend(field_string(8, "server"));
+            value.extend(field_string(99, "unknown"));
             value
-        }),
+        };
+    let missing_cases = [
+        ("chain id", complete_service_info(false, true, true)),
+        ("chain", complete_service_info(true, false, true)),
+        ("timestamp", complete_service_info(true, true, false)),
     ];
     for (name, payload) in missing_cases {
         let missing_server = MockServer::start().await;
