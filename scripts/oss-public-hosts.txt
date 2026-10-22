@@ -8,3 +8,6 @@ arbitrum.erpc.global
 polygon.erpc.global
 bsc.erpc.global
 optimism.erpc.global
+kaia.erpc.global
+soneium.erpc.global
+monad.erpc.global

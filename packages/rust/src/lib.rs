@@ -15,12 +15,15 @@ pub mod dex_catalog;
 mod error;
 mod ethereum;
 mod generated;
+mod kaia;
+mod monad;
 mod optimism;
 mod polygon;
 mod price;
 mod rest;
 mod rpc;
 mod solana;
+mod soneium;
 mod subscriptions;
 mod swap;
 pub mod token_catalog;
@@ -64,8 +67,9 @@ pub use cloud::{
 };
 pub use config::{
     DEFAULT_ACCOUNT_ENDPOINT, DEFAULT_ARBITRUM_ENDPOINT, DEFAULT_AVALANCHE_ENDPOINT,
-    DEFAULT_BASE_ENDPOINT, DEFAULT_BSC_ENDPOINT, DEFAULT_ENDPOINT, DEFAULT_OPTIMISM_ENDPOINT,
-    DEFAULT_POLYGON_ENDPOINT, DEFAULT_TIMEOUT, DEFAULT_USER_ENDPOINT, ErpcClientConfig,
+    DEFAULT_BASE_ENDPOINT, DEFAULT_BSC_ENDPOINT, DEFAULT_ENDPOINT, DEFAULT_KAIA_ENDPOINT,
+    DEFAULT_MONAD_ENDPOINT, DEFAULT_OPTIMISM_ENDPOINT, DEFAULT_POLYGON_ENDPOINT,
+    DEFAULT_SONEIUM_ENDPOINT, DEFAULT_TIMEOUT, DEFAULT_USER_ENDPOINT, ErpcClientConfig,
     RpcEndpointConfig,
 };
 pub use dex_catalog::{
@@ -81,6 +85,8 @@ pub use ethereum::{
     ETHEREUM_RPC_METHODS, ETHEREUM_SUBSCRIPTION_METHODS, EthereumClient, EthereumRpcClient,
     EthereumSubscriptions,
 };
+pub use kaia::{KAIA_RPC_METHODS, KaiaClient, KaiaRpcClient};
+pub use monad::{MONAD_RPC_METHODS, MonadClient, MonadRpcClient};
 pub use optimism::{OPTIMISM_RPC_METHODS, OptimismClient, OptimismRpcClient};
 pub use polygon::{POLYGON_RPC_METHODS, PolygonClient, PolygonRpcClient};
 pub use price::{
@@ -107,6 +113,7 @@ pub use solana::{
     TpsTimeseriesOptions, ValidatorInformation, ValidatorsInformationOptions,
     ValidatorsInformationResult,
 };
+pub use soneium::{SONEIUM_RPC_METHODS, SoneiumClient, SoneiumRpcClient};
 pub use subscriptions::{RpcNotification, RpcSubscription, SubscriptionId};
 pub use swap::{
     EvmBlockSnapshot, EvmUnsignedTransaction, ExactInputQuoteRequest, ExactInputQuoteResult,
@@ -284,6 +291,49 @@ fn optimism_rpc_transport(
     )
 }
 
+fn kaia_rpc_transport(
+    resolved: &ResolvedErpcClientConfig,
+    client: &reqwest::Client,
+    direct_client: &reqwest::Client,
+) -> Arc<HttpJsonRpcTransport> {
+    if let Some(endpoint) = &resolved.kaia_rpc {
+        return direct_rpc_transport(endpoint, direct_client, "kaia.rpc", resolved.timeout);
+    }
+    legacy_rpc_transport(resolved, resolved.kaia_endpoint.clone(), client, "kaia.rpc")
+}
+
+fn soneium_rpc_transport(
+    resolved: &ResolvedErpcClientConfig,
+    client: &reqwest::Client,
+    direct_client: &reqwest::Client,
+) -> Arc<HttpJsonRpcTransport> {
+    if let Some(endpoint) = &resolved.soneium_rpc {
+        return direct_rpc_transport(endpoint, direct_client, "soneium.rpc", resolved.timeout);
+    }
+    legacy_rpc_transport(
+        resolved,
+        resolved.soneium_endpoint.clone(),
+        client,
+        "soneium.rpc",
+    )
+}
+
+fn monad_rpc_transport(
+    resolved: &ResolvedErpcClientConfig,
+    client: &reqwest::Client,
+    direct_client: &reqwest::Client,
+) -> Arc<HttpJsonRpcTransport> {
+    if let Some(endpoint) = &resolved.monad_rpc {
+        return direct_rpc_transport(endpoint, direct_client, "monad.rpc", resolved.timeout);
+    }
+    legacy_rpc_transport(
+        resolved,
+        resolved.monad_endpoint.clone(),
+        client,
+        "monad.rpc",
+    )
+}
+
 fn websocket_transport(
     resolved: &ResolvedErpcClientConfig,
     direct: Option<&ResolvedRpcEndpoint>,
@@ -357,12 +407,18 @@ pub struct ErpcClient {
     pub ethereum: EthereumClient,
     /// Price feed REST and streaming API.
     pub price: PriceClient,
+    /// Kaia mainnet read-only HTTP JSON-RPC.
+    pub kaia: KaiaClient,
+    /// Monad mainnet read-only HTTP JSON-RPC.
+    pub monad: MonadClient,
     /// OP Mainnet read-only HTTP JSON-RPC.
     pub optimism: OptimismClient,
     /// Standard and extended Solana JSON-RPC and subscriptions.
     pub solana: SolanaClient,
     /// Polygon `PoS` mainnet read-only HTTP JSON-RPC.
     pub polygon: PolygonClient,
+    /// Soneium mainnet read-only HTTP JSON-RPC.
+    pub soneium: SoneiumClient,
     /// RPC-backed exact-input DEX quote client.
     pub swap: SwapClient,
     /// Monthly API key usage API.
@@ -381,6 +437,9 @@ impl ErpcClient {
         let polygon_transport = polygon_rpc_transport(&resolved, &http, &direct_http);
         let bsc_transport = bsc_rpc_transport(&resolved, &http, &direct_http);
         let optimism_transport = optimism_rpc_transport(&resolved, &http, &direct_http);
+        let kaia_transport = kaia_rpc_transport(&resolved, &http, &direct_http);
+        let soneium_transport = soneium_rpc_transport(&resolved, &http, &direct_http);
+        let monad_transport = monad_rpc_transport(&resolved, &http, &direct_http);
         let bitcoin_transport = bitcoin_rpc_transport(&resolved, &http, &direct_http)?;
         let solana_transport = resolved.solana_rpc.as_ref().map_or_else(
             || legacy_rpc_transport(&resolved, resolved.endpoint.clone(), &http, "solana.rpc"),
@@ -490,9 +549,12 @@ impl ErpcClient {
             bitcoin: BitcoinClient::new(bitcoin_transport),
             ethereum: EthereumClient::new(ethereum_transport, ethereum_ws),
             price: PriceClient::new(shared_rest),
+            kaia: KaiaClient::new(kaia_transport),
+            monad: MonadClient::new(monad_transport),
             optimism: OptimismClient::new(optimism_transport),
             solana: SolanaClient::new(solana_transport, solana_ws),
             polygon: PolygonClient::new(polygon_transport),
+            soneium: SoneiumClient::new(soneium_transport),
             swap,
             usage: UsageClient::new(user_rest),
         })

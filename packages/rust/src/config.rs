@@ -24,6 +24,12 @@ pub const DEFAULT_POLYGON_ENDPOINT: &str = "https://polygon.erpc.global";
 pub const DEFAULT_BSC_ENDPOINT: &str = "https://bsc.erpc.global";
 /// Default OP Mainnet JSON-RPC endpoint.
 pub const DEFAULT_OPTIMISM_ENDPOINT: &str = "https://optimism.erpc.global";
+/// Default Kaia mainnet JSON-RPC endpoint.
+pub const DEFAULT_KAIA_ENDPOINT: &str = "https://kaia.erpc.global";
+/// Default Soneium mainnet JSON-RPC endpoint.
+pub const DEFAULT_SONEIUM_ENDPOINT: &str = "https://soneium.erpc.global";
+/// Default Monad mainnet JSON-RPC endpoint.
+pub const DEFAULT_MONAD_ENDPOINT: &str = "https://monad.erpc.global";
 /// Default request and connection-establishment timeout.
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -180,6 +186,18 @@ pub struct ErpcClientConfig {
     pub optimism_endpoint: String,
     /// Optional caller-owned OP Mainnet JSON-RPC endpoint.
     pub optimism_rpc: Option<RpcEndpointConfig>,
+    /// Hosted Kaia mainnet JSON-RPC endpoint override.
+    pub kaia_endpoint: String,
+    /// Optional caller-owned Kaia mainnet JSON-RPC endpoint.
+    pub kaia_rpc: Option<RpcEndpointConfig>,
+    /// Hosted Soneium mainnet JSON-RPC endpoint override.
+    pub soneium_endpoint: String,
+    /// Optional caller-owned Soneium mainnet JSON-RPC endpoint.
+    pub soneium_rpc: Option<RpcEndpointConfig>,
+    /// Hosted Monad mainnet JSON-RPC endpoint override.
+    pub monad_endpoint: String,
+    /// Optional caller-owned Monad mainnet JSON-RPC endpoint.
+    pub monad_rpc: Option<RpcEndpointConfig>,
 }
 
 impl fmt::Debug for ErpcClientConfig {
@@ -217,6 +235,15 @@ impl fmt::Debug for ErpcClientConfig {
                 "optimism_rpc",
                 &self.optimism_rpc.as_ref().map(OptimismRpcDebug),
             )
+            .field("kaia_endpoint", &debug_origin(&self.kaia_endpoint))
+            .field("kaia_rpc", &self.kaia_rpc.as_ref().map(KaiaRpcDebug))
+            .field("soneium_endpoint", &debug_origin(&self.soneium_endpoint))
+            .field(
+                "soneium_rpc",
+                &self.soneium_rpc.as_ref().map(SoneiumRpcDebug),
+            )
+            .field("monad_endpoint", &debug_origin(&self.monad_endpoint))
+            .field("monad_rpc", &self.monad_rpc.as_ref().map(MonadRpcDebug))
             .field(
                 "header_names",
                 &self
@@ -256,6 +283,12 @@ impl ErpcClientConfig {
             bsc_rpc: None,
             optimism_endpoint: DEFAULT_OPTIMISM_ENDPOINT.to_owned(),
             optimism_rpc: None,
+            kaia_endpoint: DEFAULT_KAIA_ENDPOINT.to_owned(),
+            kaia_rpc: None,
+            soneium_endpoint: DEFAULT_SONEIUM_ENDPOINT.to_owned(),
+            soneium_rpc: None,
+            monad_endpoint: DEFAULT_MONAD_ENDPOINT.to_owned(),
+            monad_rpc: None,
         }
     }
 
@@ -420,6 +453,48 @@ impl ErpcClientConfig {
         self.optimism_rpc = Some(endpoint.into());
         self
     }
+
+    /// Overrides the hosted Kaia mainnet JSON-RPC endpoint.
+    #[must_use]
+    pub fn with_kaia_endpoint(mut self, endpoint: impl Into<String>) -> Self {
+        self.kaia_endpoint = endpoint.into();
+        self
+    }
+
+    /// Selects a caller-owned Kaia mainnet JSON-RPC endpoint.
+    #[must_use]
+    pub fn with_kaia_rpc(mut self, endpoint: impl Into<RpcEndpointConfig>) -> Self {
+        self.kaia_rpc = Some(endpoint.into());
+        self
+    }
+
+    /// Overrides the hosted Soneium mainnet JSON-RPC endpoint.
+    #[must_use]
+    pub fn with_soneium_endpoint(mut self, endpoint: impl Into<String>) -> Self {
+        self.soneium_endpoint = endpoint.into();
+        self
+    }
+
+    /// Selects a caller-owned Soneium mainnet JSON-RPC endpoint.
+    #[must_use]
+    pub fn with_soneium_rpc(mut self, endpoint: impl Into<RpcEndpointConfig>) -> Self {
+        self.soneium_rpc = Some(endpoint.into());
+        self
+    }
+
+    /// Overrides the hosted Monad mainnet JSON-RPC endpoint.
+    #[must_use]
+    pub fn with_monad_endpoint(mut self, endpoint: impl Into<String>) -> Self {
+        self.monad_endpoint = endpoint.into();
+        self
+    }
+
+    /// Selects a caller-owned Monad mainnet JSON-RPC endpoint.
+    #[must_use]
+    pub fn with_monad_rpc(mut self, endpoint: impl Into<RpcEndpointConfig>) -> Self {
+        self.monad_rpc = Some(endpoint.into());
+        self
+    }
 }
 
 pub(crate) struct ResolvedRpcEndpoint {
@@ -451,11 +526,18 @@ pub(crate) struct ResolvedErpcClientConfig {
     pub bsc_rpc: Option<ResolvedRpcEndpoint>,
     pub optimism_endpoint: Url,
     pub optimism_rpc: Option<ResolvedRpcEndpoint>,
+    pub kaia_endpoint: Url,
+    pub kaia_rpc: Option<ResolvedRpcEndpoint>,
+    pub soneium_endpoint: Url,
+    pub soneium_rpc: Option<ResolvedRpcEndpoint>,
+    pub monad_endpoint: Url,
+    pub monad_rpc: Option<ResolvedRpcEndpoint>,
 }
 
 impl TryFrom<ErpcClientConfig> for ResolvedErpcClientConfig {
     type Error = ErpcError;
 
+    #[allow(clippy::too_many_lines)]
     fn try_from(config: ErpcClientConfig) -> Result<Self> {
         let api_key = config.api_key.trim().to_owned();
         if api_key.is_empty()
@@ -468,6 +550,9 @@ impl TryFrom<ErpcClientConfig> for ResolvedErpcClientConfig {
             && config.polygon_rpc.is_none()
             && config.bsc_rpc.is_none()
             && config.optimism_rpc.is_none()
+            && config.kaia_rpc.is_none()
+            && config.soneium_rpc.is_none()
+            && config.monad_rpc.is_none()
         {
             return Err(ErpcError::Config("api_key must not be empty".to_owned()));
         }
@@ -520,6 +605,21 @@ impl TryFrom<ErpcClientConfig> for ResolvedErpcClientConfig {
             .as_ref()
             .map(resolve_optimism_rpc_endpoint)
             .transpose()?;
+        let kaia_rpc = config
+            .kaia_rpc
+            .as_ref()
+            .map(resolve_kaia_rpc_endpoint)
+            .transpose()?;
+        let soneium_rpc = config
+            .soneium_rpc
+            .as_ref()
+            .map(resolve_soneium_rpc_endpoint)
+            .transpose()?;
+        let monad_rpc = config
+            .monad_rpc
+            .as_ref()
+            .map(resolve_monad_rpc_endpoint)
+            .transpose()?;
         Ok(Self {
             api_key: (!api_key.is_empty()).then_some(api_key),
             endpoint: endpoint(&config.endpoint, false)?,
@@ -542,6 +642,12 @@ impl TryFrom<ErpcClientConfig> for ResolvedErpcClientConfig {
             bsc_rpc,
             optimism_endpoint: endpoint(&config.optimism_endpoint, false)?,
             optimism_rpc,
+            kaia_endpoint: endpoint(&config.kaia_endpoint, false)?,
+            kaia_rpc,
+            soneium_endpoint: endpoint(&config.soneium_endpoint, false)?,
+            soneium_rpc,
+            monad_endpoint: endpoint(&config.monad_endpoint, false)?,
+            monad_rpc,
         })
     }
 }
@@ -664,6 +770,39 @@ fn resolve_optimism_rpc_endpoint(config: &RpcEndpointConfig) -> Result<ResolvedR
     if config.websocket_url.is_some() {
         return Err(ErpcError::Config(
             "Optimism RPC is HTTP-only; websocket_url is not supported".to_owned(),
+        ));
+    }
+    let mut endpoint = resolve_rpc_endpoint(config)?;
+    collect_path_values(&endpoint.http_url, &mut endpoint.redaction_secrets);
+    Ok(endpoint)
+}
+
+fn resolve_kaia_rpc_endpoint(config: &RpcEndpointConfig) -> Result<ResolvedRpcEndpoint> {
+    if config.websocket_url.is_some() {
+        return Err(ErpcError::Config(
+            "Kaia RPC is HTTP-only; websocket_url is not supported".to_owned(),
+        ));
+    }
+    let mut endpoint = resolve_rpc_endpoint(config)?;
+    collect_path_values(&endpoint.http_url, &mut endpoint.redaction_secrets);
+    Ok(endpoint)
+}
+
+fn resolve_soneium_rpc_endpoint(config: &RpcEndpointConfig) -> Result<ResolvedRpcEndpoint> {
+    if config.websocket_url.is_some() {
+        return Err(ErpcError::Config(
+            "Soneium RPC is HTTP-only; websocket_url is not supported".to_owned(),
+        ));
+    }
+    let mut endpoint = resolve_rpc_endpoint(config)?;
+    collect_path_values(&endpoint.http_url, &mut endpoint.redaction_secrets);
+    Ok(endpoint)
+}
+
+fn resolve_monad_rpc_endpoint(config: &RpcEndpointConfig) -> Result<ResolvedRpcEndpoint> {
+    if config.websocket_url.is_some() {
+        return Err(ErpcError::Config(
+            "Monad RPC is HTTP-only; websocket_url is not supported".to_owned(),
         ));
     }
     let mut endpoint = resolve_rpc_endpoint(config)?;
@@ -998,6 +1137,69 @@ impl fmt::Debug for OptimismRpcDebug<'_> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("OptimismRpcEndpointConfig")
+            .field("origin", &debug_origin(&self.0.http_url))
+            .field("has_websocket_url", &self.0.websocket_url.is_some())
+            .field(
+                "header_names",
+                &self
+                    .0
+                    .headers
+                    .iter()
+                    .map(|(name, _)| name)
+                    .collect::<Vec<_>>(),
+            )
+            .finish()
+    }
+}
+
+struct KaiaRpcDebug<'a>(&'a RpcEndpointConfig);
+
+impl fmt::Debug for KaiaRpcDebug<'_> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("KaiaRpcEndpointConfig")
+            .field("origin", &debug_origin(&self.0.http_url))
+            .field("has_websocket_url", &self.0.websocket_url.is_some())
+            .field(
+                "header_names",
+                &self
+                    .0
+                    .headers
+                    .iter()
+                    .map(|(name, _)| name)
+                    .collect::<Vec<_>>(),
+            )
+            .finish()
+    }
+}
+
+struct SoneiumRpcDebug<'a>(&'a RpcEndpointConfig);
+
+impl fmt::Debug for SoneiumRpcDebug<'_> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("SoneiumRpcEndpointConfig")
+            .field("origin", &debug_origin(&self.0.http_url))
+            .field("has_websocket_url", &self.0.websocket_url.is_some())
+            .field(
+                "header_names",
+                &self
+                    .0
+                    .headers
+                    .iter()
+                    .map(|(name, _)| name)
+                    .collect::<Vec<_>>(),
+            )
+            .finish()
+    }
+}
+
+struct MonadRpcDebug<'a>(&'a RpcEndpointConfig);
+
+impl fmt::Debug for MonadRpcDebug<'_> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("MonadRpcEndpointConfig")
             .field("origin", &debug_origin(&self.0.http_url))
             .field("has_websocket_url", &self.0.websocket_url.is_some())
             .field(

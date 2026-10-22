@@ -187,14 +187,17 @@ For Solana transaction-version options and response handling, see the
 | `erpc.avalanche.index` | C/P/X block and X transaction indexes |
 | `erpc.bitcoin.rpc` | Bitcoin Core HTTP JSON-RPC |
 | `erpc.arbitrum.rpc` | Arbitrum One HTTP read-only JSON-RPC (target Rust 0.11.0) |
+| `erpc.kaia.rpc` | Kaia mainnet HTTP read-only JSON-RPC (target Rust 0.11.0) |
+| `erpc.soneium.rpc` | Soneium mainnet HTTP read-only JSON-RPC (target Rust 0.11.0) |
+| `erpc.monad.rpc` | Monad mainnet HTTP read-only JSON-RPC (target Rust 0.11.0) |
 | `erpc.price` | Price metadata, updates, and SSE streams |
 | `erpc.account` | Token balance |
 | `erpc.usage` | Masked monthly API-key usage |
 
 Most JSON-RPC namespaces expose `request`, `raw`, and `batch` for typed results
-and forward-compatible methods. Base, Arbitrum, Polygon, BSC, and Optimism are
-deliberate sealed read-only exceptions: each exposes only its three typed reads
-and no raw/request/batch escape hatch.
+and forward-compatible methods. Base, Arbitrum, Polygon, BSC, Optimism, Kaia,
+Soneium, and Monad are deliberate sealed read-only exceptions: each exposes
+only its three typed reads and no raw/request/batch escape hatch.
 Avalanche uses the Ethereum-compatible
 typed catalog and defaults to `https://ava-rpc.erpc.global`; the SDK uses its
 `/ava` HTTP route and `/ava-ws` WebSocket route. Native namespaces provide
@@ -392,6 +395,41 @@ let optimism_call = erpc
 # Ok(())
 # }
 ```
+
+## Kaia, Soneium, and Monad read-only RPC (target Rust 0.11.0)
+
+These three namespaces are unreleased source work in the same Rust 0.11.0
+candidate as the earlier sealed EVM facades. The published erpc-sdk 0.10.0
+crate does not contain them; keep the install line above at erpc-sdk = 0.10
+until the later promotion brief and release proof.
+
+The dedicated hosted roots are https://kaia.erpc.global/,
+https://soneium.erpc.global/, and https://monad.erpc.global/. Each uses the
+existing api-key query authentication and may be overridden with its edge
+facade path (/kaia, /soneium, or /monad). Hosted overrides receive the ERPC
+API key and global legacy headers, so they must be caller-trusted and
+ERPC-compatible. Caller-owned with_kaia_rpc, with_soneium_rpc, and
+with_monad_rpc endpoints preserve exact paths and queries, use only scoped
+headers, follow no redirects, and work keylessly.
+
+Network identities and native gas wording:
+
+| Namespace | Network | Chain ID | Native gas wording |
+| --- | --- | --- | --- |
+| erpc.kaia.rpc | Kaia mainnet | 8217 / 0x2019 | KAIA |
+| erpc.soneium.rpc | Soneium mainnet | 1868 / 0x74c | ETH |
+| erpc.monad.rpc | Monad mainnet | 143 / 0x8f | MON |
+
+Each facade exposes only eth_chainId, eth_getBalance, and eth_call, returning
+wire hex String results. There is no request, raw, batch,
+WebSocket/subscription, sign, send, broadcast, swap, or bridge surface. Verify
+eth_chain_id() against the expected value before trusting a custom endpoint.
+Balances remain raw base-unit quantities: Kaia uses peb, Soneium uses ETH base
+units, and Monad uses wei; the SDK performs no amount conversion or
+finality/archive assertion. Monad mainnet is 0x8f; Monad Testnet is 0x279f and
+is outside this facade. Custom endpoints return their actual chain ID unchanged
+so callers can detect a mismatch. Safe/finalized block selectors pass through
+as supplied.
 
 ## Bitcoin HTTP JSON-RPC
 
