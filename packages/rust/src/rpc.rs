@@ -8,7 +8,10 @@ use std::{
     time::Duration,
 };
 
-use reqwest::{Client, header::HeaderMap};
+use reqwest::{
+    Client,
+    header::{AUTHORIZATION, HeaderMap, HeaderValue},
+};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;
 use tokio_util::sync::CancellationToken;
@@ -97,6 +100,14 @@ pub struct HttpJsonRpcTransport {
     next_id: AtomicU64,
     configured: bool,
     namespace: String,
+    response_policy: ResponsePolicy,
+    api_key_query: bool,
+}
+
+#[derive(Clone, Copy)]
+enum ResponsePolicy {
+    Strict,
+    Bitcoin,
 }
 
 impl HttpJsonRpcTransport {
@@ -121,6 +132,8 @@ impl HttpJsonRpcTransport {
             config.client,
             "RPC",
             true,
+            ResponsePolicy::Strict,
+            true,
         )
     }
 
@@ -144,7 +157,62 @@ impl HttpJsonRpcTransport {
             client,
             namespace,
             true,
+            ResponsePolicy::Strict,
+            false,
         )
+    }
+
+    pub(crate) fn new_direct_bitcoin(
+        endpoint: Url,
+        headers: HeaderMap,
+        redaction_secrets: Vec<String>,
+        timeout: Duration,
+        client: Client,
+        namespace: impl Into<String>,
+    ) -> Self {
+        let redaction_secrets = merge_secrets(redaction_secrets, &headers);
+        Self::from_parts(
+            None,
+            endpoint,
+            headers,
+            redaction_secrets,
+            100,
+            timeout,
+            client,
+            namespace,
+            true,
+            ResponsePolicy::Bitcoin,
+            false,
+        )
+    }
+
+    pub(crate) fn new_bitcoin(
+        api_key: String,
+        endpoint: Url,
+        mut headers: HeaderMap,
+        timeout: Duration,
+        client: Client,
+    ) -> Result<Self> {
+        let bearer = format!("Bearer {api_key}");
+        let bearer = HeaderValue::from_str(&bearer)
+            .map_err(|_| ErpcError::Config("invalid Bitcoin authorization header".to_owned()))?;
+        headers.remove(AUTHORIZATION);
+        headers.insert(AUTHORIZATION, bearer);
+        let mut redaction_secrets = vec![api_key.clone()];
+        redaction_secrets = merge_secrets(redaction_secrets, &headers);
+        Ok(Self::from_parts(
+            Some(api_key),
+            endpoint,
+            headers,
+            redaction_secrets,
+            100,
+            timeout,
+            client,
+            "bitcoin.rpc",
+            true,
+            ResponsePolicy::Bitcoin,
+            false,
+        ))
     }
 
     pub(crate) fn unavailable(
@@ -163,6 +231,8 @@ impl HttpJsonRpcTransport {
             client,
             namespace,
             false,
+            ResponsePolicy::Strict,
+            false,
         )
     }
 
@@ -177,6 +247,8 @@ impl HttpJsonRpcTransport {
         client: Client,
         namespace: impl Into<String>,
         configured: bool,
+        response_policy: ResponsePolicy,
+        api_key_query: bool,
     ) -> Self {
         Self {
             api_key,
@@ -189,6 +261,8 @@ impl HttpJsonRpcTransport {
             next_id: AtomicU64::new(1),
             configured,
             namespace: namespace.into(),
+            response_policy,
+            api_key_query,
         }
     }
 
@@ -304,8 +378,10 @@ impl HttpJsonRpcTransport {
 
     async fn post(&self, body: &impl Serialize, options: &RequestOptions) -> Result<Value> {
         let mut url = self.endpoint.clone();
-        if let Some(api_key) = &self.api_key {
-            url.query_pairs_mut().append_pair("api-key", api_key);
+        if self.api_key_query {
+            if let Some(api_key) = &self.api_key {
+                url.query_pairs_mut().append_pair("api-key", api_key);
+            }
         }
         let operation = async {
             let response = self
@@ -327,8 +403,7 @@ impl HttpJsonRpcTransport {
                 .text()
                 .await
                 .map_err(|_| ErpcError::Transport("Unable to read ERPC response".to_owned()))?;
-            serde_json::from_str(&text)
-                .map_err(|_| invalid_response("ERPC returned malformed JSON"))
+            parse_json_response(&text)
         };
         let timed = tokio::time::timeout(self.timeout, operation);
         let result = if let Some(cancellation) = &options.cancellation {
@@ -358,16 +433,18 @@ impl HttpJsonRpcTransport {
             return Err(invalid_response("ERPC returned an unexpected response id"));
         }
         if let Some(error) = object.get("error") {
-            let error: JsonRpcErrorObject = serde_json::from_value(error.clone())
-                .map_err(|_| invalid_response("ERPC returned an invalid RPC error"))?;
-            return Err(rpc_error_with_secrets(error, &self.redaction_secrets));
+            if !matches!(self.response_policy, ResponsePolicy::Bitcoin) || !error.is_null() {
+                let error: JsonRpcErrorObject = serde_json::from_value(error.clone())
+                    .map_err(|_| invalid_response("ERPC returned an invalid RPC error"))?;
+                return Err(rpc_error_with_secrets(error, &self.redaction_secrets));
+            }
         }
         let result = object
             .get("result")
             .cloned()
             .ok_or_else(|| invalid_response("ERPC returned an invalid response"))?;
-        serde_json::from_value(result)
-            .map_err(|_| invalid_response("ERPC returned an unexpected result shape"))
+        decode_result(result)
+            .map_err(|()| invalid_response("ERPC returned an unexpected result shape"))
     }
 
     pub(crate) fn ensure_configured(&self) -> Result<()> {
@@ -386,6 +463,127 @@ fn merge_secrets(mut secrets: Vec<String>, headers: &HeaderMap) -> Vec<String> {
         }
     }
     secrets
+}
+
+const PRESERVED_NUMBER_MARKER: &str = "__erpc_sdk_number__";
+
+fn parse_json_response(text: &str) -> Result<Value> {
+    serde_json::from_str::<Value>(text)
+        .map_err(|_| invalid_response("ERPC returned malformed JSON"))?;
+    let protected = protect_json_numbers(text);
+    let value = serde_json::from_str::<Value>(&protected)
+        .map_err(|_| invalid_response("ERPC returned malformed JSON"))?;
+    restore_json_numbers(value)
+}
+
+fn protect_json_numbers(text: &str) -> String {
+    let characters = text.chars().collect::<Vec<_>>();
+    let mut protected = String::with_capacity(text.len());
+    let mut in_string = false;
+    let mut escaped = false;
+    let mut index = 0;
+    while index < characters.len() {
+        let character = characters[index];
+        if in_string {
+            protected.push(character);
+            if escaped {
+                escaped = false;
+            } else if character == '\\' {
+                escaped = true;
+            } else if character == '"' {
+                in_string = false;
+            }
+            index += 1;
+            continue;
+        }
+        if character == '"' {
+            in_string = true;
+            protected.push(character);
+            index += 1;
+            continue;
+        }
+        if character == '-' || character.is_ascii_digit() {
+            let start = index;
+            index += 1;
+            while index < characters.len() && is_json_number_character(characters[index]) {
+                index += 1;
+            }
+            let number = characters[start..index].iter().collect::<String>();
+            protected.push_str("{\"");
+            protected.push_str(PRESERVED_NUMBER_MARKER);
+            protected.push_str("\":\"");
+            protected.push_str(&number);
+            protected.push_str("\"}");
+            continue;
+        }
+        protected.push(character);
+        index += 1;
+    }
+    protected
+}
+
+fn is_json_number_character(character: char) -> bool {
+    character.is_ascii_digit() || matches!(character, '.' | 'e' | 'E' | '+' | '-')
+}
+
+fn restore_json_numbers(value: Value) -> Result<Value> {
+    match value {
+        Value::Array(values) => values
+            .into_iter()
+            .map(restore_json_numbers)
+            .collect::<Result<Vec<_>>>()
+            .map(Value::Array),
+        Value::Object(mut object) => {
+            if object.len() == 1 {
+                if let Some(Value::String(number)) = object.get(PRESERVED_NUMBER_MARKER) {
+                    return Ok(Value::Number(serde_json::Number::from_string_unchecked(
+                        number.clone(),
+                    )));
+                }
+            }
+            for value in object.values_mut() {
+                *value = restore_json_numbers(std::mem::take(value))?;
+            }
+            Ok(Value::Object(object))
+        }
+        value => Ok(value),
+    }
+}
+
+fn decode_result<T: DeserializeOwned>(value: Value) -> std::result::Result<T, ()> {
+    let type_name = std::any::type_name::<T>();
+    if type_name == "serde_json::value::Value"
+        || type_name == "core::option::Option<serde_json::value::Value>"
+    {
+        return serde_json::from_value(mark_numbers_for_deserialize(value)).map_err(|_| ());
+    }
+    serde_json::from_value(value).map_err(|_| ())
+}
+
+fn mark_numbers_for_deserialize(value: Value) -> Value {
+    match value {
+        Value::Array(values) => Value::Array(
+            values
+                .into_iter()
+                .map(mark_numbers_for_deserialize)
+                .collect(),
+        ),
+        Value::Object(values) => Value::Object(
+            values
+                .into_iter()
+                .map(|(key, value)| (key, mark_numbers_for_deserialize(value)))
+                .collect(),
+        ),
+        Value::Number(number) => Value::Object(
+            [(
+                "$serde_json::private::Number".to_owned(),
+                Value::String(number.as_str().to_owned()),
+            )]
+            .into_iter()
+            .collect(),
+        ),
+        value => value,
+    }
 }
 
 impl std::fmt::Display for JsonRpcId {

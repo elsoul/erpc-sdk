@@ -147,6 +147,8 @@ pub struct ErpcClientConfig {
     pub ethereum_rpc: Option<RpcEndpointConfig>,
     /// Optional caller-owned Avalanche C-Chain JSON-RPC endpoint.
     pub avalanche_c_rpc: Option<RpcEndpointConfig>,
+    /// Optional caller-owned Bitcoin JSON-RPC endpoint.
+    pub bitcoin_rpc: Option<RpcEndpointConfig>,
 }
 
 impl fmt::Debug for ErpcClientConfig {
@@ -164,6 +166,7 @@ impl fmt::Debug for ErpcClientConfig {
             .field("solana_rpc", &self.solana_rpc)
             .field("ethereum_rpc", &self.ethereum_rpc)
             .field("avalanche_c_rpc", &self.avalanche_c_rpc)
+            .field("bitcoin_rpc", &self.bitcoin_rpc)
             .field(
                 "header_names",
                 &self
@@ -192,6 +195,7 @@ impl ErpcClientConfig {
             solana_rpc: None,
             ethereum_rpc: None,
             avalanche_c_rpc: None,
+            bitcoin_rpc: None,
         }
     }
 
@@ -279,6 +283,13 @@ impl ErpcClientConfig {
     pub fn with_avalanche_rpc(self, endpoint: impl Into<RpcEndpointConfig>) -> Self {
         self.with_avalanche_c_rpc(endpoint)
     }
+
+    /// Selects a caller-owned Bitcoin JSON-RPC endpoint.
+    #[must_use]
+    pub fn with_bitcoin_rpc(mut self, endpoint: impl Into<RpcEndpointConfig>) -> Self {
+        self.bitcoin_rpc = Some(endpoint.into());
+        self
+    }
 }
 
 pub(crate) struct ResolvedRpcEndpoint {
@@ -299,6 +310,7 @@ pub(crate) struct ResolvedErpcClientConfig {
     pub solana_rpc: Option<ResolvedRpcEndpoint>,
     pub ethereum_rpc: Option<ResolvedRpcEndpoint>,
     pub avalanche_c_rpc: Option<ResolvedRpcEndpoint>,
+    pub bitcoin_rpc: Option<ResolvedRpcEndpoint>,
 }
 
 impl TryFrom<ErpcClientConfig> for ResolvedErpcClientConfig {
@@ -310,6 +322,7 @@ impl TryFrom<ErpcClientConfig> for ResolvedErpcClientConfig {
             && config.solana_rpc.is_none()
             && config.ethereum_rpc.is_none()
             && config.avalanche_c_rpc.is_none()
+            && config.bitcoin_rpc.is_none()
         {
             return Err(ErpcError::Config("api_key must not be empty".to_owned()));
         }
@@ -332,6 +345,11 @@ impl TryFrom<ErpcClientConfig> for ResolvedErpcClientConfig {
             .as_ref()
             .map(resolve_rpc_endpoint)
             .transpose()?;
+        let bitcoin_rpc = config
+            .bitcoin_rpc
+            .as_ref()
+            .map(resolve_bitcoin_rpc_endpoint)
+            .transpose()?;
         Ok(Self {
             api_key: (!api_key.is_empty()).then_some(api_key),
             endpoint: endpoint(&config.endpoint, false)?,
@@ -343,6 +361,7 @@ impl TryFrom<ErpcClientConfig> for ResolvedErpcClientConfig {
             solana_rpc,
             ethereum_rpc,
             avalanche_c_rpc: avalanche_rpc,
+            bitcoin_rpc,
         })
     }
 }
@@ -406,6 +425,15 @@ fn resolve_rpc_endpoint(config: &RpcEndpointConfig) -> Result<ResolvedRpcEndpoin
         headers,
         redaction_secrets,
     })
+}
+
+fn resolve_bitcoin_rpc_endpoint(config: &RpcEndpointConfig) -> Result<ResolvedRpcEndpoint> {
+    if config.websocket_url.is_some() {
+        return Err(ErpcError::Config(
+            "bitcoin RPC is HTTP-only; websocket_url is not supported".to_owned(),
+        ));
+    }
+    resolve_rpc_endpoint(config)
 }
 
 fn parse_headers(values: &[(String, String)]) -> Result<HeaderMap> {

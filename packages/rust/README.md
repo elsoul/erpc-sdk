@@ -7,7 +7,7 @@ and scoped Cloud reads.
 
 ```toml
 [dependencies]
-erpc-sdk = "0.8"
+erpc-sdk = "0.10"
 serde_json = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
@@ -60,8 +60,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await?;
     let chain_id = erpc.ethereum.rpc.eth_chain_id().send().await?;
     let avalanche_chain_id = erpc.avalanche.rpc.eth_chain_id().send().await?;
+    let bitcoin_height = erpc.bitcoin.rpc.get_block_count().send().await?;
 
-    println!("slot={slot}, chain_id={chain_id}, avalanche_chain_id={avalanche_chain_id}");
+    println!("slot={slot}, chain_id={chain_id}, avalanche_chain_id={avalanche_chain_id}, bitcoin_height={bitcoin_height}");
     erpc.close().await;
     Ok(())
 }
@@ -173,6 +174,7 @@ For Solana transaction-version options and response handling, see the
 | `erpc.avalanche.proposer_vm` | P-Chain proposer VM API |
 | `erpc.avalanche.info` | Network upgrade information |
 | `erpc.avalanche.index` | C/P/X block and X transaction indexes |
+| `erpc.bitcoin.rpc` | Bitcoin Core HTTP JSON-RPC |
 | `erpc.price` | Price metadata, updates, and SSE streams |
 | `erpc.account` | Token balance |
 | `erpc.usage` | Masked monthly API-key usage |
@@ -184,6 +186,47 @@ typed catalog and defaults to `https://ava-rpc.erpc.global`; the SDK uses its
 snake_case convenience methods with named parameters, while Index calls use
 explicit chain/container paths. Override the base URL with
 `ErpcClientConfig::with_avalanche_endpoint` when needed.
+
+## Bitcoin HTTP JSON-RPC
+
+The Rust client exposes a focused Bitcoin Core HTTP namespace through
+`erpc.bitcoin.rpc`. With an ERPC API key, calls use the resolved facade base
+with `/bitcoin` appended (the default is `https://edge.erpc.global/bitcoin`),
+send `Authorization: Bearer <key>`, and follow no redirects. The namespace is
+HTTP-only and has no subscription surface. A caller-owned endpoint is an exact
+HTTP(S) target and can be selected without an ERPC key:
+
+```rust,no_run
+# use erpc_sdk::{ErpcClient, ErpcClientConfig, RpcEndpointConfig};
+# async fn example() -> erpc_sdk::Result<()> {
+let erpc = ErpcClient::new(
+    ErpcClientConfig::for_rpc().with_bitcoin_rpc(
+        RpcEndpointConfig::new("https://bitcoin.example/rpc?tenant=customer")
+            .with_header("authorization", "Bearer node-token"),
+    ),
+)?;
+let block_count = erpc.bitcoin.rpc.get_block_count().send().await?;
+# let _ = block_count;
+# Ok(())
+# }
+```
+
+The 12 convenience helpers are `estimate_smart_fee`, `get_best_block_hash`,
+`get_block`, `get_blockchain_info`, `get_block_count`, `get_block_hash`,
+`get_block_header`, `get_mempool_info`, `get_network_info`, `get_raw_mempool`,
+`get_raw_transaction`, and `get_tx_out`. `Value` is used where Bitcoin Core
+responses vary by verbosity or version; `get_block_count` uses `u64`, hashes use
+`String`, and an absent `gettxout` result is `None`. The SDK enables
+`serde_json`'s `arbitrary_precision` feature, so received JSON numbers in
+`Value` retain their token for `Number::to_string()`. Exact amount or fee
+arithmetic belongs to the caller's decimal or base-unit parser; the SDK never
+converts these fields through `f64`. This preservation starts at the SDK HTTP
+response boundary, so an upstream proxy that already parsed and reserialized a
+number may have changed its representation.
+
+BTC batches remain one unsplit POST with at most 100 calls, and every request
+has one attempt. The raw escape hatch remains server-authoritative and does not
+add a local method allowlist or authorize transaction submission.
 
 ```rust
 let p_height = erpc.avalanche.p_chain.get_height().send().await?;
