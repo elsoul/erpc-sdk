@@ -1,5 +1,6 @@
 use std::{fmt, str::FromStr, time::Duration};
 
+use percent_encoding::percent_decode_str;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use url::Url;
 
@@ -13,6 +14,8 @@ pub const DEFAULT_AVALANCHE_ENDPOINT: &str = "https://ava-rpc.erpc.global";
 pub const DEFAULT_ACCOUNT_ENDPOINT: &str = "https://solana-rpc.erpc.global";
 /// Default user and Cloud endpoint.
 pub const DEFAULT_USER_ENDPOINT: &str = "https://user-api.erpc.global";
+/// Default Base JSON-RPC endpoint.
+pub const DEFAULT_BASE_ENDPOINT: &str = "https://base.erpc.global";
 /// Default request and connection-establishment timeout.
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -149,6 +152,10 @@ pub struct ErpcClientConfig {
     pub avalanche_c_rpc: Option<RpcEndpointConfig>,
     /// Optional caller-owned Bitcoin JSON-RPC endpoint.
     pub bitcoin_rpc: Option<RpcEndpointConfig>,
+    /// Hosted Base JSON-RPC endpoint override.
+    pub base_endpoint: String,
+    /// Optional caller-owned Base JSON-RPC endpoint.
+    pub base_rpc: Option<RpcEndpointConfig>,
 }
 
 impl fmt::Debug for ErpcClientConfig {
@@ -167,6 +174,8 @@ impl fmt::Debug for ErpcClientConfig {
             .field("ethereum_rpc", &self.ethereum_rpc)
             .field("avalanche_c_rpc", &self.avalanche_c_rpc)
             .field("bitcoin_rpc", &self.bitcoin_rpc)
+            .field("base_endpoint", &debug_origin(&self.base_endpoint))
+            .field("base_rpc", &self.base_rpc.as_ref().map(BaseRpcDebug))
             .field(
                 "header_names",
                 &self
@@ -196,6 +205,8 @@ impl ErpcClientConfig {
             ethereum_rpc: None,
             avalanche_c_rpc: None,
             bitcoin_rpc: None,
+            base_endpoint: DEFAULT_BASE_ENDPOINT.to_owned(),
+            base_rpc: None,
         }
     }
 
@@ -290,6 +301,20 @@ impl ErpcClientConfig {
         self.bitcoin_rpc = Some(endpoint.into());
         self
     }
+
+    /// Overrides the hosted Base JSON-RPC endpoint.
+    #[must_use]
+    pub fn with_base_endpoint(mut self, endpoint: impl Into<String>) -> Self {
+        self.base_endpoint = endpoint.into();
+        self
+    }
+
+    /// Selects a caller-owned Base JSON-RPC endpoint.
+    #[must_use]
+    pub fn with_base_rpc(mut self, endpoint: impl Into<RpcEndpointConfig>) -> Self {
+        self.base_rpc = Some(endpoint.into());
+        self
+    }
 }
 
 pub(crate) struct ResolvedRpcEndpoint {
@@ -311,6 +336,8 @@ pub(crate) struct ResolvedErpcClientConfig {
     pub ethereum_rpc: Option<ResolvedRpcEndpoint>,
     pub avalanche_c_rpc: Option<ResolvedRpcEndpoint>,
     pub bitcoin_rpc: Option<ResolvedRpcEndpoint>,
+    pub base_endpoint: Url,
+    pub base_rpc: Option<ResolvedRpcEndpoint>,
 }
 
 impl TryFrom<ErpcClientConfig> for ResolvedErpcClientConfig {
@@ -323,6 +350,7 @@ impl TryFrom<ErpcClientConfig> for ResolvedErpcClientConfig {
             && config.ethereum_rpc.is_none()
             && config.avalanche_c_rpc.is_none()
             && config.bitcoin_rpc.is_none()
+            && config.base_rpc.is_none()
         {
             return Err(ErpcError::Config("api_key must not be empty".to_owned()));
         }
@@ -350,6 +378,11 @@ impl TryFrom<ErpcClientConfig> for ResolvedErpcClientConfig {
             .as_ref()
             .map(resolve_bitcoin_rpc_endpoint)
             .transpose()?;
+        let base_rpc = config
+            .base_rpc
+            .as_ref()
+            .map(resolve_base_rpc_endpoint)
+            .transpose()?;
         Ok(Self {
             api_key: (!api_key.is_empty()).then_some(api_key),
             endpoint: endpoint(&config.endpoint, false)?,
@@ -362,6 +395,8 @@ impl TryFrom<ErpcClientConfig> for ResolvedErpcClientConfig {
             ethereum_rpc,
             avalanche_c_rpc: avalanche_rpc,
             bitcoin_rpc,
+            base_endpoint: endpoint(&config.base_endpoint, false)?,
+            base_rpc,
         })
     }
 }
@@ -436,6 +471,17 @@ fn resolve_bitcoin_rpc_endpoint(config: &RpcEndpointConfig) -> Result<ResolvedRp
     resolve_rpc_endpoint(config)
 }
 
+fn resolve_base_rpc_endpoint(config: &RpcEndpointConfig) -> Result<ResolvedRpcEndpoint> {
+    if config.websocket_url.is_some() {
+        return Err(ErpcError::Config(
+            "base RPC is HTTP-only; websocket_url is not supported".to_owned(),
+        ));
+    }
+    let mut endpoint = resolve_rpc_endpoint(config)?;
+    collect_path_values(&endpoint.http_url, &mut endpoint.redaction_secrets);
+    Ok(endpoint)
+}
+
 fn parse_headers(values: &[(String, String)]) -> Result<HeaderMap> {
     let mut headers = HeaderMap::new();
     for (name, value) in values {
@@ -504,6 +550,24 @@ fn collect_query_values(url: &Url, secrets: &mut Vec<String>) {
         let value = value.into_owned();
         if !value.is_empty() && !secrets.contains(&value) {
             secrets.push(value);
+        }
+    }
+}
+
+fn collect_path_values(url: &Url, secrets: &mut Vec<String>) {
+    for component in url
+        .path()
+        .split('/')
+        .filter(|component| !component.is_empty())
+    {
+        if !secrets.contains(&component.to_owned()) {
+            secrets.push(component.to_owned());
+        }
+        if let Ok(decoded) = percent_decode_str(component).decode_utf8() {
+            let decoded = decoded.into_owned();
+            if !decoded.is_empty() && !secrets.contains(&decoded) {
+                secrets.push(decoded);
+            }
         }
     }
 }
@@ -641,6 +705,39 @@ fn debug_endpoint(value: &str) -> String {
     let _ = url.set_username("");
     let _ = url.set_password(None);
     url.to_string()
+}
+
+fn debug_origin(value: &str) -> String {
+    let Ok(mut url) = Url::parse(value) else {
+        return "[REDACTED]".to_owned();
+    };
+    url.set_path("/");
+    url.set_query(None);
+    url.set_fragment(None);
+    let _ = url.set_username("");
+    let _ = url.set_password(None);
+    url.to_string()
+}
+
+struct BaseRpcDebug<'a>(&'a RpcEndpointConfig);
+
+impl fmt::Debug for BaseRpcDebug<'_> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("BaseRpcEndpointConfig")
+            .field("origin", &debug_origin(&self.0.http_url))
+            .field("has_websocket_url", &self.0.websocket_url.is_some())
+            .field(
+                "header_names",
+                &self
+                    .0
+                    .headers
+                    .iter()
+                    .map(|(name, _)| name)
+                    .collect::<Vec<_>>(),
+            )
+            .finish()
+    }
 }
 
 pub(crate) fn endpoint_with_path(endpoint: &Url, path: &str) -> Url {

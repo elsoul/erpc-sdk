@@ -165,6 +165,7 @@ For Solana transaction-version options and response handling, see the
 
 | Namespace | Purpose |
 | --- | --- |
+| `erpc.base.rpc` | Base HTTP read-only JSON-RPC (target Rust 0.11.0) |
 | `erpc.solana.rpc` | Standard Solana JSON-RPC |
 | `erpc.solana.das` | Indexed assets and tokens |
 | `erpc.solana.history` | Address transactions and transfers |
@@ -186,13 +187,88 @@ For Solana transaction-version options and response handling, see the
 | `erpc.account` | Token balance |
 | `erpc.usage` | Masked monthly API-key usage |
 
-Every JSON-RPC namespace also exposes `request`, `raw`, and `batch` for typed
-results and forward-compatible methods. Avalanche uses the Ethereum-compatible
+Most JSON-RPC namespaces expose `request`, `raw`, and `batch` for typed results
+and forward-compatible methods. Base is the deliberate read-only exception:
+it exposes only its three typed reads and no raw/request/batch escape hatch.
+Avalanche uses the Ethereum-compatible
 typed catalog and defaults to `https://ava-rpc.erpc.global`; the SDK uses its
 `/ava` HTTP route and `/ava-ws` WebSocket route. Native namespaces provide
 snake_case convenience methods with named parameters, while Index calls use
 explicit chain/container paths. Override the base URL with
 `ErpcClientConfig::with_avalanche_endpoint` when needed.
+
+## Base read-only RPC (target Rust 0.11.0)
+
+Base support is unreleased source work targeting a separate Rust `0.11.0`
+release. The published `erpc-sdk 0.10.0` crate does not contain this namespace;
+keep the install line above at `erpc-sdk = "0.10"` until the later promotion
+brief and release proof.
+
+The Base façade is HTTP-only and read-only. Hosted calls use the Base root
+`https://base.erpc.global/` with the existing `api-key` query authentication.
+`with_base_endpoint` selects another hosted root. A caller-owned endpoint can
+be selected with `with_base_rpc`; it preserves the exact path and query, uses
+only endpoint-scoped headers, follows no redirects, and works without an ERPC
+API key:
+
+```rust,no_run
+# use erpc_sdk::{ErpcClient, ErpcClientConfig, RpcEndpointConfig};
+# async fn example() -> erpc_sdk::Result<()> {
+let erpc = ErpcClient::new(
+    ErpcClientConfig::for_rpc().with_base_rpc(
+        RpcEndpointConfig::new("https://base-node.example/rpc?tenant=customer")
+            .with_header("authorization", "Bearer node-token"),
+    ),
+)?;
+let chain_id = erpc.base.rpc.eth_chain_id().send().await?;
+let balance = erpc
+    .base
+    .rpc
+    .eth_get_balance(["0x1111111111111111111111111111111111111111", "latest"])?
+    .send()
+    .await?;
+let call = erpc
+    .base
+    .rpc
+    .eth_call(serde_json::json!([{
+        "to": "0x2222222222222222222222222222222222222222",
+        "data": "0x"
+    }, "latest"]))?
+    .send()
+    .await?;
+# let _ = (chain_id, balance, call);
+# Ok(())
+# }
+```
+
+The namespace contains exactly `eth_chainId`, `eth_getBalance`, and `eth_call`.
+It has no `request`, `raw`, batch, WebSocket/subscription, sign, send,
+broadcast, swap, or bridge surface. Results remain wire hex strings; callers
+choose their own address and calldata validation and do not route amounts
+through floating-point conversions.
+
+For a catalog-backed Base EURC read, use the existing offline token record to
+select the contract address, then send a read-only `eth_call`:
+
+```rust,no_run
+# use erpc_sdk::{get_token_deployment, tokens, ErpcClient, ErpcClientConfig};
+# async fn example() -> erpc_sdk::Result<()> {
+let erpc = ErpcClient::new(ErpcClientConfig::new("api-key"))?;
+let eurc = get_token_deployment(tokens::base::EURC).expect("catalogued Base EURC");
+let eurc_address = eurc.address.expect("Base EURC has an address");
+let name = erpc
+    .base
+    .rpc
+    .eth_call(serde_json::json!([{
+        "to": eurc_address,
+        "data": "0x06fdde03"
+    }, "latest"]))?
+    .send()
+    .await?;
+# let _ = name;
+# Ok(())
+# }
+```
 
 ## Bitcoin HTTP JSON-RPC
 

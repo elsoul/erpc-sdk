@@ -3,6 +3,7 @@
 
 mod account;
 mod avalanche;
+mod base;
 mod bitcoin;
 mod bridge;
 mod bridge_local;
@@ -29,6 +30,7 @@ pub use avalanche::{
     AvalancheAvaxClient, AvalancheClient, AvalancheIndexClient, AvalancheIndexRpcClient,
     AvalancheInfoClient, AvalanchePChainClient, AvalancheProposerVmClient, AvalancheXChainClient,
 };
+pub use base::{BASE_RPC_METHODS, BaseClient, BaseRpcClient};
 pub use bitcoin::{BITCOIN_RPC_METHODS, BitcoinClient, BitcoinRpcClient};
 pub use bridge::{
     BridgeClient, BridgeError, BridgeErrorCode, BridgeResult, MayanEvmUnsignedTransaction,
@@ -55,8 +57,8 @@ pub use cloud::{
     ErpcCloudClient, ErpcCloudClientConfig,
 };
 pub use config::{
-    DEFAULT_ACCOUNT_ENDPOINT, DEFAULT_AVALANCHE_ENDPOINT, DEFAULT_ENDPOINT, DEFAULT_TIMEOUT,
-    DEFAULT_USER_ENDPOINT, ErpcClientConfig, RpcEndpointConfig,
+    DEFAULT_ACCOUNT_ENDPOINT, DEFAULT_AVALANCHE_ENDPOINT, DEFAULT_BASE_ENDPOINT, DEFAULT_ENDPOINT,
+    DEFAULT_TIMEOUT, DEFAULT_USER_ENDPOINT, ErpcClientConfig, RpcEndpointConfig,
 };
 pub use dex_catalog::{
     DEX_ALIASES, DEX_CATALOG_AS_OF_DATE, DEX_CATALOG_CONTENT_DIGEST, DEX_CATALOG_VERSION,
@@ -202,6 +204,17 @@ fn bitcoin_rpc_transport(
     )))
 }
 
+fn base_rpc_transport(
+    resolved: &ResolvedErpcClientConfig,
+    client: &reqwest::Client,
+    direct_client: &reqwest::Client,
+) -> Arc<HttpJsonRpcTransport> {
+    if let Some(endpoint) = &resolved.base_rpc {
+        return direct_rpc_transport(endpoint, direct_client, "base.rpc", resolved.timeout);
+    }
+    legacy_rpc_transport(resolved, resolved.base_endpoint.clone(), client, "base.rpc")
+}
+
 fn websocket_transport(
     resolved: &ResolvedErpcClientConfig,
     direct: Option<&ResolvedRpcEndpoint>,
@@ -263,6 +276,8 @@ pub struct ErpcClient {
     pub account: AccountClient,
     /// Avalanche C-Chain, native-chain, Index API, and subscriptions.
     pub avalanche: AvalancheClient,
+    /// Base read-only HTTP JSON-RPC.
+    pub base: BaseClient,
     /// Bitcoin Core HTTP JSON-RPC.
     pub bitcoin: BitcoinClient,
     /// Standard Ethereum JSON-RPC and subscriptions.
@@ -284,6 +299,7 @@ impl ErpcClient {
         let resolved = ResolvedErpcClientConfig::try_from(config)?;
         let http = ResolvedErpcClientConfig::http_client()?;
         let direct_http = ResolvedErpcClientConfig::direct_http_client()?;
+        let base_transport = base_rpc_transport(&resolved, &http, &direct_http);
         let bitcoin_transport = bitcoin_rpc_transport(&resolved, &http, &direct_http)?;
         let solana_transport = resolved.solana_rpc.as_ref().map_or_else(
             || legacy_rpc_transport(&resolved, resolved.endpoint.clone(), &http, "solana.rpc"),
@@ -387,6 +403,7 @@ impl ErpcClient {
                 avalanche_ws,
                 avalanche_index,
             ),
+            base: BaseClient::new(base_transport),
             bitcoin: BitcoinClient::new(bitcoin_transport),
             ethereum: EthereumClient::new(ethereum_transport, ethereum_ws),
             price: PriceClient::new(shared_rest),
