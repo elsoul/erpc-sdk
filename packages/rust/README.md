@@ -183,6 +183,7 @@ For Solana transaction-version options and response handling, see the
 | `erpc.avalanche.info` | Network upgrade information |
 | `erpc.avalanche.index` | C/P/X block and X transaction indexes |
 | `erpc.bitcoin.rpc` | Bitcoin Core HTTP JSON-RPC |
+| `erpc.arbitrum.rpc` | Arbitrum One HTTP read-only JSON-RPC (target Rust 0.11.0) |
 | `erpc.price` | Price metadata, updates, and SSE streams |
 | `erpc.account` | Token balance |
 | `erpc.usage` | Masked monthly API-key usage |
@@ -272,6 +273,65 @@ let name = erpc
 # Ok(())
 # }
 ```
+
+## Arbitrum One read-only RPC (target Rust 0.11.0)
+
+Arbitrum support is unreleased source work in the same Rust `0.11.0` candidate
+as Base. The published `erpc-sdk 0.10.0` crate does not contain this namespace;
+keep the install line above at `erpc-sdk = "0.10"` until the later promotion
+brief and release proof. The namespace targets Arbitrum One, whose chain ID is
+`42161` (`0xa4b1`), as documented by the [official Arbitrum chain
+information](https://docs.arbitrum.io/chain-info).
+
+Hosted calls use the dedicated root `https://arbitrum.erpc.global/` with the
+existing `api-key` query authentication. `with_arbitrum_endpoint` can select
+an ERPC-compatible hosted override such as
+`https://edge.erpc.global/arbitrum`; hosted overrides receive the ERPC API key
+and global legacy headers and must be caller-trusted. A caller-owned endpoint
+can be selected with `with_arbitrum_rpc`; it preserves the exact path and
+query, uses only endpoint-scoped headers, follows no redirects, and works
+without an ERPC API key:
+
+```rust,no_run
+# use erpc_sdk::{ErpcClient, ErpcClientConfig, RpcEndpointConfig};
+# async fn example() -> erpc_sdk::Result<()> {
+let erpc = ErpcClient::new(
+    ErpcClientConfig::for_rpc().with_arbitrum_rpc(
+        RpcEndpointConfig::new("https://arbitrum-node.example/rpc?tenant=customer")
+            .with_header("authorization", "Bearer node-token"),
+    ),
+)?;
+let chain_id = erpc.arbitrum.rpc.eth_chain_id().send().await?;
+assert_eq!(chain_id, "0xa4b1");
+let balance = erpc
+    .arbitrum
+    .rpc
+    .eth_get_balance(["0x1111111111111111111111111111111111111111", "latest"])?
+    .send()
+    .await?;
+let call = erpc
+    .arbitrum
+    .rpc
+    .eth_call(serde_json::json!([{
+        "to": "0x2222222222222222222222222222222222222222",
+        "data": "0x"
+    }, "latest"]))?
+    .send()
+    .await?;
+# let _ = (balance, call);
+# Ok(())
+# }
+```
+
+The façade contains exactly `eth_chainId`, `eth_getBalance`, and `eth_call`.
+It has no `request`, `raw`, batch, WebSocket/subscription, sign, send,
+broadcast, swap, or bridge surface. For a read-only ERC-20 example, Circle's
+[official USDC contract address page](https://developers.circle.com/stablecoins/usdc-contract-addresses)
+lists Arbitrum mainnet USDC at
+`0xaf88d065e77c8cC2239327C5EDb3A432268e5831`; using it with the
+`decimals()` selector `0x313ce567` is caller example input only and does not
+add a catalog record or imply bridge support. Verify `eth_chain_id() ==
+"0xa4b1"` before trusting any custom endpoint.
 
 ## Bitcoin HTTP JSON-RPC
 

@@ -2,6 +2,7 @@
 //! and Cloud APIs.
 
 mod account;
+mod arbitrum;
 mod avalanche;
 mod base;
 mod bitcoin;
@@ -24,6 +25,7 @@ pub mod token_rankings;
 mod usage;
 
 pub use account::{AccountClient, ErpcPlan, TokenBalance};
+pub use arbitrum::{ARBITRUM_RPC_METHODS, ArbitrumClient, ArbitrumRpcClient};
 pub use avalanche::{
     AVALANCHE_AVAX_METHODS, AVALANCHE_INDEX_METHODS, AVALANCHE_INFO_METHODS,
     AVALANCHE_P_CHAIN_METHODS, AVALANCHE_PROPOSER_VM_METHODS, AVALANCHE_X_CHAIN_METHODS,
@@ -57,8 +59,9 @@ pub use cloud::{
     ErpcCloudClient, ErpcCloudClientConfig,
 };
 pub use config::{
-    DEFAULT_ACCOUNT_ENDPOINT, DEFAULT_AVALANCHE_ENDPOINT, DEFAULT_BASE_ENDPOINT, DEFAULT_ENDPOINT,
-    DEFAULT_TIMEOUT, DEFAULT_USER_ENDPOINT, ErpcClientConfig, RpcEndpointConfig,
+    DEFAULT_ACCOUNT_ENDPOINT, DEFAULT_ARBITRUM_ENDPOINT, DEFAULT_AVALANCHE_ENDPOINT,
+    DEFAULT_BASE_ENDPOINT, DEFAULT_ENDPOINT, DEFAULT_TIMEOUT, DEFAULT_USER_ENDPOINT,
+    ErpcClientConfig, RpcEndpointConfig,
 };
 pub use dex_catalog::{
     DEX_ALIASES, DEX_CATALOG_AS_OF_DATE, DEX_CATALOG_CONTENT_DIGEST, DEX_CATALOG_VERSION,
@@ -215,6 +218,22 @@ fn base_rpc_transport(
     legacy_rpc_transport(resolved, resolved.base_endpoint.clone(), client, "base.rpc")
 }
 
+fn arbitrum_rpc_transport(
+    resolved: &ResolvedErpcClientConfig,
+    client: &reqwest::Client,
+    direct_client: &reqwest::Client,
+) -> Arc<HttpJsonRpcTransport> {
+    if let Some(endpoint) = &resolved.arbitrum_rpc {
+        return direct_rpc_transport(endpoint, direct_client, "arbitrum.rpc", resolved.timeout);
+    }
+    legacy_rpc_transport(
+        resolved,
+        resolved.arbitrum_endpoint.clone(),
+        client,
+        "arbitrum.rpc",
+    )
+}
+
 fn websocket_transport(
     resolved: &ResolvedErpcClientConfig,
     direct: Option<&ResolvedRpcEndpoint>,
@@ -274,6 +293,8 @@ fn avalanche_index_transports(
 pub struct ErpcClient {
     /// Account and token balance API.
     pub account: AccountClient,
+    /// Arbitrum One read-only HTTP JSON-RPC.
+    pub arbitrum: ArbitrumClient,
     /// Avalanche C-Chain, native-chain, Index API, and subscriptions.
     pub avalanche: AvalancheClient,
     /// Base read-only HTTP JSON-RPC.
@@ -300,6 +321,7 @@ impl ErpcClient {
         let http = ResolvedErpcClientConfig::http_client()?;
         let direct_http = ResolvedErpcClientConfig::direct_http_client()?;
         let base_transport = base_rpc_transport(&resolved, &http, &direct_http);
+        let arbitrum_transport = arbitrum_rpc_transport(&resolved, &http, &direct_http);
         let bitcoin_transport = bitcoin_rpc_transport(&resolved, &http, &direct_http)?;
         let solana_transport = resolved.solana_rpc.as_ref().map_or_else(
             || legacy_rpc_transport(&resolved, resolved.endpoint.clone(), &http, "solana.rpc"),
@@ -397,6 +419,7 @@ impl ErpcClient {
 
         Ok(Self {
             account: AccountClient::new(account_rest),
+            arbitrum: ArbitrumClient::new(arbitrum_transport),
             avalanche: AvalancheClient::new(
                 &avalanche_c_transport,
                 avalanche_native_transport,
