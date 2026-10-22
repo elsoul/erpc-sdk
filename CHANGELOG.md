@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Add a main-only, manually dispatched release foundation for the first
+  non-Rust `0.9.1` cohort. Preparation builds and hashes exact npm, PyPI, and
+  RubyGems artifacts, freezes the Go inventory, verifies the existing Rust
+  `0.10.0` receipt, and produces a content-addressed approval plan. Publication
+  uses short-lived trusted publishing, create-only cohort tags, public Go
+  proof, and an exact GitHub Release body after every artifact proof succeeds.
+- Keep Rust-only Bitcoin HTTP JSON-RPC boundaries explicit; this release
+  foundation adds no chain, swap, or bridge behavior and does not claim
+  cross-language Bitcoin parity.
+
 ## 0.10.0 — 2026-10-22 (Rust crate)
 
 - Add the reviewed Rust Bitcoin Core HTTP JSON-RPC namespace, including the

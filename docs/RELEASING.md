@@ -21,12 +21,52 @@ Package links:
 - Go: [`github.com/elsoul/erpc-sdk/packages/go`](https://pkg.go.dev/github.com/elsoul/erpc-sdk/packages/go)
 - RubyGems: [`erpc-sdk`](https://rubygems.org/gems/erpc-sdk)
 
-The legacy aligned-version releases are tag-driven, human-approved, and
-published by `.github/workflows/release.yml`. A merge to `main` never publishes
-anything. That workflow validates the tagged source, publishes each missing
-registry version, and creates the GitHub Release only after all registry jobs
-succeed. The Go module is released by its matching subdirectory tag and needs
-no registry upload.
+The historical aligned-version release command is tag-oriented and human
+approved. The current `.github/workflows/release.yml` is a separate manual
+foundation for the first non-Rust proof cohort; it has no push, schedule, or
+release-published trigger. A merge to `main` never publishes anything.
+
+## Manual non-Rust 0.9.1 foundation release
+
+The approved first proof cohort keeps Rust `0.10.0` as a read-only existing
+receipt and prepares TypeScript, Python, Ruby, and Go as `0.9.1`:
+
+- npm: `@elsoul/erpc-sdk@0.9.1`
+- PyPI: `erpc-sdk==0.9.1` wheel and source distribution
+- RubyGems: `erpc-sdk` `0.9.1` on the `ruby` platform
+- Go: `packages/go/v0.9.1`
+- GitHub Release tag: `non-rust-v0.9.1`
+
+The foundation has two manual modes in `.github/workflows/release.yml`.
+Preparation checks the exact `main` commit, builds the npm tarball, Python
+wheel/source distribution, and Ruby gem once, freezes the Go regular-file
+inventory, verifies the pre-existing Rust receipt, and emits a stable
+content-addressed approval plan. The plan contains artifact names, hashes,
+file listings, registry preflight, tags, the exact release body, and authorized
+effects. Run and artifact IDs are kept in a separate binding so reruns do not
+change the plan digest.
+
+Publish mode requires the preparation run ID/attempt, both immutable artifact
+IDs, and the reviewed plan SHA-256. It downloads and rechecks those exact
+artifacts before any OIDC request. npm, PyPI, and RubyGems use their scoped
+short-lived trusted-publishing jobs; existing matching artifacts are verified
+without credentials, and each registry gets at most one upload attempt. The
+Rust job only verifies `0.10.0` from its original source and checksum.
+
+After all package proofs succeed, the workflow creates the two lightweight refs
+`non-rust-v0.9.1` and `packages/go/v0.9.1` only when absent or already bound to
+the approved commit. It then verifies the public Go proxy/checksum and creates
+the GitHub Release titled `SDK release state: non-Rust 0.9.1 / Rust 0.10.0`
+with the reviewed body and assets. A failed or ambiguous package, tag, Go, or
+asset proof blocks the Release; retries reconcile public state without moving
+tags or overwriting assets.
+
+Preparation has read-only contents permission and no OIDC path. Only the
+publisher jobs receive `id-token: write`; only the tag/Release jobs receive
+`contents: write`. No static registry token, cargo authentication, weekly
+schedule, or merge-triggered publication is configured. The release body
+states that Bitcoin HTTP JSON-RPC remains Rust-only and that this cohort adds
+no swap or bridge behavior.
 
 ## Manual Rust 0.10.0 release
 

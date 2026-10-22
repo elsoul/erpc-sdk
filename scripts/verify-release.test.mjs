@@ -7,11 +7,24 @@ import test from 'node:test'
 import { promisify } from 'node:util'
 
 import {
+  FOUNDATION_GO_TAG,
+  FOUNDATION_RELEASE_TITLE,
+  FOUNDATION_RUST_SHA256,
+  FOUNDATION_RUST_SOURCE,
+  FOUNDATION_TAG,
+  FOUNDATION_VERSION,
+  buildFoundationPlan,
+  buildGoInventory,
   classifyRegistryResponse,
+  classifyFoundationRegistryResponse,
+  canonicalJson,
   findLocalCargoPackage,
   parseReleaseArguments,
   readReleaseData,
+  sha256Hex,
   validateReleaseData,
+  validateFoundationWorkflowContext,
+  validateFoundationPlan,
   validateWorkflowContext,
   verifyArchiveContents,
 } from './verify-release.mjs'
@@ -173,6 +186,39 @@ test('workflow guard rejects hostile repository, event, ref, source, version, an
   assert.throws(() => validateWorkflowContext({ ...validContext(), publish: 'yes' }), /boolean/)
 })
 
+test('foundation workflow guard binds an exact main dispatch and fixed 0.9.1 cohort', () => {
+  validateFoundationWorkflowContext({
+    repository: 'elsoul/erpc-sdk',
+    repositoryId: '1429568627',
+    eventName: 'workflow_dispatch',
+    eventRef: 'refs/heads/main',
+    eventSha: sha,
+    expectedCommit: sha,
+    checkoutHead: sha,
+    expectedVersion: FOUNDATION_VERSION,
+    mode: 'prepare',
+  })
+  for (const mutation of [
+    { eventName: 'push' },
+    { eventRef: 'refs/heads/feature' },
+    { expectedVersion: '0.9.0' },
+    { mode: 'other' },
+  ]) {
+    assert.throws(() => validateFoundationWorkflowContext({
+      repository: 'elsoul/erpc-sdk',
+      repositoryId: '1429568627',
+      eventName: 'workflow_dispatch',
+      eventRef: 'refs/heads/main',
+      eventSha: sha,
+      expectedCommit: sha,
+      checkoutHead: sha,
+      expectedVersion: FOUNDATION_VERSION,
+      mode: 'prepare',
+      ...mutation,
+    }))
+  }
+})
+
 test('registry classification distinguishes absent, match, conflict, yanked, malformed, and HTTP failure', () => {
   const response = JSON.stringify({
     version: { crate: 'erpc-sdk', num: '0.10.0', checksum: hash, yanked: false },
@@ -185,6 +231,65 @@ test('registry classification distinguishes absent, match, conflict, yanked, mal
   assert.equal(classifyRegistryResponse({ status: 200, body: JSON.stringify({ version: { crate: 'other', num: '0.10.0', checksum: hash, yanked: false } }), expectedVersion: '0.10.0', expectedChecksum: hash }).state, 'malformed')
   assert.equal(classifyRegistryResponse({ status: 500, body: '', expectedVersion: '0.10.0', expectedChecksum: hash }).state, 'http-error')
   assert.equal(classifyRegistryResponse({ status: 0, body: '', expectedVersion: '0.10.0', expectedChecksum: hash }).state, 'http-error')
+})
+
+const foundationArtifacts = [
+  { kind: 'npm', filename: 'elsoul-erpc-sdk-0.9.1.tgz', name: '@elsoul/erpc-sdk', version: FOUNDATION_VERSION, sha256: '1'.repeat(64), files: ['package/package.json', 'package/LICENSE', 'package/dist/index.js'] },
+  { kind: 'pypi-wheel', filename: 'erpc_sdk-0.9.1-py3-none-any.whl', name: 'erpc-sdk', version: FOUNDATION_VERSION, sha256: '2'.repeat(64), files: ['erpc_sdk/__init__.py', 'erpc_sdk-0.9.1.dist-info/METADATA', 'erpc_sdk-0.9.1.dist-info/LICENSE'] },
+  { kind: 'pypi-sdist', filename: 'erpc_sdk-0.9.1.tar.gz', name: 'erpc-sdk', version: FOUNDATION_VERSION, sha256: '3'.repeat(64), files: ['erpc_sdk-0.9.1/PKG-INFO', 'erpc_sdk-0.9.1/LICENSE'] },
+  { kind: 'rubygems', filename: 'erpc-sdk-0.9.1.gem', name: 'erpc-sdk', version: FOUNDATION_VERSION, sha256: '4'.repeat(64), files: ['metadata.gz', 'data.tar.gz', 'checksums.yaml.gz', 'LICENSE'] },
+]
+
+const foundationGoInventory = {
+  files: [
+    { path: 'LICENSE', sha256: '5'.repeat(64) },
+    { path: 'go.mod', sha256: '6'.repeat(64) },
+    { path: 'rpc.go', sha256: '7'.repeat(64) },
+  ],
+  inventorySha256: '',
+}
+foundationGoInventory.inventorySha256 = sha256Hex(canonicalJson(foundationGoInventory.files))
+
+const foundationRustReceipt = {
+  identity: 'erpc-sdk',
+  version: '0.10.0',
+  sourceCommit: FOUNDATION_RUST_SOURCE,
+  sha256: FOUNDATION_RUST_SHA256,
+  yanked: false,
+  downloadUrl: 'https://crates.io/api/v1/crates/erpc-sdk/0.10.0/download',
+}
+
+test('foundation plan is content-addressed and states the mixed release boundary', () => {
+  const plan = buildFoundationPlan({
+    sourceSha: sha,
+    artifacts: foundationArtifacts,
+    goInventory: foundationGoInventory,
+    rustReceipt: foundationRustReceipt,
+    registryPreflight: {
+      npm: { state: 'absent', status: 404 },
+      pypi: { state: 'absent', status: 404 },
+      rubygems: { state: 'absent', status: 404 },
+      rust: { state: 'match', status: 200 },
+    },
+  })
+  assert.equal(plan.tags.release, FOUNDATION_TAG)
+  assert.equal(plan.tags.go, FOUNDATION_GO_TAG)
+  assert.equal(plan.githubRelease.title, FOUNDATION_RELEASE_TITLE)
+  assert.equal(plan.githubRelease.bodySha256, sha256Hex(plan.githubRelease.body))
+  assert.match(plan.githubRelease.body, /Bitcoin Core HTTP JSON-RPC exists only in Rust 0\.10\.0/)
+  assert.doesNotMatch(plan.githubRelease.body, /all-language BTC|five-language BTC/i)
+  assert.deepEqual(validateFoundationPlan(plan).artifacts, foundationArtifacts)
+})
+
+test('foundation registry states keep HTTP failures distinct from absence and support PyPI subsets', () => {
+  assert.equal(classifyFoundationRegistryResponse({ registry: 'npm', status: 403, body: '', expectedVersion: FOUNDATION_VERSION }).state, 'http-error')
+  assert.equal(classifyFoundationRegistryResponse({ registry: 'npm', status: 404, body: '', expectedVersion: FOUNDATION_VERSION }).state, 'absent')
+  const npm = JSON.stringify({ versions: { '0.9.1': { name: '@elsoul/erpc-sdk', version: '0.9.1', dist: { integrity: 'sha512-test', tarball: 'https://registry.npmjs.org/@elsoul/erpc-sdk/-/elsoul-erpc-sdk-0.9.1.tgz' } } } })
+  assert.equal(classifyFoundationRegistryResponse({ registry: 'npm', status: 200, body: npm, expectedVersion: FOUNDATION_VERSION }).state, 'match')
+  const pypi = JSON.stringify({ info: { name: 'erpc-sdk', version: FOUNDATION_VERSION }, urls: [{ filename: 'erpc_sdk-0.9.1-py3-none-any.whl', packagetype: 'bdist_wheel', digests: { sha256: '2'.repeat(64) }, yanked: false, url: 'https://files.pythonhosted.org/wheel' }] })
+  assert.equal(classifyFoundationRegistryResponse({ registry: 'pypi', status: 200, body: pypi, expectedVersion: FOUNDATION_VERSION, expectedArtifacts: ['erpc_sdk-0.9.1-py3-none-any.whl', 'erpc_sdk-0.9.1.tar.gz'] }).state, 'partial')
+  const ruby = JSON.stringify({ name: 'erpc-sdk', version: FOUNDATION_VERSION, sha: '4'.repeat(64), platform: 'ruby' })
+  assert.equal(classifyFoundationRegistryResponse({ registry: 'rubygems', status: 200, body: ruby, expectedVersion: FOUNDATION_VERSION, expectedSha256: '9'.repeat(64) }).state, 'conflict')
 })
 
 test('archive proof requires one expected root, provenance, and BTC source/tests', () => {
@@ -295,6 +400,11 @@ test('every internal verifier mode rejects extra, duplicate, and conflicting CLI
     [['--archive-check', '--archive-check'], archiveEnvironment],
     [['--select-archive', '--scope', 'rust'], selectEnvironment],
     [['--select-archive', '--select-archive'], selectEnvironment],
+    [['--foundation-describe-artifacts', '--unknown'], {}],
+    [['--foundation-go-inventory', '--foundation-go-inventory'], {}],
+    [['--foundation-plan', '--scope', 'all'], {}],
+    [['--foundation-verify', '--foundation-verify'], {}],
+    [['--foundation-registry', '--unknown'], {}],
   ]
   for (const [arguments_, environment] of cases) {
     await assert.rejects(
