@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use erpc_sdk::{
     CancellationToken, ErpcClient, ErpcClientConfig, ErpcError, ErpcErrorCode, RequestOptions,
-    SUI_GRPC_WEB_CONTENT_TYPE, SUI_GRPC_WEB_METHODS, SuiGrpcWebEndpointConfig,
+    RpcEndpointConfig, SUI_GRPC_WEB_CONTENT_TYPE, SUI_GRPC_WEB_METHODS, SuiGrpcWebEndpointConfig,
 };
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
@@ -1116,39 +1116,272 @@ async fn hosted_and_direct_configuration_rejects_credentials_fragments_and_redac
         "https://username:password@example.invalid/prefix",
         "https://@example.invalid/prefix",
         "https://user%3Asecret@example.invalid/prefix",
+        "https:/@example.invalid",
+        "https:///@example.invalid",
+        "https:////@example.invalid",
+        r"https:\@example.invalid",
+        r"https:\\@example.invalid",
+        r"https:\/@example.invalid",
+        r"https://\/@example.invalid",
+        r"https://\/mock-user:mock-pass@example.invalid",
+        "https://\t/@example.invalid",
+        "\thttps:/@example.invalid",
+        "https:///@example.invalid\n",
+        "\nhttps:////@example.invalid\t",
         "https://example.invalid/prefix#fragment-secret",
         "https://example.invalid/#",
     ];
+    let mut accepted_hosted = Vec::new();
     for endpoint in invalid_hosted {
         let config = ErpcClientConfig::new("api-key-secret").with_sui_endpoint(endpoint);
         let debug = format!("{config:?}");
         for secret in ["api-key-secret", "password", "username", "fragment-secret"] {
             assert!(!debug.contains(secret), "hosted config leaked {secret}");
         }
-        let error = ErpcClient::new(config)
-            .err()
-            .expect("hosted userinfo/fragment must be rejected");
+        let result = ErpcClient::new(config);
+        if result.is_ok() {
+            accepted_hosted.push(endpoint);
+            continue;
+        }
+        let error = result.err().expect("checked hosted configuration error");
         assert_eq!(error.code(), ErpcErrorCode::Config);
         let rendered = format!("{error:?}");
         assert!(!rendered.contains("password"));
         assert!(!rendered.contains("fragment-secret"));
         assert!(!error.to_string().contains("username"));
     }
-
     let invalid_direct = [
         "https://username:password@example.invalid/prefix",
+        "https:/@example.invalid",
+        "https:///@example.invalid",
+        "https:////@example.invalid",
+        r"https:\@example.invalid",
+        r"https:\\@example.invalid",
+        r"https:\/@example.invalid",
+        r"https://\/@example.invalid",
+        r"https://\/mock-user:mock-pass@example.invalid",
+        "https://\t/@example.invalid",
+        "\thttps:/@example.invalid",
+        "https:///@example.invalid\n",
+        "\nhttps:////@example.invalid\t",
         "https://example.invalid/prefix#fragment-secret",
     ];
+    let mut accepted_direct = Vec::new();
     for endpoint in invalid_direct {
-        let error = ErpcClient::new(
+        let result = ErpcClient::new(
             ErpcClientConfig::for_rpc().with_sui_grpc_web(SuiGrpcWebEndpointConfig::new(endpoint)),
-        )
-        .err()
-        .expect("direct userinfo/fragment must be rejected");
+        );
+        if result.is_ok() {
+            accepted_direct.push(endpoint);
+            continue;
+        }
+        let error = result.err().expect("checked direct configuration error");
         assert_eq!(error.code(), ErpcErrorCode::Config);
         assert!(!format!("{error:?}").contains("password"));
         assert!(!error.to_string().contains("fragment-secret"));
     }
+    assert!(
+        accepted_hosted.is_empty() && accepted_direct.is_empty(),
+        "accepted invalid userinfo/fragment forms; hosted={accepted_hosted:?}; direct={accepted_direct:?}"
+    );
+}
+
+#[allow(clippy::too_many_lines)]
+#[test]
+fn shared_direct_userinfo_rejection_matrix_covers_sui_near_tron_and_legacy_http_ws() {
+    let reproducers = [
+        ("canonical empty", "https://@example.invalid"),
+        ("single slash", "https:/@example.invalid"),
+        ("empty authority slash", "https:///@example.invalid"),
+        ("extra slashes", "https:////@example.invalid"),
+        ("backslash", r"https:\@example.invalid"),
+        ("double backslash", r"https:\\@example.invalid"),
+        ("mixed slash", r"https:\/@example.invalid"),
+        ("normalized mixed slash", r"https://\/@example.invalid"),
+        (
+            "normalized nonempty userinfo",
+            r"https://\/mock-user:mock-pass@example.invalid",
+        ),
+        ("tab after authority", "https://\t/@example.invalid"),
+        ("leading tab", "\thttps:/@example.invalid"),
+        ("trailing newline", "https:///@example.invalid\n"),
+        ("edge controls", "\nhttps:////@example.invalid\t"),
+        (
+            "canonical nonempty",
+            "https://mock-user:mock-pass@example.invalid",
+        ),
+    ];
+    let mut accepted = Vec::new();
+    for (label, endpoint) in reproducers {
+        let websocket_endpoint = endpoint.replacen("https", "wss", 1);
+        let cases = [
+            (
+                "sui hosted",
+                ErpcClient::new(
+                    ErpcClientConfig::new("api-key-secret")
+                        .with_sui_endpoint(endpoint)
+                        .with_header("x-secret", "header-secret"),
+                ),
+            ),
+            (
+                "sui direct",
+                ErpcClient::new(
+                    ErpcClientConfig::for_rpc().with_sui_grpc_web(
+                        SuiGrpcWebEndpointConfig::new(endpoint)
+                            .with_header("authorization", "Bearer header-secret"),
+                    ),
+                ),
+            ),
+            (
+                "near direct",
+                ErpcClient::new(
+                    ErpcClientConfig::for_rpc().with_near_rpc(
+                        RpcEndpointConfig::new(endpoint)
+                            .with_header("authorization", "Bearer header-secret"),
+                    ),
+                ),
+            ),
+            (
+                "tron direct",
+                ErpcClient::new(
+                    ErpcClientConfig::for_rpc().with_tron_rpc(
+                        RpcEndpointConfig::new(endpoint)
+                            .with_header("authorization", "Bearer header-secret"),
+                    ),
+                ),
+            ),
+            (
+                "solana HTTP",
+                ErpcClient::new(
+                    ErpcClientConfig::for_rpc().with_solana_rpc(
+                        RpcEndpointConfig::new(endpoint)
+                            .with_header("authorization", "Bearer header-secret"),
+                    ),
+                ),
+            ),
+            (
+                "ethereum WS",
+                ErpcClient::new(
+                    ErpcClientConfig::for_rpc().with_ethereum_rpc(
+                        RpcEndpointConfig::new("https://example.invalid/rpc")
+                            .with_websocket_url(websocket_endpoint)
+                            .with_header("authorization", "Bearer header-secret"),
+                    ),
+                ),
+            ),
+        ];
+        for (namespace, result) in cases {
+            if result.is_ok() {
+                accepted.push(format!("{namespace} ({label}): {endpoint:?}"));
+                continue;
+            }
+            let error = result
+                .err()
+                .expect("checked invalid direct configuration error");
+            assert_eq!(error.code(), ErpcErrorCode::Config, "{namespace} ({label})");
+            let rendered = format!("{error:?}");
+            let displayed = error.to_string();
+            for secret in ["mock-user", "mock-pass", "api-key-secret", "header-secret"] {
+                assert!(!rendered.contains(secret), "{namespace} leaked {secret}");
+                assert!(!displayed.contains(secret), "{namespace} leaked {secret}");
+            }
+        }
+    }
+    assert!(
+        accepted.is_empty(),
+        "shared direct userinfo forms accepted before network I/O: {accepted:?}"
+    );
+
+    let valid_sui = ErpcClient::new(
+        ErpcClientConfig::for_rpc().with_sui_grpc_web(
+            SuiGrpcWebEndpointConfig::new("https://example.invalid/tenant%2Fone@path?token=a%40b")
+                .with_header("authorization", "Bearer scoped"),
+        ),
+    );
+    assert!(valid_sui.is_ok(), "userinfo-free encoded Sui endpoint");
+    let valid_near = ErpcClient::new(
+        ErpcClientConfig::for_rpc().with_near_rpc(
+            RpcEndpointConfig::new("http://127.0.0.1:9/tenant@path?token=a%40b")
+                .with_header("authorization", "Bearer scoped"),
+        ),
+    );
+    assert!(valid_near.is_ok(), "userinfo-free HTTP endpoint");
+    let valid_ethereum = ErpcClient::new(
+        ErpcClientConfig::for_rpc().with_ethereum_rpc(
+            RpcEndpointConfig::new("https://example.invalid/rpc@path?token=a%40b")
+                .with_websocket_url("ws://127.0.0.1:9/ws@path?token=a%40b")
+                .with_header("authorization", "Bearer scoped"),
+        ),
+    );
+    assert!(valid_ethereum.is_ok(), "userinfo-free WS endpoint");
+}
+
+#[tokio::test]
+async fn literal_and_encoded_at_path_query_positive_controls_are_preserved() {
+    let direct_server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/tenant@path/sui.rpc.v2.LedgerService/GetServiceInfo"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", SUI_GRPC_WEB_CONTENT_TYPE)
+                .set_body_bytes(data_body()),
+        )
+        .expect(1)
+        .mount(&direct_server)
+        .await;
+    let direct = ErpcClient::new(
+        ErpcClientConfig::for_rpc().with_sui_grpc_web(
+            SuiGrpcWebEndpointConfig::new(format!(
+                "{}/tenant@path?token=a%40b",
+                direct_server.uri()
+            ))
+            .with_header("authorization", "Bearer scoped"),
+        ),
+    )
+    .expect("literal @ in direct path is not userinfo");
+    direct
+        .sui
+        .grpc
+        .get_service_info()
+        .send()
+        .await
+        .expect("direct positive control");
+    let request = &direct_server.received_requests().await.unwrap()[0];
+    assert_eq!(
+        request.url.path(),
+        "/tenant@path/sui.rpc.v2.LedgerService/GetServiceInfo"
+    );
+    assert_eq!(request.url.query(), Some("token=a%40b"));
+
+    let hosted_server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/tenant@path/sui.rpc.v2.LedgerService/GetServiceInfo"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", SUI_GRPC_WEB_CONTENT_TYPE)
+                .set_body_bytes(data_body()),
+        )
+        .expect(1)
+        .mount(&hosted_server)
+        .await;
+    let hosted = ErpcClient::new(
+        ErpcClientConfig::new("hosted-secret")
+            .with_sui_endpoint(format!("{}/tenant@path?token=a%40b", hosted_server.uri())),
+    )
+    .expect("literal @ in hosted path is not userinfo");
+    hosted
+        .sui
+        .grpc
+        .get_service_info()
+        .send()
+        .await
+        .expect("hosted positive control");
+    let request = &hosted_server.received_requests().await.unwrap()[0];
+    assert_eq!(
+        request.url.path(),
+        "/tenant@path/sui.rpc.v2.LedgerService/GetServiceInfo"
+    );
+    assert_eq!(request.url.query(), None);
 }
 
 #[tokio::test]

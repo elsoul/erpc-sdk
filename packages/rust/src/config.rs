@@ -998,12 +998,7 @@ fn resolve_sui_hosted_endpoint(value: &str) -> Result<Url> {
     let parsed = Url::parse(value).map_err(|_| {
         ErpcError::Config("Sui hosted endpoint must be an absolute HTTP(S) URL".to_owned())
     })?;
-    let authority_has_userinfo = value.trim().find("://").is_some_and(|scheme_end| {
-        let authority = &value.trim()[scheme_end + 3..];
-        let authority_end = authority.find(['/', '?', '#']).unwrap_or(authority.len());
-        authority[..authority_end].contains('@')
-    });
-    if authority_has_userinfo || !parsed.username().is_empty() || parsed.password().is_some() {
+    if has_normalized_userinfo(value, &parsed) {
         return Err(ErpcError::Config(
             "Sui hosted endpoint must not contain userinfo".to_owned(),
         ));
@@ -1253,7 +1248,33 @@ fn direct_endpoint(value: &str, websocket: bool) -> Result<Url> {
             "direct endpoint scheme or authority is invalid".to_owned(),
         ));
     }
+    if has_normalized_userinfo(value, &url) {
+        return Err(ErpcError::Config(
+            "direct endpoint authority is invalid".to_owned(),
+        ));
+    }
     Ok(url)
+}
+
+fn has_normalized_userinfo(value: &str, url: &Url) -> bool {
+    if !url.username().is_empty() || url.password().is_some() {
+        return true;
+    }
+    let special_scheme = matches!(url.scheme(), "http" | "https" | "ws" | "wss");
+    let mut normalized = String::with_capacity(value.len());
+    for character in value.trim().chars() {
+        match character {
+            '\t' | '\n' | '\r' => {}
+            '\\' if special_scheme => normalized.push('/'),
+            character => normalized.push(character),
+        }
+    }
+    let Some(scheme_end) = normalized.find(':') else {
+        return false;
+    };
+    let authority = normalized[scheme_end + 1..].trim_start_matches('/');
+    let authority_end = authority.find(['/', '?', '#']).unwrap_or(authority.len());
+    authority[..authority_end].contains('@')
 }
 
 fn collect_query_values(url: &Url, secrets: &mut Vec<String>) {

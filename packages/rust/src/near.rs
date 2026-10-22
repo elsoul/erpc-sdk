@@ -134,7 +134,7 @@ pub struct NearSyncInfo {
     pub latest_block_hash: String,
     /// Latest observed block height.
     pub latest_block_height: u64,
-    /// Latest observed block timestamp as a decimal string.
+    /// Latest observed block timestamp as the raw RFC3339 timestamp string.
     pub latest_block_time: String,
     /// Latest observed state-root hash.
     pub latest_state_root: String,

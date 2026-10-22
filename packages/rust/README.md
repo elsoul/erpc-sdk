@@ -603,11 +603,12 @@ strings remain exact strings.
 `view_account` always sends the named parameters
 `{"request_type":"view_account","account_id":...,<one selector>}`. The
 transport inherits the established JSON-RPC compatibility behavior: a present
-`error`, including `null`, is invalid under the current strict decoder; a
-non-null error wins over a simultaneous result; `result: null` is invalid for
-these non-null projections; and the response `jsonrpc` value is not
-independently validated. This documents inherited behavior and is not a claim
-of full JSON-RPC envelope validation. The surface has no generic query,
+`error` is decoded by the existing strict error path; a `null` or malformed
+error is `InvalidResponse`; a valid non-null error maps to the existing RPC
+error even with a simultaneous result; `result: null` is invalid for these
+non-null projections; and the response `jsonrpc` value is not independently
+validated. This documents inherited behavior and is not a claim of full
+JSON-RPC envelope validation. The surface has no generic query,
 raw/request, batch, subscription, function-call, transaction, signing, or
 broadcast operation.
 
