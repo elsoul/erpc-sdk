@@ -116,10 +116,8 @@ jobs:
           PACKAGE_LIST="$PACKAGE_DIR/package-list.txt"
           cargo +1.85.0 package --locked --package erpc-sdk --list > "$PACKAGE_LIST"
           cargo +1.85.0 package --locked --package erpc-sdk
-          shopt -s nullglob
-          ARCHIVES=(target/package/erpc-sdk-"$EXPECTED_VERSION".crate target/package/erpc_sdk-"$EXPECTED_VERSION".crate)
-          test "${#ARCHIVES[@]}" -eq 1
-          ARCHIVE_PATH="${ARCHIVES[0]}"
+          ARCHIVE_PATH="$(ARCHIVE_DIR=target/package EXPECTED_VERSION="$EXPECTED_VERSION" \
+            node scripts/verify-release.mjs --select-archive)"
           ARCHIVE_COPY="$PACKAGE_DIR/$(basename "$ARCHIVE_PATH")"
           cp "$ARCHIVE_PATH" "$ARCHIVE_COPY"
           ARCHIVE_SHA256="$(sha256sum "$ARCHIVE_PATH" | awk '{print $1}')"
@@ -224,10 +222,8 @@ jobs:
           test -z "$(git status --porcelain=v1)"
           cargo +1.85.0 package --locked --package erpc-sdk --list > "$RUNNER_TEMP/erpc-sdk-rust-package-list.txt"
           cargo +1.85.0 package --locked --package erpc-sdk
-          shopt -s nullglob
-          ARCHIVES=(target/package/erpc-sdk-"$EXPECTED_VERSION".crate target/package/erpc_sdk-"$EXPECTED_VERSION".crate)
-          test "${#ARCHIVES[@]}" -eq 1
-          ARCHIVE_PATH="${ARCHIVES[0]}"
+          ARCHIVE_PATH="$(ARCHIVE_DIR=target/package EXPECTED_VERSION="$EXPECTED_VERSION" \
+            node scripts/verify-release.mjs --select-archive)"
           ARCHIVE_SHA256="$(sha256sum "$ARCHIVE_PATH" | awk '{print $1}')"
           test "$ARCHIVE_SHA256" = "$APPROVED_SHA256"
           ARCHIVE_LIST="$RUNNER_TEMP/erpc-sdk-rust-archive-list.txt"

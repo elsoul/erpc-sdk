@@ -1,5 +1,5 @@
-import { readFile } from 'node:fs/promises'
-import { resolve } from 'node:path'
+import { lstat, readFile } from 'node:fs/promises'
+import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 import { rubyLockVersion } from '../registry/ruby-lockfile.mjs'
@@ -523,7 +523,7 @@ export function verifyArchiveContents({
   if (commit !== expectedCommit) {
     fail('Crate .cargo_vcs_info.json commit does not match the validated source')
   }
-  if (parsedVcs?.git?.dirty !== false) {
+  if (parsedVcs?.git?.dirty !== undefined && parsedVcs.git.dirty !== false) {
     fail('Crate .cargo_vcs_info.json must prove a clean source tree')
   }
   if (parsedVcs?.path_in_vcs !== 'packages/rust') {
@@ -532,14 +532,49 @@ export function verifyArchiveContents({
   return { root: expectedRoot, commit, pathInVcs: parsedVcs.path_in_vcs }
 }
 
+/**
+ * Select exactly one Cargo archive for the expected crate version. Cargo has
+ * historically emitted both hyphenated and underscore spellings in different
+ * contexts; a release must reject zero or multiple exact-version candidates.
+ */
+export async function selectArchive(archiveDirectory, expectedVersion) {
+  requireStableVersion(expectedVersion, 'Expected version')
+  const candidates = [
+    join(archiveDirectory, `${CRATE_NAME}-${expectedVersion}.crate`),
+    join(archiveDirectory, `${CRATE_NAME.replaceAll('-', '_')}-${expectedVersion}.crate`),
+  ]
+  const existing = []
+  for (const candidate of candidates) {
+    try {
+      if ((await lstat(candidate)).isFile()) existing.push(resolve(candidate))
+    } catch (error) {
+      if (error?.code !== 'ENOENT') throw error
+    }
+  }
+  if (existing.length !== 1) {
+    fail(
+      `Expected exactly one ${CRATE_NAME} ${expectedVersion} archive; ` +
+        `found ${existing.length}`,
+    )
+  }
+  return existing[0]
+}
+
 const env = name => {
   const value = process.env[name]
   if (value === undefined) fail(`Missing ${name}`)
   return value
 }
 
+const requireExactInternalMode = (arguments_, mode) => {
+  if (arguments_.length !== 1 || arguments_[0] !== mode) {
+    fail(`${mode} accepts exactly one mode argument`)
+  }
+}
+
 const run = async arguments_ => {
   if (arguments_[0] === '--workflow-guard') {
+    requireExactInternalMode(arguments_, '--workflow-guard')
     validateWorkflowContext({
       repository: env('REPOSITORY'),
       repositoryId: env('REPOSITORY_ID'),
@@ -557,6 +592,7 @@ const run = async arguments_ => {
   }
 
   if (arguments_[0] === '--registry-check') {
+    requireExactInternalMode(arguments_, '--registry-check')
     const result = classifyRegistryResponse({
       status: env('REGISTRY_STATUS'),
       body: await readFile(env('REGISTRY_RESPONSE_FILE'), 'utf8'),
@@ -571,6 +607,7 @@ const run = async arguments_ => {
   }
 
   if (arguments_[0] === '--archive-check') {
+    requireExactInternalMode(arguments_, '--archive-check')
     verifyArchiveContents({
       fileList: await readFile(env('ARCHIVE_LIST_FILE'), 'utf8'),
       manifest: await readFile(env('MANIFEST_FILE'), 'utf8'),
@@ -579,6 +616,16 @@ const run = async arguments_ => {
       expectedCommit: env('EXPECTED_COMMIT'),
     })
     console.log('Published crate archive provenance and required files passed.')
+    return
+  }
+
+  if (arguments_[0] === '--select-archive') {
+    requireExactInternalMode(arguments_, '--select-archive')
+    const archivePath = await selectArchive(
+      env('ARCHIVE_DIR'),
+      env('EXPECTED_VERSION'),
+    )
+    console.log(archivePath)
     return
   }
 

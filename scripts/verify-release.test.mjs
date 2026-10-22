@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict'
-import { readFile } from 'node:fs/promises'
+import { execFile } from 'node:child_process'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import test from 'node:test'
+import { promisify } from 'node:util'
 
 import {
   classifyRegistryResponse,
@@ -15,6 +19,14 @@ import {
 const root = new URL('../', import.meta.url)
 const sha = 'a'.repeat(40)
 const hash = 'b'.repeat(64)
+const execFileAsync = promisify(execFile)
+const verifierPath = new URL('./verify-release.mjs', import.meta.url)
+
+const runVerifierCli = (arguments_, environment = {}) => execFileAsync(
+  process.execPath,
+  [verifierPath.pathname, ...arguments_],
+  { env: { ...process.env, ...environment } },
+)
 
 const validContext = () => ({
   repository: 'elsoul/erpc-sdk',
@@ -170,6 +182,105 @@ test('archive proof requires one expected root, provenance, and BTC source/tests
   }
 })
 
+test('clean Cargo metadata may omit dirty while true or malformed values fail', () => {
+  const cleanCargoMetadata = JSON.stringify({
+    git: { sha1: sha },
+    path_in_vcs: 'packages/rust',
+  })
+  assert.deepEqual(
+    verifyArchiveContents({ ...validArchive(), vcsInfo: cleanCargoMetadata }),
+    {
+      root: 'erpc-sdk-0.10.0',
+      commit: sha,
+      pathInVcs: 'packages/rust',
+    },
+  )
+  for (const dirty of [true, null, 'false', 0]) {
+    const vcsInfo = JSON.stringify({
+      git: { sha1: sha, dirty },
+      path_in_vcs: 'packages/rust',
+    })
+    assert.throws(() => verifyArchiveContents({ ...validArchive(), vcsInfo }))
+  }
+})
+
+test('workflow archive selection executes the exact CLI guard with real files', async t => {
+  const archiveDirectory = await mkdtemp(join(tmpdir(), 'erpc-sdk-archive-selection-'))
+  t.after(() => rm(archiveDirectory, { recursive: true, force: true }))
+  const selectFromWorkflow = () => execFileAsync(
+    process.execPath,
+    [verifierPath.pathname, '--select-archive'],
+    {
+      env: {
+        ...process.env,
+        ARCHIVE_DIR: archiveDirectory,
+        EXPECTED_VERSION: '0.10.0',
+      },
+    },
+  )
+
+  await writeFile(join(archiveDirectory, 'erpc-sdk-0.10.0.crate'), 'crate')
+  const valid = await selectFromWorkflow()
+  assert.equal(valid.stdout.trim(), join(archiveDirectory, 'erpc-sdk-0.10.0.crate'))
+
+  await rm(join(archiveDirectory, 'erpc-sdk-0.10.0.crate'))
+  await writeFile(join(archiveDirectory, 'erpc-sdk-0.9.0.crate'), 'wrong version')
+  await assert.rejects(selectFromWorkflow, /found 0/)
+
+  await writeFile(join(archiveDirectory, 'erpc_sdk-0.10.0.crate'), 'crate')
+  await writeFile(join(archiveDirectory, 'erpc-sdk-0.10.0.crate'), 'crate')
+  await assert.rejects(selectFromWorkflow, /found 2/)
+})
+
+test('every internal verifier mode rejects extra, duplicate, and conflicting CLI arguments', async () => {
+  const workflowEnvironment = {
+    REPOSITORY: 'elsoul/erpc-sdk',
+    REPOSITORY_ID: '1429568627',
+    EVENT_NAME: 'workflow_dispatch',
+    EVENT_REF: 'refs/heads/main',
+    EVENT_SHA: sha,
+    EXPECTED_COMMIT: sha,
+    CHECKOUT_HEAD: sha,
+    EXPECTED_VERSION: '0.10.0',
+    PUBLISH: 'false',
+    APPROVED_SHA256: '',
+  }
+  const registryEnvironment = {
+    REGISTRY_STATUS: '200',
+    REGISTRY_RESPONSE_FILE: '/dev/null',
+    EXPECTED_VERSION: '0.10.0',
+    APPROVED_SHA256: hash,
+  }
+  const archiveEnvironment = {
+    ARCHIVE_LIST_FILE: '/dev/null',
+    MANIFEST_FILE: '/dev/null',
+    VCS_INFO_FILE: '/dev/null',
+    EXPECTED_VERSION: '0.10.0',
+    EXPECTED_COMMIT: sha,
+  }
+  const selectEnvironment = {
+    ARCHIVE_DIR: '/tmp/erpc-sdk-no-such-archive-directory',
+    EXPECTED_VERSION: '0.10.0',
+  }
+  const cases = [
+    [['--workflow-guard', '--unknown'], workflowEnvironment],
+    [['--workflow-guard', '--scope', 'all'], workflowEnvironment],
+    [['--workflow-guard', '--workflow-guard'], workflowEnvironment],
+    [['--registry-check', '--unknown'], registryEnvironment],
+    [['--registry-check', '--registry-check'], registryEnvironment],
+    [['--archive-check', '--scope', 'rust'], archiveEnvironment],
+    [['--archive-check', '--archive-check'], archiveEnvironment],
+    [['--select-archive', '--scope', 'rust'], selectEnvironment],
+    [['--select-archive', '--select-archive'], selectEnvironment],
+  ]
+  for (const [arguments_, environment] of cases) {
+    await assert.rejects(
+      runVerifierCli(arguments_, environment),
+      /accepts exactly one mode argument/,
+    )
+  }
+})
+
 test('release-rust workflow is manual, exact-source, OIDC-only, and dry-run isolated', async () => {
   const workflow = await readFile(new URL('../.github/workflows/release-rust.yml', import.meta.url), 'utf8')
   assert.match(workflow, /workflow_dispatch:/)
@@ -179,6 +290,7 @@ test('release-rust workflow is manual, exact-source, OIDC-only, and dry-run isol
   assert.match(workflow, /id-token:\s*write/)
   assert.match(workflow, /persist-credentials:\s*false/)
   assert.match(workflow, /node scripts\/verify-release\.mjs --workflow-guard/)
+  assert.equal((workflow.match(/node scripts\/verify-release\.mjs --select-archive/g) ?? []).length, 2)
   assert.match(workflow, /node scripts\/verify-release\.mjs --scope rust --expected-version/)
   assert.match(workflow, /rust-lang\/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18/)
   assert.match(workflow, /cargo \+1\.85\.0 publish --locked --package erpc-sdk --registry crates-io/)
