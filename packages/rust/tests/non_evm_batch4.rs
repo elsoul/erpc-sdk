@@ -1,8 +1,8 @@
 #![allow(missing_docs)]
 
 use erpc_sdk::{
-    ErpcClient, ErpcClientConfig, RpcEndpointConfig, SUI_GRPC_WEB_CONTENT_TYPE,
-    SuiGrpcWebEndpointConfig,
+    ErpcClient, ErpcClientConfig, NearBlockReference, NearFinality, RpcEndpointConfig,
+    SUI_GRPC_WEB_CONTENT_TYPE, SuiGrpcWebEndpointConfig,
 };
 use serde_json::{Value, json};
 use wiremock::{
@@ -74,24 +74,23 @@ fn grpc_response(payload: &[u8]) -> Vec<u8> {
     body
 }
 
-fn near_status_response(request: &Request) -> ResponseTemplate {
+fn near_account_response(request: &Request) -> ResponseTemplate {
     let body: Value = request.body_json().expect("NEAR request");
     ResponseTemplate::new(200).set_body_json(json!({
         "jsonrpc": "2.0",
         "id": body["id"],
         "result": {
-            "chain_id": "mainnet",
-            "genesis_hash": "near-genesis",
-            "latest_protocol_version": 1,
-            "protocol_version": 1,
-            "sync_info": {
-                "latest_block_hash": "near-block",
-                "latest_block_height": 7,
-                "latest_block_time": "123",
-                "latest_state_root": "near-state",
-                "syncing": false
-            },
-            "version": {"version": "1", "build": "test"}
+            "amount": "12345678901234567890",
+            "locked": "0",
+            "code_hash": "11111111111111111111111111111111",
+            "storage_usage": 0,
+            "storage_paid_at": null,
+            "block_height": 7,
+            "block_hash": "near-block",
+            "state": null,
+            "bootstrap_nonce": null,
+            "global_contract_account_id": null,
+            "global_contract_hash": null
         }
     }))
 }
@@ -135,13 +134,22 @@ fn direct_config(
         )
 }
 
+fn assert_near_view_account_request(request: &Request) {
+    let body: Value = request.body_json().expect("NEAR request body");
+    assert_eq!(body["method"], "query");
+    assert_eq!(body["params"]["request_type"], "view_account");
+    assert_eq!(body["params"]["account_id"], "near");
+    assert_eq!(body["params"]["finality"], "final");
+    assert_eq!(body["params"].as_object().unwrap().len(), 3);
+}
+
 #[tokio::test]
 async fn heterogeneous_direct_routes_keep_paths_headers_and_responses_isolated() {
     let near_server = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/near%2Ftenant"))
         .and(header("authorization", "Bearer near-secret"))
-        .respond_with(near_status_response)
+        .respond_with(near_account_response)
         .expect(1)
         .mount(&near_server)
         .await;
@@ -174,8 +182,20 @@ async fn heterogeneous_direct_routes_keep_paths_headers_and_responses_isolated()
     let client = ErpcClient::new(direct_config(&near_server, &tron_server, &sui_server))
         .expect("heterogeneous direct client");
 
-    let near = client.near.rpc.status().send().await.expect("NEAR status");
-    assert_eq!(near.chain_id, "mainnet");
+    let near = client
+        .near
+        .rpc
+        .view_account(
+            "near",
+            NearBlockReference::Finality {
+                finality: NearFinality::Final,
+            },
+        )
+        .expect("NEAR view_account request")
+        .send()
+        .await
+        .expect("NEAR account");
+    assert_eq!(near.amount, "12345678901234567890");
     let tron = client
         .tron
         .rpc
@@ -194,6 +214,7 @@ async fn heterogeneous_direct_routes_keep_paths_headers_and_responses_isolated()
     assert_eq!(sui.chain, "mainnet");
 
     let near_request = &near_server.received_requests().await.unwrap()[0];
+    assert_near_view_account_request(near_request);
     assert_eq!(near_request.url.path(), "/near%2Ftenant");
     assert_eq!(near_request.url.query(), Some("near-query=near-value"));
     assert_eq!(
