@@ -166,6 +166,9 @@ For Solana transaction-version options and response handling, see the
 | Namespace | Purpose |
 | --- | --- |
 | `erpc.base.rpc` | Base HTTP read-only JSON-RPC (target Rust 0.11.0) |
+| `erpc.polygon.rpc` | Polygon PoS mainnet HTTP read-only JSON-RPC (target Rust 0.11.0) |
+| `erpc.bsc.rpc` | BNB Smart Chain mainnet HTTP read-only JSON-RPC (target Rust 0.11.0) |
+| `erpc.optimism.rpc` | OP Mainnet HTTP read-only JSON-RPC (target Rust 0.11.0) |
 | `erpc.solana.rpc` | Standard Solana JSON-RPC |
 | `erpc.solana.das` | Indexed assets and tokens |
 | `erpc.solana.history` | Address transactions and transfers |
@@ -332,6 +335,62 @@ lists Arbitrum mainnet USDC at
 `decimals()` selector `0x313ce567` is caller example input only and does not
 add a catalog record or imply bridge support. Verify `eth_chain_id() ==
 "0xa4b1"` before trusting any custom endpoint.
+
+## Polygon PoS, BNB Smart Chain, and OP Mainnet read-only RPC (target Rust 0.11.0)
+
+These three namespaces are unreleased source work in the same Rust `0.11.0`
+candidate as Base and Arbitrum. The published `erpc-sdk 0.10.0` crate does not
+contain them; keep the install line above at `erpc-sdk = "0.10"` until the
+later promotion brief and release proof.
+
+The dedicated hosted roots are `https://polygon.erpc.global/`,
+`https://bsc.erpc.global/`, and `https://optimism.erpc.global/`. Each uses the
+existing `api-key` query authentication and may be overridden with its
+corresponding edge façade (`/polygon`, `/bsc`, or `/optimism`). Hosted
+overrides receive the ERPC API key and global legacy headers, so they must be
+caller-trusted and ERPC-compatible. Caller-owned `with_polygon_rpc`,
+`with_bsc_rpc`, and `with_optimism_rpc` endpoints preserve exact paths and
+queries, use only scoped headers, follow no redirects, and work keylessly.
+
+| Namespace | Network | Chain ID | Native gas wording |
+| --- | --- | --- | --- |
+| `erpc.polygon.rpc` | Polygon PoS mainnet | `137` / `0x89` | POL |
+| `erpc.bsc.rpc` | BNB Smart Chain mainnet | `56` / `0x38` | BNB |
+| `erpc.optimism.rpc` | OP Mainnet | `10` / `0xa` | ETH |
+
+All three expose only `eth_chainId`, `eth_getBalance`, and `eth_call`, each
+returning a wire hex `String`. They have no `request`, `raw`, batch,
+WebSocket/subscription, sign, send, broadcast, swap, or bridge surface. Verify
+`eth_chain_id()` against the expected value before trusting a custom endpoint.
+`eth_get_balance` returns a native base-unit quantity; the SDK does not attach
+a symbol or perform decimal conversion. Polygon's current native gas wording
+is POL, not MATIC.
+
+```rust,no_run
+# use erpc_sdk::{ErpcClient, ErpcClientConfig};
+# async fn example() -> erpc_sdk::Result<()> {
+let erpc = ErpcClient::new(ErpcClientConfig::new("api-key"))?;
+let polygon_chain = erpc.polygon.rpc.eth_chain_id().send().await?;
+assert_eq!(polygon_chain, "0x89");
+let bsc_balance = erpc
+    .bsc
+    .rpc
+    .eth_get_balance(["0x1111111111111111111111111111111111111111", "latest"])?
+    .send()
+    .await?;
+let optimism_call = erpc
+    .optimism
+    .rpc
+    .eth_call(serde_json::json!([{
+        "to": "0x2222222222222222222222222222222222222222",
+        "data": "0x"
+    }, "latest"]))?
+    .send()
+    .await?;
+# let _ = (bsc_balance, optimism_call);
+# Ok(())
+# }
+```
 
 ## Bitcoin HTTP JSON-RPC
 

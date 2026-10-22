@@ -18,6 +18,12 @@ pub const DEFAULT_USER_ENDPOINT: &str = "https://user-api.erpc.global";
 pub const DEFAULT_BASE_ENDPOINT: &str = "https://base.erpc.global";
 /// Default Arbitrum One JSON-RPC endpoint.
 pub const DEFAULT_ARBITRUM_ENDPOINT: &str = "https://arbitrum.erpc.global";
+/// Default Polygon `PoS` mainnet JSON-RPC endpoint.
+pub const DEFAULT_POLYGON_ENDPOINT: &str = "https://polygon.erpc.global";
+/// Default BNB Smart Chain mainnet JSON-RPC endpoint.
+pub const DEFAULT_BSC_ENDPOINT: &str = "https://bsc.erpc.global";
+/// Default OP Mainnet JSON-RPC endpoint.
+pub const DEFAULT_OPTIMISM_ENDPOINT: &str = "https://optimism.erpc.global";
 /// Default request and connection-establishment timeout.
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -162,6 +168,18 @@ pub struct ErpcClientConfig {
     pub arbitrum_endpoint: String,
     /// Optional caller-owned Arbitrum One JSON-RPC endpoint.
     pub arbitrum_rpc: Option<RpcEndpointConfig>,
+    /// Hosted Polygon `PoS` mainnet JSON-RPC endpoint override.
+    pub polygon_endpoint: String,
+    /// Optional caller-owned Polygon `PoS` mainnet JSON-RPC endpoint.
+    pub polygon_rpc: Option<RpcEndpointConfig>,
+    /// Hosted BNB Smart Chain mainnet JSON-RPC endpoint override.
+    pub bsc_endpoint: String,
+    /// Optional caller-owned BNB Smart Chain mainnet JSON-RPC endpoint.
+    pub bsc_rpc: Option<RpcEndpointConfig>,
+    /// Hosted OP Mainnet JSON-RPC endpoint override.
+    pub optimism_endpoint: String,
+    /// Optional caller-owned OP Mainnet JSON-RPC endpoint.
+    pub optimism_rpc: Option<RpcEndpointConfig>,
 }
 
 impl fmt::Debug for ErpcClientConfig {
@@ -186,6 +204,18 @@ impl fmt::Debug for ErpcClientConfig {
             .field(
                 "arbitrum_rpc",
                 &self.arbitrum_rpc.as_ref().map(ArbitrumRpcDebug),
+            )
+            .field("polygon_endpoint", &debug_origin(&self.polygon_endpoint))
+            .field(
+                "polygon_rpc",
+                &self.polygon_rpc.as_ref().map(PolygonRpcDebug),
+            )
+            .field("bsc_endpoint", &debug_origin(&self.bsc_endpoint))
+            .field("bsc_rpc", &self.bsc_rpc.as_ref().map(BscRpcDebug))
+            .field("optimism_endpoint", &debug_origin(&self.optimism_endpoint))
+            .field(
+                "optimism_rpc",
+                &self.optimism_rpc.as_ref().map(OptimismRpcDebug),
             )
             .field(
                 "header_names",
@@ -220,6 +250,12 @@ impl ErpcClientConfig {
             base_rpc: None,
             arbitrum_endpoint: DEFAULT_ARBITRUM_ENDPOINT.to_owned(),
             arbitrum_rpc: None,
+            polygon_endpoint: DEFAULT_POLYGON_ENDPOINT.to_owned(),
+            polygon_rpc: None,
+            bsc_endpoint: DEFAULT_BSC_ENDPOINT.to_owned(),
+            bsc_rpc: None,
+            optimism_endpoint: DEFAULT_OPTIMISM_ENDPOINT.to_owned(),
+            optimism_rpc: None,
         }
     }
 
@@ -342,6 +378,48 @@ impl ErpcClientConfig {
         self.arbitrum_rpc = Some(endpoint.into());
         self
     }
+
+    /// Overrides the hosted Polygon `PoS` mainnet JSON-RPC endpoint.
+    #[must_use]
+    pub fn with_polygon_endpoint(mut self, endpoint: impl Into<String>) -> Self {
+        self.polygon_endpoint = endpoint.into();
+        self
+    }
+
+    /// Selects a caller-owned Polygon `PoS` mainnet JSON-RPC endpoint.
+    #[must_use]
+    pub fn with_polygon_rpc(mut self, endpoint: impl Into<RpcEndpointConfig>) -> Self {
+        self.polygon_rpc = Some(endpoint.into());
+        self
+    }
+
+    /// Overrides the hosted BNB Smart Chain mainnet JSON-RPC endpoint.
+    #[must_use]
+    pub fn with_bsc_endpoint(mut self, endpoint: impl Into<String>) -> Self {
+        self.bsc_endpoint = endpoint.into();
+        self
+    }
+
+    /// Selects a caller-owned BNB Smart Chain mainnet JSON-RPC endpoint.
+    #[must_use]
+    pub fn with_bsc_rpc(mut self, endpoint: impl Into<RpcEndpointConfig>) -> Self {
+        self.bsc_rpc = Some(endpoint.into());
+        self
+    }
+
+    /// Overrides the hosted OP Mainnet JSON-RPC endpoint.
+    #[must_use]
+    pub fn with_optimism_endpoint(mut self, endpoint: impl Into<String>) -> Self {
+        self.optimism_endpoint = endpoint.into();
+        self
+    }
+
+    /// Selects a caller-owned OP Mainnet JSON-RPC endpoint.
+    #[must_use]
+    pub fn with_optimism_rpc(mut self, endpoint: impl Into<RpcEndpointConfig>) -> Self {
+        self.optimism_rpc = Some(endpoint.into());
+        self
+    }
 }
 
 pub(crate) struct ResolvedRpcEndpoint {
@@ -367,6 +445,12 @@ pub(crate) struct ResolvedErpcClientConfig {
     pub base_rpc: Option<ResolvedRpcEndpoint>,
     pub arbitrum_endpoint: Url,
     pub arbitrum_rpc: Option<ResolvedRpcEndpoint>,
+    pub polygon_endpoint: Url,
+    pub polygon_rpc: Option<ResolvedRpcEndpoint>,
+    pub bsc_endpoint: Url,
+    pub bsc_rpc: Option<ResolvedRpcEndpoint>,
+    pub optimism_endpoint: Url,
+    pub optimism_rpc: Option<ResolvedRpcEndpoint>,
 }
 
 impl TryFrom<ErpcClientConfig> for ResolvedErpcClientConfig {
@@ -381,6 +465,9 @@ impl TryFrom<ErpcClientConfig> for ResolvedErpcClientConfig {
             && config.bitcoin_rpc.is_none()
             && config.base_rpc.is_none()
             && config.arbitrum_rpc.is_none()
+            && config.polygon_rpc.is_none()
+            && config.bsc_rpc.is_none()
+            && config.optimism_rpc.is_none()
         {
             return Err(ErpcError::Config("api_key must not be empty".to_owned()));
         }
@@ -418,6 +505,21 @@ impl TryFrom<ErpcClientConfig> for ResolvedErpcClientConfig {
             .as_ref()
             .map(resolve_arbitrum_rpc_endpoint)
             .transpose()?;
+        let polygon_rpc = config
+            .polygon_rpc
+            .as_ref()
+            .map(resolve_polygon_rpc_endpoint)
+            .transpose()?;
+        let bsc_rpc = config
+            .bsc_rpc
+            .as_ref()
+            .map(resolve_bsc_rpc_endpoint)
+            .transpose()?;
+        let optimism_rpc = config
+            .optimism_rpc
+            .as_ref()
+            .map(resolve_optimism_rpc_endpoint)
+            .transpose()?;
         Ok(Self {
             api_key: (!api_key.is_empty()).then_some(api_key),
             endpoint: endpoint(&config.endpoint, false)?,
@@ -434,6 +536,12 @@ impl TryFrom<ErpcClientConfig> for ResolvedErpcClientConfig {
             base_rpc,
             arbitrum_endpoint: endpoint(&config.arbitrum_endpoint, false)?,
             arbitrum_rpc,
+            polygon_endpoint: endpoint(&config.polygon_endpoint, false)?,
+            polygon_rpc,
+            bsc_endpoint: endpoint(&config.bsc_endpoint, false)?,
+            bsc_rpc,
+            optimism_endpoint: endpoint(&config.optimism_endpoint, false)?,
+            optimism_rpc,
         })
     }
 }
@@ -523,6 +631,39 @@ fn resolve_arbitrum_rpc_endpoint(config: &RpcEndpointConfig) -> Result<ResolvedR
     if config.websocket_url.is_some() {
         return Err(ErpcError::Config(
             "Arbitrum RPC is HTTP-only; websocket_url is not supported".to_owned(),
+        ));
+    }
+    let mut endpoint = resolve_rpc_endpoint(config)?;
+    collect_path_values(&endpoint.http_url, &mut endpoint.redaction_secrets);
+    Ok(endpoint)
+}
+
+fn resolve_polygon_rpc_endpoint(config: &RpcEndpointConfig) -> Result<ResolvedRpcEndpoint> {
+    if config.websocket_url.is_some() {
+        return Err(ErpcError::Config(
+            "Polygon RPC is HTTP-only; websocket_url is not supported".to_owned(),
+        ));
+    }
+    let mut endpoint = resolve_rpc_endpoint(config)?;
+    collect_path_values(&endpoint.http_url, &mut endpoint.redaction_secrets);
+    Ok(endpoint)
+}
+
+fn resolve_bsc_rpc_endpoint(config: &RpcEndpointConfig) -> Result<ResolvedRpcEndpoint> {
+    if config.websocket_url.is_some() {
+        return Err(ErpcError::Config(
+            "BSC RPC is HTTP-only; websocket_url is not supported".to_owned(),
+        ));
+    }
+    let mut endpoint = resolve_rpc_endpoint(config)?;
+    collect_path_values(&endpoint.http_url, &mut endpoint.redaction_secrets);
+    Ok(endpoint)
+}
+
+fn resolve_optimism_rpc_endpoint(config: &RpcEndpointConfig) -> Result<ResolvedRpcEndpoint> {
+    if config.websocket_url.is_some() {
+        return Err(ErpcError::Config(
+            "Optimism RPC is HTTP-only; websocket_url is not supported".to_owned(),
         ));
     }
     let mut endpoint = resolve_rpc_endpoint(config)?;
@@ -794,6 +935,69 @@ impl fmt::Debug for ArbitrumRpcDebug<'_> {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("ArbitrumRpcEndpointConfig")
+            .field("origin", &debug_origin(&self.0.http_url))
+            .field("has_websocket_url", &self.0.websocket_url.is_some())
+            .field(
+                "header_names",
+                &self
+                    .0
+                    .headers
+                    .iter()
+                    .map(|(name, _)| name)
+                    .collect::<Vec<_>>(),
+            )
+            .finish()
+    }
+}
+
+struct PolygonRpcDebug<'a>(&'a RpcEndpointConfig);
+
+impl fmt::Debug for PolygonRpcDebug<'_> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("PolygonRpcEndpointConfig")
+            .field("origin", &debug_origin(&self.0.http_url))
+            .field("has_websocket_url", &self.0.websocket_url.is_some())
+            .field(
+                "header_names",
+                &self
+                    .0
+                    .headers
+                    .iter()
+                    .map(|(name, _)| name)
+                    .collect::<Vec<_>>(),
+            )
+            .finish()
+    }
+}
+
+struct BscRpcDebug<'a>(&'a RpcEndpointConfig);
+
+impl fmt::Debug for BscRpcDebug<'_> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("BscRpcEndpointConfig")
+            .field("origin", &debug_origin(&self.0.http_url))
+            .field("has_websocket_url", &self.0.websocket_url.is_some())
+            .field(
+                "header_names",
+                &self
+                    .0
+                    .headers
+                    .iter()
+                    .map(|(name, _)| name)
+                    .collect::<Vec<_>>(),
+            )
+            .finish()
+    }
+}
+
+struct OptimismRpcDebug<'a>(&'a RpcEndpointConfig);
+
+impl fmt::Debug for OptimismRpcDebug<'_> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("OptimismRpcEndpointConfig")
             .field("origin", &debug_origin(&self.0.http_url))
             .field("has_websocket_url", &self.0.websocket_url.is_some())
             .field(

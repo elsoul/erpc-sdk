@@ -5,3 +5,6 @@ solana-rpc.erpc.global
 storage.erpc.global
 user-api.erpc.global
 arbitrum.erpc.global
+polygon.erpc.global
+bsc.erpc.global
+optimism.erpc.global

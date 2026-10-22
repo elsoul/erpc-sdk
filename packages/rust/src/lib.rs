@@ -8,12 +8,15 @@ mod base;
 mod bitcoin;
 mod bridge;
 mod bridge_local;
+mod bsc;
 mod cloud;
 mod config;
 pub mod dex_catalog;
 mod error;
 mod ethereum;
 mod generated;
+mod optimism;
+mod polygon;
 mod price;
 mod rest;
 mod rpc;
@@ -51,6 +54,7 @@ pub use bridge_local::{
     MayanSwiftV2LocalSourceSwapInstructionAccount, MayanSwiftV2LocalSourceSwapPlan,
     MayanSwiftV2SourceSwapPlan,
 };
+pub use bsc::{BSC_RPC_METHODS, BscClient, BscRpcClient};
 pub use cloud::{
     CloudCatalogClient, CloudCredit, CloudCreditAlertLevel, CloudCreditClient, CloudOffering,
     CloudOfferingBilling, CloudOfferingCompute, CloudOfferingComputeTenancy, CloudOfferingSolana,
@@ -60,8 +64,9 @@ pub use cloud::{
 };
 pub use config::{
     DEFAULT_ACCOUNT_ENDPOINT, DEFAULT_ARBITRUM_ENDPOINT, DEFAULT_AVALANCHE_ENDPOINT,
-    DEFAULT_BASE_ENDPOINT, DEFAULT_ENDPOINT, DEFAULT_TIMEOUT, DEFAULT_USER_ENDPOINT,
-    ErpcClientConfig, RpcEndpointConfig,
+    DEFAULT_BASE_ENDPOINT, DEFAULT_BSC_ENDPOINT, DEFAULT_ENDPOINT, DEFAULT_OPTIMISM_ENDPOINT,
+    DEFAULT_POLYGON_ENDPOINT, DEFAULT_TIMEOUT, DEFAULT_USER_ENDPOINT, ErpcClientConfig,
+    RpcEndpointConfig,
 };
 pub use dex_catalog::{
     DEX_ALIASES, DEX_CATALOG_AS_OF_DATE, DEX_CATALOG_CONTENT_DIGEST, DEX_CATALOG_VERSION,
@@ -76,6 +81,8 @@ pub use ethereum::{
     ETHEREUM_RPC_METHODS, ETHEREUM_SUBSCRIPTION_METHODS, EthereumClient, EthereumRpcClient,
     EthereumSubscriptions,
 };
+pub use optimism::{OPTIMISM_RPC_METHODS, OptimismClient, OptimismRpcClient};
+pub use polygon::{POLYGON_RPC_METHODS, PolygonClient, PolygonRpcClient};
 pub use price::{
     BinaryUpdate, ParsedPriceMetadata, ParsedPriceUpdate, ParsedPublisherStakeCaps, PriceAssetType,
     PriceClient, PriceEncoding, PriceFeedMetadata, PricePoint, PriceStream, PriceStreamEvent,
@@ -234,6 +241,49 @@ fn arbitrum_rpc_transport(
     )
 }
 
+fn polygon_rpc_transport(
+    resolved: &ResolvedErpcClientConfig,
+    client: &reqwest::Client,
+    direct_client: &reqwest::Client,
+) -> Arc<HttpJsonRpcTransport> {
+    if let Some(endpoint) = &resolved.polygon_rpc {
+        return direct_rpc_transport(endpoint, direct_client, "polygon.rpc", resolved.timeout);
+    }
+    legacy_rpc_transport(
+        resolved,
+        resolved.polygon_endpoint.clone(),
+        client,
+        "polygon.rpc",
+    )
+}
+
+fn bsc_rpc_transport(
+    resolved: &ResolvedErpcClientConfig,
+    client: &reqwest::Client,
+    direct_client: &reqwest::Client,
+) -> Arc<HttpJsonRpcTransport> {
+    if let Some(endpoint) = &resolved.bsc_rpc {
+        return direct_rpc_transport(endpoint, direct_client, "bsc.rpc", resolved.timeout);
+    }
+    legacy_rpc_transport(resolved, resolved.bsc_endpoint.clone(), client, "bsc.rpc")
+}
+
+fn optimism_rpc_transport(
+    resolved: &ResolvedErpcClientConfig,
+    client: &reqwest::Client,
+    direct_client: &reqwest::Client,
+) -> Arc<HttpJsonRpcTransport> {
+    if let Some(endpoint) = &resolved.optimism_rpc {
+        return direct_rpc_transport(endpoint, direct_client, "optimism.rpc", resolved.timeout);
+    }
+    legacy_rpc_transport(
+        resolved,
+        resolved.optimism_endpoint.clone(),
+        client,
+        "optimism.rpc",
+    )
+}
+
 fn websocket_transport(
     resolved: &ResolvedErpcClientConfig,
     direct: Option<&ResolvedRpcEndpoint>,
@@ -297,6 +347,8 @@ pub struct ErpcClient {
     pub arbitrum: ArbitrumClient,
     /// Avalanche C-Chain, native-chain, Index API, and subscriptions.
     pub avalanche: AvalancheClient,
+    /// BNB Smart Chain mainnet read-only HTTP JSON-RPC.
+    pub bsc: BscClient,
     /// Base read-only HTTP JSON-RPC.
     pub base: BaseClient,
     /// Bitcoin Core HTTP JSON-RPC.
@@ -305,8 +357,12 @@ pub struct ErpcClient {
     pub ethereum: EthereumClient,
     /// Price feed REST and streaming API.
     pub price: PriceClient,
+    /// OP Mainnet read-only HTTP JSON-RPC.
+    pub optimism: OptimismClient,
     /// Standard and extended Solana JSON-RPC and subscriptions.
     pub solana: SolanaClient,
+    /// Polygon `PoS` mainnet read-only HTTP JSON-RPC.
+    pub polygon: PolygonClient,
     /// RPC-backed exact-input DEX quote client.
     pub swap: SwapClient,
     /// Monthly API key usage API.
@@ -322,6 +378,9 @@ impl ErpcClient {
         let direct_http = ResolvedErpcClientConfig::direct_http_client()?;
         let base_transport = base_rpc_transport(&resolved, &http, &direct_http);
         let arbitrum_transport = arbitrum_rpc_transport(&resolved, &http, &direct_http);
+        let polygon_transport = polygon_rpc_transport(&resolved, &http, &direct_http);
+        let bsc_transport = bsc_rpc_transport(&resolved, &http, &direct_http);
+        let optimism_transport = optimism_rpc_transport(&resolved, &http, &direct_http);
         let bitcoin_transport = bitcoin_rpc_transport(&resolved, &http, &direct_http)?;
         let solana_transport = resolved.solana_rpc.as_ref().map_or_else(
             || legacy_rpc_transport(&resolved, resolved.endpoint.clone(), &http, "solana.rpc"),
@@ -426,11 +485,14 @@ impl ErpcClient {
                 avalanche_ws,
                 avalanche_index,
             ),
+            bsc: BscClient::new(bsc_transport),
             base: BaseClient::new(base_transport),
             bitcoin: BitcoinClient::new(bitcoin_transport),
             ethereum: EthereumClient::new(ethereum_transport, ethereum_ws),
             price: PriceClient::new(shared_rest),
+            optimism: OptimismClient::new(optimism_transport),
             solana: SolanaClient::new(solana_transport, solana_ws),
+            polygon: PolygonClient::new(polygon_transport),
             swap,
             usage: UsageClient::new(user_rest),
         })
