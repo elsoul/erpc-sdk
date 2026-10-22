@@ -28,6 +28,54 @@ impl BaseClient {
 }
 
 /// Base read-only JSON-RPC namespace.
+///
+/// The intentionally narrow surface has compile-fail coverage for forbidden
+/// escape hatches and state-changing operations:
+///
+/// ```compile_fail
+/// # use erpc_sdk::{ErpcClient, ErpcClientConfig};
+/// # async fn forbidden() -> erpc_sdk::Result<()> {
+/// let rpc = ErpcClient::new(ErpcClientConfig::new("key"))?.base.rpc;
+/// let _ = rpc.raw::<String>("eth_chainId", None);
+/// # Ok(())
+/// # }
+/// ```
+///
+/// ```compile_fail
+/// # use erpc_sdk::{ErpcClient, ErpcClientConfig};
+/// # async fn forbidden() -> erpc_sdk::Result<()> {
+/// let rpc = ErpcClient::new(ErpcClientConfig::new("key"))?.base.rpc;
+/// let _ = rpc.request::<String>("eth_chainId", Vec::<serde_json::Value>::new());
+/// # Ok(())
+/// # }
+/// ```
+///
+/// ```compile_fail
+/// # use erpc_sdk::{ErpcClient, ErpcClientConfig};
+/// # async fn forbidden() -> erpc_sdk::Result<()> {
+/// let rpc = ErpcClient::new(ErpcClientConfig::new("key"))?.base.rpc;
+/// let _ = rpc.batch(Vec::new());
+/// # Ok(())
+/// # }
+/// ```
+///
+/// ```compile_fail
+/// # use erpc_sdk::{ErpcClient, ErpcClientConfig};
+/// # async fn forbidden() -> erpc_sdk::Result<()> {
+/// let rpc = ErpcClient::new(ErpcClientConfig::new("key"))?.base.rpc;
+/// let _ = rpc.subscribe("newHeads", Vec::new());
+/// # Ok(())
+/// # }
+/// ```
+///
+/// ```compile_fail
+/// # use erpc_sdk::{ErpcClient, ErpcClientConfig};
+/// # async fn forbidden() -> erpc_sdk::Result<()> {
+/// let rpc = ErpcClient::new(ErpcClientConfig::new("key"))?.base.rpc;
+/// let _ = rpc.eth_send_raw_transaction(["0xdeadbeef"]);
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Clone)]
 pub struct BaseRpcClient {
     namespace: RpcNamespace,

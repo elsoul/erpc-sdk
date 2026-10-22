@@ -144,6 +144,33 @@ async fn direct_base_preserves_exact_target_and_isolated_headers() {
 }
 
 #[tokio::test]
+async fn direct_base_does_not_follow_redirects() {
+    let redirect_server = MockServer::start().await;
+    let destination_server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(
+            ResponseTemplate::new(307)
+                .insert_header("location", format!("{}/target", destination_server.uri())),
+        )
+        .expect(1)
+        .mount(&redirect_server)
+        .await;
+    let client = ErpcClient::new(
+        ErpcClientConfig::for_rpc().with_base_rpc(RpcEndpointConfig::new(redirect_server.uri())),
+    )
+    .unwrap();
+    let error = client.base.rpc.eth_chain_id().send().await.unwrap_err();
+    assert!(matches!(error, ErpcError::Http { status: 307 }));
+    assert!(
+        destination_server
+            .received_requests()
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[tokio::test]
 async fn direct_base_redacts_path_query_header_and_nested_rpc_credentials() {
     let server = MockServer::start().await;
     let target = format!(

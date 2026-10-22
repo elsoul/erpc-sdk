@@ -206,10 +206,12 @@ brief and release proof.
 
 The Base façade is HTTP-only and read-only. Hosted calls use the Base root
 `https://base.erpc.global/` with the existing `api-key` query authentication.
-`with_base_endpoint` selects another hosted root. A caller-owned endpoint can
-be selected with `with_base_rpc`; it preserves the exact path and query, uses
-only endpoint-scoped headers, follows no redirects, and works without an ERPC
-API key:
+`with_base_endpoint` selects another hosted root and forwards the configured
+ERPC API key through the `api-key` query plus global legacy headers, so the
+override must be caller-trusted. A caller-owned endpoint can be selected with
+`with_base_rpc`; it preserves the exact path and query, uses only
+endpoint-scoped headers, follows no redirects, and works without an ERPC API
+key:
 
 ```rust,no_run
 # use erpc_sdk::{ErpcClient, ErpcClientConfig, RpcEndpointConfig};
@@ -221,6 +223,7 @@ let erpc = ErpcClient::new(
     ),
 )?;
 let chain_id = erpc.base.rpc.eth_chain_id().send().await?;
+assert_eq!(chain_id, "0x2105");
 let balance = erpc
     .base
     .rpc
