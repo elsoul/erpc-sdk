@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "fixtureKind": "m2-data-promotion-cases",
+  "cases": [
+    {
+      "caseId": "empty-bound-replay",
+      "expect": "no-catalog-change",
+      "properties": ["exact-source-base-binding", "fixed-three-artifact-set", "deterministic-generated-bytes"]
+    },
+    {
+      "caseId": "new-token-and-pool-replay",
+      "expect": "additive-review-candidate",
+      "properties": ["full-hash-identities", "address-only-token-symbol", "dependency-closure", "quote-ineligible", "per-kind-caps"]
+    },
+    {
+      "caseId": "admission-cap-requeue-and-resume",
+      "expect": "additive-review-candidate",
+      "properties": ["fresh-verified-pair-index", "persisted-pending-cursor", "candidate-digest-rebind", "second-run-resume", "chain-fairness", "per-kind-caps"]
+    },
+    {
+      "caseId": "forged-deferred-proposal",
+      "expect": "reject",
+      "properties": ["fresh-receipt-required", "no-stale-auto-admission", "persisted-cursor-preserved"]
+    },
+    {
+      "caseId": "forged-success-without-raw-rpc",
+      "expect": "reject",
+      "properties": ["raw-evidence-required", "decoded-success-is-not-authority"]
+    },
+    {
+      "caseId": "stale-pool-catalog-binding",
+      "expect": "reject",
+      "properties": ["pool-replay-after-candidate-catalog"]
+    },
+    {
+      "caseId": "replay-is-idempotent",
+      "expect": "byte-identical",
+      "properties": ["old-full-records-preserved", "old-aliases-preserved", "old-native-wraps-preserved"]
+    },
+    {
+      "caseId": "rank-only-managed-pr-diff",
+      "expect": "automatic-data-candidate",
+      "properties": ["exact-changed-subset", "six-ranking-files", "unchanged-token-dex-bytes-preserved"]
+    },
+    {
+      "caseId": "missing-ci-artifact",
+      "expect": "blocked",
+      "properties": ["report-output-only", "apply-fails-closed", "no-report-authority"]
+    }
+  ],
+  "fixedArtifacts": [
+    "discovery-receipts.json",
+    "pool-receipts.json",
+    "ranking-receipts.json"
+  ],
+  "generatedLanguages": ["typescript", "rust", "python", "go", "ruby"]
+}

@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "fixtureKind": "pool-observer-rpc",
+  "healthStatuses": ["healthy", "empty", "swap-disabled", "missing", "identity-mismatch", "stale", "unreachable"],
+  "protocols": ["uniswap-v2", "lfj-legacy-constant-product", "orca-whirlpool", "raydium-clmm"],
+  "rules": {
+    "outageDoesNotRetire": true,
+    "finalizedEvm": true,
+    "solanaMinContextSlot": true,
+    "solanaBlockTime": "required-finite-exact-slot-freshness",
+    "solanaContextSpreadSlots": 2048,
+    "supplyKind": "mint-account-total-supply",
+    "wsolSupply": "unsupported-for-market-cap"
+  },
+  "decodedResponseCases": {
+    "evmStatuses": ["healthy", "empty", "swap-disabled", "missing", "identity-mismatch", "stale", "unreachable"],
+    "solanaProtocols": ["orca-whirlpool", "raydium-clmm"],
+    "requirements": ["exact-request-index", "finalized-context", "genesis-identity", "fixed-error-code"]
+  }
+}

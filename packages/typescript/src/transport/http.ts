@@ -1,0 +1,313 @@
+import {
+  ErpcAbortedError,
+  ErpcHttpError,
+  ErpcInvalidResponseError,
+  ErpcJsonRpcError,
+  ErpcNotConfiguredError,
+  ErpcTimeoutError,
+  ErpcTransportError,
+  directRedactionVariants,
+  redactJsonRpcError,
+} from '../errors'
+import type {
+  JsonRpcFailure,
+  JsonRpcId,
+  JsonRpcParams,
+  JsonRpcRequest,
+  JsonRpcResponse,
+  RpcBatchCall,
+  RpcSendOptions,
+} from '../rpc/types'
+
+export interface HttpTransportConfig {
+  readonly apiKey?: string
+  readonly direct?: boolean
+  readonly endpoint: URL
+  readonly fetch: typeof globalThis.fetch
+  readonly headers: Readonly<Record<string, string>>
+  readonly maxBatchSize?: number
+  readonly timeoutMs: number
+  readonly unavailableNamespace?: string
+}
+
+interface ControlledSignal {
+  readonly cleanup: () => void
+  readonly signal: AbortSignal
+  readonly timedOut: () => boolean
+}
+
+const controlledSignal = (
+  timeoutMs: number,
+  external?: AbortSignal,
+): ControlledSignal => {
+  const controller = new AbortController()
+  let didTimeOut = false
+
+  const timeout = setTimeout(() => {
+    didTimeOut = true
+    controller.abort()
+  }, timeoutMs)
+
+  const abort = () => controller.abort()
+  if (external?.aborted) controller.abort()
+  else external?.addEventListener('abort', abort, { once: true })
+
+  return {
+    signal: controller.signal,
+    timedOut: () => didTimeOut,
+    cleanup: () => {
+      clearTimeout(timeout)
+      external?.removeEventListener('abort', abort)
+    },
+  }
+}
+
+const isObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+
+const isFailure = (value: unknown): value is JsonRpcFailure =>
+  isObject(value) &&
+  isObject(value.error) &&
+  typeof value.error.code === 'number' &&
+  typeof value.error.message === 'string'
+
+const parseJson = (text: string): unknown => {
+  try {
+    return JSON.parse(text) as unknown
+  } catch {
+    throw new ErpcInvalidResponseError('ERPC returned malformed JSON')
+  }
+}
+
+const directRequestHeaders = (
+  headers: Readonly<Record<string, string>>,
+): Headers | Readonly<Record<string, string>> => {
+  try {
+    const result = new Headers(headers)
+    result.set('accept', 'application/json')
+    result.set('content-type', 'application/json')
+    return result
+  } catch {
+    // Keep the transport error generic when a caller supplied an invalid
+    // header, while still removing protocol-header case duplicates.
+    const result: Record<string, string> = {}
+    for (const [name, value] of Object.entries(headers)) {
+      const lowerName = name.toLowerCase()
+      if (lowerName === 'accept' || lowerName === 'content-type') continue
+      result[name] = value
+    }
+    result.accept = 'application/json'
+    result['content-type'] = 'application/json'
+    return result
+  }
+}
+
+export class HttpJsonRpcTransport {
+  readonly endpoint: string
+  readonly maxBatchSize: number
+
+  readonly #apiKey: string
+  readonly #direct: boolean
+  readonly #requestEndpoint: URL
+  readonly #fetch: typeof globalThis.fetch
+  readonly #headers: Readonly<Record<string, string>>
+  readonly #redactionVariants: readonly string[]
+  readonly #timeoutMs: number
+  readonly #unavailableNamespace: string | undefined
+  #nextId = 1
+
+  constructor(config: HttpTransportConfig) {
+    this.#apiKey = config.apiKey ?? ''
+    this.#direct = config.direct ?? false
+    this.#requestEndpoint = new URL(config.endpoint)
+    this.#fetch = config.fetch
+    this.#headers = config.headers
+    this.#redactionVariants = this.#direct
+      ? directRedactionVariants(this.#requestEndpoint, this.#headers)
+      : []
+    this.#timeoutMs = config.timeoutMs
+    this.#unavailableNamespace = config.unavailableNamespace
+    this.maxBatchSize = config.maxBatchSize ?? 256
+
+    const endpoint = new URL(config.endpoint)
+    if (this.#direct) {
+      // This is diagnostic metadata only. Keep the private request endpoint
+      // untouched so routing preserves the caller's exact path/query bytes.
+      endpoint.pathname = '/'
+      endpoint.search = ''
+      endpoint.hash = ''
+    } else {
+      endpoint.search = ''
+      endpoint.hash = ''
+    }
+    this.endpoint = endpoint.toString()
+  }
+
+  async request<TResult>(
+    method: string,
+    params?: JsonRpcParams,
+    options: RpcSendOptions = {},
+  ): Promise<TResult> {
+    this.#ensureConfigured()
+    const id = this.#id()
+    const request = this.#request(id, method, params)
+    const response = await this.#post(request, options)
+    return this.#unwrap<TResult>(response, id)
+  }
+
+  async batch<TResult extends readonly unknown[]>(
+    calls: readonly RpcBatchCall[],
+    options: RpcSendOptions = {},
+  ): Promise<TResult> {
+    this.#ensureConfigured()
+    if (calls.length === 0) return [] as unknown as TResult
+    if (calls.length > this.maxBatchSize) {
+      throw new ErpcInvalidResponseError(
+        `A batch may contain at most ${this.maxBatchSize} calls`,
+      )
+    }
+
+    const requests = calls.map((call) => {
+      const id = this.#id()
+      return this.#request(id, call.method, call.params)
+    })
+    const raw = await this.#post(requests, options)
+    if (!Array.isArray(raw)) {
+      if (isFailure(raw)) {
+        throw new ErpcJsonRpcError(
+          redactJsonRpcError(
+            raw.error,
+            this.#direct ? undefined : this.#apiKey,
+            this.#redactionVariants,
+          ),
+        )
+      }
+      throw new ErpcInvalidResponseError('ERPC returned a non-array batch response')
+    }
+
+    const expectedIds = new Set<JsonRpcId>(requests.map((request) => request.id))
+    const byId = new Map<JsonRpcId, unknown>()
+    for (const response of raw) {
+      if (!isObject(response) || !('id' in response)) {
+        throw new ErpcInvalidResponseError('ERPC returned an invalid batch item')
+      }
+      const id = response.id
+      if (typeof id !== 'number' && typeof id !== 'string') {
+        throw new ErpcInvalidResponseError('ERPC returned an invalid batch id')
+      }
+      if (!expectedIds.has(id)) {
+        throw new ErpcInvalidResponseError(
+          'ERPC returned an unexpected batch response id',
+        )
+      }
+      if (byId.has(id)) {
+        throw new ErpcInvalidResponseError(
+          `ERPC returned duplicate batch response id ${String(id)}`,
+        )
+      }
+      byId.set(id, response)
+    }
+
+    const results = requests.map((request) => {
+      const response = byId.get(request.id)
+      if (response === undefined) {
+        throw new ErpcInvalidResponseError(
+          `ERPC omitted batch response id ${String(request.id)}`,
+        )
+      }
+      return this.#unwrap(response, request.id)
+    })
+    return results as unknown as TResult
+  }
+
+  #id(): number {
+    const id = this.#nextId
+    this.#nextId = id >= Number.MAX_SAFE_INTEGER ? 1 : id + 1
+    return id
+  }
+
+  #ensureConfigured(): void {
+    if (this.#unavailableNamespace !== undefined) {
+      throw new ErpcNotConfiguredError(this.#unavailableNamespace)
+    }
+  }
+
+  #request(
+    id: JsonRpcId,
+    method: string,
+    params?: JsonRpcParams,
+  ): JsonRpcRequest<JsonRpcParams> {
+    const request: {
+      jsonrpc: '2.0'
+      id: JsonRpcId
+      method: string
+      params?: JsonRpcParams
+    } = { jsonrpc: '2.0', id, method }
+    if (params !== undefined) request.params = params
+    return request
+  }
+
+  async #post(
+    body: unknown,
+    options: RpcSendOptions,
+  ): Promise<unknown> {
+    this.#ensureConfigured()
+
+    const url = new URL(this.#requestEndpoint)
+    if (!this.#direct) url.searchParams.set('api-key', this.#apiKey)
+    const controlled = controlledSignal(this.#timeoutMs, options.signal)
+
+    try {
+      const response = await this.#fetch(url, {
+        method: 'POST',
+        headers: this.#direct
+          ? directRequestHeaders(this.#headers)
+          : {
+              ...this.#headers,
+              'content-type': 'application/json',
+            },
+        body: JSON.stringify(body),
+        signal: controlled.signal,
+        ...(this.#direct
+          ? {
+              credentials: 'omit' as const,
+              redirect: 'manual' as const,
+            }
+          : {}),
+      })
+      const text = await response.text()
+      if (!response.ok) throw new ErpcHttpError(response.status)
+      return parseJson(text)
+    } catch (error) {
+      if (error instanceof ErpcHttpError || error instanceof ErpcInvalidResponseError) {
+        throw error
+      }
+      if (controlled.timedOut()) throw new ErpcTimeoutError(this.#timeoutMs)
+      if (options.signal?.aborted) throw new ErpcAbortedError()
+      // Do not retain the underlying fetch error: custom runtimes may include
+      // the credential-bearing request URL or headers in its message.
+      throw new ErpcTransportError('Unable to reach ERPC')
+    } finally {
+      controlled.cleanup()
+    }
+  }
+
+  #unwrap<TResult>(response: unknown, expectedId: JsonRpcId): TResult {
+    if (!isObject(response)) throw new ErpcInvalidResponseError()
+    if (response.id !== expectedId) {
+      throw new ErpcInvalidResponseError('ERPC returned an unexpected response id')
+    }
+    if (isFailure(response)) {
+      throw new ErpcJsonRpcError(
+        redactJsonRpcError(
+          response.error,
+          this.#direct ? undefined : this.#apiKey,
+          this.#redactionVariants,
+        ),
+      )
+    }
+    if (!('result' in response)) throw new ErpcInvalidResponseError()
+    return (response as unknown as JsonRpcResponse<TResult> & { result: TResult })
+      .result
+  }
+}

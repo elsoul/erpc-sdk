@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "description": "Catalog CI baseline binding cases.",
+  "requiredRefs": ["baseSha", "pushBeforeSha", "dispatchBaseSha", "headSha"],
+  "accept": [
+    "all three base references are equal validated commit objects",
+    "base commit is an ancestor of the PR head",
+    "catalog is read with git show at the validated PR base commit",
+    "catalog digest is recomputed after validation"
+  ],
+  "refuse": [
+    "missing history or a non-commit object",
+    "base, push-before, and dispatch-base mismatch",
+    "base is the current PR head",
+    "base is not an ancestor of the PR head",
+    "current checkout catalog used as a missing-history fallback",
+    "unvalidated ref text or shell interpolation"
+  ]
+}

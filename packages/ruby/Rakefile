@@ -1,0 +1,27 @@
+# frozen_string_literal: true
+
+require "rake/testtask"
+require "rubygems/package_task"
+
+Rake::TestTask.new(:test) do |task|
+  task.libs << "lib"
+  task.libs << "test"
+  task.pattern = "test/**/test_*.rb"
+  task.warning = true
+end
+
+desc "Check Ruby syntax"
+task :check do
+  files = Dir["lib/**/*.rb", "test/**/*.rb", "Rakefile", "erpc-sdk.gemspec"]
+  files.each do |file|
+    ruby "-c", file
+  end
+end
+
+spec = Gem::Specification.load("erpc-sdk.gemspec")
+Gem::PackageTask.new(spec) do |package|
+  package.need_zip = false
+  package.need_tar = false
+end
+
+task default: %i[check test]

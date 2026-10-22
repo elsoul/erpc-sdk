@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "fixtureKind": "bounded-discovery-rpc",
+  "anchor": {
+    "ethereum": { "chainId": "0x1", "blockNumber": "0x100", "blockHash": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+    "avalancheC": { "chainId": "0xa86a", "blockNumber": "0x100", "blockHash": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },
+    "solana": { "slot": 447257740 }
+  },
+  "liveSeedObservations": {
+    "ethereumUniswapV2": { "allPairsLength": 522121 },
+    "avalancheLFJLegacy": { "allPairsLength": 148835 },
+    "solanaOrca": { "accountBytes": 653, "discriminator": "3f95d10ce1806309", "mintOffsets": [101, 181] },
+    "solanaRaydium": { "accountBytes": 1544, "discriminator": "f7ede3f5d7c3de46", "mintOffsets": [73, 105] }
+  },
+  "unknown": {
+    "ethereumPair": "0x1111111111111111111111111111111111111111",
+    "ethereumToken0": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "ethereumToken1": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "solanaMint0": "5R6nWQf8R7p3dJ1eQ4zX6mY2wV9kC8bT5sH4gF3dE2a1",
+    "solanaMint1": "7Y6xW5vU4tS3rQ2pN1mL9kJ8hG7fD6sA5pO4iU3yT2r1"
+  },
+  "expected": {
+    "canonicalRepresentationKind": "unclassified",
+    "canonicalStableCurrency": null,
+    "canonicalRelations": null,
+    "aliasPattern": "DISCOVERED_<hash16>",
+    "poolAliasPattern": "DISCOVERED_POOL_<hash16>",
+    "selfReportedSymbol": "evidence-only"
+  },
+  "replayContracts": {
+    "solanaProgramBatch": {
+      "poolAccountBatch": true,
+      "relatedAccountBatch": true,
+      "sharedUnknownMint": true,
+      "perAccountContextSlot": true,
+      "protocols": ["orca-whirlpool", "raydium-clmm"]
+    }
+  }
+}

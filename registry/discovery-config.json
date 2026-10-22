@@ -1,0 +1,142 @@
+{
+  "schemaVersion": 1,
+  "configVersion": "1.0.0",
+  "rpc": {
+    "ethereum": {
+      "endpointId": "ethereum-public",
+      "chainId": "eip155:1",
+      "expectedRpcChainId": "0x1",
+      "url": "https://ethereum-rpc.publicnode.com",
+      "hostname": "ethereum-rpc.publicnode.com",
+      "reviewedHosts": ["ethereum-rpc.publicnode.com"]
+    },
+    "avalancheC": {
+      "endpointId": "avalanche-c-public",
+      "chainId": "eip155:43114",
+      "expectedRpcChainId": "0xa86a",
+      "url": "https://api.avax.network/ext/bc/C/rpc",
+      "hostname": "api.avax.network",
+      "reviewedHosts": ["api.avax.network"]
+    },
+    "solana": {
+      "endpointId": "solana-public",
+      "chainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+      "expectedGenesisHash": "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d",
+      "url": "https://api.mainnet-beta.solana.com",
+      "hostname": "api.mainnet-beta.solana.com",
+      "reviewedHosts": ["api.mainnet-beta.solana.com"]
+    }
+  },
+  "evm": {
+    "factories": [
+      {
+        "dexDeploymentId": "dex-deployment-0001",
+        "network": "ethereum",
+        "factory": "0x5c69bee701ef814a2b6a3edd4b1652cb9cc5aa6f",
+        "pairScan": { "tail": 64, "backfill": 64, "maxPairsPerRun": 128 }
+      },
+      {
+        "dexDeploymentId": "dex-deployment-0002",
+        "network": "avalancheC",
+        "factory": "0x9ad6c38be94206ca50bb0d90783181662f0cfa10",
+        "pairScan": { "tail": 64, "backfill": 64, "maxPairsPerRun": 128 }
+      }
+    ]
+  },
+  "solana": {
+    "programs": [
+      {
+        "dexDeploymentId": "dex-deployment-0003",
+        "protocol": "orca-whirlpool",
+        "program": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
+        "layout": {
+          "dataSize": 653,
+          "discriminator": "3f95d10ce1806309",
+          "mintOffsets": [101, 181],
+          "vaultOffsets": [133, 213],
+          "configOffset": 8,
+          "liquidityOffset": 49,
+          "pda": {
+            "prefixHex": "776869726c706f6f6c",
+            "seedSlices": [
+              { "offset": 8, "length": 32 },
+              { "offset": 101, "length": 32 },
+              { "offset": 181, "length": 32 },
+              { "offset": 43, "length": 2 }
+            ],
+            "bumpOffset": 40
+          }
+        }
+      },
+      {
+        "dexDeploymentId": "dex-deployment-0004",
+        "protocol": "raydium-clmm",
+        "program": "CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK",
+        "layout": {
+          "dataSize": 1544,
+          "discriminator": "f7ede3f5d7c3de46",
+          "mintOffsets": [73, 105],
+          "vaultOffsets": [137, 169],
+          "configOffset": 9,
+          "liquidityOffset": 237,
+          "sqrtPriceOffset": 253,
+          "statusOffset": 389,
+          "swapDisabledMask": 16,
+          "seedIndexOffset": 391,
+          "pda": {
+            "prefixHex": "706f6f6c",
+            "seedSlices": [
+              { "offset": 9, "length": 32 },
+              { "offset": 73, "length": 32 },
+              { "offset": 105, "length": 32 }
+            ],
+            "bumpOffset": 8
+          }
+        }
+      }
+    ],
+    "mintPrograms": [
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+    ],
+    "anchor": { "commitment": "finalized", "minContextSlot": 447257739 },
+    "mintScan": { "enabled": false, "maxAccountsPerProgram": 128, "dataSize": 82 }
+  },
+  "limits": {
+    "runBudgetMs": 60000,
+    "rpcTimeoutMs": 10000,
+    "rpcRetries": 2,
+    "rpcBodyBytes": 524288,
+    "maxConcurrentRequests": 4,
+    "maxAdmissionTokens": 8,
+    "maxAdmissionPools": 8,
+    "maxPending": 1024,
+    "maxMultipleAccounts": 64
+  },
+  "freshness": {
+    "ethereum": { "maxFinalizedAgeSeconds": 1800, "maxFutureSkewSeconds": 90 },
+    "avalancheC": { "maxFinalizedAgeSeconds": 120, "maxFutureSkewSeconds": 90 },
+    "solana": { "maxSlotAgeSeconds": 120, "maxFutureSkewSeconds": 90 }
+  },
+  "admission": {
+    "quoteEligiblePoolIds": ["pool-0001", "pool-0002"],
+    "tokenPolicy": "qualified-pool-dependencies",
+    "selectionPolicy": "chain-round-robin-liquidity-desc",
+    "poolQualification": {
+      "kind": "direct-reviewed-native-v1",
+      "sources": {
+        "eip155:1": { "nativeWrapDeploymentId": "deployment-0002", "minNativeLiquidity": "10000000000000000000" },
+        "eip155:43114": { "nativeWrapDeploymentId": "deployment-0004", "minNativeLiquidity": "100000000000000000000" },
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": { "nativeWrapDeploymentId": "deployment-0006", "minNativeLiquidity": "100000000000" }
+      }
+    },
+    "requiredReview": true,
+    "aliasPrefix": "DISCOVERED_",
+    "poolAliasPrefix": "DISCOVERED_POOL_"
+  },
+  "coverage": {
+    "mode": "bounded",
+    "partialClaim": false,
+    "description": "Each run covers the configured factory tail and a resumable backfill window plus typed Solana program partitions. A partial run never claims full network coverage."
+  }
+}

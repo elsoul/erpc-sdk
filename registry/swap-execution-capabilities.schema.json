@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://erpc-sdk.dev/registry/swap-execution-capabilities.schema.json",
+  "title": "ERPC SDK swap execution capability registry",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "asOfDate", "capabilities"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "asOfDate": { "$ref": "#/$defs/date" },
+    "capabilities": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/capability" }
+    }
+  },
+  "$defs": {
+    "date": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "address": {
+      "type": "string",
+      "pattern": "^0x[0-9a-f]{40}$"
+    },
+    "selector": {
+      "type": "string",
+      "pattern": "^0x[0-9a-f]{8}$"
+    },
+    "capability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "swapExecutionCapabilityId",
+        "chainId",
+        "dexDeploymentId",
+        "poolDefinitionId",
+        "factoryAddress",
+        "routerAddress",
+        "routerKind",
+        "adapterKind",
+        "token0DeploymentId",
+        "token0Address",
+        "token0Standard",
+        "token1DeploymentId",
+        "token1Address",
+        "token1Standard",
+        "wrappedNativeTokenDeploymentId",
+        "wrappedNativeTokenAddress",
+        "wrappedNativeFunctionSelector",
+        "functionKind",
+        "functionSignature",
+        "functionSelector",
+        "status",
+        "evidence",
+        "asOfDate"
+      ],
+      "properties": {
+        "swapExecutionCapabilityId": { "$ref": "#/$defs/id" },
+        "chainId": { "enum": ["eip155:1", "eip155:43114"] },
+        "dexDeploymentId": { "$ref": "#/$defs/id" },
+        "poolDefinitionId": { "$ref": "#/$defs/id" },
+        "factoryAddress": { "$ref": "#/$defs/address" },
+        "routerAddress": { "$ref": "#/$defs/address" },
+        "routerKind": { "enum": ["uniswap-v2-router02", "joe-v1-router02"] },
+        "adapterKind": { "const": "evm-constant-product-v2" },
+        "token0DeploymentId": { "$ref": "#/$defs/id" },
+        "token0Address": { "$ref": "#/$defs/address" },
+        "token0Standard": { "const": "erc20" },
+        "token1DeploymentId": { "$ref": "#/$defs/id" },
+        "token1Address": { "$ref": "#/$defs/address" },
+        "token1Standard": { "const": "erc20" },
+        "wrappedNativeTokenDeploymentId": { "$ref": "#/$defs/id" },
+        "wrappedNativeTokenAddress": { "$ref": "#/$defs/address" },
+        "wrappedNativeFunctionSelector": { "$ref": "#/$defs/selector" },
+        "functionKind": { "const": "exact-input-erc20-to-erc20" },
+        "functionSignature": { "const": "swapExactTokensForTokens(uint256,uint256,address[],address,uint256)" },
+        "functionSelector": { "const": "0x38ed1739" },
+        "status": { "const": "active" },
+        "evidence": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^https://\\S+$"
+          },
+          "uniqueItems": true
+        },
+        "asOfDate": { "$ref": "#/$defs/date" }
+      }
+    }
+  }
+}

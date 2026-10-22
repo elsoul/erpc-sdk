@@ -1,0 +1,229 @@
+{
+  "evidenceVersion": 1,
+  "kind": "mayan-swift-v2-bridge-provider-evidence",
+  "recordedAsOf": "2026-09-16",
+  "scope": "Native issued EURC Ethereum-to-Solana and Solana-to-Ethereum optional Mayan Swift v2 adapter; public quote observations, pinned REST facts, and implementation boundaries.",
+  "boundary": "Planning and engineering evidence only. The provider, solver, relayer, Wormhole, Jupiter, and explorer are external dependencies. This packet does not prove signatures, source swaps, settlement, reserves, service availability, legal compliance, CE conformity, or live-funds safety. No key, signature, broadcast, submit, or refund action is authorized or recorded.",
+  "sourcePacket": {
+    "path": "/private/tmp/erpc-mayan-provider-evidence.md",
+    "readAsOf": "2026-09-16",
+    "scope": "Rydia/EU OSS provider evidence handoff",
+    "primaryProviderObservationPath": "/private/tmp/erpc-mayan-live-quote-observations.json",
+    "primaryProviderObservationSha256": "fa0c549d451c277e38310b3f5eea359825b06d635ef14ecc7e1f4d36105a6fdc",
+    "primaryProviderObservationBytes": 8669,
+    "primaryProviderObservationRecordedAt": "2026-09-16T22:45:07.618Z"
+  },
+  "canonicalRegistry": {
+    "path": "registry/bridge-capabilities.json",
+    "schemaPath": "registry/bridge-capabilities.schema.json",
+    "asOfDate": "2026-09-16",
+    "capabilityIds": [
+      "bridge-mayan-swift-v2-eurc-eth-sol",
+      "bridge-mayan-swift-v2-eurc-sol-eth"
+    ],
+    "capabilityDigest": "fe698f99218057f8cb40b3e24421d1d78e4e2cd7508cf6e3eb2457b329e5141b",
+    "runtimeProjectionOmits": ["evidence", "asOfDate"]
+  },
+  "nativeTokenBindings": {
+    "ethereum": {
+      "chainId": "eip155:1",
+      "providerChainId": 1,
+      "wormholeChainId": 2,
+      "eurcDeploymentId": "deployment-0011",
+      "eurcAddress": "0x1abaea1f7c830bd89acc67ec4af516284b1bc33c",
+      "eurcStandard": "erc20",
+      "usdcDeploymentId": "deployment-0008",
+      "usdcAddress": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+      "usdcStandard": "erc20"
+    },
+    "solana": {
+      "chainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+      "providerChainId": 0,
+      "wormholeChainId": 1,
+      "eurcDeploymentId": "deployment-0013",
+      "eurcAddress": "HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr",
+      "eurcStandard": "spl-token",
+      "providerWireStandard": "spl",
+      "usdcDeploymentId": "deployment-0010",
+      "usdcAddress": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      "usdcStandard": "spl-token"
+    }
+  },
+  "providerContract": {
+    "builderEndpoint": "https://tx-builder.mayan.finance",
+    "explorerEndpoint": "https://explorer-api.mayan.finance/v3",
+    "quotePath": "/quote",
+    "buildPath": "/build",
+    "statusPathTemplate": "/swap/trx/{sourceTransactionHash}",
+    "quoteMethod": "POST",
+    "buildMethod": "POST",
+    "statusMethod": "GET",
+    "quoteAuthentication": "none",
+    "buildAuthentication": "optional provider-only X-API-Key; hosted build may return 401 without one",
+    "statusAuthentication": "none",
+    "redirects": "disabled",
+    "apiKeyForwarding": "X-API-Key only to /build; never /quote or Explorer; ERPC headers, cookies, and credentials never flow"
+  },
+  "liveQuoteObservations": {
+    "status": "PASS_PUBLIC_READ_ONLY_QUOTE_ONLY",
+    "rows": [
+      {
+        "direction": "ethereum-to-solana",
+        "sourceChainId": "eip155:1",
+        "destinationChainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+        "httpStatus": 200,
+        "selectedQuoteCount": 1,
+        "amountIn64": "100000000",
+        "slippageBps": 50,
+        "providerSelection": "SWIFT / V2 / gasless=false",
+        "deadline64": "1789600189",
+        "quoteId": "0xbb1e28cff6edf9ca0ca3bb1b507ec770",
+        "rawResponseRetainedAtSourcePacket": true
+      },
+      {
+        "direction": "solana-to-ethereum",
+        "sourceChainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+        "destinationChainId": "eip155:1",
+        "httpStatus": 200,
+        "selectedQuoteCount": 1,
+        "amountIn64": "100000000",
+        "slippageBps": 50,
+        "providerSelection": "SWIFT / V2 / gasless=false",
+        "deadline64": "1789599903",
+        "quoteId": "0xb8230b0c24e05f730dbe9a76850862b9",
+        "rawResponseRetainedAtSourcePacket": true
+      }
+    ],
+    "observedFacts": [
+      "The quote endpoint accepted the closed JSON request without credentials.",
+      "Quotes expose exact decimal amount strings, a provider signature, internal source USDC conversion, and an absolute deadline.",
+      "The hosted build endpoint returned 401 without a provider key in the independent evidence run; the adapter surfaces local auth-required behavior and never reuses an ERPC key.",
+      "No live build, signing, broadcast, submit, cancellation, refund, or settlement proof is claimed by these quote observations."
+    ]
+  },
+  "buildAndStatusFacts": {
+    "ethereum": {
+      "swiftContract": "0x40ffe85a28dc9993541449464d7529a922142960",
+      "forwarderAddress": "0x337685fdab40d39bd02028545a4ffa7d287cc3e2",
+      "forwarderFunctionSelector": "0x30dedc57",
+      "transactionValue": "0",
+      "chainId": 1,
+      "transactionIsUnsigned": true,
+      "allowancePolicy": "EURC deployment-0011 to the Mayan Forwarder; wallet owns approval and signing policy"
+    },
+    "solana": {
+      "swiftProgram": "mayan34VedncxdK2XobtvWFDXQASUTBXhUVzt2kKgny",
+      "jupiterProgramAddress": "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
+      "transactionVersion": 0,
+      "transactionIsUnsigned": true,
+      "supplementalSigners": "unsupported and rejected; provider fields may contain ephemeral private keys",
+      "supplementalSwapMessageV0Params": "unsupported and rejected"
+    },
+    "statusMapping": {
+      "INPROGRESS": "in-progress",
+      "COMPLETED": "completed",
+      "REFUNDED": "refunded",
+      "other": "unknown",
+      "verification": "provider-indexed-not-locally-verified",
+      "404": "BRIDGE_STATUS_NOT_FOUND"
+    }
+  },
+  "dependencies": [
+    { "id": "mayan-hosted-quote-api", "status": "external service; deployed version and SLA unknown" },
+    { "id": "mayan-hosted-transaction-builder", "status": "external service; deployed version, terms, and SLA unknown" },
+    { "id": "mayan-hosted-source-swap-builder", "status": "external provider-selected conversion; no local RPC-only claim" },
+    { "id": "swift-auction-solvers", "status": "external solver inventory and availability unknown" },
+    { "id": "relayers", "status": "external relayer dependency; availability and refund semantics require provider review" },
+    { "id": "wormhole-guardian-messaging", "status": "external messaging dependency; no local attestation proof" },
+    { "id": "mayan-explorer-indexer", "status": "external indexed status; no on-chain settlement proof" },
+    { "id": "jupiter-v6-source-swap", "status": "Solana-origin provider-selected source conversion; hosted dependency" }
+  ],
+  "primarySources": [
+    {
+      "title": "Circle EURC contract addresses",
+      "url": "https://developers.circle.com/stablecoins/eurc-contract-addresses",
+      "asOf": "2026-09-16",
+      "role": "native EURC Ethereum and Solana addresses"
+    },
+    {
+      "title": "Mayan Quote API",
+      "url": "https://docs.mayan.finance/integration/quote-api",
+      "asOf": "2026-09-16",
+      "role": "closed quote request and response facts"
+    },
+    {
+      "title": "Mayan Swift architecture",
+      "url": "https://docs.mayan.finance/architecture/swift",
+      "asOf": "2026-09-16",
+      "role": "Swift solver, relayer, and messaging dependency context"
+    },
+    {
+      "title": "Mayan swap SDK pinned reference",
+      "url": "https://github.com/mayan-finance/swap-sdk/tree/f25d49195dce1b5b7008fa876a84e3268d11e903",
+      "asOf": "2026-09-16",
+      "role": "pinned public API and address observations; no source copied or bundled"
+    },
+    {
+      "title": "Mayan transaction builder pinned reference",
+      "url": "https://github.com/mayan-finance/tx-builder/tree/e966f16a155cd9091b02ef5d9b91c3f837c228ad",
+      "asOf": "2026-09-16",
+      "role": "pinned REST envelope observations; repository licensing remains ambiguous"
+    },
+    {
+      "title": "CCTP supported chains and domains",
+      "url": "https://developers.circle.com/cctp/concepts/supported-chains-and-domains",
+      "asOf": "2026-09-16",
+      "role": "EURC is outside the CCTP USDC/USYC mint-burn path"
+    }
+  ],
+  "implementationEvidence": {
+    "registryValidator": "registry/bridge-capabilities.mjs",
+    "schema": "registry/bridge-capabilities.schema.json",
+    "generator": "registry/generate-bridge-capabilities.mjs",
+    "fixture": "registry/fixtures/mayan-swift-v2-cases.json",
+    "parityVerifier": "registry/verify-bridge-parity.mjs",
+    "fixtureKind": "synthetic wire fixtures; not authenticated live captures",
+    "nativeCapture": "PENDING package-owner runs; parity verifier requires five actual native outputs",
+    "sourceCopyBoundary": "independent REST implementation; no Mayan source, ABI bundle, SDK, or dependency is distributed"
+  },
+  "euOssPlanning": {
+    "applicability": "UNDETERMINED",
+    "companyLegalRole": "UNDETERMINED",
+    "productClassification": "UNDETERMINED",
+    "supportCommitments": "UNDETERMINED",
+    "complianceStatus": "UNDETERMINED",
+    "primarySourcesAndAsOf": [
+      {
+        "url": "https://digital-strategy.ec.europa.eu/en/policies/cra-open-source",
+        "asOf": "2026-07-31"
+      },
+      {
+        "url": "https://digital-strategy.ec.europa.eu/en/policies/cra-reporting",
+        "asOf": "2026-09-11"
+      },
+      {
+        "url": "https://eur-lex.europa.eu/eli/reg/2024/2847/oj",
+        "asOf": "2024-11-20"
+      },
+      {
+        "url": "https://eur-lex.europa.eu/legal-content/EN-FR/ALL/?uri=CELEX%3A01996L0009-20190606",
+        "asOf": "2019-06-06"
+      }
+    ],
+    "evidence": [
+      "The adapter is independently implemented and does not vendor the Mayan SDK or transaction-builder repository.",
+      "The provider, solver, relayer, Guardian, Jupiter, and explorer are external service dependencies with unknown deployed versions and terms.",
+      "Pinned SDK 15.2.2 MIT notice was inspected; no SDK dependency is approved for distribution by this packet."
+    ],
+    "gaps": [
+      "CRA applicability, company role, product classification, support commitments, and compliance status require a named responsible human.",
+      "Mayan transaction-builder licensing, deployed versions, terms, SLA, security owner, and data rights remain unknown.",
+      "Hosted provider behavior may change; recheck endpoint, response schema, dependency, or release changes.",
+      "No legal certification, CE declaration, regulatory filing, public vulnerability disclosure, or release activation is established."
+    ],
+    "owner": "TBD — human assignment required",
+    "dueDate": "TBD — human assignment required",
+    "nextReview": "2026-10-15 or earlier on a material endpoint, dependency, security, or release event",
+    "boundary": "Planning evidence only; no self-issued legal compliance or CE certification and no standing authority for filings, disclosures, or live effects."
+  }
+}

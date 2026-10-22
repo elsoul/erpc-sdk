@@ -1,0 +1,86 @@
+{
+  "evidenceVersion": 1,
+  "kind": "eu-oss-weekly-maintenance-planning-evidence",
+  "recordedAsOf": "2026-09-15",
+  "scope": "weekly maintenance preparation and reviewable PR stage",
+  "applicability": "UNDETERMINED",
+  "companyRole": "UNDETERMINED",
+  "companyLegalRole": "UNDETERMINED",
+  "classification": "UNDETERMINED",
+  "productClassification": "UNDETERMINED",
+  "support": "UNDETERMINED",
+  "supportCommitments": "UNDETERMINED",
+  "compliance": "UNDETERMINED",
+  "complianceStatus": "UNDETERMINED",
+  "dataRights": "UNDETERMINED",
+  "dataLicenceClearance": "UNDETERMINED",
+  "owners": {
+    "engineeringRoot": "Root",
+    "engineeringObservation": "Root/Rydia",
+    "engineeringWorkflow": "Bahamut",
+    "engineeringPreparation": "Sephiroth",
+    "humanLegalOwner": "TBD — human assignment required",
+    "humanLegalDueDate": "TBD — human assignment required"
+  },
+  "review": {
+    "engineeringDue": "before acceptance of a release candidate",
+    "nextManualReview": "2026-10-15 or earlier on a material event",
+    "scheduleUtc": ["Tuesday 03:17", "Thursday 03:47"],
+    "status": "PLANNING_EVIDENCE_ONLY",
+    "partialSourceChecks": true,
+    "automaticNativeCapture": false,
+    "existingTemporaryDriversOnly": true
+  },
+  "primarySources": [
+    {
+      "title": "European Commission — Cyber Resilience Act: Open source",
+      "url": "https://digital-strategy.ec.europa.eu/en/policies/cra-open-source",
+      "asOf": "2026-07-31",
+      "role": "CRA open-source scope and guidance entry point"
+    },
+    {
+      "title": "European Commission — Cyber Resilience Act: Reporting obligations",
+      "url": "https://digital-strategy.ec.europa.eu/en/policies/cra-reporting",
+      "asOf": "2026-09-11",
+      "role": "CRA reporting obligations entry point"
+    },
+    {
+      "title": "EUR-Lex — Regulation (EU) 2024/2847 (Cyber Resilience Act)",
+      "url": "https://eur-lex.europa.eu/eli/reg/2024/2847/oj",
+      "asOf": "2024-11-20",
+      "role": "primary CRA regulation text; automated retrieval remains incomplete"
+    },
+    {
+      "title": "EUR-Lex — Directive 96/9/EC on the legal protection of databases",
+      "url": "https://eur-lex.europa.eu/eli/dir/1996/9/oj",
+      "asOf": "2019-06-06 consolidated version shown by EUR-Lex",
+      "role": "database rights source"
+    }
+  ],
+  "evidence": {
+    "publicRepository": "https://github.com/elsoul/erpc-sdk",
+    "checkedRef": "main",
+    "environmentCount": 4,
+    "reviewerRequirementVerified": false,
+    "rulesetProtectionVerified": false,
+    "plannedPullRequestControlsArePlatformProtections": false,
+    "observationArtifactPaths": [
+      "registry/maintenance-findings.json",
+      "registry/source-baseline.json",
+      "registry/evidence/maintenance-review.json",
+      "registry/evidence/maintenance-review.md"
+    ],
+    "sourceChecks": "Partial source and repository checks are recorded honestly; no completeness or freshness guarantee is asserted.",
+    "nativeCapture": "No automatic native capture claim; only existing temporary drivers are available."
+  },
+  "gaps": [
+    "Human legal owner and due date have not been assigned.",
+    "CRA applicability, company role, product classification, support commitments, compliance status, and data rights remain undetermined.",
+    "Full EUR-Lex automated retrieval is a challenge gap.",
+    "The primary CRA regulation text is recorded for human review; full EUR-Lex automated retrieval remains a challenge gap.",
+    "Aave address-book MIT notice was inspected; no third-party code, logo, prose, or bulk database is copied.",
+    "Sky source facts were selected only; AGPL implications and STASIS root licence/code usage rights remain unestablished and require human legal review.",
+    "Most issuer website terms were not reviewed."
+  ],
+  "boundary": "Planning evidence only. This packet is not a legal certificate, CE certification, statutory OSS steward designation, vulnerability disclosure, regulatory filing, approval, merge, tag, publication, or release authority."
+}

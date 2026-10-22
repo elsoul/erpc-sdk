@@ -1,0 +1,203 @@
+{
+  "evidenceVersion": 1,
+  "kind": "discovery-ranking-primary-source-index",
+  "recordedAsOf": "2026-09-16",
+  "scope": "Default source-checkout RPC discovery and token-ranking implementation; pinned protocol source and license observations",
+  "boundary": "Engineering source evidence only. This packet does not establish legal clearance, CE certification, product classification, support obligations, compliance, complete coverage, or publication authority.",
+  "implementation": {
+    "discovery": {
+      "implementationPath": "registry/discovery.mjs",
+      "configurationPath": "registry/discovery-config.json",
+      "networks": [
+        { "name": "ethereum", "chainId": "eip155:1", "role": "configured EVM factory pair-index discovery" },
+        { "name": "avalancheC", "chainId": "eip155:43114", "role": "configured EVM factory pair-index discovery" },
+        { "name": "solana", "chainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp", "role": "configured Solana program-partition discovery" }
+      ],
+      "factScope": "Verified chain, factory/program, pool/mint, token-pair, account, block, and context facts from configured public RPC responses.",
+      "admissionBoundary": "New token proposals remain unclassified with address-only names and symbols and null stableCurrency, underlyingAssetId, and economicReferenceAssetId until review. Admission is bounded at 8 tokens and 8 pools per run; deferred candidates require fresh verified revalidation.",
+      "nativePairFloors": {
+        "eip155:1": "10000000000000000000",
+        "eip155:43114": "100000000000000000000",
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": "100000000000"
+      }
+    },
+    "ranking": {
+      "implementationPath": "registry/token-rankings.mjs",
+      "configurationPath": "registry/ranking-config.json",
+      "metric": "onchain-total-supply-value-native",
+      "metricDefinition": "Total supply multiplied by the direct native-pool price, represented as reduced exact rational native atomic units; explicitly not circulating market capitalization.",
+      "coverageBoundary": "Partial coverage and unranked reasons remain explicit. Native units and unavailable, stale, invalid, unpriced, below-floor, or rights-denied observations are not silently converted to ranked zeroes.",
+      "globalUsdMetric": { "metric": "global-circulating-market-cap-usd", "enabled": false, "rights": "UNDETERMINED", "providerDataRedistribution": "not used" }
+    }
+  },
+  "defaultInputs": {
+    "rpcFacts": "Configured public RPC facts from the local discovery and ranking configurations.",
+    "rpcEndpoints": [
+      { "name": "ethereum", "chainId": "eip155:1", "url": "https://ethereum-rpc.publicnode.com", "role": "read-only discovery and ranking facts" },
+      { "name": "avalancheC", "chainId": "eip155:43114", "url": "https://api.avax.network/ext/bc/C/rpc", "role": "read-only discovery and ranking facts" },
+      { "name": "solana", "chainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp", "url": "https://api.mainnet-beta.solana.com", "role": "read-only discovery and ranking facts" }
+    ],
+    "arithmetic": "Independent implementation in the repository; no protocol SDK, implementation source, or vendor market-cap dataset is imported or redistributed.",
+    "offlineLookups": "Bundled catalog and ranking list APIs read local generated data only and do not call an external vendor API, RPC endpoint, or current clock.",
+    "sdkDistribution": "Registry evidence and raw RPC receipts are omitted from SDK distributions."
+  },
+  "primarySources": [
+    {
+      "id": "orca-whirlpools-historical-program",
+      "repository": "orca-so/whirlpools",
+      "ref": "e528dd23bb41571f92cfdb49a2f15d4fa0b01bec",
+      "refRole": "Historical ref through 2025-02-26",
+      "consultedUrls": [
+        "https://github.com/orca-so/whirlpools/commit/e528dd23bb41571f92cfdb49a2f15d4fa0b01bec",
+        "https://raw.githubusercontent.com/orca-so/whirlpools/e528dd23bb41571f92cfdb49a2f15d4fa0b01bec/programs/whirlpool/src/state/whirlpool.rs",
+        "https://raw.githubusercontent.com/orca-so/whirlpools/e528dd23bb41571f92cfdb49a2f15d4fa0b01bec/LICENSE",
+        "https://raw.githubusercontent.com/orca-so/whirlpools/main/LICENSE"
+      ],
+      "factualFieldsOrLayoutRole": "Historical Whirlpool account layout facts for liquidity, sqrt price, token mints, token vaults, reward fields, account length, and PDA seed context.",
+      "reuseStatus": "No Orca code, current SDK, package, logo, or implementation text is copied or used as a dependency; layout facts are independently represented.",
+      "licenseObservation": "The pinned historical LICENSE header states Apache License 2.0. The current LICENSE states Apache coverage through February 26, 2025 and an Orca License beginning February 27, 2025, with restrictive use terms and no trademark or logo grant.",
+      "rightsStatus": "UNDETERMINED",
+      "asOf": "2026-09-16",
+      "owner": "Root/Rydia",
+      "nextReview": "2026-10-15 or material change"
+    },
+    {
+      "id": "raydium-clmm-program",
+      "repository": "raydium-io/raydium-clmm",
+      "ref": "ed7c84a54ced59c55981780546adb0b4583dcf85",
+      "refRole": "Pinned CLMM program source ref",
+      "consultedUrls": [
+        "https://github.com/raydium-io/raydium-clmm/commit/ed7c84a54ced59c55981780546adb0b4583dcf85",
+        "https://raw.githubusercontent.com/raydium-io/raydium-clmm/ed7c84a54ced59c55981780546adb0b4583dcf85/programs/amm/src/states/pool.rs",
+        "https://raw.githubusercontent.com/raydium-io/raydium-clmm/ed7c84a54ced59c55981780546adb0b4583dcf85/LICENSE"
+      ],
+      "factualFieldsOrLayoutRole": "Pinned PoolState layout and pool PDA seed facts used to identify CLMM account ownership, mints, vaults, liquidity, and related account roles.",
+      "reuseStatus": "No Raydium source implementation, SDK, package, or logo is copied or used as a dependency; layout and address facts only.",
+      "licenseObservation": "The pinned repository LICENSE begins with the Apache License, Version 2.0 notice.",
+      "rightsStatus": "UNDETERMINED",
+      "asOf": "2026-09-16",
+      "owner": "Root/Rydia",
+      "nextReview": "2026-10-15 or material change"
+    },
+    {
+      "id": "raydium-sdk-v2-excluded",
+      "repository": "raydium-io/raydium-sdk-V2",
+      "ref": "master",
+      "refRole": "Moving ref used only to verify the SDK license notice",
+      "consultedUrls": [
+        "https://github.com/raydium-io/raydium-sdk-V2/blob/master/LICENSE",
+        "https://raw.githubusercontent.com/raydium-io/raydium-sdk-V2/master/LICENSE",
+        "https://github.com/raydium-io/raydium-sdk-V2/blob/master/package.json"
+      ],
+      "factualFieldsOrLayoutRole": "No runtime or catalog facts are taken from the SDK. It is explicitly outside the default dependency and source-copy boundary.",
+      "reuseStatus": "Not imported, copied, or redistributed.",
+      "licenseObservation": "The repository LICENSE and package metadata identify GNU General Public License version 3.0.",
+      "rightsStatus": "UNDETERMINED",
+      "asOf": "2026-09-16",
+      "owner": "Root/Rydia",
+      "nextReview": "2026-10-15 or material change"
+    },
+    {
+      "id": "uniswap-v2-core-abi",
+      "repository": "Uniswap/v2-core",
+      "ref": "6a9e7c97860676e0992f22a49665760444c1cdf5",
+      "refRole": "Pinned ABI and license source ref",
+      "consultedUrls": [
+        "https://github.com/Uniswap/v2-core/commit/6a9e7c97860676e0992f22a49665760444c1cdf5",
+        "https://raw.githubusercontent.com/Uniswap/v2-core/6a9e7c97860676e0992f22a49665760444c1cdf5/LICENSE",
+        "https://raw.githubusercontent.com/Uniswap/v2-core/6a9e7c97860676e0992f22a49665760444c1cdf5/contracts/interfaces/IUniswapV2Factory.sol",
+        "https://raw.githubusercontent.com/Uniswap/v2-core/6a9e7c97860676e0992f22a49665760444c1cdf5/contracts/interfaces/IUniswapV2Pair.sol"
+      ],
+      "factualFieldsOrLayoutRole": "Public ABI facts for factory getPair/allPairs/allPairsLength and pair factory/token0/token1/getReserves, including uint112 reserve widths.",
+      "reuseStatus": "ABI facts only. Selectors, encodings, and constant-product arithmetic are independently implemented; no Uniswap source, SDK, or logo is copied.",
+      "licenseObservation": "The pinned repository LICENSE begins with GNU General Public License version 3, 29 June 2007.",
+      "rightsStatus": "UNDETERMINED",
+      "asOf": "2026-09-16",
+      "owner": "Root/Rydia",
+      "nextReview": "2026-10-15 or material change"
+    },
+    {
+      "id": "lfj-joe-core-abi",
+      "repository": "lfj-gg/joe-core",
+      "ref": "5bec2f3d86500bfd81038c99afe702ee7e67af3e",
+      "refRole": "Pinned JoePair source ref",
+      "consultedUrls": [
+        "https://github.com/lfj-gg/joe-core/commit/5bec2f3d86500bfd81038c99afe702ee7e67af3e",
+        "https://raw.githubusercontent.com/lfj-gg/joe-core/5bec2f3d86500bfd81038c99afe702ee7e67af3e/contracts/traderjoe/JoePair.sol",
+        "https://raw.githubusercontent.com/lfj-gg/joe-core/5bec2f3d86500bfd81038c99afe702ee7e67af3e/LICENSE"
+      ],
+      "factualFieldsOrLayoutRole": "JoePair public state and ABI facts for factory, token0/token1, uint112 reserves, and constant-product fee arithmetic.",
+      "reuseStatus": "No JoePair source, implementation, SDK, or logo is copied or used as a dependency; public ABI facts only.",
+      "licenseObservation": "The pinned JoePair source begins with an SPDX GPL-3.0 header. The expected root LICENSE path returned 404 at the pinned ref, so repository-wide source licensing remains unresolved.",
+      "rightsStatus": "UNDETERMINED",
+      "asOf": "2026-09-16",
+      "owner": "Root/Rydia",
+      "nextReview": "2026-10-15 or material change"
+    },
+    {
+      "id": "lfj-tokenlist-optional",
+      "repository": "lfj-gg/joe-tokenlists",
+      "ref": "5e84bf099f2c672ed85de5fc649982f50c1d27f6",
+      "refRole": "Pinned optional token-list source ref",
+      "consultedUrls": [
+        "https://github.com/lfj-gg/joe-tokenlists/commit/5e84bf099f2c672ed85de5fc649982f50c1d27f6",
+        "https://raw.githubusercontent.com/lfj-gg/joe-tokenlists/5e84bf099f2c672ed85de5fc649982f50c1d27f6/LICENSE",
+        "https://raw.githubusercontent.com/lfj-gg/joe-tokenlists/5e84bf099f2c672ed85de5fc649982f50c1d27f6/README.md"
+      ],
+      "factualFieldsOrLayoutRole": "Optional historical token-list context only; it is not an authority for the bounded catalog or ranking source.",
+      "reuseStatus": "Not a default input. No bulk token data, source code, logos, or list contents are copied or redistributed.",
+      "licenseObservation": "The pinned LICENSE begins with MIT License and Copyright (c) 2022 Trader Joe XYZ. The pinned README marks the tokenlist deprecated and points users to a successor.",
+      "rightsStatus": "UNDETERMINED",
+      "asOf": "2026-09-16",
+      "owner": "Root/Rydia",
+      "nextReview": "2026-10-15 or material change"
+    }
+  ],
+  "verification": {
+    "checkedAt": "2026-09-16",
+    "method": "Direct HTTPS GET of the official pinned source and license URLs; only short notice observations are retained and no implementation text is copied.",
+    "noticeHeaders": [
+      { "sourceId": "orca-whirlpools-historical-program", "httpStatus": 200, "url": "https://raw.githubusercontent.com/orca-so/whirlpools/e528dd23bb41571f92cfdb49a2f15d4fa0b01bec/LICENSE", "observed": "Apache License 2.0 at the historical ref" },
+      { "sourceId": "orca-whirlpools-historical-program", "httpStatus": 200, "url": "https://raw.githubusercontent.com/orca-so/whirlpools/main/LICENSE", "observed": "Current notice states Apache through 2025-02-26 and Orca License from 2025-02-27" },
+      { "sourceId": "raydium-clmm-program", "httpStatus": 200, "url": "https://raw.githubusercontent.com/raydium-io/raydium-clmm/ed7c84a54ced59c55981780546adb0b4583dcf85/LICENSE", "observed": "Apache License 2.0" },
+      { "sourceId": "raydium-sdk-v2-excluded", "httpStatus": 200, "url": "https://raw.githubusercontent.com/raydium-io/raydium-sdk-V2/master/LICENSE", "observed": "GNU General Public License 3.0" },
+      { "sourceId": "uniswap-v2-core-abi", "httpStatus": 200, "url": "https://raw.githubusercontent.com/Uniswap/v2-core/6a9e7c97860676e0992f22a49665760444c1cdf5/LICENSE", "observed": "GNU General Public License 3.0" },
+      { "sourceId": "lfj-joe-core-abi", "httpStatus": 200, "url": "https://raw.githubusercontent.com/lfj-gg/joe-core/5bec2f3d86500bfd81038c99afe702ee7e67af3e/contracts/traderjoe/JoePair.sol", "observed": "SPDX GPL-3.0 header" },
+      { "sourceId": "lfj-joe-core-abi", "httpStatus": 404, "url": "https://raw.githubusercontent.com/lfj-gg/joe-core/5bec2f3d86500bfd81038c99afe702ee7e67af3e/LICENSE", "observed": "Pinned root LICENSE path not found; repository-wide licensing remains unresolved" },
+      { "sourceId": "lfj-tokenlist-optional", "httpStatus": 200, "url": "https://raw.githubusercontent.com/lfj-gg/joe-tokenlists/5e84bf099f2c672ed85de5fc649982f50c1d27f6/LICENSE", "observed": "MIT License" },
+      { "sourceId": "lfj-tokenlist-optional", "httpStatus": 200, "url": "https://raw.githubusercontent.com/lfj-gg/joe-tokenlists/5e84bf099f2c672ed85de5fc649982f50c1d27f6/README.md", "observed": "Tokenlist is deprecated" }
+    ]
+  },
+  "rawRpcBoundary": {
+    "ethGetCode": "Discovery and ranking receipts may contain eth_getCode bytecode as factual chain response data.",
+    "sdkDependencyDistinction": "Raw bytecode responses are distinct from SDK source code or runtime dependencies; no protocol implementation is copied from them.",
+    "redistributionRights": "UNDETERMINED; raw third-party RPC response redistribution is not blanket-cleared.",
+    "distribution": "SDK distributions omit registry evidence and raw RPC receipts."
+  },
+  "euOssPlanning": {
+    "applicability": "UNDETERMINED",
+    "companyRole": "UNDETERMINED",
+    "companyLegalRole": "UNDETERMINED",
+    "classification": "UNDETERMINED",
+    "productClassification": "UNDETERMINED",
+    "support": "UNDETERMINED",
+    "supportCommitments": "UNDETERMINED",
+    "compliance": "UNDETERMINED",
+    "complianceStatus": "UNDETERMINED",
+    "dataRights": "UNDETERMINED",
+    "humanOwner": "TBD — human assignment required",
+    "humanLegalOwner": "TBD — human assignment required",
+    "dueDate": "TBD — human assignment required",
+    "humanLegalDueDate": "TBD — human assignment required",
+    "nextReview": "2026-10-15 or earlier on a material change",
+    "status": "ENGINEERING_SOURCE_EVIDENCE_ONLY",
+    "boundary": "No legal conclusion, CE certification, public filing, public vulnerability disclosure, or compliance clearance is asserted."
+  },
+  "gaps": [
+    "The packet does not assert a clean integration run, canonical source commit, canonical record counts, digest values, or live workflow success.",
+    "Protocol source licenses and repository-wide rights remain separate from factual ABI/layout observations; LFJ JoePair repository licensing is unresolved.",
+    "Orca current SDK and current source are excluded because the current Orca License applies from 2025-02-27 and no written use approval is recorded.",
+    "Third-party raw RPC response redistribution rights, logos, market-cap data rights, and vendor terms remain UNDETERMINED.",
+    "Human legal owner, due date, applicability, company role, product classification, support commitments, and compliance status require human review."
+  ]
+}

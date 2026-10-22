@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "metric": "onchain-total-supply-value-native",
+  "freshness": {
+    "maxBlockAgeSeconds": 120,
+    "maxBlockLag": 3,
+    "maxClockSkewSeconds": 5
+  },
+  "sources": {
+    "eip155:1": {
+      "sourceId": "rpc-ethereum-mainnet",
+      "nativeTokenDeploymentId": "deployment-0001",
+      "quoteDeploymentId": "deployment-0001",
+      "nativeWrapDeploymentId": "deployment-0002",
+      "minNativeLiquidity": "10000000000000000000",
+      "finalizedMaxBlockAgeSeconds": 1800,
+      "maxSlotSpread": 0
+    },
+    "eip155:43114": {
+      "sourceId": "rpc-avalanche-c-mainnet",
+      "nativeTokenDeploymentId": "deployment-0003",
+      "quoteDeploymentId": "deployment-0003",
+      "nativeWrapDeploymentId": "deployment-0004",
+      "minNativeLiquidity": "100000000000000000000",
+      "finalizedMaxBlockAgeSeconds": 120,
+      "maxSlotSpread": 0
+    },
+    "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": {
+      "sourceId": "rpc-solana-mainnet",
+      "nativeTokenDeploymentId": "deployment-0005",
+      "quoteDeploymentId": "deployment-0005",
+      "nativeWrapDeploymentId": "deployment-0006",
+      "minNativeLiquidity": "100000000000",
+      "finalizedMaxBlockAgeSeconds": 120,
+      "maxSlotSpread": 64
+    }
+  },
+  "globalCirculatingMarketCap": {
+    "enabled": false,
+    "sourceId": null,
+    "rights": "unconfigured",
+    "mappings": []
+  }
+}

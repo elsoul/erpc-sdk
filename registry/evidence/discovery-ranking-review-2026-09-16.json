@@ -1,0 +1,274 @@
+{
+  "evidenceVersion": 1,
+  "kind": "discovery-ranking-integration-review",
+  "recordedAsOf": "2026-09-16",
+  "status": "PARTIAL_LOCAL_REVIEW",
+  "source": {
+    "commit": "5ef97abd66f40a2db77a4f85595cf64d1032f7c8",
+    "tree": "0e85ceaf0ab954d5bd1b8f48088c1a5b8e25bc39",
+    "implementation": [
+      "registry/discovery.mjs",
+      "registry/data-promotion.mjs",
+      "registry/token-rankings.mjs",
+      "registry/pool-observer.mjs"
+    ]
+  },
+  "execution": {
+    "origin": "local",
+    "githubRunId": null,
+    "githubRunAttempt": null,
+    "promotionEligible": false,
+    "note": "Local source-checkout capture; no Actions run or promotion provenance.",
+    "captureDirectory": "/private/tmp/erpc-maintenance-final-canonical.dqAhwQ",
+    "normalizationDirectory": "/private/tmp/erpc-final-normalized-candidate.qB1uXf"
+  },
+  "baseline": {
+    "tokenCatalogDigest": "62879dfe8bb49a154d2a1bff356321e5dbe78d8cef0cd3409ef2b22cfd3445a4",
+    "dexCatalogDigest": "002c05c3c2d5d3917f73a5c2e7b55af9ceb9a682fb49ae28d2421046ee2faa50",
+    "rankingDigest": "c22413bfd591ce9c0ab7cb76da1eaff4b21250a2ec13e9d46d4499c210f6fbe1",
+    "tokenAssets": 39,
+    "tokenDeployments": 60,
+    "tokenAliases": 60,
+    "dexDeployments": 4,
+    "poolDefinitions": 4,
+    "dexAliases": 8,
+    "nativeWraps": 3
+  },
+  "candidate": {
+    "tokenCatalogDigest": "5a7ed7f57a8cfaed87c46512586da8123e94fae80f1ce18ebb3861ccb95a9f70",
+    "dexCatalogDigest": "a0268a45d2b037ab8ea35aad1c45366d2582cbc9b10681ded590b56e07b011c8",
+    "rankingDigest": "f8ae479007fa782995aaaf6aa1c414ba1b6a10a92b7abe481b055293a91ac01c",
+    "outputDigest": "9664c12f7d824047d85e5bce9d822dd35a9baec324475785cbf43526b906b413",
+    "tokenAssets": 44,
+    "tokenDeployments": 65,
+    "tokenAliases": 65,
+    "dexDeployments": 4,
+    "poolDefinitions": 12,
+    "dexAliases": 16,
+    "nativeWraps": 3,
+    "newTokenCandidates": 5,
+    "newPoolCandidates": 8,
+    "rankingRecords": 11,
+    "deferredCandidates": 1047,
+    "capturedCollectorOutputDigest": "d47fbf1ae90ce405acbd9614b5e1521da96478fbe29a4bdbbac9c981c19615b8",
+    "normalizedOutputDigest": "9664c12f7d824047d85e5bce9d822dd35a9baec324475785cbf43526b906b413"
+  },
+  "discovery": {
+    "status": "partial",
+    "receiptCount": 615,
+    "proposalCount": 722,
+    "deferredReasonCounts": {
+      "below-native-liquidity-floor": 201,
+      "dependency-or-token-cap": 676,
+      "not-direct-native-pair": 150,
+      "pool-cap": 20
+    },
+    "coverage": {
+      "mode": "bounded",
+      "claim": "bounded",
+      "scopes": [
+        "dex-deployment-0001:tail=64:backfill=64",
+        "dex-deployment-0002:tail=64:backfill=64",
+        "dex-deployment-0003:program=whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc:dataSize=653:discriminator=3f95d10ce1806309",
+        "dex-deployment-0004:program=CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK:dataSize=1544:discriminator=f7ede3f5d7c3de46"
+      ]
+    },
+    "rawArtifact": {
+      "compactBytes": 8033277,
+      "path": "registry/evidence/discovery-receipts-2026-09-16.json",
+      "byteLength": 10206687,
+      "sha256": "0178b9095c108cab26e5972d7e2173a4313cbaf5d7a4159baf764e54dc3998bd"
+    }
+  },
+  "admission": {
+    "tokenAppend": [
+      "discovered-token-0a7f98c8752f15ee02ce0d801f25df8ff78864a1d70aff7e204f7bdb3f8a0692",
+      "discovered-token-288036a90ee0fa72a2751a78a6934cc6ced9e16de91c97ae8e109e2ee6189bc5",
+      "discovered-token-9f9965cc065c9becf8d2cb58071524baafea37d27fda9bf683a93ea85f2e653d",
+      "discovered-token-b475569f6a15e97ac04e531dd813e9dcc902521c098d60d6ae4d21d53baf1395",
+      "discovered-token-e375086901067fe3de023bcdc70f1bafca798e1719ed7e676a98f57de3350a07"
+    ],
+    "poolAppend": [
+      "discovered-pool-1568e761c62f7dc58207a77f2dc32153805efe03a8d9cce9366ce68efdf276c4",
+      "discovered-pool-1b98a5f24a364e05b3d56a9702c3560fc3a71f84b2195c486cfc5f8a956cc0b7",
+      "discovered-pool-3c1e38d02092d16e396d2f3a22b2bfae55246a1c566831d31f211670e45bd562",
+      "discovered-pool-3f840a40991e755e42d242188bd8deb85cd5b9655308269b00c220f5237710cf",
+      "discovered-pool-6428a1e5da293b2ef62027ec823ba27532219a40784def3930feee56a623b809",
+      "discovered-pool-a7f9e600a86951f40472ff779fae467db8a6bbbc6076356058f427e97d4ae429",
+      "discovered-pool-e702b0cb56528418b4ce089dfc001c6241c94e92aabde72f1a340c4601541780",
+      "discovered-pool-ece9088cf38944438897ff9fb2a1abc6855a687b5a3f0d6ab98dfe06c1a6dfef"
+    ],
+    "m1M2SelectionEqual": true,
+    "tokenCap": 8,
+    "poolCap": 8,
+    "selectionPolicy": "chain-round-robin-liquidity-desc",
+    "nativeLiquidityFloors": {
+      "eip155:1": "10000000000000000000",
+      "eip155:43114": "100000000000000000000",
+      "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": "100000000000"
+    }
+  },
+  "pool": {
+    "status": "complete",
+    "observationCount": 12,
+    "statusCounts": {
+      "healthy": 12
+    },
+    "rawArtifact": {
+      "compactBytes": 974033,
+      "path": "registry/evidence/pool-observations-2026-09-16.json",
+      "byteLength": 1116761,
+      "sha256": "429d7b8548fc0b62daa37ef0eb406392b91571c2c17deeb53867b2f36b7e0c56"
+    }
+  },
+  "ranking": {
+    "metric": "onchain-total-supply-value-native",
+    "status": "partial",
+    "records": 11,
+    "unranked": 54,
+    "unrankedReasonCounts": {
+      "excluded-native": 5,
+      "unavailable": 41,
+      "unsupported": 8
+    },
+    "metadata": {
+      "schemaVersion": 1,
+      "metric": "onchain-total-supply-value-native",
+      "asOf": "2026-09-16T12:25:59Z",
+      "contentDigest": "f8ae479007fa782995aaaf6aa1c414ba1b6a10a92b7abe481b055293a91ac01c",
+      "status": "partial",
+      "coverage": [
+        {
+          "chainId": "eip155:1",
+          "totalDeployments": 31,
+          "rankedDeployments": 5,
+          "unrankedDeployments": 26,
+          "observedAt": "2026-09-16T12:25:59Z"
+        },
+        {
+          "chainId": "eip155:43114",
+          "totalDeployments": 15,
+          "rankedDeployments": 5,
+          "unrankedDeployments": 10,
+          "observedAt": "2026-09-16T12:39:02Z"
+        },
+        {
+          "chainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+          "totalDeployments": 19,
+          "rankedDeployments": 1,
+          "unrankedDeployments": 18,
+          "observedAt": "2026-09-16T12:39:03Z"
+        }
+      ],
+      "sourceIds": [
+        "rpc-avalanche-c-mainnet",
+        "rpc-ethereum-mainnet",
+        "rpc-solana-mainnet"
+      ]
+    },
+    "rawArtifact": {
+      "status": "partial",
+      "receiptCount": 3,
+      "compactBytes": 643745,
+      "path": "registry/evidence/ranking-receipts-2026-09-16.json",
+      "byteLength": 699054,
+      "sha256": "395e760a31b2a8fcba1f521a02e3f608e4e3ef03d4e9decbef3e5718869284af"
+    }
+  },
+  "validation": {
+    "strictReplayTwiceIdentical": true,
+    "poolRawValidatedAgainstCandidate": true,
+    "m1StandaloneAdmissionsEqualM2Selection": true,
+    "normalizedReplayTwiceIdentical": true,
+    "all19CandidateFilesMatchNormalizedRenderer": true,
+    "newRecordDatesBoundToRawCapture": true,
+    "nativeTokenParityPass": true,
+    "nativeRankingParityPass": true,
+    "dexRendererChecksPass": true,
+    "remoteCI": false,
+    "nativeDexParityPass": true
+  },
+  "rightsAndBoundary": {
+    "metricNote": "onchain-total-supply-value-native = total supply multiplied by direct native-pool price in exact native atomic units; explicitly not circulating market capitalization.",
+    "globalUsdMetric": {
+      "enabled": false,
+      "rights": "UNDETERMINED"
+    },
+    "sourcePacket": "registry/evidence/discovery-ranking-sources-2026-09-16.json",
+    "legalStatus": {
+      "applicability": "UNDETERMINED",
+      "companyLegalRole": "UNDETERMINED",
+      "productClassification": "UNDETERMINED",
+      "supportCommitments": "UNDETERMINED",
+      "compliance": "UNDETERMINED",
+      "dataRights": "UNDETERMINED"
+    }
+  },
+  "limitations": [
+    "Partial three-chain coverage and explicit unranked reasons are retained.",
+    "This local review is not Actions promotion provenance; remote CI, native parity, and final independent gates remain pending.",
+    "No source settings, merge, tags, publication, or release effects were performed.",
+    "The original collector output digest predates date and formatter normalization; normalizedOutputDigest records the deterministic current-renderer replay. Raw F receipts and their hashes are unchanged.",
+    "Token, DEX, and ranking native parity captures pass for this populated snapshot; remote CI and final independent gates remain pending."
+  ],
+  "config": {
+    "discoveryDigest": "7512dc53476195c20434208897ba96ce30b820ee6d9d31129454723ee6249b1f",
+    "rankingDigest": "6de9d4d2ec410d185ff1bb36a8eed0c487cea134f90f087f00c285fe1166404e"
+  },
+  "quoteCapabilityGate": {
+    "fixturePath": "registry/fixtures/swap-quote-cases.json",
+    "caseId": "discovered-pool-unsupported-before-rpc",
+    "poolDefinitionId": "discovered-pool-a7f9e600a86951f40472ff779fae467db8a6bbbc6076356058f427e97d4ae429",
+    "request": {
+      "chainId": "eip155:1",
+      "inputTokenDeploymentId": "deployment-0019",
+      "outputTokenDeploymentId": "deployment-0002",
+      "amountIn": "1000000000000000000"
+    },
+    "expectedCode": "SWAP_UNSUPPORTED_TOKEN",
+    "expectedMessage": "Swap token is unsupported for the selected pool",
+    "observedRpcCalls": 0,
+    "priorVectorsPreserved": true,
+    "appendedVectors": 1
+  },
+  "normalization": {
+    "sourceCaptureRawBytesUnchanged": true,
+    "implementationFiles": {
+      "registry/data-promotion.mjs": "dd5e4f586996034b0210c9ed4a175492197c406045b475c35a4759b2b12428f8",
+      "registry/generate-dex-catalog.mjs": "666f2f71c62e5b37cfcf87a04bd2a6bc2ff502d53762bfbbb38a62617bf0fc71",
+      "registry/generate-token-rankings.mjs": "cb7a5132094c16bad05e2366aa0e74473ea430a85eeb12dde160b5d518474ccd",
+      "registry/token-catalog.mjs": "8c73f4b5a59e747d7fc45d313fa2cc6a644e3875d5bbde77cacb7e16a1307bc4",
+      "registry/dex-catalog.mjs": "42be82e4897aa7686e8656e2b9756d1b6c65e49e2feb25f6dc2f9296c25dddff",
+      "registry/token-rankings.mjs": "ebb90ee9e061c3249dcdfcabc0f4124893b8efe1b459bed80cf14dadad690309"
+    },
+    "formatterVersions": {
+      "gofmt": "go version go1.22.12 darwin/arm64",
+      "rustfmt": "rustfmt 1.8.0-stable (4d91de4e48 2025-02-17)",
+      "ruff": "ruff 0.16.7"
+    },
+    "newRecordAsOfDate": "2026-09-16"
+  },
+  "nativeParity": {
+    "token": {
+      "status": "PASS",
+      "snapshotPath": "/private/tmp/erpc-final-native.DzxVwe/token-parity.json",
+      "assets": 44,
+      "deployments": 65,
+      "aliases": 65
+    },
+    "ranking": {
+      "status": "PASS",
+      "snapshotPath": "/private/tmp/erpc-final-native.DzxVwe/ranking-parity.json",
+      "records": 11
+    },
+    "dex": {
+      "status": "PASS",
+      "languages": 5,
+      "snapshotPath": "/private/tmp/erpc-final-native.DzxVwe/dex-parity.json",
+      "dexDeployments": 4,
+      "pools": 12,
+      "nativeWraps": 3,
+      "aliases": 16
+    }
+  }
+}

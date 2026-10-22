@@ -1,0 +1,276 @@
+{
+  "schemaVersion": 1,
+  "fixtureKind": "ranking-rpc",
+  "sourceSha": "1111111111111111111111111111111111111111",
+  "receipts": [
+    {
+      "chainId": "eip155:1",
+      "sourceId": "rpc-test-ethereum",
+      "observedAt": "2026-09-15T12:00:00Z",
+      "finality": "finalized-eip1898",
+      "blockNumber": "0x18c7f20",
+      "blockTimestamp": "0x6aa99537",
+      "blockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+      "finalBlockHash": "0x29ed72152f595cf0e190cccab56d5536dbc4eab289b82d343a498e9d256ca2fb",
+      "pools": [
+        {
+          "poolDefinitionId": "pool-0001",
+          "owner": "0x5c69bee701ef814a2b6a3edd4b1652cb9cc5aa6f",
+          "factoryPair": "0xb4e16d0168e52d35cacd2c6185b44281ec28c9dc",
+          "token0Address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+          "token1Address": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",
+          "reserve0": "9922163268622",
+          "reserve1": "4131396377933182743090",
+          "supply": "1000000000000"
+        }
+      ]
+    }
+  ],
+  "solanaReceipt": {
+    "chainId": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+    "sourceId": "rpc-solana-mainnet",
+    "observedAt": "2026-09-16T08:24:16Z",
+    "contextSlot": 447476294,
+    "finalContextSlot": 447476295,
+    "calls": [
+      {
+        "method": "getGenesisHash",
+        "params": [],
+        "requestDigest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "result": "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d",
+        "responseDigest": "d35f26d2e9448e5237eea1c6d574fc28064fce8fe8d1d49ebf6f32e847658171"
+      },
+      {
+        "method": "getSlot",
+        "params": [
+          {
+            "commitment": "finalized"
+          }
+        ],
+        "requestDigest": "75f7887a1c87b91564bb0ff33fc67807834d15b3cde21f3975b43489bacf147b",
+        "result": 447476294,
+        "responseDigest": "2aa84747811bcd20467173cd3ec240cde566c0a998fd5ed7e0fae537209a2f5b"
+      },
+      {
+        "method": "getMultipleAccounts",
+        "params": [
+          [
+            "FgH1dEvyRQoAqJjbUzzKVoM1HYdxTqPwjEF82kDH1kVe"
+          ],
+          {
+            "encoding": "base64",
+            "commitment": "finalized",
+            "minContextSlot": 447476294
+          }
+        ],
+        "requestDigest": "adc660ee4fb4a05cce66fb5af5b61f5098d5f2bfe7544ebe4cec0ceee5b0021d",
+        "result": {
+          "context": {
+            "slot": 447476294
+          },
+          "value": [
+            {
+              "data": [
+                "P5XRDOGAYwkT5EH4ORPKaLBjT7Al/eqohzfoQRDRJV41ezN33e4czf4AAQkEIE4UBbc7vxV7AAAAAAAAAAAAAABmLAcYV9hvSgAAAAAAAAAAfp///6weAAAAAAAAvggAAAAAAAAGm4hX/quBhPtof2NGGMA12sQ53BrrO1WYoPAAAAAAAXChIP+M5aXYQDQ2rw7Hk34yUoXVr1PXBEKGriRBXtFbl+sLM8FCQ2UAAAAAAAAAAPyTGitYzSPbLZHSltllBaBvgJQgg/hB6KiH8TisAwQ3S+gXQiYsu9ZdjHfbPjk5cAW05MVmEc3OJnuO32huB7L6nm4uROl7CAAAAAAAAAAAXi6qagAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAui6/LwKaI7GKR1R798LZ7CubYjLuw+NoR9dh+omDPGYAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+                "base64"
+              ],
+              "lamports": 5435781,
+              "owner": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc"
+            }
+          ]
+        },
+        "responseDigest": "55426e18a4ddcc7db256c581e64ad9ba139c401deb38cbc933c132e1ebfb88dc"
+      },
+      {
+        "method": "getMultipleAccounts",
+        "params": [
+          [
+            "So11111111111111111111111111111111111111112",
+            "HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr",
+            "8afAbHe1DYNio746bxsJjR171n56Nrz72aFyni4Zb6pJ",
+            "67JqhcaGFRRyxaAnBzmztSrrz7kitzTLizWztHSuward",
+            "2LecshUwdy9xi7meFgHtFJQNSKk4KdTrcpvaB56dP2NQ"
+          ],
+          {
+            "encoding": "base64",
+            "commitment": "finalized",
+            "minContextSlot": 447476294
+          }
+        ],
+        "requestDigest": "fb7cdcb304e845b9ca525ae66f5a735b426464534ea04c06b4c2f0cad78092e8",
+        "result": {
+          "context": {
+            "slot": 447476294
+          },
+          "value": [
+            {
+              "data": [
+                "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAJAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+                "base64"
+              ],
+              "lamports": 1828722456827,
+              "owner": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+            },
+            {
+              "data": [
+                "AQAAAPwckECOUSE/vNdOM2YsEjvSzXWDefk3IWT7Dz0tY2g3fSMqtYNfAAAGAQEAAABN8GtMRHYCd+Q0hvg5l32TFY9n958M/kBLGF/4hQDm/Q==",
+                "base64"
+              ],
+              "lamports": 1038032994,
+              "owner": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+            },
+            {
+              "data": [
+                "BpuIV/6rgYT7aH9jRhjANdrEOdwa6ztVmKDwAAAAAAHaE1843yGmRZr4iIodZgjkgmBoOS1bLhfoH5wxs36+ST0VHnUzAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQEAAADwHR8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+                "base64"
+              ],
+              "lamports": 221010282166,
+              "owner": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+            },
+            {
+              "data": [
+                "/JMaK1jNI9stkdKW2WUFoG+AlCCD+EHoqIfxOKwDBDfaE1843yGmRZr4iIodZgjkgmBoOS1bLhfoH5wxs36+SRxlg00GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+                "base64"
+              ],
+              "lamports": 2039282,
+              "owner": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+            },
+            {
+              "data": [
+                "nRQx4NlXwf7sxs2vIpKy+9wSX9p7349DN3qXmsYJ+CLNJlKrm99E/KmxNIyI0NeLkdmu3ngpH1GCvlo2365kkh/mm9doRD90ui6/LwKaI7GKR1R798LZ7CubYjLuw+NoR9dh+omDPGYUBQEA",
+                "base64"
+              ],
+              "lamports": 1642560,
+              "owner": "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc"
+            }
+          ]
+        },
+        "responseDigest": "c79a906359378c252847918a545084c522658fe3278d3078242d73c4a7347607"
+      },
+      {
+        "method": "getMultipleAccounts",
+        "params": [
+          [
+            "AwaVyGAF3N6K4YRUJk55Ui1GquKhKdD6vTCmVvCzXpKf"
+          ],
+          {
+            "encoding": "base64",
+            "commitment": "finalized",
+            "minContextSlot": 447476294
+          }
+        ],
+        "requestDigest": "d4cc2a86c848ec30bdca8b631db49eb9acbbc0bd3064c7ef9410f4f2ff63f3ab",
+        "result": {
+          "context": {
+            "slot": 447476294
+          },
+          "value": [
+            {
+              "data": [
+                "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",
+                "base64"
+              ],
+              "lamports": 11637526,
+              "owner": "CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK"
+            }
+          ]
+        },
+        "responseDigest": "4171ecbee71a402fcb1e37f357b478e7dd8558f6960ce9c19b52f48dab040a76"
+      },
+      {
+        "method": "getMultipleAccounts",
+        "params": [
+          [
+            "So11111111111111111111111111111111111111112",
+            "HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr",
+            "Fa9ZBfhcGaF5goMa69cjjyn5yoM7Cpnzs2xBpCgwQUN5",
+            "cHxJ2uC6vgcCfoFSfupkfCWbKHAkekrGfG39DXRamXT",
+            "3XCQJQryqpDvvZBfGxR7CLAw5dpGJ9aa7kt1jRLdyxuZ"
+          ],
+          {
+            "encoding": "base64",
+            "commitment": "finalized",
+            "minContextSlot": 447476294
+          }
+        ],
+        "requestDigest": "bacd39b1fbb99e0f1de41a2f403ea5af81ff80993af83155338e3f032a015457",
+        "result": {
+          "context": {
+            "slot": 447476295
+          },
+          "value": [
+            {
+              "data": [
+                "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAJAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+                "base64"
+              ],
+              "lamports": 1828722456827,
+              "owner": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+            },
+            {
+              "data": [
+                "AQAAAPwckECOUSE/vNdOM2YsEjvSzXWDefk3IWT7Dz0tY2g3fSMqtYNfAAAGAQEAAABN8GtMRHYCd+Q0hvg5l32TFY9n958M/kBLGF/4hQDm/Q==",
+                "base64"
+              ],
+              "lamports": 1038032994,
+              "owner": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+            },
+            {
+              "data": [
+                "BpuIV/6rgYT7aH9jRhjANdrEOdwa6ztVmKDwAAAAAAGTtGyMJ64avjH/xPCM2Yu3iZIAFGr8E9HF4LWXGrnQNnb+o5QhAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQEAAADwHR8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+                "base64"
+              ],
+              "lamports": 144229746534,
+              "owner": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+            },
+            {
+              "data": [
+                "/JMaK1jNI9stkdKW2WUFoG+AlCCD+EHoqIfxOKwDBDeTtGyMJ64avjH/xPCM2Yu3iZIAFGr8E9HF4LWXGrnQNmi/t3sBAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+                "base64"
+              ],
+              "lamports": 2039289,
+              "owner": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+            },
+            {
+              "data": [
+                "2vQhaMvLK2/9BQAMQp0XD//kFvH0bshXTH95CgVQFr7cVCJx/Cp2eMCy6cDUAQD0AQAAAQBAnAAAAAAAAN2JaHqSiXZJS7Te58XKrpNlU2qJ9oFAfTjo+MajHRPDAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+                "base64"
+              ],
+              "lamports": 1705201,
+              "owner": "CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK"
+            }
+          ]
+        },
+        "responseDigest": "c0bef367853ac0596286e70afb45dd9fe54a49770d2f07340ee9a694cf74f8ef"
+      },
+      {
+        "method": "getSlot",
+        "params": [
+          {
+            "commitment": "finalized"
+          }
+        ],
+        "requestDigest": "75f7887a1c87b91564bb0ff33fc67807834d15b3cde21f3975b43489bacf147b",
+        "result": 447476295,
+        "responseDigest": "9824c910be4b2be0680a6429e25d59ca56da1518ac0748520adef1a6136b0c27"
+      },
+      {
+        "method": "getBlockTime",
+        "params": [
+          447476295
+        ],
+        "requestDigest": "bfa087c3500ee08576c3212b9066bbfebc76ed1c8a94a2f5818944e55d49181a",
+        "result": 1789547056,
+        "responseDigest": "02820b7605a58bdaa0d88b4d7d745b57c66f31aa21412a8b86d641bcd67729c9"
+      }
+    ],
+    "status": "partial"
+  },
+  "solanaExpected": {
+    "deploymentId": "deployment-0013",
+    "valueNumerator": "8934052700357547502428770482213160826958686292279296",
+    "valueDenominator": "7192436217001059697111914092992515625",
+    "observedAt": "2026-09-16T08:24:16Z"
+  }
+}
+

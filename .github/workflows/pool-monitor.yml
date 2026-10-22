@@ -1,0 +1,158 @@
+name: Hourly read-only pool monitor
+
+on:
+  schedule:
+    - cron: '13 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  monitor:
+    name: Observe each configured pool
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 1
+          ref: ${{ github.sha }}
+          clean: true
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+      - name: Resolve the previous authenticated monitor state
+        id: prior
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          CURRENT_RUN_ID: ${{ github.run_id }}
+          OUTPUT_DIR: ${{ runner.temp }}/erpc-pool-monitor-prior
+        run: |
+          set -euo pipefail
+          rm -rf "$OUTPUT_DIR"
+          mkdir -p "$OUTPUT_DIR"
+          gh api "/repos/$REPOSITORY/actions/workflows/pool-monitor.yml/runs?branch=main&status=completed&per_page=20" --header 'X-GitHub-Api-Version: 2026-03-10' > "$OUTPUT_DIR/runs.json"
+          node --input-type=module - "$OUTPUT_DIR/runs.json" "$REPOSITORY" "$CURRENT_RUN_ID" <<'NODE' >> "$GITHUB_OUTPUT"
+          import { readFileSync } from 'node:fs'
+          import { spawnSync } from 'node:child_process'
+
+          const [runsFile, repository, currentRunId] = process.argv.slice(2)
+          const runs = JSON.parse(readFileSync(runsFile, 'utf8'))?.workflow_runs ?? []
+          const candidates = runs.filter((run) => String(run.id) !== String(currentRunId) && run.status === 'completed' && run.conclusion === 'success' && run.head_branch === 'main' && (run.repository?.full_name ?? run.repository?.fullName) === repository && /^[0-9a-f]{40}$/u.test(run.head_sha ?? '') && Number.isSafeInteger(Number(run.run_attempt)) && Number(run.run_attempt) > 0)
+          for (const run of candidates) {
+            const artifactName = `pool-monitor-${run.head_sha}-${Number(run.id)}-${Number(run.run_attempt)}`
+            const artifacts = spawnSync('gh', ['api', `/repos/${repository}/actions/runs/${Number(run.id)}/artifacts?per_page=100`, '--header', 'X-GitHub-Api-Version: 2026-03-10'], { encoding: 'utf8', stdio: 'pipe' })
+            if (artifacts.error || artifacts.status !== 0) throw new Error(`previous monitor artifact lookup failed: ${artifacts.stderr?.trim() || artifacts.error?.message || artifacts.status}`)
+            const list = JSON.parse(artifacts.stdout)?.artifacts ?? []
+            const exact = list.find((entry) => entry?.name === artifactName && entry?.expired !== true && Number(entry?.workflow_run?.id ?? entry?.workflowRun?.id ?? entry?.workflow_run_id) === Number(run.id))
+            if (exact) {
+              console.log('found=true')
+              console.log(`run_id=${run.id}`)
+              console.log(`run_attempt=${run.run_attempt}`)
+              console.log(`artifact_name=${artifactName}`)
+              process.exit(0)
+            }
+          }
+          console.log('found=false')
+          NODE
+      - name: Download the previous bounded monitor state
+        if: steps.prior.outputs.found == 'true'
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: ${{ steps.prior.outputs.artifact_name }}
+          run-id: ${{ steps.prior.outputs.run_id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/erpc-pool-monitor-prior/artifact
+      - name: Verify the previous state artifact binding
+        if: steps.prior.outputs.found == 'true'
+        env:
+          STATE_FILE: ${{ runner.temp }}/erpc-pool-monitor-prior/artifact/pool-state.json
+          EXPECTED_RUN_ID: ${{ steps.prior.outputs.run_id }}
+          EXPECTED_RUN_ATTEMPT: ${{ steps.prior.outputs.run_attempt }}
+        run: |
+          set -euo pipefail
+          if [ ! -f "$STATE_FILE" ]; then
+            echo 'previous run predates the persisted cursor artifact; starting at the bounded default cursor'
+            exit 0
+          fi
+          node --input-type=module - "$STATE_FILE" "$EXPECTED_RUN_ID" "$EXPECTED_RUN_ATTEMPT" <<'NODE'
+          import { readFileSync } from 'node:fs'
+
+          const [file, runId, runAttempt] = process.argv.slice(2)
+          const state = JSON.parse(readFileSync(file, 'utf8'))
+          if (state.schemaVersion !== 1 || state.artifactKind !== 'pool-monitor-state' || state.runId !== Number(runId) || state.runAttempt !== Number(runAttempt) || !/^[0-9a-f]{40}$/u.test(state.sourceSha ?? '')) throw new Error('previous pool monitor state binding is invalid')
+          if (!state.state || state.state.schemaVersion !== 1 || state.state.artifactKind !== 'pool-observer-state' || !Number.isSafeInteger(state.state.poolCursor) || !Number.isSafeInteger(state.state.taskCount)) throw new Error('previous pool observer cursor state is invalid')
+          NODE
+      - name: Verify a clean immutable main checkout
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+          test -z "$(git status --porcelain)"
+      - name: Observe a bounded rotating pool batch with read-only RPCs
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+          OUTPUT_DIR: ${{ runner.temp }}/erpc-pool-monitor
+          PRIOR_STATE_FILE: ${{ runner.temp }}/erpc-pool-monitor-prior/artifact/pool-state.json
+        run: |
+          set -euo pipefail
+          rm -rf "$OUTPUT_DIR"
+          mkdir -p "$OUTPUT_DIR"
+          node --input-type=module - "$OUTPUT_DIR" "$SOURCE_SHA" "$PRIOR_STATE_FILE" <<'NODE'
+          import { observePools, validatePoolObservations } from './registry/pool-observer.mjs'
+          import { existsSync, readFileSync } from 'node:fs'
+
+          const [outputDir, sourceSha, priorStateFile] = process.argv.slice(2)
+          const previous = existsSync(priorStateFile) ? JSON.parse(readFileSync(priorStateFile, 'utf8')) : null
+          // Thirty-two pools per hour keeps the RPC budget bounded while the
+          // authenticated cursor advances through larger future catalogs.
+          const artifact = await observePools({ sourceSha, outputDir, runBudgetMs: 60_000, maxPoolsPerRun: 32, state: previous?.state })
+          validatePoolObservations(artifact)
+          if (artifact.sourceSha !== sourceSha || artifact.policy?.readOnly !== true || artifact.policy?.canonicalMutation !== false) throw new Error('pool monitor output is not read-only or source-bound')
+          if (!Number.isSafeInteger(artifact.coverage?.attemptedPoolCount) || artifact.coverage.attemptedPoolCount > 32) throw new Error('pool monitor exceeded its bounded rotation batch')
+          NODE
+      - name: Validate exact pool monitor files
+        env:
+          OUTPUT_DIR: ${{ runner.temp }}/erpc-pool-monitor
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          test -f "$OUTPUT_DIR/pool-observations.json"
+          test -f "$OUTPUT_DIR/pool-receipts.json"
+          node --input-type=module - "$OUTPUT_DIR" "$SOURCE_SHA" "${{ github.run_id }}" "${{ github.run_attempt }}" <<'NODE'
+          import { readFileSync, readdirSync, writeFileSync } from 'node:fs'
+          import dexCatalog from './registry/dex-catalog.json' with { type: 'json' }
+
+          const [directory, sourceSha, runId, runAttempt] = process.argv.slice(2)
+          const observations = JSON.parse(readFileSync(`${directory}/pool-observations.json`, 'utf8'))
+          const receipts = JSON.parse(readFileSync(`${directory}/pool-receipts.json`, 'utf8'))
+          if (observations.schemaVersion !== 1 || observations.artifactKind !== 'pool-observations' || observations.sourceSha !== sourceSha) throw new Error('pool observation source binding is invalid')
+          if (receipts.schemaVersion !== 1 || receipts.artifactKind !== 'pool-receipts' || receipts.sourceSha !== sourceSha) throw new Error('pool receipt source binding is invalid')
+          const activePoolIds = new Set(dexCatalog.poolDefinitions.filter((pool) => pool.status !== 'retired').map((pool) => pool.poolDefinitionId))
+          const observedPoolIds = new Set(observations.observations.filter((row) => row.poolDefinitionId !== null && row.poolDefinitionId !== undefined).map((row) => row.poolDefinitionId))
+          for (const poolId of activePoolIds) if (!observedPoolIds.has(poolId)) throw new Error(`pool monitor omitted catalog pool ${poolId}`)
+          for (const poolId of observedPoolIds) if (!activePoolIds.has(poolId)) throw new Error(`pool monitor returned unknown catalog pool ${poolId}`)
+          const coverage = observations.coverage
+          if (!coverage || coverage.mode !== 'bounded' || coverage.claim !== 'bounded' || coverage.poolCount !== observations.observations.length || !Number.isSafeInteger(coverage.attemptedPoolCount) || !Number.isSafeInteger(coverage.unattemptedPoolCount) || coverage.attemptedPoolCount + coverage.unattemptedPoolCount !== coverage.poolCount || coverage.attemptedPoolCount > coverage.poolCount || coverage.unattemptedPoolCount < 0) throw new Error('pool monitor bounded coverage is invalid')
+          if (!observations.state || observations.state.artifactKind !== 'pool-observer-state' || observations.state.taskCount !== coverage.poolCount) throw new Error('pool monitor cursor state is invalid')
+          if (!Array.isArray(receipts.receipts) || receipts.receipts.length !== observations.observations.length) throw new Error('pool monitor receipt coverage is incomplete')
+          const names = readdirSync(directory).sort()
+          if (names.join('\0') !== ['pool-observations.json', 'pool-receipts.json'].join('\0')) throw new Error('pool monitor emitted an unexpected pre-state file')
+          writeFileSync(`${directory}/pool-state.json`, `${JSON.stringify({ schemaVersion: 1, artifactKind: 'pool-monitor-state', sourceSha, runId: Number(runId), runAttempt: Number(runAttempt), state: observations.state, coverage, poolDefinitionIds: [...activePoolIds].sort() }, null, 2)}\n`, { flag: 'w' })
+          NODE
+      - name: Upload immutable read-only pool evidence
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: pool-monitor-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/erpc-pool-monitor
+          if-no-files-found: error
+          retention-days: 7

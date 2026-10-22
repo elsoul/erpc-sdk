@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "recordKeys": [
+    "rank",
+    "chainId",
+    "deploymentIds",
+    "metric",
+    "valueNumerator",
+    "valueDenominator",
+    "quoteCurrency",
+    "quoteDeploymentId",
+    "observedAt",
+    "sourceId",
+    "sourceAssetId"
+  ],
+  "nativeQuoteDeploymentIds": {
+    "eip155:1": "deployment-0001",
+    "eip155:43114": "deployment-0003",
+    "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp": "deployment-0005"
+  },
+  "validCases": [
+    {
+      "caseId": "exact-rational-order-and-tie",
+      "chainId": "eip155:1",
+      "observations": [
+        { "chainId": "eip155:1", "deploymentId": "deployment-0008", "valueNumerator": "3", "valueDenominator": "6", "observedAt": "2026-09-15T12:00:00Z", "sourceId": "rpc-test" },
+        { "chainId": "eip155:1", "deploymentId": "deployment-0002", "valueNumerator": "1", "valueDenominator": "2", "observedAt": "2026-09-15T12:00:00Z", "sourceId": "rpc-test" }
+      ]
+    },
+    {
+      "caseId": "global-provider-group",
+      "metric": "global-circulating-market-cap-usd",
+      "chainId": "eip155:1",
+      "observations": [
+        { "chainId": "eip155:1", "deploymentId": "deployment-0008", "assetId": "asset-0007", "groupKey": "asset-0007", "sourceAssetId": "provider-usdc", "valueNumerator": "1200", "valueDenominator": "1", "observedAt": "2026-09-15T12:00:00Z", "sourceId": "licensed-test" }
+      ]
+    }
+  ],
+  "invalidCases": [
+    { "caseId": "zero-denominator", "mutation": "zero-denominator", "expectError": "positive" },
+    { "caseId": "unreduced-rational", "mutation": "unreduced", "expectError": "reduced" },
+    { "caseId": "wrong-native-quote", "mutation": "wrong-native-quote", "expectError": "native quote" },
+    { "caseId": "rank-gap", "mutation": "rank-gap", "expectError": "sequential" }
+  ]
+}

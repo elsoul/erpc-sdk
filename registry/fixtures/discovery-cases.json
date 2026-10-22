@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "fixtureKind": "bounded-discovery-cases",
+  "cases": [
+    { "caseId": "evm-unknown-tail-pair", "kind": "evm", "expect": "token-and-pool-proposal" },
+    { "caseId": "solana-unknown-whirlpool-mint", "kind": "orca-whirlpool", "expect": "token-and-pool-proposal" },
+    { "caseId": "bad-chain-identity", "kind": "network", "expect": "partial" },
+    { "caseId": "wrong-solana-owner", "kind": "solana", "expect": "failed-receipt" },
+    { "caseId": "wrong-solana-layout", "kind": "solana", "expect": "failed-receipt" },
+    { "caseId": "finalized-reorg", "kind": "evm", "expect": "stale-or-failed" },
+    { "caseId": "partial-429", "kind": "transport", "expect": "bounded-retry-and-partial" },
+    { "caseId": "run-budget", "kind": "transport", "expect": "bounded-budget" },
+    { "caseId": "resume-failed-index", "kind": "state", "expect": "pending-index-retried" },
+    { "caseId": "idempotent-replay", "kind": "replay", "expect": "same-proposals" },
+    { "caseId": "spoofed-symbol", "kind": "metadata", "expect": "canonical-symbol-is-address" }
+  ],
+  "bounds": {
+    "commitment": "finalized",
+    "evmTag": "EIP-1898 blockHash + requireCanonical",
+    "solanaTag": "finalized + minContextSlot",
+    "coverage": "bounded; no full-network claim from partial results"
+  }
+}

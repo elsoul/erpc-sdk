@@ -1,0 +1,126 @@
+{
+  "evidenceVersion": 1,
+  "kind": "swap-execution-capabilities-read-only-evidence",
+  "recordedAsOf": "2026-09-16",
+  "scope": "Pinned EVM router, pool, token, fee, and wrapped-native observations used to close the reviewed swap execution registry.",
+  "boundary": "Engineering evidence only. Reads prepared unsigned calldata and did not sign, broadcast, submit, publish, or move funds. RPC observations are snapshots and do not guarantee current liquidity or settlement.",
+  "source": {
+    "canonicalRegistry": "registry/swap-execution-capabilities.json",
+    "canonicalDigest": "84424dc48687e2cb1dd0c9a2446f820efd2c311e71ce5acacfeb6e882811875f",
+    "liveObservationPath": "/private/tmp/erpc-swap-execution-live-evidence.json",
+    "liveObservationSha256": "c6efa49409eeab050127f5fcca22b70138e54794e3868f39de531494088f66b1",
+    "liveObservationBytes": 14503,
+    "recordedAt": "2026-09-16T21:59:55.009Z",
+    "mode": "read-only RPC unsigned swap preparation"
+  },
+  "results": [
+    {
+      "name": "Ethereum Uniswap V2",
+      "executionCapabilityId": "swap-execution-0001",
+      "chainId": "eip155:1",
+      "router": "0x7a250d5630b4cf539739df2c5dacb4c659f2488d",
+      "rpcReads": 16,
+      "passed": true,
+      "minimumAmountOut": "2386851889",
+      "deadline": "1789597192",
+      "snapshot": {
+        "kind": "evm-block",
+        "blockNumber": "25992882",
+        "blockHash": "0xa319c627ce46928bad4218d05a26757c9b4369235b82d2f2b6aed200a9227112",
+        "blockTimestamp": "1789595987"
+      }
+    },
+    {
+      "name": "Avalanche LFJ legacy",
+      "executionCapabilityId": "swap-execution-0002",
+      "chainId": "eip155:43114",
+      "router": "0x60ae616a2155ee3d9a68541ba4544862310933d4",
+      "rpcReads": 16,
+      "passed": true,
+      "minimumAmountOut": "7317148",
+      "deadline": "1789597192",
+      "snapshot": {
+        "kind": "evm-block",
+        "blockNumber": "95457479",
+        "blockHash": "0xd0bf5e0b2c31c367646491de5a6ed1e71733376732ec7d6cc7a4c2e2d5b983cc",
+        "blockTimestamp": "1789595992"
+      }
+    }
+  ],
+  "calldataFix": {
+    "fixturePath": "registry/fixtures/swap-execution-cases.json",
+    "inputAmount": "1000000000000000000",
+    "quotedAmountOut": "2393866186",
+    "slippageBps": 50,
+    "minimumAmountOut": "2381896855",
+    "deadline": "1789498800",
+    "reason": "The deterministic fixture sentinel uses the exact floor of the reviewed quote and the fixed fixture deadline; it is separate from the later live observation rows above."
+  },
+  "checks": {
+    "routerFactoryPoolTokenBindings": "PASS",
+    "feeArithmetic": "PASS",
+    "wrappedNativeSelectors": "PASS",
+    "catalogGrowthDoesNotGrantExecution": "PASS",
+    "generatedFiveLanguageData": "PASS",
+    "nativePackageParity": "PENDING_INDEPENDENT_GATE",
+    "signedTransactions": false,
+    "broadcastTransactions": false
+  },
+  "primarySources": [
+    {
+      "title": "Uniswap V2 deployments",
+      "url": "https://developers.uniswap.org/docs/protocols/v2/deployments",
+      "asOf": "2026-09-16",
+      "role": "Ethereum factory and router addresses"
+    },
+    {
+      "title": "Uniswap V2 Router02 source",
+      "url": "https://github.com/Uniswap/v2-periphery/blob/ed24991304291297c3b4a52818d02f46a17aa9a2/contracts/UniswapV2Router02.sol",
+      "asOf": "2026-09-16",
+      "role": "reviewed router method and selector"
+    },
+    {
+      "title": "LFJ contract deployments",
+      "url": "https://docs.lfj.gg/lfj-dex/contracts",
+      "asOf": "2026-09-16",
+      "role": "Avalanche factory and router addresses"
+    },
+    {
+      "title": "LFJ JoeRouter02 source",
+      "url": "https://github.com/lfj-gg/joe-core/blob/5bec2f3d86500bfd81038c99afe702ee7e/contracts/traderjoe/JoeRouter02.sol",
+      "asOf": "2026-09-16",
+      "role": "reviewed router method and selector"
+    }
+  ],
+  "euOssPlanning": {
+    "applicability": "UNDETERMINED",
+    "companyLegalRole": "UNDETERMINED",
+    "productClassification": "UNDETERMINED",
+    "supportCommitments": "UNDETERMINED",
+    "complianceStatus": "UNDETERMINED",
+    "primarySourcesAndAsOf": [
+      {
+        "url": "https://digital-strategy.ec.europa.eu/en/policies/cra-open-source",
+        "asOf": "2026-07-31"
+      },
+      {
+        "url": "https://digital-strategy.ec.europa.eu/en/policies/cra-reporting",
+        "asOf": "2026-09-11"
+      },
+      {
+        "url": "https://eur-lex.europa.eu/eli/reg/2024/2847/oj",
+        "asOf": "2024-11-20"
+      }
+    ],
+    "evidence": "Independent local implementation; no upstream protocol source or SDK is bundled.",
+    "gaps": [
+      "CRA applicability, company role, classification, support commitments, and compliance status require human confirmation.",
+      "RPC observations and external router terms require review on material endpoint, dependency, or release changes.",
+      "No SBOM or legal certification is asserted by this packet."
+    ],
+    "owner": "TBD — human assignment required",
+    "dueDate": "TBD — human assignment required",
+    "nextReview": "2026-10-15 or earlier on a material event",
+    "boundary": "Planning evidence only; no legal endorsement, CE certification, regulatory filing, vulnerability disclosure, or release activation authority."
+  }
+}
