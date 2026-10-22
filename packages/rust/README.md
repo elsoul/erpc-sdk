@@ -442,11 +442,36 @@ candidate. The published erpc-sdk 0.10.0 crate does not contain them; keep the
 install line above at erpc-sdk = 0.10 until the later promotion brief and
 release proof.
 
-Hyperliquid is HyperEVM-only: its dedicated root is hyperliquid.erpc.global and
-its edge override is edge.erpc.global/hyperliquid. The facade never exposes
-HyperCore info, orders, trades, exchange, or transfer operations. The default
-node history caveat is latest-only; caller selectors pass through unchanged and
-there is no archive fallback or history promise.
+Hyperliquid is HyperEVM-only. HyperEVM mainnet is chain ID `999` / `0x3e7`.
+The exact hosted default is `https://hyperliquid.erpc.global/`, and the exact
+edge override is `https://edge.erpc.global/hyperliquid`; the SDK appends neither
+`/evm` nor `/nanoreth`. A caller-owned direct target can be configured with
+`ErpcClientConfig::for_rpc().with_hyperliquid_rpc(...)`:
+
+```rust,no_run
+# use erpc_sdk::{ErpcClient, ErpcClientConfig, RpcEndpointConfig};
+# async fn example() -> erpc_sdk::Result<()> {
+let erpc = ErpcClient::new(
+    ErpcClientConfig::for_rpc().with_hyperliquid_rpc(
+        RpcEndpointConfig::new("https://hyper-node.example/rpc?tenant=customer")
+            .with_header("authorization", "Bearer node-token"),
+    ),
+)?;
+let chain_id = erpc.hyperliquid.rpc.eth_chain_id().send().await?;
+assert_eq!(chain_id, "0x3e7");
+# let _ = erpc;
+# Ok(())
+# }
+```
+
+The direct value is the caller-owned complete HTTP(S) request target: it
+preserves its path and query, uses scoped headers only, adds no ERPC key or
+global headers, and follows no redirects. A custom target's chain ID is
+returned unchanged; callers should check `0x3e7` before treating it as
+HyperEVM mainnet. The facade never exposes HyperCore info, orders, trades,
+exchange, or transfer operations. The default node history caveat is
+`latest`-only; caller selectors pass through unchanged and there is no archive
+fallback or history promise. Native balances remain raw HYPE quantities.
 
 Arc Mainnet uses arc.erpc.global with edge override edge.erpc.global/arc and
 chain ID 5042 / 0x13b2. Arc native USDC balances use 18-decimal base units,
@@ -455,10 +480,35 @@ SDK returns each raw view unchanged and performs no scaling, double counting,
 aggregation, token registration, wrapper claim, or sentinel mapping. Arc
 Testnet is a separate network.
 
-Robinhood Chain Public Mainnet uses robinhood.erpc.global with edge override
-edge.erpc.global/robinhood and chain ID 4663 / 0x1237. Robinhood Testnet is
-46630 / 0xb626; this facade is mainnet-only and makes no brokerage, trading,
-Stock Token, account, or trading-authentication claim.
+Robinhood Chain Public Mainnet uses the exact hosted default
+`https://robinhood.erpc.global/` and exact edge override
+`https://edge.erpc.global/robinhood`. Public Mainnet is chain ID `4663` /
+`0x1237`; Robinhood Testnet is `46630` / `0xb626`. A caller-owned direct target
+can be configured with
+`ErpcClientConfig::for_rpc().with_robinhood_rpc(...)`:
+
+```rust,no_run
+# use erpc_sdk::{ErpcClient, ErpcClientConfig, RpcEndpointConfig};
+# async fn example() -> erpc_sdk::Result<()> {
+let erpc = ErpcClient::new(
+    ErpcClientConfig::for_rpc().with_robinhood_rpc(
+        RpcEndpointConfig::new("https://robinhood-node.example/rpc?tenant=customer")
+            .with_header("authorization", "Bearer node-token"),
+    ),
+)?;
+let chain_id = erpc.robinhood.rpc.eth_chain_id().send().await?;
+assert_eq!(chain_id, "0x1237");
+# let _ = erpc;
+# Ok(())
+# }
+```
+
+The direct value is the caller-owned complete HTTP(S) request target: it
+preserves its path and query, uses scoped headers only, adds no ERPC key or
+global headers, and follows no redirects. A custom target's chain ID is
+returned unchanged; callers should check `0x1237` for Public Mainnet and never
+relabel `0xb626` as mainnet. This facade is mainnet-only and makes no
+brokerage, trading, Stock Token, account, or trading-authentication claim.
 
 All three facades expose only eth_chainId, eth_getBalance, and eth_call,
 returning raw hex String results. They have no request, raw, batch,

@@ -92,8 +92,8 @@ impl RobinhoodRpcClient {
         }
     }
 
-    /// Returns the credential-free Robinhood Chain Public Mainnet origin and
-    /// root.
+    /// Returns the credential-free Robinhood Chain Public Mainnet read-only
+    /// JSON-RPC origin and root.
     #[must_use]
     pub fn endpoint(&self) -> String {
         let endpoint = self.namespace.endpoint();
@@ -111,7 +111,8 @@ impl RobinhoodRpcClient {
         url.to_string()
     }
 
-    /// Creates a pending `eth_chainId` read.
+    /// Creates a pending Robinhood Chain Public Mainnet read-only JSON-RPC
+    /// `eth_chainId` read.
     ///
     /// # Panics
     ///
@@ -123,12 +124,14 @@ impl RobinhoodRpcClient {
             .expect("empty parameters serialize")
     }
 
-    /// Creates a pending positional native ETH balance read.
+    /// Creates a pending Robinhood Chain Public Mainnet read-only JSON-RPC
+    /// positional native ETH balance read.
     pub fn eth_get_balance<P: Serialize>(&self, params: P) -> Result<PendingRpcRequest<String>> {
         self.namespace.request("eth_getBalance", params)
     }
 
-    /// Creates a pending positional `eth_call` read simulation.
+    /// Creates a pending Robinhood Chain Public Mainnet read-only JSON-RPC
+    /// positional `eth_call` read simulation.
     pub fn eth_call<P: Serialize>(&self, params: P) -> Result<PendingRpcRequest<String>> {
         self.namespace.request("eth_call", params)
     }
