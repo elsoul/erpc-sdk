@@ -1,7 +1,19 @@
 # Releasing the ERPC SDK
 
-One stable `X.Y.Z` version identifies the TypeScript, Rust, Python, and Ruby
-packages. Go uses the same version through its subdirectory module tag:
+The historical release process uses one stable `X.Y.Z` version for the
+TypeScript, Rust, Python, and Ruby packages. Go uses the same version through
+its subdirectory module tag. The current reviewed main snapshot is
+intentionally split while the Rust Bitcoin API is released separately:
+
+- Rust crate: `0.10.0`
+- TypeScript, Python, and Ruby packages: `0.9.0`
+- Go: unchanged module source; its version comes from a future subdirectory tag
+
+The legacy aggregate release check and tag workflow require one shared version.
+They must not be used to publish this mixed-version snapshot; the aggregate
+check is expected to fail until all package cohorts are aligned again.
+
+Package links:
 
 - npm: [`@elsoul/erpc-sdk`](https://www.npmjs.com/package/@elsoul/erpc-sdk)
 - crates.io: [`erpc-sdk`](https://crates.io/crates/erpc-sdk)
@@ -9,12 +21,45 @@ packages. Go uses the same version through its subdirectory module tag:
 - Go: [`github.com/elsoul/erpc-sdk/packages/go`](https://pkg.go.dev/github.com/elsoul/erpc-sdk/packages/go)
 - RubyGems: [`erpc-sdk`](https://rubygems.org/gems/erpc-sdk)
 
-Releases are tag-driven, human-approved, and published by
-`.github/workflows/release.yml`. A merge to `main` never publishes anything.
-The workflow validates the tagged source, publishes each missing registry
-version, and creates the GitHub Release only after all registry jobs succeed.
-The Go module is released by its matching subdirectory tag and needs no
-registry upload.
+The legacy aligned-version releases are tag-driven, human-approved, and
+published by `.github/workflows/release.yml`. A merge to `main` never publishes
+anything. That workflow validates the tagged source, publishes each missing
+registry version, and creates the GitHub Release only after all registry jobs
+succeed. The Go module is released by its matching subdirectory tag and needs
+no registry upload.
+
+## Manual Rust 0.10.0 release
+
+Rust `0.10.0` is released through the manual
+`.github/workflows/release-rust.yml` workflow. The other package versions stay
+at `0.9.0`; this workflow does not create tags, GitHub Releases, or releases
+for another language.
+
+Dispatch it from `main` with the exact commit and version that were reviewed:
+
+1. Set `expected_commit` to the 40-character SHA of the intended `main` commit
+   and `expected_version` to `0.10.0`.
+2. Leave `publish` set to `false` for the first dispatch. Inspect the uploaded
+   crate archive and validation evidence, including its SHA-256.
+3. Have the release owner review and record that exact archive SHA-256, then
+   dispatch the same commit and version with `publish` set to `true` and
+   `approved_sha256` set to the reviewed hash.
+4. Approve the protected `crates-io` environment when prompted. The workflow
+   checks the exact crates.io version before authentication, uses the pinned
+   short-lived OIDC action only when the version is absent, and proves the
+   downloaded registry archive after the upload.
+
+The workflow rechecks repository identity, event, `main` ref, commit, version,
+and checkout in both jobs. It packages with Rust `1.85.0` from a clean source,
+binds evidence to the source SHA and run, and requires the crate checksum,
+provenance marker, BTC source/tests, README, and LICENSE to match. A matching
+already-published version is verified without obtaining a new token. A failed
+or timed-out upload is inspected and verified before any human chooses a
+future dispatch; the workflow never retries an upload automatically.
+
+This manual path is the current release process. A weekly release schedule is
+future work and is not enabled. Do not run the legacy `corepack pnpm release:check`
+or tag-driven aggregate publication while the package versions are split.
 
 ## One-time bootstrap
 
@@ -41,7 +86,8 @@ short-lived publishing credential.
 
 ### crates.io Trusted Publishing
 
-The crate already exists. Configure its trusted publisher with:
+The crate already exists. The legacy aligned-version workflow uses this
+publisher:
 
 | Setting | Value |
 | --- | --- |
@@ -50,8 +96,12 @@ The crate already exists. Configure its trusted publisher with:
 | Workflow filename | `release.yml` |
 | Environment | `crates-io` |
 
-The workflow uses the crates.io authentication action to obtain and revoke a
-temporary token through OIDC. Do not store a crates.io token in GitHub.
+The current Rust `0.10.0` workflow uses a separate trusted publisher with the
+same owner, repository, and environment, but workflow filename
+`release-rust.yml`. Keep the environment limited to manual dispatches from
+`main` with the named human reviewer. Both workflows use the crates.io
+authentication action to obtain and revoke a temporary token through OIDC. Do
+not store a crates.io token in GitHub.
 
 ### First PyPI publication
 
@@ -96,10 +146,14 @@ configure:
 - deployment limited to protected `v*` release tags;
 - no long-lived registry token secrets.
 
+The current Rust `crates-io` environment is the exception to the legacy tag
+rule: its new `release-rust.yml` binding is manually dispatched from `main` and
+must retain its named human reviewer and no long-lived secret.
+
 The publish jobs request `id-token: write` only inside their protected
 environment. Source verification has read-only repository permission.
 
-## Prepare a version
+## Legacy aligned-version release preparation
 
 1. Choose a stable version and create a normal review branch. For example:
 
@@ -156,7 +210,7 @@ lock must contain the unique `PATH` `erpc-sdk` entry with `remote: .` at the
 same version as `packages/ruby/lib/erpc_sdk/version.rb`; a dependency refresh
 or disabling Bundler's frozen install is outside release preparation.
 
-## Release with one command
+## Legacy aligned-version release with one command
 
 From a clean local `main` that exactly matches `origin/main`, run:
 
@@ -186,7 +240,7 @@ The root tag starts the protected workflow. Approve the registry environments,
 then verify npm, crates.io, PyPI, RubyGems, the Go package documentation,
 generated Rust documentation, and the GitHub Release.
 
-## Monitor and verify the release
+## Monitor and verify a legacy aligned-version release
 
 Find the run whose branch is `vX.Y.Z`, then watch it to completion:
 
@@ -222,6 +276,10 @@ job succeeds; retry the read-only checks before treating that delay as a
 failure.
 
 ## Validation performed by CI
+
+The checks below describe the legacy aligned-version path. The current Rust
+workflow runs only the Rust cohort and does not assert that the other package
+versions match it.
 
 TypeScript validation includes strict typechecking, unit tests, builds, ESM and
 CommonJS entry-point checks, and npm dry-run package inspection. Rust

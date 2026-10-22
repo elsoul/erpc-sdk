@@ -161,6 +161,8 @@ jobs:
         run: |
           node --test scripts/agent-harness.test.mjs
           node scripts/agent-harness.mjs check
+      - name: Run release verifier tests
+        run: node --test scripts/verify-release.test.mjs
       - name: Install the pinned Rust toolchain for catalog render checks
         run: |
           rustup toolchain install 1.85.0 --profile minimal --component clippy,rustfmt
@@ -302,7 +304,7 @@ jobs:
           rustup toolchain install 1.85.0 --profile minimal --component clippy,rustfmt
           rustup default 1.85.0
       - name: Verify release identities
-        run: node scripts/verify-release.mjs
+        run: node scripts/verify-release.mjs --scope rust
       - name: Verify TypeScript and Rust method parity
         run: node scripts/verify-method-parity.mjs
       - name: Check formatting
@@ -591,7 +593,7 @@ jobs:
           working-directory: packages/ruby
       - name: Verify release identities
         working-directory: .
-        run: node scripts/verify-release.mjs
+        run: node scripts/verify-release.mjs --scope non-rust
       - name: Verify method parity
         working-directory: .
         run: node scripts/verify-method-parity.mjs

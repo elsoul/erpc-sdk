@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+## 0.10.0 — 2026-10-22 (Rust crate)
+
+- Add the reviewed Rust Bitcoin Core HTTP JSON-RPC namespace, including the
+  focused convenience methods, caller-owned direct RPC configuration, exact
+  batch behavior, and arbitrary-precision JSON number preservation described in
+  the Rust package documentation.
+- Keep the Rust crate at `0.10.0` while the TypeScript, Python, and Ruby
+  packages remain at `0.9.0`; Go remains unchanged. This mixed-version state
+  is released only through the manual, human-approved Rust workflow with an
+  exact commit and reviewed crate SHA-256.
+- The legacy aggregate release check intentionally remains strict and cannot
+  publish this split-version snapshot. No weekly release automation is enabled.
+
 ## 0.9.0 — 2026-09-26
 
 - Add a read-only TypeScript Base Mainnet facade at `erpc.base.rpc` with only `eth_chainId`, `eth_getBalance`, `eth_call`, and the resolved endpoint. API-key clients default to `https://base.erpc.global`; `baseEndpoint` replaces that authenticated eRPC-compatible host, while `baseRpc` is the exact direct override and receives only its explicitly scoped credentials. No Base raw request, batch, subscription, send, signing, wallet, approval, or broadcast API is added.
