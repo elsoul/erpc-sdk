@@ -26,7 +26,7 @@ test('harness, future assets, and CI route correctly', () => {
   const ci = '.github/workflows/release.yml'; assert.deepEqual(route(registry, ci, { taskBrief: brief(ci, selected(ci)) }).requiredGates, ['cyan']);
 });
 test('CI release exact paths route through bounded release ownership', () => {
-  const targets = ['scripts/verify-release.test.mjs', 'docs/RELEASING.md', 'CHANGELOG.md'];
+  const targets = ['scripts/verify-release.test.mjs', 'scripts/oss-public-hosts.txt', 'docs/RELEASING.md', 'CHANGELOG.md'];
   for (const target of targets) {
     const rule = selected(target);
     assert.equal(rule.id, 'ci-release');
@@ -51,8 +51,26 @@ test('CI release exact paths route through bounded release ownership', () => {
     assert.equal(invalid.status, 'BRIEF_INVALID');
     assert.deepEqual(invalid.roles, ['edgar', 'bahamut']);
     assert.equal(invalid.dispatchL3, false);
+
+    const wrongImplementer = route(registry, target, { taskBrief: { ...brief(target, rule), implementer: 'backend-l3-pokemon-haganeil' } });
+    assert.equal(wrongImplementer.status, 'BRIEF_INVALID');
+    assert.deepEqual(wrongImplementer.roles, ['edgar', 'bahamut']);
+    assert.equal(wrongImplementer.dispatchL3, false);
+
+    const wrongOwnedFile = route(registry, target, { taskBrief: { ...brief(target, rule), ownedFiles: ['packages/rust/src/arbitrum.rs'] } });
+    assert.equal(wrongOwnedFile.status, 'BRIEF_INVALID');
+    assert.deepEqual(wrongOwnedFile.roles, ['edgar', 'bahamut']);
+    assert.equal(wrongOwnedFile.dispatchL3, false);
+
+    const security = route(registry, target, { category: 'security', taskBrief: brief(target, rule) });
+    assert.equal(security.status, 'READY');
+    assert.equal(security.candidateImplementer, 'backend-l3-pokemon-wanriky');
+    assert.ok(security.roles.includes('eu-oss-compliance'));
+    assert.ok(security.roles.includes('backend-l3-pokemon-wanriky'));
+    assert.deepEqual(security.requiredGates, ['cyan']);
+    assert.equal(security.dispatchL3, true);
   }
-  for (const target of ['scripts/verify-release.test.mjs.bak', 'docs/RELEASING.md.bak', 'archive/CHANGELOG.md']) {
+  for (const target of ['scripts/oss-public-hosts.txt.bak', 'archive/scripts/oss-public-hosts.txt', 'scripts/check-oss-hygiene.sh', 'CONTRIBUTING.md', 'scripts/verify-release.test.mjs.bak', 'docs/RELEASING.md.bak', 'archive/CHANGELOG.md']) {
     const unresolved = route(registry, target);
     assert.equal(unresolved.status, 'ROUTE_UNRESOLVED');
     assert.deepEqual(unresolved.roles, ['el', 'edgar']);

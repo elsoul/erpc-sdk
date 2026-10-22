@@ -336,6 +336,7 @@
           "scripts/verify-release.mjs",
           "scripts/release-version.mjs",
           "scripts/verify-release.test.mjs",
+          "scripts/oss-public-hosts.txt",
           "docs/RELEASING.md",
           "CHANGELOG.md"
         ],
