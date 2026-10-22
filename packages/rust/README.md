@@ -14,6 +14,13 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 
 The minimum supported Rust version is 1.85.
 
+This repository guide is maintained separately from the immutable README and
+bytes embedded in the already-published `erpc-sdk 0.10.0` crate; editing this
+file does not rewrite that artifact. For the non-Rust `0.9.1` cohort, Rust is
+verification-only: the carried receipt remains source line
+`f05abe4276991612c4b5e404fdc768baace32e61` with SHA-256
+`f2ad81528b35470b8f193dc45ad9f95e2d5ba0749b916ab9422cb07639088dd7`.
+
 For a fresh consumer on Rust 1.85, use Edition 2024, set
 `rust-version = "1.85"`, and configure Cargo resolver 3 in the root workspace
 so dependency selection is MSRV-aware. See the [Edition 2024 resolver
@@ -195,6 +202,8 @@ with `/bitcoin` appended (the default is `https://edge.erpc.global/bitcoin`),
 send `Authorization: Bearer <key>`, and follow no redirects. The namespace is
 HTTP-only and has no subscription surface. A caller-owned endpoint is an exact
 HTTP(S) target and can be selected without an ERPC key:
+
+Bitcoin HTTP JSON-RPC is Rust-only for this release cohort.
 
 ```rust,no_run
 # use erpc_sdk::{ErpcClient, ErpcClientConfig, RpcEndpointConfig};
@@ -446,16 +455,14 @@ policy. The SDK does not sign, send, create approvals, or choose an unlimited
 allowance policy; the caller's wallet controls allowance changes and
 broadcasting.
 
-### Optional Mayan Swift v2 bridge (EURC in 0.8.1; USDC source addition unreleased)
+### Optional Mayan Swift v2 bridge (EURC and native USDC)
 
 `MayanSwiftV2BridgeClient` is a separate, explicit client. The published
-`erpc-sdk 0.8.1` package supports the two reviewed native issued EURC
-directions: Ethereum (`deployment-0011`) and Solana (`deployment-0013`). This
-source tree also contains the reviewed native USDC directions, Ethereum
-(`deployment-0008`) and Solana (`deployment-0010`); that USDC addition is
-unreleased and is not included in the published 0.8.1 package. The 0.8.1
-Workers patch also does not include the native USDC or local-builder additions.
-These are
+`erpc-sdk 0.10.0` package includes the reviewed native issued EURC directions:
+Ethereum (`deployment-0011`) and Solana (`deployment-0013`), along with the
+reviewed native USDC directions, Ethereum (`deployment-0008`) and Solana
+(`deployment-0010`). The EURC paths were introduced in the 0.8.x line; this
+guide describes the contents of the published 0.10.0 artifact. These are
 external-provider intent routes, rather than Circle CCTP or RPC-only swap
 routes.
 
@@ -524,19 +531,18 @@ println!("{}", build.validation.level);
 # }
 ```
 
-The same request shape accepts the unreleased USDC tuple by using
+The same request shape accepts the native USDC tuple by using
 `deployment-0008` to `deployment-0010` (or the reverse direction). For direct
 USDC quotes, `source_swap.required` is `false`, `input_token_deployment_id`
 and the intermediate token identify the native source USDC, and
 `router_kind`/`router_address` are `null`. These JSON keys remain present.
 Rust represents the nullable router fields as `Option<String>`, so consumers
-whose source types currently use non-null strings must handle `None` before
-using the unreleased USDC addition. Existing EURC router values remain
-unchanged.
+whose source types currently use non-null strings must handle `None` for these
+nullable router fields. Existing EURC router values remain unchanged.
 
-### Local unsigned construction (source-tree addition)
+### Local unsigned construction (published in 0.10.0)
 
-The source tree also exposes `prepare_source_swap` and
+The published `erpc-sdk 0.10.0` package also exposes `prepare_source_swap` and
 `build_local_unsigned` for the reviewed four-route local construction path.
 Pass a normalized quote, public source and destination addresses, and a fresh
 16-byte public `order_nonce` to preparation, then pass the returned plan to the

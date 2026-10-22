@@ -7,17 +7,18 @@ account information. Base is exposed as a read-only JSON-RPC facade; caller-owne
 direct endpoints can be selected for Base, Solana, Ethereum, and Avalanche
 C-Chain JSON-RPC.
 
-The Base facade documented below is a `0.9.0` source candidate. The currently
-published `0.8.1` npm package does not include it; use the reviewed `0.9.0`
-candidate artifact or this source checkout until that version is published.
+The Base facade documented below has been available since `0.9.0`. This
+source/release cohort targets `0.9.1`; check the
+[npm registry versions](https://registry.npmjs.org/%40elsoul%2Ferpc-sdk) for
+current package availability.
 
 ## Install
 
 ```bash
-# Once 0.9.0 is published:
-npm install @elsoul/erpc-sdk@0.9.0
-# or: pnpm add @elsoul/erpc-sdk@0.9.0
-# Before publication, use the reviewed candidate tarball or this source checkout.
+# After the npm registry lists 0.9.1:
+npm install @elsoul/erpc-sdk@0.9.1
+# or: pnpm add @elsoul/erpc-sdk@0.9.1
+# For local validation, use the public 0.9.0 package or this source checkout.
 ```
 
 The package includes its ESM, CommonJS, and TypeScript declarations. Node.js 20
@@ -104,10 +105,10 @@ and ERPC REST, native, and index services fail locally. The
 `RpcEndpointConfig.headers` field applies to direct HTTP requests only; those
 headers are never sent on WSS connections.
 
-## Base read-only RPC (`0.9.0` candidate)
+## Base read-only RPC (available since `0.9.0`)
 
-The `0.9.0` candidate API-key client uses `https://base.erpc.global/` at the
-root JSON-RPC path.
+The `0.9.0` API-key client uses `https://base.erpc.global/` at the root JSON-RPC
+path.
 The first check for a Base connection should be `eth_chainId()` and must return
 `0x2105` (Base mainnet). The following uses the catalog's Base EURC record and
 formats the raw response with integer arithmetic:
@@ -400,25 +401,20 @@ Mayan authentication has three separate layers:
 | SDK policy | `buildUnsigned` requires `builderApiKey` by default; `allowUnauthenticatedBuild: true` only permits the caller's keyless HTTP attempt. |
 | Dated hosted observation | On 2026-09-17, four EURC/USDC quotes returned HTTP 200 without keys; default builds made no request, while explicit keyless `/build` attempts returned HTTP 401. This is bounded evidence, not a permanent provider requirement. |
 
-The published `0.8.1` package supports the reviewed issued EURC directions.
-Native USDC direct routes are a source-tree addition and remain unreleased;
-they are not part of the published `0.8.1` package.
+The public `0.9.0` package supports the reviewed issued EURC directions and
+native USDC direct routes. Native USDC uses Mayan's direct SWIFT route and does
+not add Jupiter or another hosted source-swap dependency.
 
-The source tree also contains an unreleased native USDC addition for the same
-Ethereum/Solana directions. It uses Mayan's direct SWIFT route and does not add
-Jupiter or another hosted source-swap dependency. The addition is not included
-in the published `0.8.1` package; its package version and release publication
-remain future work.
-
-The `0.8.1` maintenance patch updates the Workers fetch invocation boundary;
-it does not include the new native USDC or local unsigned-builder paths.
+The `0.8.1` maintenance patch updated the Workers fetch invocation boundary;
+it did not include the native USDC or local unsigned-builder paths that are
+present in the public `0.9.0` package.
 
 ### Local unsigned construction
 
-The source tree also exposes an explicit keyless construction path for the
-reviewed EURC and native USDC directions. Pass a hosted normalized quote and a
-fresh public 16-byte `orderNonce` to `prepareSourceSwap`, then pass its plan to
-`buildLocalUnsigned`:
+The public `0.9.0` package exposes an explicit keyless construction path for
+the reviewed EURC and native USDC directions. Pass a hosted normalized quote
+and a fresh public 16-byte `orderNonce` to `prepareSourceSwap`, then pass its
+plan to `buildLocalUnsigned`:
 
 ```ts
 const localClient = createMayanSwiftV2BridgeClient({
@@ -452,9 +448,11 @@ signs, submits, broadcasts, or claims settlement. The caller owns wallet
 custody and all signing and ERPC broadcast steps described in the
 [TypeScript signing and broadcast guide](https://github.com/elsoul/erpc-sdk/blob/main/packages/typescript/docs/signing-and-broadcast.md).
 
-These local methods and native USDC routes are source-tree additions. They are
-not part of the published TypeScript `0.8.1` package; the published bridge API
-remains the hosted EURC adapter described above.
+These local methods and native USDC routes are included in the public `0.9.0`
+baseline and the source/release cohort targets `0.9.1`. The bridge API remains
+an explicit standalone EURC/native-USDC adapter with optional external provider
+dependencies and configured source-RPC requirements, while normal swaps
+continue to use configured RPC and local logic.
 
 ## Namespaces
 
