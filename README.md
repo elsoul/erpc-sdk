@@ -18,15 +18,15 @@
 </p>
 
 The published non-Rust line is TypeScript, Python, Go, and Ruby `0.9.1`. Rust
-`0.11.0` is the release candidate for a separate Rust-only release. Its
-reviewed source covers 18 chain families/mainnets, listed below. The four
-published non-Rust packages retain their package-specific scopes; Rust-only
-APIs below do not imply five-language parity.
+`0.11.0` is published as a separate Rust-only release. Its crate covers 18
+chain families/mainnets, listed below. The four published non-Rust packages
+retain their package-specific scopes; Rust-only APIs below do not imply
+five-language parity.
 
-Across the published and candidate lines, the SDK provides eRPC-backed standard
+Across the published lines, the SDK provides eRPC-backed standard
 Solana, Ethereum, and Avalanche access, catalog and service APIs, and the
 language-specific direct-RPC controls described in the package guides. The Rust
-candidate adds bounded read-only clients for the later chain families and a
+`0.11.0` crate adds bounded read-only clients for the later chain families and a
 limited Sui binary gRPC-Web surface. Bitcoin Core HTTP JSON-RPC remains a
 Rust-only surface for this release line. These statements preserve the separate
 configured-RPC/local swap behavior and bridge boundaries documented below.
@@ -36,14 +36,14 @@ configured-RPC/local swap behavior and bridge boundaries documented below.
 | Language | Package | Current public release | Status |
 | --- | --- | --- | --- |
 | TypeScript | [`@elsoul/erpc-sdk`](https://www.npmjs.com/package/@elsoul/erpc-sdk) | `0.9.1` | Published non-Rust line |
-| Rust | [`erpc-sdk`](https://crates.io/crates/erpc-sdk) | `0.10.0` | Rust-only `0.11.0` release candidate |
+| Rust | [`erpc-sdk`](https://crates.io/crates/erpc-sdk) | `0.11.0` | Published Rust-only release |
 | Python | [`erpc-sdk`](https://pypi.org/project/erpc-sdk/) | `0.9.1` | Published non-Rust line |
 | Go | [`github.com/elsoul/erpc-sdk/packages/go`](https://pkg.go.dev/github.com/elsoul/erpc-sdk/packages/go) | `v0.9.1` | Published non-Rust line |
 | Ruby | [`erpc-sdk`](https://rubygems.org/gems/erpc-sdk) | `0.9.1` | Published non-Rust line |
 
 The package links and live badges point to registry or module status. The four
-non-Rust packages are published at `0.9.1`; Rust-only APIs in the tables below
-remain separate from those published package scopes.
+non-Rust packages are published at `0.9.1`; the Rust package is published at
+`0.11.0` with a separate Rust-only API surface.
 
 ## Install
 
@@ -62,11 +62,11 @@ runtime dependencies are `@noble/curves` and `@noble/hashes`.
 Rust:
 
 ```bash
-cargo add erpc-sdk
+cargo add erpc-sdk@0.11.0
 ```
 
-The registry install resolves the currently published Rust line. Use the
-reviewed source checkout for the `0.11.0` candidate APIs.
+The registry install resolves the published Rust `0.11.0` crate; use that
+released crate for the APIs described below.
 
 Python:
 
@@ -95,11 +95,11 @@ versions are Rust 1.85, Python 3.11, Go 1.22, and Ruby 3.1.
 
 The matrix below combines the version history with concrete user-visible scope.
 Published non-Rust entries remain package-specific; the Rust column describes
-the reviewed release-candidate source.
+the published `0.11.0` crate.
 
-| Capability/history | Published non-Rust `0.9.1` packages | Rust `0.11.0` release candidate |
+| Capability/history | Published non-Rust `0.9.1` packages | Rust `0.11.0` published crate |
 | --- | --- | --- |
-| Offline token, DEX, pool, and ranking catalogs | Published `0.7.0` history; exact exports remain package-specific | Local catalog and ranking reads remain available in source |
+| Offline token, DEX, pool, and ranking catalogs | Published `0.7.0` history; exact exports remain package-specific | Local catalog and ranking reads are included in the crate |
 | Reviewed EVM exact-input quotes | Published API history covers Ethereum Uniswap V2 and Avalanche LFJ legacy; confirm the exact package surface | Preserves the reviewed tuples with configured-RPC reads and local calculation |
 | Caller-owned direct RPC overrides | Introduced in `0.8.0`; exact field names and package availability vary by language | `RpcEndpointConfig` builders preserve the caller URL, scoped headers, and no-redirect behavior |
 | EVM exact-input preparation and simulation | Introduced in `0.8.0` for the reviewed tuples; confirm the exact package surface | Uses a fresh configured-RPC quote and local unsigned preparation/simulation |
@@ -108,7 +108,7 @@ the reviewed release-candidate source.
 
 ## Rust chain coverage
 
-The reviewed Rust API contains 18 chain families/mainnets. The
+The published Rust API contains 18 chain families/mainnets. The
 Solana client can also target devnet or testnet only through an explicit
 caller-owned direct endpoint; those selections do not create additional
 namespaces or hosted presets. Avalanche C/P/X are capabilities within the one
@@ -153,7 +153,7 @@ stream, transaction, signing, or broadcast surface.
 This no-run example uses actual Rust APIs and placeholder caller-owned
 endpoints, so it requires no credential or live request to read. It exercises
 two sealed EVM reads and the bounded Sui read client. Use it with the Rust
-`0.11.0` source checkout.
+`0.11.0` crate from crates.io.
 
 ```rust,no_run
 use erpc_sdk::{

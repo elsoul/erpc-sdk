@@ -2,22 +2,6 @@
 
 ## Unreleased
 
-- Prepare the Rust-only `0.11.0` release line for the existing 18-chain Rust
-  implementation: Solana, Ethereum, Avalanche, Bitcoin, Base, Arbitrum One,
-  Polygon PoS, BNB Smart Chain, OP Mainnet, Kaia, Soneium, Monad, Hyperliquid
-  HyperEVM, Arc, Robinhood Chain, NEAR, TRON, and Sui. This is a candidate
-  release until the reviewed source, raw crate bytes, crates.io state, and
-  anonymous downloaded archive all match.
-- Enforce the Rust `MIT AND Apache-2.0` package profile from actual `.crate`
-  bytes, including the original MIT file, Apache text, third-party notice,
-  adapted Sui source hash, VCS/source binding, and the complete selected
-  module/example/test member set. The historical Rust `0.10.0` MIT receipt
-  remains immutable and separate.
-- Keep Rust publication manual and protected. The validation workflow records
-  the exact archive hash and member evidence before any OIDC request; the
-  publisher performs one Cargo publish path at most and closes only from
-  matching public metadata and downloaded bytes. No aggregate or weekly
-  release automation is enabled.
 - Add a main-only, manually dispatched release foundation for the first
   non-Rust `0.9.1` cohort. Preparation builds and hashes exact npm, PyPI, and
   RubyGems artifacts, freezes the Go inventory, verifies the existing Rust
@@ -27,6 +11,27 @@
 - Keep Rust-only Bitcoin HTTP JSON-RPC boundaries explicit; this release
   foundation adds no chain, swap, or bridge behavior and does not claim
   cross-language Bitcoin parity.
+
+## 0.11.0 — 2026-10-23 (Rust crate)
+
+- Expand the Rust client to 18 chain families: Solana, Ethereum, Avalanche,
+  Bitcoin, Base, Arbitrum One, Polygon PoS, BNB Smart Chain, OP Mainnet, Kaia,
+  Soneium, Monad, Hyperliquid HyperEVM, Arc, Robinhood Chain, NEAR, TRON, and
+  Sui. Newly added EVM families, NEAR, and TRON expose sealed read-only
+  namespaces, while Sui provides three unary binary gRPC-Web reads. The
+  18-family count does not promise transactions, subscriptions, swaps, bridges,
+  or identical methods on every chain; Avalanche C/P/X remain capabilities
+  within Avalanche, and Solana devnet/testnet remain caller-selected
+  direct-RPC configurations.
+- Package the Rust crate as `MIT AND Apache-2.0`: original SDK source remains
+  MIT, while the adapted Sui schema projection retains its Apache-2.0
+  attribution. The crate carries the third-party notice and selected
+  source/module/example/test members; the historical Rust `0.10.0` MIT receipt
+  remains separate.
+- Keep Rust `0.11.0` publication manual and protected: validate the exact
+  archive hash and member evidence before OIDC, invoke Cargo publish at most
+  once, and require matching public metadata and downloaded bytes for closure.
+  Aggregate and weekly release automation remain out of scope.
 
 ## 0.10.0 — 2026-10-22 (Rust crate)
 
