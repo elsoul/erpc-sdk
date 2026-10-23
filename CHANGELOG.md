@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- Prepare the Rust-only `0.11.0` release line for the existing 18-chain Rust
+  implementation: Solana, Ethereum, Avalanche, Bitcoin, Base, Arbitrum One,
+  Polygon PoS, BNB Smart Chain, OP Mainnet, Kaia, Soneium, Monad, Hyperliquid
+  HyperEVM, Arc, Robinhood Chain, NEAR, TRON, and Sui. This is a candidate
+  release until the reviewed source, raw crate bytes, crates.io state, and
+  anonymous downloaded archive all match.
+- Enforce the Rust `MIT AND Apache-2.0` package profile from actual `.crate`
+  bytes, including the original MIT file, Apache text, third-party notice,
+  adapted Sui source hash, VCS/source binding, and the complete selected
+  module/example/test member set. The historical Rust `0.10.0` MIT receipt
+  remains immutable and separate.
+- Keep Rust publication manual and protected. The validation workflow records
+  the exact archive hash and member evidence before any OIDC request; the
+  publisher performs one Cargo publish path at most and closes only from
+  matching public metadata and downloaded bytes. No aggregate or weekly
+  release automation is enabled.
 - Add a main-only, manually dispatched release foundation for the first
   non-Rust `0.9.1` cohort. Preparation builds and hashes exact npm, PyPI, and
   RubyGems artifacts, freezes the Go inventory, verifies the existing Rust

@@ -15,6 +15,12 @@ import {
   FOUNDATION_RUST_SOURCE,
   FOUNDATION_TAG,
   FOUNDATION_VERSION,
+  CURRENT_RUST_VERSION,
+  RUST_011_CLIENT_MODULES,
+  RUST_011_LICENSE_HASHES,
+  RUST_011_REQUIRED_EXAMPLES,
+  RUST_011_REQUIRED_TESTS,
+  RUST_011_SUI_MEMBERS,
   RELEASE_SET_ARTIFACT_KINDS,
   RELEASE_SET_KIND,
   RELEASE_SET_PUBLIC_ASSET_ROLES,
@@ -40,6 +46,7 @@ import {
   inspectReleaseSetArtifactBytes,
   inspectReleaseSetRubyGemBytes,
   inspectReleaseSetRustArchiveBytes,
+  inspectRust011Archive,
   observeNpmRelease,
   observePyPIRelease,
   observeRubyGemsRelease,
@@ -210,53 +217,108 @@ test('release argument parser rejects unknown, duplicate, and conflicting inputs
 
 test('current tree passes split cohorts while strict aggregate verification fails', async () => {
   const data = await readReleaseData(root.pathname)
-  const currentRustVersions = new Set(['0.10.0', '0.11.0'])
-  assert.ok(currentRustVersions.has(data.cargoVersion), `unexpected current Rust source version ${data.cargoVersion}`)
+  assert.equal(data.cargoVersion, CURRENT_RUST_VERSION)
   assert.equal(data.cargoLockPackage.version, data.cargoVersion)
-  // The current Rust candidate deliberately remains release-invalid until P2b
-  // promotes its mixed-source licence/archive controls.
-  assert.throws(() => validateReleaseData(data, { scope: 'rust', expectedVersion: data.cargoVersion }), /Unexpected Rust crate license/)
+  assert.equal(validateReleaseData(data, { scope: 'rust', expectedVersion: CURRENT_RUST_VERSION }).version, CURRENT_RUST_VERSION)
   const nonRustVersions = [data.packageJson.version, data.pythonVersion, data.pythonRuntimeVersion, data.rubyVersion, data.rubyLockVersion]
   if (new Set(nonRustVersions).size === 1) assert.equal(validateReleaseData(data, { scope: 'non-rust' }).version, data.packageJson.version)
   else assert.throws(() => validateReleaseData(data, { scope: 'non-rust' }), /Non-Rust package versions differ/)
-  assert.throws(
-    () => validateReleaseData(data, { scope: 'all' }),
-    /Package versions differ|Non-Rust package versions differ|Unexpected Rust crate license/,
-  )
+  if (new Set(nonRustVersions).size === 1 && nonRustVersions[0] === CURRENT_RUST_VERSION) {
+    assert.equal(validateReleaseData(data, { scope: 'all' }).version, CURRENT_RUST_VERSION)
+  } else {
+    assert.throws(() => validateReleaseData(data, { scope: 'all' }), /Package versions differ/)
+  }
+  const projectedFoundation = {
+    ...data,
+    packageJson: { ...data.packageJson, version: FOUNDATION_VERSION },
+    pythonVersion: FOUNDATION_VERSION,
+    pythonRuntimeVersion: FOUNDATION_VERSION,
+    rubyVersion: FOUNDATION_VERSION,
+    rubyLockVersion: FOUNDATION_VERSION,
+  }
+  assert.throws(() => validateReleaseData(projectedFoundation, { scope: 'all' }), /Package versions differ/)
 })
 
 test('Rust verification binds the unique source-free local lock entry and MSRV', async () => {
   const data = await readReleaseData(root.pathname)
-  const currentRustVersions = new Set(['0.10.0', '0.11.0'])
+  const currentRustVersions = new Set(['0.11.0'])
   assert.ok(currentRustVersions.has(data.cargoVersion))
-  assert.equal(findLocalCargoPackage(data.cargoLock).version, data.cargoVersion)
+  assert.equal((await findLocalCargoPackage(data.cargoLock)).version, data.cargoVersion)
   for (const version of currentRustVersions) {
+    const manifest = version === CURRENT_RUST_VERSION
+      ? data.cargoManifest
+      : data.cargoManifest.replace('license = "MIT AND Apache-2.0"', 'license = "MIT"')
     const transitionFixture = {
       ...data,
-      cargoManifest: data.cargoManifest.replace(/version = "[^"]+"/, `version = "${version}"`).replace('MIT AND Apache-2.0', 'MIT'),
+      cargoManifest: manifest.replace(/version = "[^"]+"/, `version = "${version}"`),
       cargoVersion: version,
       cargoLockPackage: { ...data.cargoLockPackage, version },
     }
     assert.equal(validateReleaseData(transitionFixture, { scope: 'rust', expectedVersion: version }).version, version)
     assert.throws(() => validateReleaseData({ ...transitionFixture, cargoLockPackage: { ...transitionFixture.cargoLockPackage, version: '0.9.0' } }, { scope: 'rust', expectedVersion: version }), /Cargo\.lock local erpc-sdk version/)
-    assert.throws(() => validateReleaseData({ ...transitionFixture, cargoManifest: transitionFixture.cargoManifest.replace('rust-version = "1.85"', 'rust-version = "1.86"') }, { scope: 'rust', expectedVersion: version }), /Unexpected Rust MSRV/)
-    assert.throws(() => findLocalCargoPackage(`[[package]]\nname = "erpc-sdk"\nversion = "${version}"\n\n[[package]]\nname = "erpc-sdk"\nversion = "${version}"\n`), /exactly one source-free erpc-sdk/)
+    assert.throws(() => validateReleaseData({
+      ...transitionFixture,
+      cargoManifest: transitionFixture.cargoManifest.replace('rust-version = "1.85"', 'rust-version = "1.86"'),
+      cargoToml: { ...transitionFixture.cargoToml, package: { ...transitionFixture.cargoToml.package, 'rust-version': '1.86' } },
+    }, { scope: 'rust', expectedVersion: version }), /Rust source Cargo\.toml MSRV mismatch|Unexpected Rust MSRV/)
+    await assert.rejects(() => findLocalCargoPackage(`[[package]]\nname = "erpc-sdk"\nversion = "${version}"\n\n[[package]]\nname = "erpc-sdk"\nversion = "${version}"\n`), /exactly one source-free erpc-sdk/)
   }
   const unsupportedTransition = '0.12.0'
   assert.equal(currentRustVersions.has(unsupportedTransition), false)
-  assert.throws(
+  await assert.rejects(
     () => findLocalCargoPackage('[[package]]\nname = "erpc-sdk"\nversion = "0.10.0"\n\n[[package]]\nname = "erpc-sdk"\nversion = "0.10.0"\n'),
     /exactly one source-free erpc-sdk/,
   )
-  const historicalLicenseData = { ...data, cargoManifest: data.cargoManifest.replace('license = "MIT AND Apache-2.0"', 'license = "MIT"') }
-  assert.throws(
-    () => validateReleaseData({ ...historicalLicenseData, cargoManifest: historicalLicenseData.cargoManifest.replace('rust-version = "1.85"', 'rust-version = "1.86"') }, { scope: 'rust' }),
-    /Unexpected Rust MSRV/,
-  )
+  const historicalLicenseData = {
+    ...data,
+    cargoManifest: data.cargoManifest.replace(/version = "[^"]+"/, 'version = "0.10.0"').replace('license = "MIT AND Apache-2.0"', 'license = "MIT"'),
+    cargoVersion: '0.10.0',
+    cargoLockPackage: { ...data.cargoLockPackage, version: '0.10.0' },
+    rustSource: { ...data.rustSource, currentShape: false },
+    cargoToml: { ...data.cargoToml, package: { ...data.cargoToml.package, version: '0.10.0', license: 'MIT' } },
+  }
+  assert.throws(() => validateReleaseData(historicalLicenseData, { scope: 'rust', expectedVersion: '0.10.0' }), /Rust source Cargo\.toml package version mismatch|Current Rust source must be 0.11.0/)
+  assert.throws(() => validateReleaseData({
+    ...historicalLicenseData,
+    cargoManifest: historicalLicenseData.cargoManifest.replace('rust-version = "1.85"', 'rust-version = "1.86"'),
+    cargoToml: { ...historicalLicenseData.cargoToml, package: { ...historicalLicenseData.cargoToml.package, 'rust-version': '1.86' } },
+    }, { scope: 'rust' }), /Rust source Cargo\.toml (?:package version|MSRV) mismatch|Unexpected Rust MSRV/)
   assert.throws(
     () => validateReleaseData({ ...historicalLicenseData, cargoLockPackage: { version: '0.9.0' } }, { scope: 'rust' }),
-    /Cargo\.lock local erpc-sdk version/,
+    /Cargo\.lock local erpc-sdk version|Rust source Cargo\.toml package version/,
   )
+})
+
+test('current Rust reader uses parsed manifest and lock identities and rejects mixed-source mutations', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'erpc-sdk-rust-reader-semantics-'))
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  await mkdir(join(directory, 'packages'), { recursive: true })
+  await cp(new URL('../packages/rust/', import.meta.url), join(directory, 'packages/rust'), { recursive: true })
+  await cp(new URL('../Cargo.lock', import.meta.url), join(directory, 'Cargo.lock'))
+  const manifestPath = join(directory, 'packages/rust/Cargo.toml')
+  const lockPath = join(directory, 'Cargo.lock')
+  const originalManifest = await readFile(manifestPath, 'utf8')
+  const originalLock = await readFile(lockPath, 'utf8')
+  const validate = async (manifest, lock = originalLock, expected = CURRENT_RUST_VERSION) => {
+    await writeFile(manifestPath, manifest)
+    await writeFile(lockPath, lock)
+    const data = await readReleaseData(directory, 'rust')
+    return () => validateReleaseData(data, { scope: 'rust', expectedVersion: expected })
+  }
+  const decoyVersion = originalManifest.replace('description = "Async multi-network Rust SDK for ERPC"', 'description = """\nversion = "0.11.0"\n"""').replace('version = "0.11.0"\nedition', 'version = "0.12.0"\nedition')
+  assert.throws(await validate(decoyVersion), /Rust source Cargo\.toml package version mismatch|Current Rust source must be 0.11.0/)
+  const mixedManifest = originalManifest.replace('version = "0.11.0"', 'version = "0.10.0"').replace('license = "MIT AND Apache-2.0"', 'license = "MIT"')
+  const mixedLock = originalLock.replace(/(name = "erpc-sdk"\nversion = ")0\.11\.0"/, '$10.10.0"')
+  assert.throws(await validate(mixedManifest, mixedLock, '0.10.0'), /Rust source Cargo\.toml package version mismatch|Current Rust source must be 0.11.0/)
+  const fakeLock = originalLock.replace(/(name = "erpc-sdk"\nversion = ")0\.11\.0"/, '$10.10.0"').replace('name = "erpc-sdk"\nversion = "0.10.0"', 'name = "other"\nextra = """\nname = "erpc-sdk"\nversion = "0.11.0"\n"""\nversion = "0.10.0"')
+  await assert.rejects(() => validate(originalManifest, fakeLock), /Cargo\.lock must contain exactly one source-free erpc-sdk/)
+  await writeFile(manifestPath, originalManifest)
+  await writeFile(lockPath, originalLock)
+  await rm(join(directory, 'packages/rust/src/config.rs'))
+  const missingSupport = await readReleaseData(directory, 'rust')
+  assert.throws(() => validateReleaseData(missingSupport, { scope: 'rust', expectedVersion: CURRENT_RUST_VERSION }), /Rust 0\.11 source is missing src\/config\.rs/)
+  await writeFile(manifestPath, originalManifest.replace('version = "0.11.0"', 'version = "0.11.0"\nversion = "0.12.0"'))
+  await assert.rejects(() => readReleaseData(directory, 'rust'), /TOML/)
 })
 
 test('workflow guard rejects hostile repository, event, ref, source, version, and hash fixtures', () => {
@@ -1565,7 +1627,7 @@ puts JSON.generate({ install: with_system['install'], ssl: with_system[:ssl_veri
 
   const realConsumerScript = runCalls.find(call => call.command === ruby34 && call.args[0].endsWith('/consumer.rb'))?.args[0]
   assert.ok(realConsumerScript)
-  const dependencyCaches = JSON.parse((await execFileAsync(ruby34, ['-e', "require 'json'; require 'rubygems'; puts JSON.generate(%w[base64 digest-keccak].map { |name| Gem::Specification.find_by_name(name).cache_file })"])).stdout)
+  const dependencyCaches = JSON.parse((await execFileAsync(ruby34, ['-e', "require 'json'; require 'rubygems'; versions = { 'base64' => '0.2.0', 'digest-keccak' => '0.0.7' }; puts JSON.generate(versions.map { |name, version| Gem::Specification.find_by_name(name, version).cache_file })"])).stdout)
   const makeRealConsumerFixture = async (name, { foreignBase64 = false, includeNativeExtension = true } = {}) => {
     const root = join(directory, name)
     const gemHome = join(root, 'gem-home')
@@ -2009,6 +2071,193 @@ test('clean Cargo metadata may omit dirty while true or malformed values fail', 
     })
     assert.throws(() => verifyArchiveContents({ ...validArchive(), vcsInfo }))
   }
+})
+
+const makeRust011ArchiveFixture = async (t, options = {}) => {
+  const directory = await mkdtemp(join(tmpdir(), 'erpc-sdk-rust-011-archive-'))
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  const rootName = 'erpc-sdk-0.11.0'
+  const crateRoot = join(directory, rootName)
+  await cp(new URL('../packages/rust/', import.meta.url), crateRoot, { recursive: true })
+  await cp(new URL('../Cargo.lock', import.meta.url), join(crateRoot, 'Cargo.lock'))
+  const sourceCommit = 'c'.repeat(40)
+  const sourceManifest = await readFile(join(crateRoot, 'Cargo.toml'), 'utf8')
+  await writeFile(join(crateRoot, 'Cargo.toml.orig'), sourceManifest)
+  await writeFile(join(crateRoot, '.cargo_vcs_info.json'), `${JSON.stringify({ git: options.omitDirty ? { sha1: sourceCommit } : { sha1: sourceCommit, dirty: false }, path_in_vcs: 'packages/rust' })}\n`)
+  const targetTables = [
+    '[lib]\nname = "erpc_sdk"\npath = "src/lib.rs"\n',
+    '[[example]]\nname = "basic"\npath = "examples/basic.rs"\n',
+    ...RUST_011_REQUIRED_TESTS.filter(path => !path.includes('/support/')).map(path => {
+      const name = path.slice('tests/'.length, -'.rs'.length)
+      return `[[test]]\nname = "${name}"\npath = "${path}"\n`
+    }),
+  ].join('\n')
+  const normalized = sourceManifest
+    .replace(/^prost = \{[^\n]+\}\n/m, '')
+    .replace(/^prost-types = \{[^\n]+\}\n/m, '')
+    .concat('\n[dependencies.prost]\nversion = "=0.14.4"\nfeatures = ["derive", "std"]\ndefault-features = false\n\n[dependencies.prost-types]\nversion = "=0.14.4"\nfeatures = ["std"]\ndefault-features = false\n\n', targetTables)
+  let normalizedAllStrings = normalized
+  if (options.normalizeAllStrings) {
+    const dependencyEmitter = String.raw`import json, sys, tomllib
+document = tomllib.loads(sys.argv[1])
+def value(value):
+    if isinstance(value, bool): return 'true' if value else 'false'
+    if isinstance(value, list): return json.dumps(value, separators=(',', ':'))
+    return json.dumps(value)
+for section in ('dependencies', 'dev-dependencies', 'build-dependencies'):
+    for name, entry in sorted(document.get(section, {}).items()):
+        print(f'[{section}.{name}]')
+        if isinstance(entry, str): entry = {'version': entry}
+        for key, item in entry.items(): print(f'{key} = {value(item)}')
+        print()`
+    const emitted = (await execFileAsync('python3', ['-c', dependencyEmitter, sourceManifest])).stdout
+    const dependencyStart = sourceManifest.indexOf('\n[dependencies]\n')
+    const lintStart = sourceManifest.indexOf('\n[lints.rust]\n')
+    normalizedAllStrings = `${sourceManifest.slice(0, dependencyStart)}\n${emitted}\n${sourceManifest.slice(lintStart + 1)}\n${targetTables}`
+  }
+  await writeFile(join(crateRoot, 'Cargo.toml'), normalizedAllStrings)
+  const archive = join(directory, `${rootName}.crate`)
+  const writeArchive = async (includeRoot = options.includeRoot === true) => {
+    const script = String.raw`from pathlib import Path
+import sys, tarfile
+archive, directory, root_name, include_root = sys.argv[1:]
+directory_path = Path(directory)
+root_path = directory_path / root_name
+with tarfile.open(archive, 'w:gz', format=tarfile.USTAR_FORMAT) as output:
+    if include_root == '1':
+        info = tarfile.TarInfo(root_name)
+        info.type = tarfile.DIRTYPE
+        output.addfile(info)
+    for path in sorted(root_path.rglob('*')):
+        relative = path.relative_to(directory_path).as_posix()
+        info = output.gettarinfo(str(path), arcname=relative)
+        if info.isreg():
+            with path.open('rb') as contents:
+                output.addfile(info, contents)
+        else:
+            output.addfile(info)`
+    await execFileAsync('python3', ['-c', script, archive, directory, rootName, includeRoot ? '1' : '0'])
+  }
+  await writeArchive()
+  const archiveList = (await execFileAsync('tar', ['-tzf', archive])).stdout
+  const packageList = (await execFileAsync('find', [crateRoot, '-type', 'f'])).stdout
+    .split(/\r?\n/).filter(Boolean).map(path => path.slice(crateRoot.length + 1)).join('\n') + '\n'
+  const archiveSha256 = await sha256File(archive)
+  const manifest = await readFile(join(crateRoot, 'Cargo.toml'), 'utf8')
+  const vcsInfo = await readFile(join(crateRoot, '.cargo_vcs_info.json'), 'utf8')
+  return { directory, rootName, crateRoot, archive, archiveList, packageList, archiveSha256, manifest, vcsInfo, sourceCommit, writeArchive }
+}
+
+test('Rust 0.11 archive control reads genuine bytes and records full licence/module evidence', async t => {
+  const fixture = await makeRust011ArchiveFixture(t)
+  const evidence = await inspectRust011Archive({
+    filePath: fixture.archive,
+    packageList: fixture.packageList,
+    archiveList: fixture.archiveList,
+    suppliedManifest: fixture.manifest,
+    suppliedVcsInfo: fixture.vcsInfo,
+    expectedVersion: CURRENT_RUST_VERSION,
+    expectedCommit: fixture.sourceCommit,
+    expectedArchiveSha256: fixture.archiveSha256,
+  })
+  assert.equal(evidence.sha256, fixture.archiveSha256)
+  assert.equal(evidence.licenseProfile, 'MIT AND Apache-2.0')
+  assert.deepEqual(evidence.licenseHashes, RUST_011_LICENSE_HASHES)
+  assert.deepEqual(evidence.clientModules, RUST_011_CLIENT_MODULES.map(module => `src/${module}.rs`))
+  assert.deepEqual(evidence.suiMembers, [...RUST_011_SUI_MEMBERS])
+  assert.deepEqual(evidence.examples, [...RUST_011_REQUIRED_EXAMPLES])
+  assert.deepEqual(evidence.tests, [...RUST_011_REQUIRED_TESTS])
+  for (const member of ['erpc-sdk-0.11.0/LICENSES/Apache-2.0.txt', 'erpc-sdk-0.11.0/THIRD_PARTY_NOTICES.md', 'erpc-sdk-0.11.0/src/sui_proto.rs']) assert.ok(evidence.members.includes(member))
+})
+
+test('Rust 0.11 archive control accepts Cargo-shaped no-directory, lock, normalized-table, and omitted-dirty conventions', async t => {
+  for (const options of [{}, { omitDirty: true }, { normalizeAllStrings: true }]) {
+    const fixture = await makeRust011ArchiveFixture(t, options)
+    await inspectRust011Archive({ filePath: fixture.archive, expectedVersion: CURRENT_RUST_VERSION, expectedCommit: fixture.sourceCommit })
+  }
+})
+
+test('Rust 0.11 archive target policy accepts inferred defaults and rejects unsupported target kinds', async t => {
+  for (const mutate of [
+    async fixture => {
+      const original = await readFile(join(fixture.crateRoot, 'Cargo.toml.orig'), 'utf8')
+      await writeFile(join(fixture.crateRoot, 'Cargo.toml.orig'), `${original}\n[lib]\npath = "src/lib.rs"\n\n[[test]]\nname = "base"\n`)
+    },
+  ]) {
+    const fixture = await makeRust011ArchiveFixture(t)
+    await mutate(fixture)
+    await fixture.writeArchive()
+    await inspectRust011Archive({ filePath: fixture.archive, expectedVersion: CURRENT_RUST_VERSION, expectedCommit: fixture.sourceCommit })
+  }
+  const cases = [
+    ['normalized proc-macro', async fixture => { const manifest = await readFile(join(fixture.crateRoot, 'Cargo.toml'), 'utf8'); await writeFile(join(fixture.crateRoot, 'Cargo.toml'), manifest.replace('path = "src/lib.rs"', 'path = "src/lib.rs"\nproc-macro = true')) }],
+    ['normalized crate-type', async fixture => { const manifest = await readFile(join(fixture.crateRoot, 'Cargo.toml'), 'utf8'); await writeFile(join(fixture.crateRoot, 'Cargo.toml'), manifest.replace('path = "src/lib.rs"', 'path = "src/lib.rs"\ncrate-type = ["cdylib"]')) }],
+    ['original autolib disabled', async fixture => { const original = await readFile(join(fixture.crateRoot, 'Cargo.toml.orig'), 'utf8'); await writeFile(join(fixture.crateRoot, 'Cargo.toml.orig'), original.replace('publish = ["crates-io"]', 'autolib = false\npublish = ["crates-io"]')) }],
+    ['original autotests disabled', async fixture => { const original = await readFile(join(fixture.crateRoot, 'Cargo.toml.orig'), 'utf8'); await writeFile(join(fixture.crateRoot, 'Cargo.toml.orig'), original.replace('publish = ["crates-io"]', 'autotests = false\npublish = ["crates-io"]')) }],
+    ['original build script', async fixture => { const original = await readFile(join(fixture.crateRoot, 'Cargo.toml.orig'), 'utf8'); await writeFile(join(fixture.crateRoot, 'Cargo.toml.orig'), original.replace('publish = ["crates-io"]', 'build = "build.rs"\npublish = ["crates-io"]')) }],
+    ['original binary target', async fixture => { const original = await readFile(join(fixture.crateRoot, 'Cargo.toml.orig'), 'utf8'); await writeFile(join(fixture.crateRoot, 'Cargo.toml.orig'), `${original}\n[[bin]]\nname = "extra_binary"\npath = "examples/basic.rs"\n`) }],
+  ]
+  for (const [label, mutate] of cases) {
+    const fixture = await makeRust011ArchiveFixture(t)
+    await mutate(fixture)
+    await fixture.writeArchive()
+    await assert.rejects(() => inspectRust011Archive({ filePath: fixture.archive, expectedVersion: CURRENT_RUST_VERSION, expectedCommit: fixture.sourceCommit }), /unsupported|disables|binary|build-script/)
+  }
+})
+
+test('Rust 0.11 archive control rejects changed licence bytes, links, missing Sui projection, and dirty VCS', async t => {
+  const cases = [
+    ['wrong licence bytes', async fixture => { await writeFile(join(fixture.crateRoot, 'LICENSE'), 'MIT\nchanged\n') }],
+    ['link member', async fixture => { await symlink('lib.rs', join(fixture.crateRoot, 'src', 'link.rs')) }],
+    ['missing Sui projection', async fixture => { await rm(join(fixture.crateRoot, 'src', 'sui_proto.rs')) }],
+    ['missing library entrypoint', async fixture => { await rm(join(fixture.crateRoot, 'src', 'lib.rs')) }],
+    ['missing support source', async fixture => { await rm(join(fixture.crateRoot, 'src', 'config.rs')) }],
+    ['dirty VCS', async fixture => { await writeFile(join(fixture.crateRoot, '.cargo_vcs_info.json'), `${JSON.stringify({ git: { sha1: fixture.sourceCommit, dirty: true }, path_in_vcs: 'packages/rust' })}\n`) }],
+    ['duplicate TOML license', async fixture => {
+      const manifest = await readFile(join(fixture.crateRoot, 'Cargo.toml'), 'utf8')
+      await writeFile(join(fixture.crateRoot, 'Cargo.toml'), manifest.replace('license = "MIT AND Apache-2.0"', 'license = "MIT AND Apache-2.0"\nlicense = "MIT OR Apache-2.0"'))
+    }],
+    ['license string spoof', async fixture => {
+      const manifest = await readFile(join(fixture.crateRoot, 'Cargo.toml'), 'utf8')
+      await writeFile(join(fixture.crateRoot, 'Cargo.toml'), manifest.replace('license = "MIT AND Apache-2.0"', 'license = "MIT OR Apache-2.0"').replace('description = "Async multi-network Rust SDK for ERPC"', 'description = """\nlicense = "MIT AND Apache-2.0"\n"""'))
+    }],
+    ['wrong original manifest', async fixture => {
+      const original = await readFile(join(fixture.crateRoot, 'Cargo.toml.orig'), 'utf8')
+      await writeFile(join(fixture.crateRoot, 'Cargo.toml.orig'), original.replace('license = "MIT AND Apache-2.0"', 'license = "MIT OR Apache-2.0"'))
+    }],
+    ['lock version string spoof', async fixture => {
+      const lock = await readFile(join(fixture.crateRoot, 'Cargo.lock'), 'utf8')
+      await writeFile(join(fixture.crateRoot, 'Cargo.lock'), lock.replace('name = "erpc-sdk"\nversion = "0.11.0"', 'name = "erpc-sdk"\nextra = """\nversion = "0.11.0"\n"""\nversion = "0.10.0"'))
+    }],
+    ['original git source selector', async fixture => {
+      const original = await readFile(join(fixture.crateRoot, 'Cargo.toml.orig'), 'utf8')
+      await writeFile(join(fixture.crateRoot, 'Cargo.toml.orig'), original.replace('prost = { version = "=0.14.4", default-features = false, features = ["derive", "std"] }', '').replace('prost-types = { version = "=0.14.4", default-features = false, features = ["std"] }', '') + '\n[dependencies.prost]\nversion = "=0.14.4"\ndefault-features = false\nfeatures = ["derive", "std"]\ngit = "https://example.invalid/prost.git"\n\n[dependencies.prost-types]\nversion = "=0.14.4"\ndefault-features = false\nfeatures = ["std"]\n')
+    }],
+    ['original target dependency', async fixture => {
+      const original = await readFile(join(fixture.crateRoot, 'Cargo.toml.orig'), 'utf8')
+      await writeFile(join(fixture.crateRoot, 'Cargo.toml.orig'), `${original}\n[target.'cfg(windows)'.dependencies]\nserde = "0.9"\n`)
+    }],
+    ['original library target conflict', async fixture => {
+      const original = await readFile(join(fixture.crateRoot, 'Cargo.toml.orig'), 'utf8')
+      await writeFile(join(fixture.crateRoot, 'Cargo.toml.orig'), `${original}\n[lib]\nname = "other_library"\npath = "src/config.rs"\n`)
+    }],
+  ]
+  for (const [label, mutate] of cases) {
+    const fixture = await makeRust011ArchiveFixture(t)
+    await mutate(fixture)
+    await fixture.writeArchive()
+    await assert.rejects(() => inspectRust011Archive({ filePath: fixture.archive, expectedVersion: CURRENT_RUST_VERSION, expectedCommit: fixture.sourceCommit }), new RegExp(label === 'wrong licence bytes' ? 'hash mismatch' : label === 'link member' ? 'non-regular' : label === 'dirty VCS' ? 'dirty value' : label === 'duplicate TOML license' ? 'TOML' : label === 'license string spoof' ? 'license mismatch' : label === 'wrong original manifest' ? 'Cargo\.toml\.orig license mismatch|original/normalized|original manifest' : label === 'lock version string spoof' ? 'lock version' : label.includes('source selector') ? 'dependency policy' : label.includes('target dependency') ? 'dependency policy' : label.includes('library target') ? 'library target' : 'missing'))
+  }
+})
+
+test('the exported archive operation requires raw bytes for the current profile', () => {
+  assert.throws(() => verifyArchiveContents({
+    fileList: 'erpc-sdk-0.11.0/Cargo.toml',
+    manifest: '[package]\nname = "erpc-sdk"\nversion = "0.11.0"\n',
+    vcsInfo: JSON.stringify({ git: { sha1: 'c'.repeat(40) }, path_in_vcs: 'packages/rust' }),
+    expectedVersion: CURRENT_RUST_VERSION,
+    expectedCommit: 'c'.repeat(40),
+  }), /raw archive bytes/)
 })
 
 test('workflow archive selection executes the exact CLI guard with real files', async t => {
@@ -2757,6 +3006,22 @@ test('release-rust workflow is manual, exact-source, OIDC-only, and dry-run isol
   assert.match(workflow, /https:\/\/crates\.io\/api\/v1\/crates\/erpc-sdk\//)
   assert.match(workflow, /archive_sha256/)
   assert.match(workflow, /contents,\n|results:/)
+  assert.doesNotMatch(workflow, /^\s+cache:\s*false$/m)
+  assert.equal((workflow.match(/actions\/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6/g) ?? []).length, 2)
+  const validationStart = workflow.indexOf('  validation:')
+  const publishStart = workflow.indexOf('\n  publish:')
+  const validationBlock = workflow.slice(validationStart, publishStart)
+  const publishBlock = workflow.slice(publishStart)
+  assert.match(validationBlock, /ruby\/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b # v1/)
+  assert.match(validationBlock, /ruby-version:\s*'3\.4'/)
+  assert.match(validationBlock, /gem install --no-document base64 -v 0\.2\.0/)
+  assert.match(validationBlock, /gem install --no-document digest-keccak -v 0\.0\.7/)
+  assert.match(validationBlock, /Gem::Specification\.find_by_name\("base64", "0\.2\.0"\)/)
+  assert.match(validationBlock, /Gem::Specification\.find_by_name\("digest-keccak", "0\.0\.7"\)/)
+  assert.ok(validationBlock.indexOf('Install and verify pinned Ruby verifier dependencies') < validationBlock.indexOf('Run release verifier behavior tests'))
+  assert.match(publishBlock, /Verify the pinned Python parser runtime/)
+  assert.match(publishBlock, /import sys, tomllib/)
+  assert.doesNotMatch(publishBlock, /pypi-attestations|cryptography|pip install/)
 })
 
 test('CI invokes split release cohorts and runs release behavior tests', async () => {
@@ -2764,6 +3029,21 @@ test('CI invokes split release cohorts and runs release behavior tests', async (
   assert.match(ci, /node scripts\/verify-release\.mjs --scope rust/)
   assert.match(ci, /node scripts\/verify-release\.mjs --scope non-rust/)
   assert.match(ci, /node --test scripts\/verify-release\.test\.mjs/)
+  assert.match(ci, /actions\/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6/)
+  assert.match(ci, /python-version: '3\.12'/)
+  assert.match(ci, /pypi-attestations==0\.0\.30/)
+  assert.match(ci, /cryptography==46\.0\.3/)
+  assert.match(ci, /ruby\/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b # v1/)
+  assert.match(ci, /ruby-version: '3\.4'/)
+  assert.match(ci, /base64 -v 0\.2\.0/)
+  assert.match(ci, /digest-keccak -v 0\.0\.7/)
+  const pythonSetupStart = ci.indexOf('actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1')
+  const pythonSetup = ci.slice(pythonSetupStart, ci.indexOf('\n      - name:', pythonSetupStart))
+  assert.doesNotMatch(pythonSetup, /^\s+cache:\s*false$/m)
+  const rustWorkflow = await readFile(new URL('../.github/workflows/release-rust.yml', import.meta.url), 'utf8')
+  const rubyVerifierLine = rustWorkflow.split(/\r?\n/).find(line => line.includes('ruby -e') && line.includes('Gem::Specification.find_by_name("base64", "0.2.0")'))?.trim()
+  assert.ok(rubyVerifierLine)
+  assert.ok(ci.includes(rubyVerifierLine))
 })
 
 test('checkpoint A leaves future orchestration unavailable and preserves baseline action pins', async () => {

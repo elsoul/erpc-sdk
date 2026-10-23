@@ -17,51 +17,33 @@
   Built for Developers. Ready for AI Agents.</strong>
 </p>
 
-The public baseline before the non-Rust proof cohort is TypeScript, Python,
-Go, and Ruby `0.9.0`, with Rust `0.10.0`. The proof cohort targets `0.9.1`
-for the four non-Rust packages and verifies the existing Rust artifact without
-republishing it. A target is not a completed publication: each package must
-resolve from its registry or module source, and the GitHub Release is created
-only after every required proof succeeds. Bitcoin Core HTTP JSON-RPC remains
-available only in Rust `0.10.0`; the non-Rust `0.9.1` cohort adds no Bitcoin
-support. This release-identity correction does not change the separately
-documented swap or bridge constraints below.
+The published non-Rust line is TypeScript, Python, Go, and Ruby `0.9.1`. Rust
+`0.11.0` is the release candidate for a separate Rust-only release. Its
+reviewed source covers 18 chain families/mainnets, listed below. The four
+published non-Rust packages retain their package-specific scopes; Rust-only
+APIs below do not imply five-language parity.
 
-With an eRPC API key, one client provides eRPC-backed access to Solana,
-Ethereum, Avalanche C/P/X-chain, price data, indexed data, leader and validator
-data, analytics, subscriptions, and account balance information. The
-source-checkout TypeScript client also exposes a Base read-only JSON-RPC facade
-with the verified default endpoint `https://base.erpc.global`; its
-`baseEndpoint` option overrides that authenticated endpoint, while `baseRpc`
-uses an exact caller-owned URL with scoped headers and no global eRPC API key.
-The other four language clients expose Base through the shared offline token
-catalog only. Direct RPC overrides introduced in `0.8.0` and offline token,
-DEX/pool, and ranking catalog reads do not require an eRPC API key.
+Across the published and candidate lines, the SDK provides eRPC-backed standard
+Solana, Ethereum, and Avalanche access, catalog and service APIs, and the
+language-specific direct-RPC controls described in the package guides. The Rust
+candidate adds bounded read-only clients for the later chain families and a
+limited Sui binary gRPC-Web surface. Bitcoin Core HTTP JSON-RPC remains a
+Rust-only surface for this release line. These statements preserve the separate
+configured-RPC/local swap behavior and bridge boundaries documented below.
 
 ## Packages
 
-| Language | Package | Public baseline before proof | Proof-cohort identity |
+| Language | Package | Current public release | Status |
 | --- | --- | --- | --- |
-| TypeScript | [`@elsoul/erpc-sdk`](https://www.npmjs.com/package/@elsoul/erpc-sdk) | `0.9.0` | `0.9.1` target |
-| Rust | [`erpc-sdk`](https://crates.io/crates/erpc-sdk) | `0.10.0` | existing `0.10.0`; verify only |
-| Python | [`erpc-sdk`](https://pypi.org/project/erpc-sdk/) | `0.9.0` | `0.9.1` target |
-| Go | [`github.com/elsoul/erpc-sdk/packages/go`](https://pkg.go.dev/github.com/elsoul/erpc-sdk/packages/go) | `v0.9.0` | `v0.9.1` target |
-| Ruby | [`erpc-sdk`](https://rubygems.org/gems/erpc-sdk) | `0.9.0` | `0.9.1` target |
+| TypeScript | [`@elsoul/erpc-sdk`](https://www.npmjs.com/package/@elsoul/erpc-sdk) | `0.9.1` | Published non-Rust line |
+| Rust | [`erpc-sdk`](https://crates.io/crates/erpc-sdk) | `0.10.0` | Rust-only `0.11.0` release candidate |
+| Python | [`erpc-sdk`](https://pypi.org/project/erpc-sdk/) | `0.9.1` | Published non-Rust line |
+| Go | [`github.com/elsoul/erpc-sdk/packages/go`](https://pkg.go.dev/github.com/elsoul/erpc-sdk/packages/go) | `v0.9.1` | Published non-Rust line |
+| Ruby | [`erpc-sdk`](https://rubygems.org/gems/erpc-sdk) | `0.9.1` | Published non-Rust line |
 
-The package links and live badges show registry availability. A package target
-becomes installable only after its exact registry artifact or Go module tag
-resolves and passes the release proof. The cohort is complete only when the
-reviewed `SDK release state: non-Rust 0.9.1 / Rust 0.10.0` GitHub Release is
-created after all required proofs. That record combines four new non-Rust
-artifacts with one pre-existing Rust receipt; it does not claim a common source
-tag or five-language Bitcoin capability.
-
-The bounded token, DEX, pool, ranking, and reviewed EVM RPC-only quote APIs are
-the `0.7.0` history baseline. The direct RPC overrides, unsigned EVM swap
-preparation and simulation, and optional Mayan adapter are introduced in
-`0.8.0`; confirm the exact language-specific version through its package
-registry; the historical introduction version does not imply that all five
-registries are aligned.
+The package links and live badges point to registry or module status. The four
+non-Rust packages are published at `0.9.1`; Rust-only APIs in the tables below
+remain separate from those published package scopes.
 
 ## Install
 
@@ -82,6 +64,9 @@ Rust:
 ```bash
 cargo add erpc-sdk
 ```
+
+The registry install resolves the currently published Rust line. Use the
+reviewed source checkout for the `0.11.0` candidate APIs.
 
 Python:
 
@@ -108,28 +93,95 @@ versions are Rust 1.85, Python 3.11, Go 1.22, and Ruby 3.1.
 
 ## Availability
 
-The package state is intentionally split: TypeScript, Python, Go, and Ruby
-use the `0.9.x` line, while Rust uses `0.10.0`. Exact live versions come from
-the language registries above. Rust `0.10.0` alone includes Bitcoin Core HTTP
-JSON-RPC; the non-Rust `0.9.1` proof cohort introduces no Bitcoin support and
-no new runtime capability.
+The matrix below combines the version history with concrete user-visible scope.
+Published non-Rust entries remain package-specific; the Rust column describes
+the reviewed release-candidate source.
 
-| Capability | `0.7.0` package | `0.8.0` package |
+| Capability/history | Published non-Rust `0.9.1` packages | Rust `0.11.0` release candidate |
 | --- | --- | --- |
-| Offline token, DEX, and pool catalogs | Included | Included |
-| Offline token rankings | Included | Included; see canonical metadata |
-| Read-only reviewed EVM exact-input quotes (Ethereum Uniswap V2 and Avalanche LFJ legacy) | Included | Included |
-| Caller-owned direct RPC overrides (`solanaRpc`, `ethereumRpc`, `avalancheCRpc`) | Not included | Introduced in `0.8.0`; requires `0.8.0` |
-| Reviewed EVM exact-input preparation and RPC simulation | Not included | Introduced in `0.8.0`; requires `0.8.0` |
-| Optional Mayan Swift v2 native EURC bridge | Not included | Introduced in `0.8.0`; requires `0.8.0` |
-| Mayan Swift v2 native USDC bridge directions | Not included | Source addition pending publication; current `0.8.0` packages remain EURC-only |
-| Solana CLMM quotes; multi-hop routing; SDK signing/sending | Future work | Future work |
+| Offline token, DEX, pool, and ranking catalogs | Published `0.7.0` history; exact exports remain package-specific | Local catalog and ranking reads remain available in source |
+| Reviewed EVM exact-input quotes | Published API history covers Ethereum Uniswap V2 and Avalanche LFJ legacy; confirm the exact package surface | Preserves the reviewed tuples with configured-RPC reads and local calculation |
+| Caller-owned direct RPC overrides | Introduced in `0.8.0`; exact field names and package availability vary by language | `RpcEndpointConfig` builders preserve the caller URL, scoped headers, and no-redirect behavior |
+| EVM exact-input preparation and simulation | Introduced in `0.8.0` for the reviewed tuples; confirm the exact package surface | Uses a fresh configured-RPC quote and local unsigned preparation/simulation |
+| Mayan Swift v2 bridge | Published `0.8.1` wording remains native EURC; source native-USDC and local-builder additions remain unreleased | The separate adapter/local construction keeps bridge provider boundaries; ordinary swaps remain configured-RPC and local |
+| Solana CLMM, multi-hop, signing, and sending | Future work | Future work |
 
-The `0.7.0` and `0.8.0` columns record API introduction history. They do not
-imply a shared current version, source tag, or capability set across all five
-languages. Live publication status follows each package registry; completed
-cohort status follows the reviewed GitHub Release created after all required
-proofs succeed.
+## Rust chain coverage
+
+The reviewed Rust API contains 18 chain families/mainnets. The
+Solana client can also target devnet or testnet only through an explicit
+caller-owned direct endpoint; those selections do not create additional
+namespaces or hosted presets. Avalanche C/P/X are capabilities within the one
+Avalanche family.
+
+| Chain family or network | Rust namespace | Bounded source scope |
+| --- | --- | --- |
+| Solana mainnet | `erpc.solana.rpc`, `.das`, `.history`, `.leaders`, `.analytics`, `.subscriptions` | Standard JSON-RPC, indexed/history/leader/analytics reads, and the existing subscription surfaces; devnet/testnet use explicit direct `with_solana_rpc` configuration |
+| Ethereum mainnet | `erpc.ethereum.rpc`, `.subscriptions` | Standard Ethereum JSON-RPC and WebSocket subscriptions |
+| Avalanche mainnet | `erpc.avalanche.rpc`, `.subscriptions`, `.avax`, `.x_chain`, `.p_chain`, `.proposer_vm`, `.info`, `.index` | C-Chain EVM JSON-RPC plus native C/P/X, proposer VM, info, and index APIs |
+| Bitcoin mainnet | `erpc.bitcoin.rpc` | Focused Bitcoin Core HTTP JSON-RPC helper set; HTTP-only, with caller-owned direct RPC support |
+| Base mainnet | `erpc.base.rpc` | Sealed HTTP read-only `eth_chainId`, `eth_getBalance`, and `eth_call` |
+| Arbitrum One mainnet | `erpc.arbitrum.rpc` | Sealed HTTP read-only `eth_chainId`, `eth_getBalance`, and `eth_call` |
+| Polygon PoS mainnet | `erpc.polygon.rpc` | Sealed HTTP read-only `eth_chainId`, `eth_getBalance`, and `eth_call` |
+| BNB Smart Chain mainnet | `erpc.bsc.rpc` | Sealed HTTP read-only `eth_chainId`, `eth_getBalance`, and `eth_call` |
+| OP Mainnet | `erpc.optimism.rpc` | Sealed HTTP read-only `eth_chainId`, `eth_getBalance`, and `eth_call` |
+| Kaia mainnet | `erpc.kaia.rpc` | Sealed HTTP read-only `eth_chainId`, `eth_getBalance`, and `eth_call` |
+| Soneium mainnet | `erpc.soneium.rpc` | Sealed HTTP read-only `eth_chainId`, `eth_getBalance`, and `eth_call` |
+| Monad mainnet | `erpc.monad.rpc` | Sealed HTTP read-only `eth_chainId`, `eth_getBalance`, and `eth_call` |
+| Hyperliquid HyperEVM mainnet | `erpc.hyperliquid.rpc` | Sealed HTTP read-only `eth_chainId`, `eth_getBalance`, and `eth_call` |
+| Arc mainnet | `erpc.arc.rpc` | Sealed HTTP read-only `eth_chainId`, `eth_getBalance`, and `eth_call` |
+| Robinhood Chain Public Mainnet | `erpc.robinhood.rpc` | Sealed HTTP read-only `eth_chainId`, `eth_getBalance`, and `eth_call` |
+| NEAR mainnet | `erpc.near.rpc` | `status`, `block`, and one fixed `view_account` query; read-only HTTP JSON-RPC |
+| TRON mainnet | `erpc.tron.rpc` | Sealed HTTP read-only `eth_chainId`, `eth_getBalance`, and `eth_call` |
+| Sui mainnet | `erpc.sui.grpc` | Exactly three unary binary gRPC-Web reads: `GetServiceInfo`, `GetObject`, and `GetBalance` |
+
+The new EVM families, NEAR, and TRON are sealed read-only namespaces. They do
+not expose generic `raw`/`request`/`batch`, WebSocket subscriptions, signing,
+transaction submission, swap, or bridge operations. Sui is separately sealed:
+its exact paths are `/sui.rpc.v2.LedgerService/GetServiceInfo`,
+`/sui.rpc.v2.LedgerService/GetObject`, and
+`/sui.rpc.v2.StateService/GetBalance`, with binary
+`application/grpc-web+proto` requests. Existing Solana, Ethereum, and
+Avalanche subscription and standard-chain behavior remains as described in the
+[Rust package guide](packages/rust/README.md). Caller-owned direct RPC endpoints
+preserve their path and query, use scoped headers, and follow no redirects.
+Sui also exposes no generic protobuf decoder, raw bytes/path escape, batch,
+stream, transaction, signing, or broadcast surface.
+
+### Rust example
+
+This no-run example uses actual Rust APIs and placeholder caller-owned
+endpoints, so it requires no credential or live request to read. It exercises
+two sealed EVM reads and the bounded Sui read client. Use it with the Rust
+`0.11.0` source checkout.
+
+```rust,no_run
+use erpc_sdk::{
+    ErpcClient, ErpcClientConfig, RpcEndpointConfig, SuiGrpcWebEndpointConfig,
+};
+
+#[tokio::main]
+async fn main() -> erpc_sdk::Result<()> {
+    let erpc = ErpcClient::new(
+        ErpcClientConfig::for_rpc()
+            .with_base_rpc(RpcEndpointConfig::new("https://base-node.example/rpc"))
+            .with_arbitrum_rpc(RpcEndpointConfig::new("https://arbitrum-node.example/rpc"))
+            .with_sui_grpc_web(SuiGrpcWebEndpointConfig::new("https://sui-node.example")),
+    )?;
+
+    let base_chain_id = erpc.base.rpc.eth_chain_id().send().await?;
+    let arbitrum_chain_id = erpc.arbitrum.rpc.eth_chain_id().send().await?;
+    let sui_info = erpc.sui.grpc.get_service_info().send().await?;
+    println!("{base_chain_id} {arbitrum_chain_id} {}", sui_info.chain);
+
+    erpc.close().await;
+    Ok(())
+}
+```
+
+See the [Rust package guide](packages/rust/README.md) for endpoint details,
+method restrictions, Sui message projections, Bitcoin behavior, and the
+language-specific examples.
 
 ## Direct RPC endpoints
 
@@ -139,7 +191,14 @@ consumer needs a language-specific release that includes this API; confirm the
 exact version through its package registry. Source-checkout examples remain
 available for reviewed unreleased work.
 
-| Config field | Direct namespace(s) |
+### TypeScript direct RPC configuration
+
+The table and example below use TypeScript's camelCase configuration fields.
+The Rust API uses snake_case builders such as `with_solana_rpc`,
+`with_base_rpc`, and `with_arbitrum_rpc`; see the [Rust package guide](packages/rust/README.md)
+for its complete endpoint mapping.
+
+| TypeScript config field | TypeScript direct namespace(s) |
 | --- | --- |
 | `solanaRpc` | `erpc.solana.rpc`, `erpc.solana.das`, `erpc.solana.history`, `erpc.solana.leaders`, `erpc.solana.analytics`, and `erpc.solana.subscriptions` |
 | `ethereumRpc` | `erpc.ethereum.rpc`, `erpc.ethereum.subscriptions`, and Ethereum EVM quote reads |
@@ -961,4 +1020,12 @@ never publishes a package. See the
 
 ## License
 
-[MIT](LICENSE)
+The repository root remains [MIT](LICENSE). The Rust package uses
+`MIT AND Apache-2.0`: original Rust SDK source is covered by
+[`packages/rust/LICENSE`](packages/rust/LICENSE), while the adapted Sui
+projection carries the adjacent
+[`packages/rust/LICENSES/Apache-2.0.txt`](packages/rust/LICENSES/Apache-2.0.txt)
+text and provenance recorded in
+[`packages/rust/THIRD_PARTY_NOTICES.md`](packages/rust/THIRD_PARTY_NOTICES.md).
+The root MIT badge describes the repository root and does not imply that every
+Rust source file is MIT-only.

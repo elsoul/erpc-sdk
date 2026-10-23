@@ -2,13 +2,16 @@
 
 The historical aligned release process uses one stable `X.Y.Z` version for the
 TypeScript, Rust, Python, and Ruby packages. Go uses the same version through
-its subdirectory module tag. The historical reviewed snapshot was split while
-the Rust Bitcoin API was released separately (`0.10.0` Rust and `0.9.0`
-non-Rust). The current reviewed foundation cohort is a separate manual
-main-only process:
+its subdirectory module tag. The current reviewed release is intentionally
+split and remains two manual, human-approved lines:
 
-- Rust receipt: existing `0.10.0`, read-only in the foundation workflow
-- TypeScript, Python, Ruby, and Go cohort: `0.9.1`
+- Rust crate: candidate `0.11.0`, released independently with the existing
+  18-chain Rust implementation
+- TypeScript, Python, Ruby, and Go: published `0.9.1` foundation cohort
+
+Rust `0.11.0` is a package candidate until its exact clean archive, registry
+metadata, and downloaded public bytes are observed. The four non-Rust packages
+remain on `0.9.1`; their pending source work is not Rust publication parity.
 
 The legacy aggregate release check and tag workflow require one shared version.
 They must not be used to publish this mixed-version snapshot; the aggregate
@@ -23,9 +26,45 @@ Package links:
 - RubyGems: [`erpc-sdk`](https://rubygems.org/gems/erpc-sdk)
 
 The historical aligned-version release command is tag-oriented and human
-approved. The current `.github/workflows/release.yml` is a separate manual
-foundation for the first non-Rust proof cohort; it has no push, schedule, or
-release-published trigger. A merge to `main` never publishes anything.
+approved. The current `.github/workflows/release-rust.yml` and
+`.github/workflows/release.yml` are separate manual workflows. Neither has a
+push, schedule, or release-published trigger. A merge to `main` never
+publishes anything.
+
+## Manual Rust 0.11.0 release
+
+Use `release-rust.yml` for the Rust crate only. It is dispatched from `main`
+with an exact source commit, `expected_version=0.11.0`, `publish=false` for
+the read-only validation run, and an empty approved archive hash. The
+validation job checks Rust 1.85, the local manifest and lock identity, the
+mixed `MIT AND Apache-2.0` profile, the original MIT and Apache licence bytes,
+the third-party notice, the adapted Sui source attribution, and the actual raw
+`.crate` member set. The archive must contain the eighteen named client
+modules, Sui gRPC-Web/projection files, and the selected examples/tests.
+
+The validation evidence records the source SHA, run identity, raw crate
+SHA-256, actual member list, VCS provenance, licence profile, and notice
+hashes. Review that evidence before dispatching the same source with
+`publish=true` and its exact approved SHA-256. The protected `crates-io`
+environment and the pinned crates.io OIDC action remain required. The publish
+job performs the registry absent/match/conflict preflight before requesting a
+short-lived credential and invokes Cargo publish at most once.
+
+After a publish attempt, the job rechecks canonical crates.io metadata and
+downloads the public archive anonymously. Public checksum, bytes, source,
+version, licence profile, notices, and member set must match the reviewed
+archive. A matching existing public version is read-only and does not request
+authentication. Ambiguous or timed-out Cargo results stop for bounded public
+observation; they do not trigger a blind retry. No registry token is stored or
+printed.
+
+The Rust-only tag and GitHub Release are later, separately reviewed effects.
+Use the reserved tag `rust-v0.11.0` and title `Rust SDK 0.11.0 — 18-chain
+release` only after the public crate proof. The release inventory is the exact
+crate, original validation evidence, original publish proof, and a
+`SHA256SUMS` file for those three raw files. Keep `make_latest:false`. Do not
+run the aggregate release workflow, `scripts/release.mjs`, a non-Rust tag, or
+any weekly release controller.
 
 ## Manual non-Rust 0.9.1 foundation release
 
@@ -69,35 +108,17 @@ schedule, or merge-triggered publication is configured. The release body
 states that Bitcoin HTTP JSON-RPC remains Rust-only and that this cohort adds
 no swap or bridge behavior.
 
-## Manual Rust 0.10.0 release
+## Historical Rust 0.10.0 receipt
 
-Rust `0.10.0` is released through the manual
-`.github/workflows/release-rust.yml` workflow. The other package versions stay
-at the historical snapshot version; the current foundation cohort is `0.9.1`.
-This workflow does not create tags, GitHub Releases, or releases for another
-language.
+Rust `0.10.0` is an immutable published receipt used by the foundation
+workflow. It remains bound to its original source, MIT-only metadata, and
+approved checksum. The current `release-rust.yml` path above targets `0.11.0`
+and must not rewrite or reinterpret this historical evidence.
 
-Dispatch it from `main` with the exact commit and version that were reviewed:
-
-1. Set `expected_commit` to the 40-character SHA of the intended `main` commit
-   and `expected_version` to `0.10.0`.
-2. Leave `publish` set to `false` for the first dispatch. Inspect the uploaded
-   crate archive and validation evidence, including its SHA-256.
-3. Have the release owner review and record that exact archive SHA-256, then
-   dispatch the same commit and version with `publish` set to `true` and
-   `approved_sha256` set to the reviewed hash.
-4. Approve the protected `crates-io` environment when prompted. The workflow
-   checks the exact crates.io version before authentication, uses the pinned
-   short-lived OIDC action only when the version is absent, and proves the
-   downloaded registry archive after the upload.
-
-The workflow rechecks repository identity, event, `main` ref, commit, version,
-and checkout in both jobs. It packages with Rust `1.85.0` from a clean source,
-binds evidence to the source SHA and run, and requires the crate checksum,
-provenance marker, BTC source/tests, README, and LICENSE to match. A matching
-already-published version is verified without obtaining a new token. A failed
-or timed-out upload is inspected and verified before any human chooses a
-future dispatch; the workflow never retries an upload automatically.
+The foundation's read-only Rust check continues to require the original
+0.10.0 source and checksum. A future historical receipt recheck must preserve
+its exact source, archive bytes, provenance marker, BTC source/tests, README,
+and MIT `LICENSE`; it must never be used as a 0.11.0 publication proof.
 
 This manual path is the current release process. A weekly release schedule is
 future work and is not enabled. Do not run the legacy `corepack pnpm release:check`

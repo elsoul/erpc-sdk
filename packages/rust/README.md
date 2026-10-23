@@ -1,25 +1,36 @@
 # ERPC SDK for Rust
 
-Async Rust client for ERPC. The crate covers standard Solana, Ethereum, and
-Avalanche C/P/X-chain JSON-RPC, indexed asset and history RPC, leader and analytics
-RPC, WebSocket subscriptions, price REST and server-sent events, account usage,
-and scoped Cloud reads.
+Async Rust client for ERPC.
+
+This guide documents the Rust 0.11 API; see
+[crates.io](https://crates.io/crates/erpc-sdk) for available versions. The API
+covers 18 chain families: Solana, Ethereum, Avalanche, Bitcoin, Base, Arbitrum
+One, Polygon PoS, BNB Smart Chain, OP Mainnet, Kaia, Soneium, Monad,
+Hyperliquid HyperEVM, Arc, Robinhood Chain, NEAR, TRON, and Sui. It also
+includes indexed asset and history RPC, leader and analytics RPC, WebSocket
+subscriptions, price REST and server-sent events, account usage, and scoped
+Cloud reads.
+
+The added EVM families, NEAR, and TRON are sealed read-only namespaces. Sui is
+limited to three unary binary gRPC-Web reads. The 18-family count does not
+promise transactions, subscriptions, swaps, bridges, or identical methods on
+every chain. Avalanche C/P/X are capabilities within Avalanche, not separate
+chain entries. Solana direct-RPC devnet/testnet use remains a caller-selected
+configuration with the same endpoint and method limitations described below.
 
 ```toml
 [dependencies]
-erpc-sdk = "0.10"
+erpc-sdk = "0.11"
 serde_json = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
 
 The minimum supported Rust version is 1.85.
 
-This repository guide is maintained separately from the immutable README and
-bytes embedded in the already-published `erpc-sdk 0.10.0` crate; editing this
-file does not rewrite that artifact. For the non-Rust `0.9.1` cohort, Rust is
-verification-only: the carried receipt remains source line
-`f05abe4276991612c4b5e404fdc768baace32e61` with SHA-256
-`f2ad81528b35470b8f193dc45ad9f95e2d5ba0749b916ab9422cb07639088dd7`.
+The Rust package declares `MIT AND Apache-2.0`: original SDK source remains
+MIT, while the adapted Sui schema projection retains its Apache-2.0
+attribution. See [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) and
+[`LICENSES/Apache-2.0.txt`](LICENSES/Apache-2.0.txt).
 
 For a fresh consumer on Rust 1.85, use Edition 2024, set
 `rust-version = "1.85"`, and configure Cargo resolver 3 in the root workspace
@@ -79,6 +90,26 @@ RPC helpers return an inert `PendingRpcRequest`. Network I/O starts when
 `send()` is awaited. Positional methods accept any serializable tuple, array,
 or vector; named indexed-asset methods accept serializable structs or JSON
 objects. The wire method names remain unchanged.
+
+The added read-only namespaces use the same configured-RPC model. This example
+covers two read-only families without requiring a hosted
+credential; it is a compile-only example until you provide your own endpoints:
+
+```rust,no_run
+use erpc_sdk::{ErpcClient, ErpcClientConfig, RpcEndpointConfig};
+
+async fn read_two_families() -> erpc_sdk::Result<()> {
+    let erpc = ErpcClient::new(
+        ErpcClientConfig::for_rpc()
+            .with_base_rpc(RpcEndpointConfig::new("https://base-node.example/rpc"))
+            .with_near_rpc(RpcEndpointConfig::new("https://near-node.example/rpc")),
+    )?;
+    let base_chain_id = erpc.base.rpc.eth_chain_id().send().await?;
+    let near_status = erpc.near.rpc.status().send().await?;
+    println!("Base={base_chain_id}, NEAR={}", near_status.chain_id);
+    Ok(())
+}
+```
 
 ## Wallets and signing
 
@@ -165,10 +196,10 @@ For Solana transaction-version options and response handling, see the
 
 | Namespace | Purpose |
 | --- | --- |
-| `erpc.base.rpc` | Base HTTP read-only JSON-RPC (target Rust 0.11.0) |
-| `erpc.polygon.rpc` | Polygon PoS mainnet HTTP read-only JSON-RPC (target Rust 0.11.0) |
-| `erpc.bsc.rpc` | BNB Smart Chain mainnet HTTP read-only JSON-RPC (target Rust 0.11.0) |
-| `erpc.optimism.rpc` | OP Mainnet HTTP read-only JSON-RPC (target Rust 0.11.0) |
+| `erpc.base.rpc` | Base mainnet HTTP read-only JSON-RPC |
+| `erpc.polygon.rpc` | Polygon PoS mainnet HTTP read-only JSON-RPC |
+| `erpc.bsc.rpc` | BNB Smart Chain mainnet HTTP read-only JSON-RPC |
+| `erpc.optimism.rpc` | OP Mainnet HTTP read-only JSON-RPC |
 | `erpc.solana.rpc` | Standard Solana JSON-RPC |
 | `erpc.solana.das` | Indexed assets and tokens |
 | `erpc.solana.history` | Address transactions and transfers |
@@ -186,16 +217,16 @@ For Solana transaction-version options and response handling, see the
 | `erpc.avalanche.info` | Network upgrade information |
 | `erpc.avalanche.index` | C/P/X block and X transaction indexes |
 | `erpc.bitcoin.rpc` | Bitcoin Core HTTP JSON-RPC |
-| `erpc.arbitrum.rpc` | Arbitrum One HTTP read-only JSON-RPC (target Rust 0.11.0) |
-| `erpc.kaia.rpc` | Kaia mainnet HTTP read-only JSON-RPC (target Rust 0.11.0) |
-| `erpc.soneium.rpc` | Soneium mainnet HTTP read-only JSON-RPC (target Rust 0.11.0) |
-| `erpc.monad.rpc` | Monad mainnet HTTP read-only JSON-RPC (target Rust 0.11.0) |
-| erpc.hyperliquid.rpc | Hyperliquid HyperEVM mainnet HTTP read-only JSON-RPC (target Rust 0.11.0) |
-| erpc.arc.rpc | Arc mainnet HTTP read-only JSON-RPC (target Rust 0.11.0) |
-| erpc.robinhood.rpc | Robinhood Chain Public Mainnet HTTP read-only JSON-RPC (target Rust 0.11.0) |
-| `erpc.near.rpc` | NEAR mainnet HTTP read-only JSON-RPC (target Rust 0.11.0) |
-| `erpc.tron.rpc` | TRON mainnet HTTP read-only JSON-RPC (target Rust 0.11.0) |
-| `erpc.sui.grpc` | Sui mainnet limited unary binary gRPC-Web reads (target Rust 0.11.0) |
+| `erpc.arbitrum.rpc` | Arbitrum One mainnet HTTP read-only JSON-RPC |
+| `erpc.kaia.rpc` | Kaia mainnet HTTP read-only JSON-RPC |
+| `erpc.soneium.rpc` | Soneium mainnet HTTP read-only JSON-RPC |
+| `erpc.monad.rpc` | Monad mainnet HTTP read-only JSON-RPC |
+| `erpc.hyperliquid.rpc` | Hyperliquid HyperEVM mainnet HTTP read-only JSON-RPC |
+| `erpc.arc.rpc` | Arc mainnet HTTP read-only JSON-RPC |
+| `erpc.robinhood.rpc` | Robinhood Chain Public Mainnet HTTP read-only JSON-RPC |
+| `erpc.near.rpc` | NEAR mainnet HTTP read-only JSON-RPC |
+| `erpc.tron.rpc` | TRON mainnet HTTP read-only JSON-RPC |
+| `erpc.sui.grpc` | Sui mainnet limited unary binary gRPC-Web reads |
 | `erpc.price` | Price metadata, updates, and SSE streams |
 | `erpc.account` | Token balance |
 | `erpc.usage` | Masked monthly API-key usage |
@@ -214,12 +245,9 @@ snake_case convenience methods with named parameters, while Index calls use
 explicit chain/container paths. Override the base URL with
 `ErpcClientConfig::with_avalanche_endpoint` when needed.
 
-## Base read-only RPC (target Rust 0.11.0)
+## Base read-only RPC
 
-Base support is unreleased source work targeting a separate Rust `0.11.0`
-release. The published `erpc-sdk 0.10.0` crate does not contain this namespace;
-keep the install line above at `erpc-sdk = "0.10"` until the later promotion
-brief and release proof.
+This sealed read-only namespace is included in the guide.
 
 The Base façade is HTTP-only and read-only. Hosted calls use the Base root
 `https://base.erpc.global/` with the existing `api-key` query authentication.
@@ -290,13 +318,10 @@ let name = erpc
 # }
 ```
 
-## Arbitrum One read-only RPC (target Rust 0.11.0)
+## Arbitrum One read-only RPC
 
-Arbitrum support is unreleased source work in the same Rust `0.11.0` candidate
-as Base. The published `erpc-sdk 0.10.0` crate does not contain this namespace;
-keep the install line above at `erpc-sdk = "0.10"` until the later promotion
-brief and release proof. The namespace targets Arbitrum One, whose chain ID is
-`42161` (`0xa4b1`), as documented by the [official Arbitrum chain
+This sealed read-only namespace targets Arbitrum One, whose chain ID is `42161`
+(`0xa4b1`), as documented by the [official Arbitrum chain
 information](https://docs.arbitrum.io/chain-info).
 
 Hosted calls use the dedicated root `https://arbitrum.erpc.global/` with the
@@ -349,12 +374,9 @@ lists Arbitrum mainnet USDC at
 add a catalog record or imply bridge support. Verify `eth_chain_id() ==
 "0xa4b1"` before trusting any custom endpoint.
 
-## Polygon PoS, BNB Smart Chain, and OP Mainnet read-only RPC (target Rust 0.11.0)
+## Polygon PoS, BNB Smart Chain, and OP Mainnet read-only RPC
 
-These three namespaces are unreleased source work in the same Rust `0.11.0`
-candidate as Base and Arbitrum. The published `erpc-sdk 0.10.0` crate does not
-contain them; keep the install line above at `erpc-sdk = "0.10"` until the
-later promotion brief and release proof.
+These three sealed read-only namespaces are included in the guide.
 
 The dedicated hosted roots are `https://polygon.erpc.global/`,
 `https://bsc.erpc.global/`, and `https://optimism.erpc.global/`. Each uses the
@@ -405,12 +427,9 @@ let optimism_call = erpc
 # }
 ```
 
-## Kaia, Soneium, and Monad read-only RPC (target Rust 0.11.0)
+## Kaia, Soneium, and Monad read-only RPC
 
-These three namespaces are unreleased source work in the same Rust 0.11.0
-candidate as the earlier sealed EVM facades. The published erpc-sdk 0.10.0
-crate does not contain them; keep the install line above at erpc-sdk = 0.10
-until the later promotion brief and release proof.
+These three sealed read-only namespaces are included in the guide.
 
 The dedicated hosted roots are https://kaia.erpc.global/,
 https://soneium.erpc.global/, and https://monad.erpc.global/. Each uses the
@@ -440,12 +459,9 @@ is outside this facade. Custom endpoints return their actual chain ID unchanged
 so callers can detect a mismatch. Safe/finalized block selectors pass through
 as supplied.
 
-## Hyperliquid HyperEVM, Arc, and Robinhood read-only RPC (target Rust 0.11.0)
+## Hyperliquid HyperEVM, Arc, and Robinhood read-only RPC
 
-These three namespaces are unreleased source work in the same Rust 0.11.0
-candidate. The published erpc-sdk 0.10.0 crate does not contain them; keep the
-install line above at erpc-sdk = 0.10 until the later promotion brief and
-release proof.
+These three sealed read-only namespaces are included in the guide.
 
 Hyperliquid is HyperEVM-only. HyperEVM mainnet is chain ID `999` / `0x3e7`.
 The exact hosted default is `https://hyperliquid.erpc.global/`, and the exact
@@ -545,13 +561,12 @@ WebSocket/subscription, sign, send, broadcast, swap, or bridge surface. Verify
 the expected chain ID before trusting a custom endpoint. Native balances remain
 raw quantities: HyperEVM HYPE, Arc native USDC, and Robinhood native ETH.
 
-## NEAR, TRON, and Sui reads (target Rust 0.11.0)
+## NEAR, TRON, and Sui reads
 
-These three namespaces are unreleased source work targeting the same Rust
-`0.11.0` candidate. The published `erpc-sdk 0.10.0` crate does not contain
-them; keep the install line above at `erpc-sdk = "0.10"` until a later,
-separately approved promotion and release proof. They make no billing, price,
-quota, support, or availability promise.
+These three namespaces are documented here. NEAR and
+TRON are sealed read-only JSON-RPC surfaces; Sui is limited to unary binary
+gRPC-Web reads. They make no billing, price, quota, support, or availability
+promise.
 
 Every new namespace is read-only and exposes origin-only endpoint metadata:
 `https://near.erpc.global/`, `https://tron.erpc.global/`, or

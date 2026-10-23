@@ -65,6 +65,30 @@ jobs:
         run: |
           rustup toolchain install 1.85.0 --profile minimal --component clippy,rustfmt
 
+      - name: Set up the pinned Python verifier runtime
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+
+      - name: Install and verify pinned Python verifier dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check --no-input pypi-attestations==0.0.30 cryptography==46.0.3
+          python3 -c 'import sys, tomllib, pypi_attestations, cryptography; from importlib.metadata import version; assert sys.version_info >= (3, 11); assert version("pypi-attestations") == "0.0.30"; assert version("cryptography") == "46.0.3"; print(sys.executable); print(version("pypi-attestations")); print(version("cryptography"))'
+
+      - name: Set up the pinned Ruby verifier runtime
+        uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b # v1
+        with:
+          ruby-version: '3.4'
+          bundler-cache: false
+
+      - name: Install and verify pinned Ruby verifier dependencies
+        run: |
+          set -euo pipefail
+          gem install --no-document base64 -v 0.2.0
+          gem install --no-document digest-keccak -v 0.0.7
+          ruby -e 'require "rubygems"; require "base64"; require "digest/keccak"; abort "wrong Ruby" unless RUBY_VERSION.start_with?("3.4."); base64 = Gem::Specification.find_by_name("base64", "0.2.0"); keccak = Gem::Specification.find_by_name("digest-keccak", "0.0.7"); abort "wrong base64" unless base64.version.to_s == "0.2.0" && File.file?(base64.cache_file); abort "wrong digest-keccak" unless keccak.version.to_s == "0.0.7" && File.file?(keccak.cache_file); puts RbConfig.ruby; puts base64.cache_file; puts keccak.cache_file'
+
       - name: Verify the Rust release cohort
         env:
           EXPECTED_VERSION: ${{ inputs.expected_version }}
@@ -124,10 +148,12 @@ jobs:
           ARCHIVE_LIST="$PACKAGE_DIR/archive-list.txt"
           MANIFEST="$PACKAGE_DIR/Cargo.toml"
           VCS_INFO="$PACKAGE_DIR/cargo-vcs-info.json"
+          ARCHIVE_EVIDENCE="$PACKAGE_DIR/archive-evidence.json"
           tar -tzf "$ARCHIVE_PATH" > "$ARCHIVE_LIST"
           tar -xOf "$ARCHIVE_PATH" "erpc-sdk-$EXPECTED_VERSION/Cargo.toml" > "$MANIFEST"
           tar -xOf "$ARCHIVE_PATH" "erpc-sdk-$EXPECTED_VERSION/.cargo_vcs_info.json" > "$VCS_INFO"
-          ARCHIVE_LIST_FILE="$ARCHIVE_LIST" MANIFEST_FILE="$MANIFEST" VCS_INFO_FILE="$VCS_INFO" \
+          ARCHIVE_FILE="$ARCHIVE_PATH" PACKAGE_LIST_FILE="$PACKAGE_LIST" ARCHIVE_LIST_FILE="$ARCHIVE_LIST" \
+            MANIFEST_FILE="$MANIFEST" VCS_INFO_FILE="$VCS_INFO" ARCHIVE_RESULT_FILE="$ARCHIVE_EVIDENCE" \
             EXPECTED_COMMIT="$EXPECTED_COMMIT" EXPECTED_VERSION="$EXPECTED_VERSION" \
             node scripts/verify-release.mjs --archive-check
           if [ "$PUBLISH" = true ]; then
@@ -135,7 +161,7 @@ jobs:
             test "$ARCHIVE_SHA256" = "$APPROVED_SHA256"
           fi
           test -z "$(git status --porcelain=v1)"
-          ARCHIVE_SHA256="$ARCHIVE_SHA256" PACKAGE_LIST_FILE="$PACKAGE_LIST" \
+          ARCHIVE_SHA256="$ARCHIVE_SHA256" PACKAGE_LIST_FILE="$PACKAGE_LIST" ARCHIVE_EVIDENCE_FILE="$ARCHIVE_EVIDENCE" \
             ARCHIVE_COPY="$ARCHIVE_COPY" node <<'NODE'
           const { readFileSync, writeFileSync } = require('node:fs')
           const contents = readFileSync(process.env.PACKAGE_LIST_FILE, 'utf8')
@@ -149,10 +175,11 @@ jobs:
             archive_sha256: process.env.ARCHIVE_SHA256,
             archive: process.env.ARCHIVE_COPY,
             contents,
+            archive_evidence: JSON.parse(readFileSync(process.env.ARCHIVE_EVIDENCE_FILE, 'utf8')),
             results: {
               verifier: 'rust scope passed',
               package: 'cargo package --locked passed with clean source',
-              archive_provenance: 'cargo_vcs_info passed',
+              archive_provenance: 'raw .crate bytes, VCS, licence, notices, and distribution member set passed',
             },
           }
           writeFileSync(
@@ -206,6 +233,16 @@ jobs:
       - name: Install the pinned Rust toolchain
         run: rustup toolchain install 1.85.0 --profile minimal --component clippy,rustfmt
 
+      - name: Set up the pinned Python verifier runtime
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+
+      - name: Verify the pinned Python parser runtime
+        run: |
+          set -euo pipefail
+          python3 -c 'import sys, tomllib; assert sys.version_info >= (3, 11); print(sys.executable); print(sys.version)'
+
       - name: Verify the exact Rust release cohort
         env:
           EXPECTED_VERSION: ${{ inputs.expected_version }}
@@ -229,10 +266,13 @@ jobs:
           ARCHIVE_LIST="$RUNNER_TEMP/erpc-sdk-rust-archive-list.txt"
           MANIFEST="$RUNNER_TEMP/erpc-sdk-rust-manifest.toml"
           VCS_INFO="$RUNNER_TEMP/erpc-sdk-rust-vcs-info.json"
+          ARCHIVE_EVIDENCE="$RUNNER_TEMP/erpc-sdk-rust-archive-evidence.json"
           tar -tzf "$ARCHIVE_PATH" > "$ARCHIVE_LIST"
           tar -xOf "$ARCHIVE_PATH" "erpc-sdk-$EXPECTED_VERSION/Cargo.toml" > "$MANIFEST"
           tar -xOf "$ARCHIVE_PATH" "erpc-sdk-$EXPECTED_VERSION/.cargo_vcs_info.json" > "$VCS_INFO"
-          ARCHIVE_LIST_FILE="$ARCHIVE_LIST" MANIFEST_FILE="$MANIFEST" VCS_INFO_FILE="$VCS_INFO" \
+          ARCHIVE_FILE="$ARCHIVE_PATH" PACKAGE_LIST_FILE="$RUNNER_TEMP/erpc-sdk-rust-package-list.txt" ARCHIVE_LIST_FILE="$ARCHIVE_LIST" \
+            MANIFEST_FILE="$MANIFEST" VCS_INFO_FILE="$VCS_INFO" ARCHIVE_RESULT_FILE="$ARCHIVE_EVIDENCE" \
+            APPROVED_SHA256="$APPROVED_SHA256" \
             EXPECTED_COMMIT="$EXPECTED_COMMIT" EXPECTED_VERSION="$EXPECTED_VERSION" \
             node scripts/verify-release.mjs --archive-check
           test -z "$(git status --porcelain=v1)"
@@ -354,10 +394,13 @@ jobs:
           ARCHIVE_LIST="$RUNNER_TEMP/erpc-sdk-rust-published-list.txt"
           MANIFEST="$RUNNER_TEMP/erpc-sdk-rust-published-manifest.toml"
           VCS_INFO="$RUNNER_TEMP/erpc-sdk-rust-published-vcs-info.json"
+          ARCHIVE_EVIDENCE="$RUNNER_TEMP/erpc-sdk-rust-published-archive-evidence.json"
           tar -tzf "$DOWNLOAD_PATH" > "$ARCHIVE_LIST"
           tar -xOf "$DOWNLOAD_PATH" "erpc-sdk-$EXPECTED_VERSION/Cargo.toml" > "$MANIFEST"
           tar -xOf "$DOWNLOAD_PATH" "erpc-sdk-$EXPECTED_VERSION/.cargo_vcs_info.json" > "$VCS_INFO"
-          ARCHIVE_LIST_FILE="$ARCHIVE_LIST" MANIFEST_FILE="$MANIFEST" VCS_INFO_FILE="$VCS_INFO" \
+          ARCHIVE_FILE="$DOWNLOAD_PATH" ARCHIVE_LIST_FILE="$ARCHIVE_LIST" \
+            MANIFEST_FILE="$MANIFEST" VCS_INFO_FILE="$VCS_INFO" ARCHIVE_RESULT_FILE="$ARCHIVE_EVIDENCE" \
+            APPROVED_SHA256="$APPROVED_SHA256" \
             EXPECTED_COMMIT="$EXPECTED_COMMIT" EXPECTED_VERSION="$EXPECTED_VERSION" \
             node scripts/verify-release.mjs --archive-check
           printf '%s\n' \
@@ -376,6 +419,7 @@ jobs:
           name: erpc-sdk-rust-publication-proof-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             ${{ runner.temp }}/erpc-sdk-rust-publish-proof.txt
+            ${{ runner.temp }}/erpc-sdk-rust-published-archive-evidence.json
             ${{ runner.temp }}/erpc-sdk-${{ inputs.expected_version }}.crate
           if-no-files-found: ignore
           retention-days: 7

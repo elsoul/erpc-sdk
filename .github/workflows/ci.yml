@@ -250,6 +250,26 @@ jobs:
         run: |
           node --test scripts/agent-harness.test.mjs
           node scripts/agent-harness.mjs check
+      - name: Set up the pinned Python verifier runtime
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Install and verify pinned Python verifier dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check --no-input pypi-attestations==0.0.30 cryptography==46.0.3
+          python3 -c 'import sys, tomllib, pypi_attestations, cryptography; from importlib.metadata import version; assert sys.version_info >= (3, 11); assert version("pypi-attestations") == "0.0.30"; assert version("cryptography") == "46.0.3"; print(sys.executable); print(version("pypi-attestations")); print(version("cryptography"))'
+      - name: Set up the pinned Ruby verifier runtime
+        uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b # v1
+        with:
+          ruby-version: '3.4'
+          bundler-cache: false
+      - name: Install and verify pinned Ruby verifier dependencies
+        run: |
+          set -euo pipefail
+          gem install --no-document base64 -v 0.2.0
+          gem install --no-document digest-keccak -v 0.0.7
+          ruby -e 'require "rubygems"; require "base64"; require "digest/keccak"; abort "wrong Ruby" unless RUBY_VERSION.start_with?("3.4."); base64 = Gem::Specification.find_by_name("base64", "0.2.0"); keccak = Gem::Specification.find_by_name("digest-keccak", "0.0.7"); abort "wrong base64" unless base64.version.to_s == "0.2.0" && File.file?(base64.cache_file); abort "wrong digest-keccak" unless keccak.version.to_s == "0.0.7" && File.file?(keccak.cache_file); puts RbConfig.ruby; puts base64.cache_file; puts keccak.cache_file'
       - name: Run release verifier tests
         run: node --test scripts/verify-release.test.mjs
       - name: Install the pinned Rust toolchain for catalog render checks

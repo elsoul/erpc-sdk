@@ -11,6 +11,7 @@ import { rubyLockVersion } from '../registry/ruby-lockfile.mjs'
 export const REPOSITORY_ROOT = resolve(new URL('../', import.meta.url).pathname)
 export const RELEASE_SCOPES = Object.freeze(['all', 'rust', 'non-rust'])
 export const RUST_VERSION = '0.10.0'
+export const CURRENT_RUST_VERSION = '0.11.0'
 export const RUST_TOOLCHAIN = '1.85.0'
 export const CRATE_NAME = 'erpc-sdk'
 export const EXPECTED_REPOSITORY = 'elsoul/erpc-sdk'
@@ -38,6 +39,119 @@ export const FOUNDATION_ARTIFACT_FILENAMES = Object.freeze({
   'pypi-sdist': 'erpc_sdk-0.9.1.tar.gz',
   rubygems: 'erpc-sdk-0.9.1.gem',
 })
+
+// The Rust 0.11 crate has an intentionally narrow distribution profile.  The
+// historical 0.10 receipt above remains MIT-only and is validated by its own
+// immutable helpers; these constants apply only to the current 0.11 source
+// and archive checks.
+export const RUST_011_LICENSE_PROFILE = 'MIT AND Apache-2.0'
+export const RUST_011_LICENSE_HASHES = Object.freeze({
+  'LICENSE': 'c58b88798da8b5b47cec99517d7f7ae22864ea48dba348754f4eae7edd00da6c',
+  'LICENSES/Apache-2.0.txt': 'c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4',
+  'THIRD_PARTY_NOTICES.md': 'ea9d61aa598c0a9d08946ec6be9bcc26aa9119047d2e506bab1bc9dc0205e9e9',
+  'src/sui_proto.rs': '33ee488df64c00654a504a2124a98c32615be65ec37b9272e368d9a20aad020c',
+})
+export const RUST_011_CLIENT_MODULES = Object.freeze([
+  'solana',
+  'ethereum',
+  'avalanche',
+  'bitcoin',
+  'base',
+  'arbitrum',
+  'polygon',
+  'bsc',
+  'optimism',
+  'kaia',
+  'soneium',
+  'monad',
+  'hyperliquid',
+  'arc',
+  'robinhood',
+  'near',
+  'tron',
+  'sui',
+])
+export const RUST_011_SUI_MEMBERS = Object.freeze([
+  'src/sui_grpc_web.rs',
+  'src/sui_proto.rs',
+])
+export const RUST_011_REQUIRED_SOURCE_FILES = Object.freeze([
+  'src/account.rs',
+  'src/arbitrum.rs',
+  'src/arc.rs',
+  'src/avalanche.rs',
+  'src/base.rs',
+  'src/bitcoin.rs',
+  'src/bridge.rs',
+  'src/bridge_local.rs',
+  'src/bsc.rs',
+  'src/cloud.rs',
+  'src/config.rs',
+  'src/dex_catalog.rs',
+  'src/error.rs',
+  'src/ethereum.rs',
+  'src/generated/bridge_capabilities.rs',
+  'src/generated/dex_catalog.rs',
+  'src/generated/mod.rs',
+  'src/generated/swap_execution_capabilities.rs',
+  'src/generated/token_catalog.rs',
+  'src/generated/token_rankings.rs',
+  'src/hyperliquid.rs',
+  'src/kaia.rs',
+  'src/lib.rs',
+  'src/monad.rs',
+  'src/near.rs',
+  'src/optimism.rs',
+  'src/polygon.rs',
+  'src/price.rs',
+  'src/rest.rs',
+  'src/robinhood.rs',
+  'src/rpc.rs',
+  'src/solana.rs',
+  'src/soneium.rs',
+  'src/subscriptions.rs',
+  'src/sui.rs',
+  'src/sui_grpc_web.rs',
+  'src/sui_proto.rs',
+  'src/swap.rs',
+  'src/token_catalog.rs',
+  'src/token_rankings.rs',
+  'src/tron.rs',
+  'src/usage.rs',
+])
+export const RUST_011_REQUIRED_EXAMPLES = Object.freeze(['examples/basic.rs'])
+export const RUST_011_REQUIRED_TESTS = Object.freeze([
+  'tests/arbitrum.rs',
+  'tests/arc.rs',
+  'tests/base.rs',
+  'tests/bitcoin.rs',
+  'tests/bridge.rs',
+  'tests/bridge_local.rs',
+  'tests/bsc.rs',
+  'tests/client.rs',
+  'tests/dex_catalog.rs',
+  'tests/evm_batch1.rs',
+  'tests/evm_batch2.rs',
+  'tests/evm_batch3.rs',
+  'tests/hyperliquid.rs',
+  'tests/kaia.rs',
+  'tests/monad.rs',
+  'tests/near.rs',
+  'tests/non_evm_batch4.rs',
+  'tests/optimism.rs',
+  'tests/polygon.rs',
+  'tests/rest.rs',
+  'tests/robinhood.rs',
+  'tests/soneium.rs',
+  'tests/sui.rs',
+  'tests/support/mod.rs',
+  'tests/swap.rs',
+  'tests/swap_execution.rs',
+  'tests/token_catalog.rs',
+  'tests/token_rankings.rs',
+  'tests/tron.rs',
+  'tests/websocket.rs',
+])
 export const FOUNDATION_PROOF_ASSETS = Object.freeze([
   'npm-proof.json',
   'pypi-proof.json',
@@ -83,6 +197,19 @@ const STABLE_VERSION = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/
 const COMMIT_SHA = /^[0-9a-f]{40}$/
 const ARCHIVE_SHA256 = /^[0-9a-f]{64}$/
 const execFile = promisify(execFileCallback)
+
+const cargoTomlParserScript = String.raw`
+import json, sys
+try:
+    import tomllib
+except ImportError:
+    raise SystemExit('Python 3.11+ with tomllib is required')
+try:
+    parsed = tomllib.loads(sys.argv[1])
+except Exception as error:
+    raise SystemExit(f'Cargo TOML is invalid: {error}')
+print(json.dumps(parsed, separators=(',', ':')))
+`
 
 const fail = message => {
   throw new Error(message)
@@ -237,22 +364,15 @@ export function parseReleaseArguments(arguments_ = []) {
   return { expectedVersion, scope, tag }
 }
 
-const parseCargoPackageBlocks = lockSource =>
-  lockSource
-    .split(/^\[\[package\]\]\s*$/m)
-    .slice(1)
-    .map(block => ({
-      name: block.match(/^name = "([^"]+)"$/m)?.[1],
-      source: block.match(/^source = "([^"]+)"$/m)?.[1],
-      version: block.match(/^version = "([^"]+)"$/m)?.[1],
-    }))
-
-/** Return the one source-free workspace package entry for the Rust crate. */
-export function findLocalCargoPackage(lockSource, packageName = CRATE_NAME) {
-  const entries = parseCargoPackageBlocks(lockSource).filter(
-    entry => entry.name === packageName,
-  )
-  const localEntries = entries.filter(entry => entry.source === undefined)
+/** Return the one semantically parsed source-free workspace package entry. */
+export async function findLocalCargoPackage(lockSource, packageName = CRATE_NAME, execution = {}) {
+  const parsed = typeof lockSource === 'string'
+    ? await parseCargoToml(lockSource, 'Cargo.lock', execution)
+    : lockSource
+  const entries = Array.isArray(parsed?.package)
+    ? parsed.package.filter(entry => entry?.name === packageName)
+    : []
+  const localEntries = entries.filter(entry => !Object.prototype.hasOwnProperty.call(entry, 'source'))
   if (localEntries.length !== 1) {
     fail(
       `Cargo.lock must contain exactly one source-free ${packageName} entry; ` +
@@ -260,6 +380,60 @@ export function findLocalCargoPackage(lockSource, packageName = CRATE_NAME) {
     )
   }
   return localEntries[0]
+}
+
+const rust011SourcePaths = Object.freeze([
+  'LICENSE',
+  'LICENSES/Apache-2.0.txt',
+  'THIRD_PARTY_NOTICES.md',
+  'src/lib.rs',
+  ...RUST_011_CLIENT_MODULES.map(module => `src/${module}.rs`),
+  ...RUST_011_SUI_MEMBERS.filter(member => !RUST_011_CLIENT_MODULES.some(module => member === `src/${module}.rs`)),
+  ...RUST_011_REQUIRED_EXAMPLES,
+  ...RUST_011_REQUIRED_TESTS,
+])
+
+const parseCargoToml = async (source, label, execution = {}) => {
+  let raw
+  try {
+    raw = await commandText('python3', ['-c', cargoTomlParserScript, source], execution)
+  } catch (error) {
+    const diagnostic = String(error?.stderr ?? error?.message ?? '')
+    if (/Python 3\.11\+|tomllib/.test(diagnostic)) fail(`${label} requires Python 3.11+ with tomllib`)
+    fail(`${label} TOML is invalid`)
+  }
+  try {
+    return JSON.parse(raw)
+  } catch {
+    fail(`${label} TOML parser output is malformed`)
+  }
+}
+
+const collectRegularSourceFiles = async (root, current = root) => {
+  const entries = await readdir(current, { withFileTypes: true })
+  const files = []
+  for (const entry of entries) {
+    const absolute = join(current, entry.name)
+    if (entry.isDirectory()) files.push(...await collectRegularSourceFiles(root, absolute))
+    else if (entry.isFile()) files.push(absolute.slice(root.length + 1))
+  }
+  return files
+}
+
+const readRustSourceEvidence = async root => {
+  const sourceRoot = resolve(root, 'packages/rust')
+  const sourceFiles = {}
+  const inventory = await collectRegularSourceFiles(sourceRoot)
+  for (const relativePath of inventory) sourceFiles[relativePath] = sha256Hex(await readFile(join(sourceRoot, relativePath)))
+  let libSource = ''
+  if (sourceFiles['src/lib.rs'] !== undefined) libSource = await readFile(join(sourceRoot, 'src/lib.rs'), 'utf8')
+  const currentShape = RUST_011_REQUIRED_SOURCE_FILES.every(relativePath => sourceFiles[relativePath] !== undefined) &&
+    RUST_011_CLIENT_MODULES.every(module => new RegExp(`^mod ${module};$`, 'm').test(libSource))
+  return { sourceRoot, sourceFiles, libSource, currentShape, inventory }
+}
+
+const readRust011SourceEvidence = async root => {
+  return readRustSourceEvidence(root)
 }
 
 export const readReleaseData = async (root, scope = 'all') => {
@@ -271,11 +445,14 @@ export const readReleaseData = async (root, scope = 'all') => {
       read('packages/rust/Cargo.toml'),
       read('Cargo.lock'),
     ])
+    data.cargoToml = await parseCargoToml(cargoManifest, 'packages/rust/Cargo.toml')
     data.cargoManifest = cargoManifest
     data.cargoLock = cargoLock
-    data.cargoName = cargoManifest.match(/^name = "([^"]+)"$/m)?.[1]
-    data.cargoVersion = cargoManifest.match(/^version = "([^"]+)"$/m)?.[1]
-    data.cargoLockPackage = findLocalCargoPackage(cargoLock)
+    data.cargoName = data.cargoToml.package?.name
+    data.cargoVersion = data.cargoToml.package?.version
+    data.cargoLockToml = await parseCargoToml(cargoLock, 'Cargo.lock')
+    data.cargoLockPackage = await findLocalCargoPackage(data.cargoLockToml)
+    data.rustSource = await readRust011SourceEvidence(root)
   }
   if (scope === 'all' || scope === 'non-rust') {
     const [packageJsonSource, pythonManifest, pythonVersionSource, goManifest,
@@ -309,40 +486,58 @@ const requireEqual = (actual, expected, message) => {
   if (actual !== expected) fail(message)
 }
 
+const validateRust011Source = source => {
+  if (source === null || typeof source !== 'object' || typeof source.sourceRoot !== 'string') {
+    fail('Rust 0.11 source evidence is missing')
+  }
+  for (const relativePath of RUST_011_REQUIRED_SOURCE_FILES) {
+    if (source.sourceFiles?.[relativePath] === undefined) fail(`Rust 0.11 source is missing ${relativePath}`)
+  }
+  for (const [relativePath, expectedHash] of Object.entries(RUST_011_LICENSE_HASHES)) {
+    requireEqual(source.sourceFiles?.[relativePath], expectedHash, `Rust 0.11 source hash mismatch for ${relativePath}`)
+  }
+  for (const module of RUST_011_CLIENT_MODULES) {
+    const relativePath = `src/${module}.rs`
+    if (source.sourceFiles?.[relativePath] === undefined) fail(`Rust 0.11 source is missing ${relativePath}`)
+    if (!new RegExp(`^\\s*mod\\s+${module}\\s*;\\s*(?:\\/\\/.*)?$`, 'm').test(source.libSource ?? '')) fail(`Rust 0.11 lib.rs is missing ${module}`)
+  }
+  for (const relativePath of RUST_011_SUI_MEMBERS) {
+    if (source.sourceFiles?.[relativePath] === undefined) fail(`Rust 0.11 source is missing ${relativePath}`)
+  }
+  for (const relativePath of [...RUST_011_REQUIRED_EXAMPLES, ...RUST_011_REQUIRED_TESTS]) {
+    if (source.sourceFiles?.[relativePath] === undefined) fail(`Rust 0.11 source is missing ${relativePath}`)
+  }
+  return source
+}
+
 const validateRust = (data, expectedVersion) => {
-  const cargoLockPackage = data.cargoLockPackage ?? findLocalCargoPackage(data.cargoLock)
-  requireEqual(data.cargoName, CRATE_NAME, 'Unexpected crates.io package name')
-  if (!STABLE_VERSION.test(data.cargoVersion ?? '')) {
-    fail('Unexpected Rust crate version')
-  }
-  requireEqual(
-    cargoLockPackage?.version,
-    data.cargoVersion,
-    'Cargo.lock local erpc-sdk version must match Cargo.toml',
-  )
-  if (expectedVersion !== undefined) {
-    requireEqual(
-      data.cargoVersion,
-      expectedVersion,
-      `Rust crate version ${data.cargoVersion} must match expected version ${expectedVersion}`,
-    )
-  }
-  if (!/^publish = \["crates-io"\]$/m.test(data.cargoManifest)) {
-    fail('The Rust crate must be restricted to crates.io')
-  }
-  if (!/^license = "MIT"$/m.test(data.cargoManifest)) {
-    fail('Unexpected Rust crate license')
-  }
-  if (
-    !/^repository = "https:\/\/github\.com\/elsoul\/erpc-sdk"$/m.test(
-      data.cargoManifest,
-    )
-  ) {
-    fail('Unexpected Rust crate repository')
-  }
-  if (!/^rust-version = "1\.85"$/m.test(data.cargoManifest)) {
-    fail('Unexpected Rust MSRV')
-  }
+  const manifest = data.cargoToml
+  if (manifest === null || typeof manifest !== 'object' || manifest.package === undefined) fail('Rust Cargo.toml semantic package table is missing')
+  assertRust011ManifestProfile(manifest, 'Rust source Cargo.toml')
+  const packageTable = manifest.package
+  requireEqual(packageTable.name, CRATE_NAME, 'Unexpected Rust crate package name')
+  requireEqual(packageTable.version, data.cargoVersion, 'Parsed Rust package version mirror mismatch')
+  requireEqual(data.cargoName, packageTable.name, 'Parsed Rust package name mirror mismatch')
+  if (!STABLE_VERSION.test(packageTable.version ?? '')) fail('Unexpected Rust crate version')
+  requireEqual(packageTable.version, CURRENT_RUST_VERSION, 'Current Rust source must be 0.11.0')
+  requireEqual(data.cargoLockPackage?.name, CRATE_NAME, 'Cargo.lock local erpc-sdk package name mismatch')
+  requireEqual(data.cargoLockPackage?.version, packageTable.version, 'Cargo.lock local erpc-sdk version must match Cargo.toml')
+  if (expectedVersion !== undefined) requireEqual(packageTable.version, expectedVersion, `Rust crate version ${packageTable.version} must match expected version ${expectedVersion}`)
+  requireEqual(packageTable.repository, 'https://github.com/elsoul/erpc-sdk', 'Unexpected Rust crate repository')
+  requireEqual(packageTable['rust-version'], '1.85', 'Unexpected Rust MSRV')
+  requireEqual(packageTable.edition, '2024', 'Unexpected Rust edition')
+  requireEqual(JSON.stringify(packageTable.publish), JSON.stringify(['crates-io']), 'The Rust crate must be restricted to crates.io')
+  requireEqual(packageTable.license, RUST_011_LICENSE_PROFILE, 'Unexpected Rust crate license')
+  sameMemberSet(packageTable.include ?? [], rust011ManifestIncludes, 'Rust 0.11 package include')
+  const prost = manifest.dependencies?.prost
+  const prostTypes = manifest.dependencies?.['prost-types']
+  requireEqual(prost?.version, '=0.14.4', 'Rust 0.11 Prost version is not exact')
+  requireEqual(prost?.['default-features'], false, 'Rust 0.11 Prost default-features is not exact')
+  requireEqual(JSON.stringify(prost?.features), JSON.stringify(['derive', 'std']), 'Rust 0.11 Prost features are not exact')
+  requireEqual(prostTypes?.version, '=0.14.4', 'Rust 0.11 prost-types version is not exact')
+  requireEqual(prostTypes?.['default-features'], false, 'Rust 0.11 prost-types default-features is not exact')
+  requireEqual(JSON.stringify(prostTypes?.features), JSON.stringify(['std']), 'Rust 0.11 prost-types features are not exact')
+  validateRust011Source(data.rustSource)
 }
 
 const validateNonRust = (data, expectedVersion) => {
@@ -768,13 +963,13 @@ else:
 print(json.dumps(entries))
 `
 
-const archiveEntries = async (filePath, kind, execution = {}) => {
+const archiveMemberRecords = async (filePath, kind, execution = {}) => {
   const raw = await commandText('python3', ['-c', archiveInspectionScript, filePath, kind], execution)
   let records
   try { records = JSON.parse(raw) } catch { fail(`Archive inspection is malformed for ${filePath}`) }
   if (!Array.isArray(records) || records.length === 0) fail(`Archive ${filePath} is empty`)
-  const names = []
   const seen = new Set()
+  const normalized = []
   for (const record of records) {
     if (record?.type !== 'file' && record?.type !== 'directory') fail(`Archive ${filePath} contains a non-regular member`)
     if (typeof record?.name !== 'string' || record.name.length === 0) fail(`Archive ${filePath} contains an invalid member name`)
@@ -782,10 +977,13 @@ const archiveEntries = async (filePath, kind, execution = {}) => {
     safeRelativePath(name)
     if (seen.has(name)) fail(`Archive ${filePath} contains duplicate member ${name}`)
     seen.add(name)
-    names.push(name)
+    normalized.push({ name, type: record.type })
   }
-  return names
+  return normalized
 }
+
+const archiveEntries = async (filePath, kind, execution = {}) =>
+  (await archiveMemberRecords(filePath, kind, execution)).map(record => record.name)
 
 const archiveFiles = async (filePath, kind = filePath.endsWith('.whl') ? 'zip' : 'tar', execution = {}) =>
   archiveEntries(filePath, kind, execution)
@@ -1459,7 +1657,29 @@ export function verifyArchiveContents({
   vcsInfo,
   expectedVersion,
   expectedCommit,
+  archiveFile,
+  packageList,
+  archiveList,
+  suppliedManifest,
+  suppliedVcsInfo,
+  expectedArchiveSha256,
+  archivePath,
+  filePath,
 }) {
+  const rawArchiveFile = archiveFile ?? archivePath ?? filePath
+  if (rawArchiveFile !== undefined) {
+    return inspectRust011Archive({
+      filePath: rawArchiveFile,
+      packageList,
+      archiveList: archiveList ?? fileList,
+      suppliedManifest: suppliedManifest ?? manifest,
+      suppliedVcsInfo: suppliedVcsInfo ?? vcsInfo,
+      expectedVersion,
+      expectedCommit,
+      expectedArchiveSha256,
+    })
+  }
+  if (expectedVersion === CURRENT_RUST_VERSION) fail('Rust 0.11 archive verification requires raw archive bytes')
   const entries = String(fileList)
     .split(/\r?\n/)
     .map(entry => entry.trim())
@@ -1514,6 +1734,283 @@ export function verifyArchiveContents({
   }
   return { root: expectedRoot, commit, pathInVcs: parsedVcs.path_in_vcs }
 }
+
+const rust011ManifestIncludes = Object.freeze([
+  'Cargo.toml',
+  'LICENSE',
+  'README.md',
+  'LICENSES/Apache-2.0.txt',
+  'THIRD_PARTY_NOTICES.md',
+  'examples/**/*.rs',
+  'src/**/*.rs',
+  'tests/**/*.rs',
+])
+
+const normalizeRust011SuppliedList = (source, root, label) => {
+  if (source === undefined) return undefined
+  const values = String(source).split(/\r?\n/).map(line => line.trim()).filter(Boolean)
+  if (values.length === 0) fail(`${label} is empty`)
+  return values.map(value => {
+    let member = value
+    if (member.startsWith('./')) member = member.slice(2)
+    member = member.replace(/\/$/, '')
+    safeRelativePath(member)
+    if (member === root || member.startsWith(`${root}/`)) return member
+    return `${root}/${member}`
+  })
+}
+
+const sameMemberSet = (left, right, label) => {
+  const leftSet = new Set(left)
+  const rightSet = new Set(right)
+  if (leftSet.size !== left.length || rightSet.size !== right.length || leftSet.size !== rightSet.size || [...leftSet].some(member => !rightSet.has(member))) fail(`${label} member set mismatch`)
+}
+
+const normalizedDependencyPolicy = document => {
+  const allowed = new Set(['version', 'features', 'default-features', 'optional', 'package', 'registry', 'git', 'path', 'rev', 'branch', 'tag'])
+  const normalizeEntry = (name, value, section) => {
+    const entry = typeof value === 'string' ? { version: value } : value
+    if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) fail(`Unsupported ${section}.${name} dependency shape`)
+    for (const key of Object.keys(entry)) if (!allowed.has(key)) fail(`Unsupported ${section}.${name} dependency policy field ${key}`)
+    const normalized = { ...entry, features: entry.features ?? [], 'default-features': entry['default-features'] ?? true, optional: entry.optional ?? false }
+    return Object.fromEntries(Object.keys(normalized).sort().map(key => [key, normalized[key]]))
+  }
+  const normalizeSection = (section, dependencies) => Object.fromEntries(Object.keys(dependencies ?? {}).sort().map(name => [name, normalizeEntry(name, dependencies[name], section)]))
+  const policy = {}
+  for (const section of ['dependencies', 'dev-dependencies', 'build-dependencies']) policy[section] = normalizeSection(section, document?.[section])
+  const targets = document?.target ?? {}
+  policy.target = Object.fromEntries(Object.keys(targets).sort().map(targetName => {
+    const target = targets[targetName]
+    if (target === null || typeof target !== 'object' || Array.isArray(target)) fail(`Unsupported target dependency policy ${targetName}`)
+    return [targetName, Object.fromEntries(['dependencies', 'dev-dependencies', 'build-dependencies'].map(section => [section, normalizeSection(`target.${targetName}.${section}`, target[section])]))]
+  }))
+  return policy
+}
+
+const targetTable = (value, label) => {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) fail(`${label} target is malformed`)
+  const allowed = new Set(['name', 'path', 'crate-type', 'proc-macro', 'test', 'doctest', 'bench', 'doc', 'harness'])
+  for (const key of Object.keys(value)) if (!allowed.has(key)) fail(`Unsupported ${label} target field ${key}`)
+  return value
+}
+
+const targetPath = (target, kind) => target.path ?? `${kind === 'example' ? 'examples' : 'tests'}/${target.name}.rs`
+
+const effectiveLibraryTarget = (document, label) => {
+  const packageTable = document?.package ?? {}
+  if (packageTable.autolib === false && document.lib === undefined) return undefined
+  const target = document.lib === undefined ? {} : targetTable(document.lib, `${label} lib`)
+  const crateTypes = target['crate-type'] ?? ['lib']
+  if (JSON.stringify(crateTypes) !== JSON.stringify(['lib'])) fail(`${label} has unsupported crate-type policy`)
+  if (target['proc-macro'] === true) fail(`${label} has unsupported proc-macro policy`)
+  return { name: target.name ?? 'erpc_sdk', path: target.path ?? 'src/lib.rs', crateType: ['lib'], procMacro: false, test: target.test ?? true, doctest: target.doctest ?? true, bench: target.bench ?? true, doc: target.doc ?? true, harness: target.harness ?? true }
+}
+
+const effectiveAuxiliaryTargets = (document, kind, files, root, label) => {
+  const packageTable = document?.package ?? {}
+  const autoKey = kind === 'example' ? 'autoexamples' : 'autotests'
+  const explicit = Array.isArray(document?.[kind]) ? document[kind] : []
+  const targets = new Map()
+  for (const raw of explicit) {
+    const target = targetTable(raw, `${label} ${kind}`)
+    const name = target.name ?? target.path?.split('/').pop()?.replace(/\.rs$/, '')
+    if (typeof name !== 'string' || name.length === 0) fail(`${label} ${kind} target name is missing`)
+    const path = targetPath({ ...target, name }, kind)
+    if (!files.includes(`${root}/${path}`)) fail(`${label} ${kind} target is missing ${path}`)
+    if (target['crate-type'] !== undefined && JSON.stringify(target['crate-type']) !== JSON.stringify(['bin'])) fail(`${label} ${kind} has unsupported crate-type policy`)
+    if (target['proc-macro'] === true) fail(`${label} ${kind} has unsupported proc-macro policy`)
+    targets.set(path, { name, path, test: target.test ?? (kind === 'test'), doctest: target.doctest ?? false, bench: target.bench ?? false, doc: target.doc ?? false, harness: target.harness ?? true })
+  }
+  if (packageTable[autoKey] !== false) {
+    const prefix = kind === 'example' ? `${root}/examples/` : `${root}/tests/`
+    for (const file of files.filter(member => member.startsWith(prefix) && member.endsWith('.rs') && !member.endsWith('/support/mod.rs'))) {
+      const path = file.slice(root.length + 1)
+      const name = path.split('/').pop().replace(/\.rs$/, '')
+      if (!targets.has(path)) targets.set(path, { name, path, test: kind === 'test', doctest: false, bench: false, doc: false, harness: true })
+    }
+  }
+  return [...targets.values()].sort((a, b) => a.path.localeCompare(b.path))
+}
+
+const assertRust011TargetPolicy = (original, normalized, files, root) => {
+  for (const [label, document] of [['original', original], ['normalized', normalized]]) {
+    const packageTable = document?.package ?? {}
+    if (document?.bin?.length > 0 || document?.bench?.length > 0) fail(`${label} contains unsupported binary/benchmark targets`)
+    if (packageTable.build !== undefined && packageTable.build !== false) fail(`${label} contains unsupported build-script policy`)
+    if (packageTable.autolib === false && document.lib === undefined) fail(`${label} disables inferred library target`)
+    if (packageTable.autotests === false && (!Array.isArray(document.test) || document.test.length === 0)) fail(`${label} disables inferred test targets`)
+    if (packageTable.autoexamples === false && (!Array.isArray(document.example) || document.example.length === 0)) fail(`${label} disables inferred example targets`)
+  }
+  const originalLib = effectiveLibraryTarget(original, 'Rust original')
+  const normalizedLib = effectiveLibraryTarget(normalized, 'Rust normalized')
+  requireEqual(canonicalJson(originalLib), canonicalJson(normalizedLib), 'Rust original/normalized library target mismatch')
+  for (const kind of ['example', 'test']) {
+    requireEqual(canonicalJson(effectiveAuxiliaryTargets(original, kind, files, root, 'Rust original')), canonicalJson(effectiveAuxiliaryTargets(normalized, kind, files, root, 'Rust normalized')), `Rust original/normalized ${kind} target mismatch`)
+  }
+}
+
+const assertRust011ManifestProfile = (document, label) => {
+  const packageTable = document?.package
+  if (packageTable === null || typeof packageTable !== 'object') fail(`${label} semantic package table is missing`)
+  requireEqual(packageTable.name, CRATE_NAME, `${label} package name mismatch`)
+  requireEqual(packageTable.version, CURRENT_RUST_VERSION, `${label} package version mismatch`)
+  requireEqual(packageTable.license, RUST_011_LICENSE_PROFILE, `${label} license mismatch`)
+  requireEqual(packageTable.repository, 'https://github.com/elsoul/erpc-sdk', `${label} repository mismatch`)
+  requireEqual(packageTable.edition, '2024', `${label} edition mismatch`)
+  requireEqual(packageTable['rust-version'], '1.85', `${label} MSRV mismatch`)
+  requireEqual(JSON.stringify(packageTable.publish), JSON.stringify(['crates-io']), `${label} publish target mismatch`)
+  sameMemberSet(packageTable.include ?? [], rust011ManifestIncludes, `${label} include`)
+  const prost = document.dependencies?.prost
+  const prostTypes = document.dependencies?.['prost-types']
+  requireEqual(prost?.version, '=0.14.4', `${label} Prost version is not exact`)
+  requireEqual(prost?.['default-features'], false, `${label} Prost default-features is not exact`)
+  requireEqual(JSON.stringify(prost?.features), JSON.stringify(['derive', 'std']), `${label} Prost features are not exact`)
+  requireEqual(prostTypes?.version, '=0.14.4', `${label} prost-types version is not exact`)
+  requireEqual(prostTypes?.['default-features'], false, `${label} prost-types default-features is not exact`)
+  requireEqual(JSON.stringify(prostTypes?.features), JSON.stringify(['std']), `${label} prost-types features are not exact`)
+  return packageTable
+}
+
+const rust011ManifestIncludeValues = manifest => {
+  const include = manifest.match(/^include\s*=\s*\[([\s\S]*?)\]$/m)?.[1]
+  if (include === undefined) fail('Rust 0.11 archive manifest include list is missing')
+  return [...include.matchAll(/"([^"\r\n]+)"/g)].map(match => match[1])
+}
+
+const rust011PackageBody = manifest => {
+  const packageHeaders = manifest.match(/^\[package\]\s*$/gm) ?? []
+  if (packageHeaders.length !== 1) fail('Rust 0.11 archive Cargo.toml must contain exactly one [package] table')
+  return manifest.split(/^\[package\]\s*$/m)[1]?.split(/^\[[^\]]+\]\s*$/m)[0] ?? ''
+}
+
+/** Inspect the actual raw 0.11 .crate bytes, including licences and source. */
+export async function inspectRust011Archive({
+  filePath,
+  packageList,
+  archiveList,
+  suppliedManifest,
+  suppliedVcsInfo,
+  expectedVersion,
+  expectedCommit,
+  expectedArchiveSha256,
+  execution = {},
+}) {
+  requireStableVersion(expectedVersion, 'Expected Rust archive version')
+  requireEqual(expectedVersion, CURRENT_RUST_VERSION, 'Rust archive inspection requires 0.11.0')
+  requireSha(expectedCommit, 'Expected Rust archive source commit')
+  const archiveSha256 = await sha256File(filePath)
+  if (expectedArchiveSha256 !== undefined && expectedArchiveSha256 !== '') {
+    requireArchiveSha(expectedArchiveSha256, 'Approved Rust archive SHA-256')
+    requireEqual(archiveSha256, expectedArchiveSha256, 'Rust archive SHA-256 does not match the approved bytes')
+  }
+
+  const root = `${CRATE_NAME}-${expectedVersion}`
+  const records = await archiveMemberRecords(filePath, 'tar', execution)
+  const names = records.map(record => record.name)
+  const roots = new Set(names.map(name => name.split('/')[0]))
+  if (roots.size !== 1 || !roots.has(root)) fail(`Rust 0.11 archive must contain only the ${root} root`)
+  const files = records.filter(record => record.type === 'file').map(record => record.name)
+  const requiredStatic = [
+    `${root}/Cargo.toml`,
+    `${root}/Cargo.toml.orig`,
+    `${root}/Cargo.lock`,
+    `${root}/LICENSE`,
+    `${root}/README.md`,
+    `${root}/LICENSES/Apache-2.0.txt`,
+    `${root}/THIRD_PARTY_NOTICES.md`,
+    `${root}/.cargo_vcs_info.json`,
+    ...RUST_011_CLIENT_MODULES.map(module => `${root}/src/${module}.rs`),
+    ...RUST_011_REQUIRED_SOURCE_FILES.map(member => `${root}/${member}`),
+    ...RUST_011_SUI_MEMBERS.map(member => `${root}/${member}`),
+    ...RUST_011_REQUIRED_EXAMPLES.map(member => `${root}/${member}`),
+    ...RUST_011_REQUIRED_TESTS.map(member => `${root}/${member}`),
+  ]
+  for (const member of requiredStatic) if (!files.includes(member)) fail(`Rust 0.11 archive is missing ${member}`)
+
+  const allowedFiles = new Set([
+    `${root}/Cargo.toml`, `${root}/Cargo.toml.orig`, `${root}/Cargo.lock`, `${root}/LICENSE`, `${root}/README.md`,
+    `${root}/LICENSES/Apache-2.0.txt`, `${root}/THIRD_PARTY_NOTICES.md`,
+    `${root}/.cargo_vcs_info.json`,
+  ])
+  for (const member of files) {
+    if (allowedFiles.has(member)) continue
+    const relative = member.slice(root.length + 1)
+    if (!/^(?:examples|src|tests)\/.+\.rs$/.test(relative)) fail(`Rust 0.11 archive contains an unlisted member ${member}`)
+  }
+
+  const manifestBytes = await commandBuffer('tar', ['-xOf', filePath, `${root}/Cargo.toml`], execution)
+  const manifest = Buffer.from(manifestBytes).toString('utf8')
+  if (suppliedManifest !== undefined) requireEqual(String(suppliedManifest), manifest, 'Rust archive manifest evidence differs from raw bytes')
+  const lockSource = Buffer.from(await commandBuffer('tar', ['-xOf', filePath, `${root}/Cargo.lock`], execution)).toString('utf8')
+  const lockPackage = await findLocalCargoPackage(lockSource, CRATE_NAME, execution)
+  requireEqual(lockPackage.version, expectedVersion, 'Rust 0.11 archive Cargo.lock version mismatch')
+  const manifestToml = await parseCargoToml(manifest, 'Rust 0.11 archive Cargo.toml', execution)
+  const packageTable = assertRust011ManifestProfile(manifestToml, 'Rust 0.11 archive Cargo.toml')
+  const originalBytes = await commandBuffer('tar', ['-xOf', filePath, `${root}/Cargo.toml.orig`], execution)
+  const originalToml = await parseCargoToml(Buffer.from(originalBytes).toString('utf8'), 'Rust 0.11 archive Cargo.toml.orig', execution)
+  const originalPackageTable = assertRust011ManifestProfile(originalToml, 'Rust 0.11 archive Cargo.toml.orig')
+  for (const field of ['name', 'version', 'license', 'repository', 'edition', 'rust-version']) requireEqual(originalPackageTable[field], packageTable[field], `Rust 0.11 original/normalized ${field} mismatch`)
+  requireEqual(canonicalJson(normalizedDependencyPolicy(originalToml)), canonicalJson(normalizedDependencyPolicy(manifestToml)), 'Rust 0.11 original/normalized dependency policy mismatch')
+  assertRust011TargetPolicy(originalToml, manifestToml, files, root)
+  requireEqual(lockPackage.version, packageTable.version, 'Rust 0.11 archive lock/package version mismatch')
+  requireEqual(manifestToml.lib?.path, 'src/lib.rs', 'Rust 0.11 archive library target mismatch')
+  requireEqual(manifestToml.lib?.name, 'erpc_sdk', 'Rust 0.11 archive library name mismatch')
+  const selectedExamples = Array.isArray(manifestToml.example) ? manifestToml.example : []
+  const selectedTests = Array.isArray(manifestToml.test) ? manifestToml.test : []
+  if (selectedExamples.length === 0 || selectedTests.length === 0) fail('Rust 0.11 archive has no selected example/test targets')
+  for (const target of [...selectedExamples, ...selectedTests]) {
+    if (typeof target?.path !== 'string' || !files.includes(`${root}/${target.path}`)) fail(`Rust 0.11 archive target is missing ${target?.path ?? '<unnamed>'}`)
+  }
+
+  const vcsBytes = await commandBuffer('tar', ['-xOf', filePath, `${root}/.cargo_vcs_info.json`], execution)
+  const vcsInfo = Buffer.from(vcsBytes).toString('utf8')
+  if (suppliedVcsInfo !== undefined) requireEqual(String(suppliedVcsInfo), vcsInfo, 'Rust archive VCS evidence differs from raw bytes')
+  let vcs
+  try { vcs = JSON.parse(vcsInfo) } catch { fail('Rust 0.11 archive VCS metadata is malformed') }
+  requireEqual(vcs?.git?.sha1 ?? vcs?.git?.commit, expectedCommit, 'Rust 0.11 archive VCS source mismatch')
+  if (vcs?.git?.dirty !== undefined && vcs.git.dirty !== false) fail('Rust 0.11 archive VCS metadata dirty value is not clean')
+  requireEqual(vcs?.path_in_vcs, 'packages/rust', 'Rust 0.11 archive VCS path mismatch')
+
+  const licenseHashes = {}
+  for (const [relative, expectedHash] of Object.entries(RUST_011_LICENSE_HASHES)) {
+    const member = `${root}/${relative}`
+    const digest = sha256Hex(await commandBuffer('tar', ['-xOf', filePath, member], execution))
+    requireEqual(digest, expectedHash, `Rust 0.11 archive hash mismatch for ${relative}`)
+    licenseHashes[relative] = digest
+  }
+  const notices = Buffer.from(await commandBuffer('tar', ['-xOf', filePath, `${root}/THIRD_PARTY_NOTICES.md`], execution)).toString('utf8')
+  for (const marker of ['aa9ba2c13b2a9348059b38110e64af39849a0377', 'proto/sui/rpc/v2/ledger_service.proto', 'proto/sui/rpc/v2/state_service.proto', 'proto/sui/rpc/v2/object.proto', 'prost 0.14.4', 'prost-types 0.14.4']) if (!notices.includes(marker)) fail(`Rust 0.11 notice is missing ${marker}`)
+
+  const suppliedArchiveMembers = normalizeRust011SuppliedList(archiveList, root, 'Rust archive member list')
+  if (suppliedArchiveMembers !== undefined) {
+    const rawLines = String(archiveList).split(/\r?\n/).map(line => line.trim()).filter(Boolean)
+    const includesDirectories = rawLines.some(line => line.endsWith('/'))
+    sameMemberSet(suppliedArchiveMembers, includesDirectories ? names : files, 'Rust archive supplied list')
+  }
+  const suppliedPackageMembers = normalizeRust011SuppliedList(packageList, root, 'Rust package member list')
+  if (suppliedPackageMembers !== undefined) sameMemberSet(suppliedPackageMembers, files, 'Rust package supplied list')
+
+  return {
+    crate: CRATE_NAME,
+    version: expectedVersion,
+    sha256: archiveSha256,
+    sizeInBytes: (await stat(filePath)).size,
+    root,
+    sourceCommit: expectedCommit,
+    pathInVcs: vcs.path_in_vcs,
+    licenseProfile: RUST_011_LICENSE_PROFILE,
+    licenseHashes,
+    members: names.slice().sort(),
+    clientModules: RUST_011_CLIENT_MODULES.map(module => `src/${module}.rs`),
+    suiMembers: RUST_011_SUI_MEMBERS.slice(),
+    examples: RUST_011_REQUIRED_EXAMPLES.slice(),
+    tests: RUST_011_REQUIRED_TESTS.slice(),
+  }
+}
+
+// Keep an explicit verification name for callers that distinguish the raw
+// current archive path from the historical text-only helper above.
+export const verifyRust011Archive = inspectRust011Archive
 
 /**
  * Select exactly one Cargo archive for the expected crate version. Cargo has
@@ -3928,14 +4425,31 @@ const run = async arguments_ => {
 
   if (arguments_[0] === '--archive-check') {
     requireExactInternalMode(arguments_, '--archive-check')
-    verifyArchiveContents({
-      fileList: await readFile(env('ARCHIVE_LIST_FILE'), 'utf8'),
-      manifest: await readFile(env('MANIFEST_FILE'), 'utf8'),
-      vcsInfo: await readFile(env('VCS_INFO_FILE'), 'utf8'),
-      expectedVersion: env('EXPECTED_VERSION'),
-      expectedCommit: env('EXPECTED_COMMIT'),
-    })
-    console.log('Published crate archive provenance and required files passed.')
+    const expectedVersion = env('EXPECTED_VERSION')
+    if (expectedVersion === CURRENT_RUST_VERSION) {
+      const archive = await inspectRust011Archive({
+        filePath: env('ARCHIVE_FILE'),
+        packageList: process.env.PACKAGE_LIST_FILE === undefined ? undefined : await readFile(env('PACKAGE_LIST_FILE'), 'utf8'),
+        archiveList: process.env.ARCHIVE_LIST_FILE === undefined ? undefined : await readFile(env('ARCHIVE_LIST_FILE'), 'utf8'),
+        suppliedManifest: process.env.MANIFEST_FILE === undefined ? undefined : await readFile(env('MANIFEST_FILE'), 'utf8'),
+        suppliedVcsInfo: process.env.VCS_INFO_FILE === undefined ? undefined : await readFile(env('VCS_INFO_FILE'), 'utf8'),
+        expectedVersion,
+        expectedCommit: env('EXPECTED_COMMIT'),
+        expectedArchiveSha256: process.env.APPROVED_SHA256 || undefined,
+      })
+      if (process.env.ARCHIVE_RESULT_FILE !== undefined) await writeFile(env('ARCHIVE_RESULT_FILE'), `${canonicalJson(archive)}\n`)
+      console.log(`archive_sha256=${archive.sha256}`)
+      console.log(`Rust 0.11 archive provenance and distribution contents passed (${archive.members.length} members).`)
+    } else {
+      verifyArchiveContents({
+        fileList: await readFile(env('ARCHIVE_LIST_FILE'), 'utf8'),
+        manifest: await readFile(env('MANIFEST_FILE'), 'utf8'),
+        vcsInfo: await readFile(env('VCS_INFO_FILE'), 'utf8'),
+        expectedVersion,
+        expectedCommit: env('EXPECTED_COMMIT'),
+      })
+      console.log('Published crate archive provenance and required files passed.')
+    }
     return
   }
 
