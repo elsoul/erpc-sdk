@@ -1,5 +1,5 @@
 # frozen_string_literal: true
 
 module ERPC
-  VERSION = "0.9.1"
+  VERSION = "0.11.0"
 end
