@@ -3178,6 +3178,289 @@ export async function observeRustArtifact(input, adapters = {}) {
   return receipt
 }
 
+const goModuleName = 'github.com/elsoul/erpc-sdk/packages/go'
+const goRepositoryUrl = 'https://github.com/elsoul/erpc-sdk'
+const goProxyOrigin = 'https://proxy.golang.org'
+const goSumOrigin = 'sum.golang.org'
+const goObserverMaxPropagationRetries = 20
+
+const goObserverDescriptor = descriptor => {
+  releaseSetKeys(descriptor, ['module', 'version', 'tag', 'sourceCommit', 'inventory'], 'Go observer descriptor')
+  requireEqual(descriptor.module, goModuleName, 'Go observer module mismatch')
+  if (typeof descriptor.version !== 'string' || !/^v(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/.test(descriptor.version)) fail('Go observer version is invalid')
+  requireEqual(descriptor.tag, `packages/go/${descriptor.version}`, 'Go observer tag mismatch')
+  requireSha(descriptor.sourceCommit, 'Go observer source commit')
+  return { ...descriptor, inventory: validateGoInventory(descriptor.inventory) }
+}
+
+const goObserverInput = input => {
+  releaseSetKeys(input, ['descriptor', 'planSha256', 'preparation', 'observer', 'workDir', 'outputFile', 'toolPaths'], 'Go observer input')
+  const descriptor = goObserverDescriptor(input.descriptor)
+  if (input.planSha256 !== undefined) requireArchiveSha(input.planSha256, 'Go observer plan SHA-256')
+  if (input.preparation !== undefined) {
+    releaseSetKeys(input.preparation, ['sourceCommit', 'runId', 'runAttempt', 'artifactId', 'bindingArtifactId', 'planSha256'], 'Go observer preparation')
+    requireSha(input.preparation.sourceCommit, 'Go observer preparation source')
+    for (const [value, label] of [[input.preparation.runId, 'Go observer preparation run ID'], [input.preparation.runAttempt, 'Go observer preparation attempt'], [input.preparation.artifactId, 'Go observer preparation artifact ID'], [input.preparation.bindingArtifactId, 'Go observer preparation binding artifact ID']]) requireFuturePositiveId(value, label)
+    requireArchiveSha(input.preparation.planSha256, 'Go observer preparation plan SHA-256')
+    if (input.planSha256 !== undefined) requireEqual(input.preparation.planSha256, input.planSha256, 'Go observer preparation plan mismatch')
+  }
+  releaseSetKeys(input.observer, ['runId', 'runAttempt', 'workflowPath', 'sourceCommit'], 'Go observer context')
+  requireFuturePositiveId(input.observer.runId, 'Go observer run ID')
+  requireFuturePositiveId(input.observer.runAttempt, 'Go observer attempt')
+  requireEqual(input.observer.workflowPath, RELEASE_SET_WORKFLOW, 'Go observer workflow mismatch')
+  requireSha(input.observer.sourceCommit, 'Go observer source')
+  releaseSetKeys(input.toolPaths, ['go', 'git', 'python3'], 'Go observer tool paths')
+  for (const [name, value] of Object.entries(input.toolPaths)) npmSafePath(value, `Go observer ${name} path`)
+  return { ...input, descriptor }
+}
+
+const goObserverRun = async (run, command, arguments_, options, stage, deadlineControl) => {
+  const bounded = { ...options, timeout: Math.min(options.timeout ?? Number.POSITIVE_INFINITY, npmDeadlineRemaining(deadlineControl.now, deadlineControl.deadline)), killSignal: 'SIGTERM' }
+  let result
+  try { result = await run(command, arguments_, bounded) } catch { fail(`go-observe-${stage}-failed`) }
+  if (!result || result.exitCode !== 0) fail(`go-observe-${stage}-failed`)
+  npmCheckDeadline(deadlineControl.now, deadlineControl.deadline)
+  return result
+}
+
+const goObserverRunRaw = async (run, command, arguments_, options, stage, deadlineControl) => {
+  const bounded = { ...options, timeout: Math.min(options.timeout ?? Number.POSITIVE_INFINITY, npmDeadlineRemaining(deadlineControl.now, deadlineControl.deadline)), killSignal: 'SIGTERM' }
+  let result
+  try { result = await run(command, arguments_, bounded) } catch (error) { result = { exitCode: 1, stdout: '', stderr: String(error?.message ?? error), processError: true } }
+  npmCheckDeadline(deadlineControl.now, deadlineControl.deadline)
+  if (!result || typeof result !== 'object') fail(`go-observe-${stage}-failed`)
+  return result
+}
+
+const goObserverIncomplete = ({ input, sourceCommit, tagRef, stage, status, reason }) => ({
+  schemaVersion: 1,
+  kind: 'go-public-observation',
+  state: 'incomplete',
+  complete: false,
+  repository: EXPECTED_REPOSITORY,
+  repositoryId: EXPECTED_REPOSITORY_ID,
+  registry: 'proxy.golang.org',
+  module: input.descriptor.module,
+  version: input.descriptor.version,
+  tag: input.descriptor.tag,
+  sourceCommit,
+  planSha256: input.planSha256,
+  preparation: input.preparation,
+  observer: input.observer,
+  absence: { stage, status, reason, ref: tagRef },
+  auth: { requested: false, uploadAttempted: false },
+})
+
+const goObserverSleep = async (sleep, now, deadline, label) => {
+  if (now() >= deadline) return false
+  const remaining = deadline - now()
+  await sleep(Math.min(30_000, Math.max(1, remaining)))
+  if (now() >= deadline) return false
+  return true
+}
+
+const goObserverIs404 = (result, descriptor) => {
+  if (result?.processError || result?.exitCode === 0 || typeof result?.stdout !== 'string') return false
+  let payload
+  try { payload = JSON.parse(result.stdout) } catch { return false }
+  if (payload?.Path !== descriptor.module || payload?.Version !== descriptor.version || typeof payload?.Error !== 'string') return false
+  const diagnostic = payload.Error.split(/\r?\n/, 1)[0]
+  return ['info', 'mod', 'zip'].some(kind => diagnostic === `${descriptor.module}@${descriptor.version}: reading ${goProxyOrigin}/${descriptor.module}/@v/${descriptor.version}.${kind}: 404 Not Found`)
+}
+
+const goObserverEnv = ({ root, proxy, goCache, goPath, goEnv, proxyMode }) => ({
+  PATH: process.env.PATH ?? '',
+  TMPDIR: root,
+  LANG: 'C.UTF-8',
+  LC_ALL: 'C.UTF-8',
+  GOPROXY: proxyMode === 'direct' ? 'direct' : goProxyOrigin,
+  GOSUMDB: goSumOrigin,
+  GOPRIVATE: '',
+  GONOPROXY: '',
+  GONOSUMDB: '',
+  GOPATH: goPath,
+  GOMODCACHE: proxy,
+  GOCACHE: goCache,
+  GOWORK: 'off',
+  GOTOOLCHAIN: 'local',
+  GOFLAGS: '',
+  GOENV: goEnv,
+  GIT_CONFIG_NOSYSTEM: '1',
+  GIT_CONFIG_GLOBAL: '/dev/null',
+  GIT_TERMINAL_PROMPT: '0',
+})
+
+const goObserverJson = (result, stage) => {
+  if (!result || typeof result.stdout !== 'string') fail(`go-observe-${stage}-output-invalid`)
+  try { return JSON.parse(result.stdout) } catch { fail(`go-observe-${stage}-json-invalid`) }
+}
+
+const goObserverPath = async (path, root, label) => {
+  if (typeof path !== 'string' || !path.startsWith('/')) fail(`${label} path is not absolute`)
+  const canonicalRoot = await realpath(root)
+  const canonicalPath = await realpath(path)
+  if (canonicalPath !== canonicalRoot && !canonicalPath.startsWith(`${canonicalRoot}${sep}`)) fail(`${label} path escaped isolated root`)
+  return canonicalPath
+}
+
+const goObserverReceipt = (receipt, descriptor, expectedCommit, root, label) => {
+  const required = ['Path', 'Version', 'Info', 'GoMod', 'Zip', 'Dir', 'Sum', 'GoModSum']
+  if (receipt?.Error || required.some(key => typeof receipt?.[key] !== 'string' || receipt[key].length === 0) || receipt?.Origin === null || typeof receipt?.Origin !== 'object') fail(`go-observe-${label}-receipt-incomplete`)
+  requireEqual(receipt.Path, descriptor.module, `Go ${label} module mismatch`)
+  requireEqual(receipt.Version, descriptor.version, `Go ${label} version mismatch`)
+  if (receipt.Reuse === true) fail(`Go ${label} reused cached result`)
+  const origin = receipt.Origin
+  requireEqual(origin?.VCS, 'git', `Go ${label} origin VCS mismatch`)
+  requireEqual(origin?.URL, goRepositoryUrl, `Go ${label} origin URL mismatch`)
+  requireEqual(origin?.Hash, expectedCommit, `Go ${label} origin source mismatch`)
+  requireEqual(origin?.Ref, `refs/tags/${descriptor.tag}`, `Go ${label} origin ref mismatch`)
+  requireEqual(origin?.Subdir, 'packages/go', `Go ${label} origin subdirectory mismatch`)
+  if (!/^h1:[A-Za-z0-9+/]{43}=?$/.test(receipt.Sum) || !/^h1:[A-Za-z0-9+/]{43}=?$/.test(receipt.GoModSum)) fail(`go-observe-${label}-checksum-invalid`)
+  return { ...receipt, origin, root, label }
+}
+
+const goObserverZipEvidence = async (zipPath, descriptor, root, execution) => {
+  const members = await archiveEntries(zipPath, 'zip', execution)
+  const prefix = `${descriptor.module}@${descriptor.version}/`
+  const expected = Object.fromEntries(descriptor.inventory.files.map(file => [file.path, file.sha256]))
+  const seen = new Map()
+  for (const member of members) {
+    if (member === prefix.slice(0, -1)) continue
+    if (!member.startsWith(prefix)) fail('Go module ZIP has an unexpected root')
+    const relative = member.slice(prefix.length)
+    if (!relative || relative.endsWith('/')) continue
+    if (seen.has(relative) || expected[relative] === undefined) fail('Go module ZIP member set mismatch')
+    const bytes = await commandBuffer('unzip', ['-p', zipPath, member], execution)
+    const digest = sha256Hex(bytes)
+    requireEqual(digest, expected[relative], `Go module inventory mismatch for ${relative}`)
+    seen.set(relative, digest)
+  }
+  if (seen.size !== Object.keys(expected).length || Object.keys(expected).some(path => !seen.has(path))) fail('Go module ZIP member set mismatch')
+  const goModBytes = await commandBuffer('unzip', ['-p', zipPath, `${prefix}go.mod`], execution)
+  const goMod = goModBytes.toString('utf8')
+  if (!new RegExp(`^module ${goModuleName}$`, 'm').test(goMod)) fail('Go module ZIP go.mod identity mismatch')
+  return { members: [...seen.keys()].sort(), inventory: Object.fromEntries([...seen.entries()].sort()), goModSha256: sha256Hex(goModBytes) }
+}
+
+/** Observe Go proxy/direct source bytes and run an isolated real consumer. */
+export async function observeGoModule(input, adapters = {}) {
+  const outputFile = await npmInvalidateOutput(input?.outputFile, input?.workDir, 'Go observer output file', 'go-public-observation')
+  const normalized = goObserverInput(input)
+  const run = adapters.run ?? npmDefaultRun
+  const commitRename = adapters.rename ?? rename
+  const now = adapters.now ?? (() => performance.now())
+  const sleep = adapters.sleep ?? (milliseconds => new Promise(resolve_ => setTimeout(resolve_, milliseconds)))
+  const workDir = npmSafePath(input.workDir, 'Go observer work directory')
+  if ((await readdir(workDir, { withFileTypes: true })).length !== 0) fail('go-observe-work-directory-not-fresh')
+  const deadline = now() + 600_000
+  const deadlineControl = { now, deadline }
+  const sourceCommit = normalized.descriptor.sourceCommit
+  const tagRef = `refs/tags/${normalized.descriptor.tag}`
+  const root = await realpath(workDir)
+  const shared = { PATH: process.env.PATH ?? '', TMPDIR: root, LANG: 'C.UTF-8', LC_ALL: 'C.UTF-8', GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null', GIT_TERMINAL_PROMPT: '0' }
+  const gitRoot = join(root, 'git')
+  await mkdir(gitRoot)
+  const gitEnv = { ...shared, HOME: join(gitRoot, 'home'), GIT_TERMINAL_PROMPT: '0' }
+  await mkdir(gitEnv.HOME)
+  const gitCommand = input.toolPaths.git
+  const tagRead = async stage => {
+    let absentAttempts = 0
+    while (true) {
+      const result = await goObserverRunRaw(run, gitCommand, ['-C', gitRoot, 'ls-remote', '--refs', goRepositoryUrl, tagRef], { cwd: root, env: gitEnv }, stage, deadlineControl)
+      if (result.exitCode !== 0) fail(`go-observe-${stage}-failed`)
+      const line = String(result.stdout ?? '').trim().split(/\r?\n/).filter(Boolean)
+      if (line.length === 0) {
+        if (absentAttempts++ >= goObserverMaxPropagationRetries) return goObserverIncomplete({ input: normalized, sourceCommit, tagRef, stage, status: 404, reason: 'tag-absent' })
+        if (!await goObserverSleep(sleep, now, deadline, `${stage}-tag-absent`)) return goObserverIncomplete({ input: normalized, sourceCommit, tagRef, stage, status: 404, reason: 'tag-absent' })
+        continue
+      }
+      if (line.length !== 1) fail(`go-observe-${stage}-tag-ambiguous`)
+      const [commit, ref] = line[0].split(/\s+/)
+      requireEqual(ref, tagRef, `Go ${stage} tag ref mismatch`)
+      requireSha(commit, `Go ${stage} tag commit`)
+      requireEqual(commit, sourceCommit, `Go ${stage} tag source mismatch`)
+      return { commit, ref }
+    }
+  }
+  const tag = await tagRead('tag-initial')
+  if (tag?.state === 'incomplete') return tag
+  const pythonVersionResult = await goObserverRun(run, input.toolPaths.python3, ['--version'], { cwd: root, env: shared }, 'python-version', deadlineControl)
+  const pythonVersion = String(pythonVersionResult.stdout || pythonVersionResult.stderr).trim()
+  if (!/^Python 3\.12\./.test(pythonVersion)) fail('go-observe-python-tool-version-mismatch')
+  const runtimes = ['proxy', 'direct'].map(kind => {
+    const runtimeRoot = join(root, kind)
+    const consumer = join(runtimeRoot, 'consumer')
+    const goPath = join(runtimeRoot, 'gopath')
+    const goCache = join(runtimeRoot, 'gocache')
+    const moduleCache = join(runtimeRoot, 'modcache')
+    const goEnv = join(runtimeRoot, 'goenv')
+    return { kind, runtimeRoot, consumer, goPath, goCache, moduleCache, goEnv, env: goObserverEnv({ root: runtimeRoot, proxy: moduleCache, goCache, goPath, goEnv, proxyMode: kind }) }
+  })
+  for (const runtime of runtimes) {
+    await mkdir(runtime.consumer, { recursive: true }); await mkdir(runtime.goPath, { recursive: true }); await mkdir(runtime.goCache, { recursive: true }); await mkdir(runtime.moduleCache, { recursive: true }); await writeFile(runtime.goEnv, '')
+    const version = await goObserverRun(run, input.toolPaths.go, ['version'], { cwd: runtime.consumer, env: runtime.env }, `${runtime.kind}-version`, deadlineControl)
+    if (!/^go version go1\.22\./.test(String(version.stdout).trim())) fail(`go-observe-${runtime.kind}-tool-version-mismatch`)
+    const runtimeVersion = String(version.stdout).trim()
+    await writeFile(join(runtime.consumer, 'go.mod'), `module example.invalid/${runtime.kind}-consumer\n\ngo 1.22\n\nrequire ${normalized.descriptor.module} ${normalized.descriptor.version}\n`)
+    let downloaded
+    let absentAttempts = 0
+    while (true) {
+      const rawDownload = await goObserverRunRaw(run, input.toolPaths.go, ['mod', 'download', '-json', `${normalized.descriptor.module}@${normalized.descriptor.version}`], { cwd: runtime.consumer, env: runtime.env }, `${runtime.kind}-download`, deadlineControl)
+      if (rawDownload.exitCode === 0) {
+        downloaded = rawDownload
+        break
+      }
+      if (!goObserverIs404(rawDownload, normalized.descriptor)) fail(`go-observe-${runtime.kind}-download-failed`)
+      if (absentAttempts++ >= goObserverMaxPropagationRetries) return goObserverIncomplete({ input: normalized, sourceCommit, tagRef, stage: `${runtime.kind}-download`, status: 404, reason: 'module-absent' })
+      if (!await goObserverSleep(sleep, now, deadline, `${runtime.kind}-download-absent`)) return goObserverIncomplete({ input: normalized, sourceCommit, tagRef, stage: `${runtime.kind}-download`, status: 404, reason: 'module-absent' })
+    }
+    const receipt = goObserverJson(downloaded, `${runtime.kind}-download`)
+    const checked = goObserverReceipt(receipt, normalized.descriptor, sourceCommit, runtime.moduleCache, runtime.kind)
+    checked.info = await goObserverPath(receipt.Info, runtime.moduleCache, `${runtime.kind} info`)
+    checked.goMod = await goObserverPath(receipt.GoMod, runtime.moduleCache, `${runtime.kind} go.mod`)
+    checked.zip = await goObserverPath(receipt.Zip, runtime.moduleCache, `${runtime.kind} ZIP`)
+    checked.dir = await goObserverPath(receipt.Dir, runtime.moduleCache, `${runtime.kind} module directory`)
+    const infoBytes = await readFile(checked.info)
+    let info
+    try { info = JSON.parse(infoBytes.toString('utf8')) } catch { fail(`go-observe-${runtime.kind}-info-invalid`) }
+    requireEqual(info?.Version, normalized.descriptor.version, `Go ${runtime.kind} info version mismatch`)
+    const goMod = await readFile(checked.goMod, 'utf8')
+    if (!new RegExp(`^module ${goModuleName}$`, 'm').test(goMod)) fail(`Go ${runtime.kind} go.mod identity mismatch`)
+    checked.infoSha256 = sha256Hex(infoBytes)
+    checked.goModSha256 = sha256Hex(goMod)
+    checked.zipSha256 = sha256Hex(await readFile(checked.zip))
+    checked.archive = await goObserverZipEvidence(checked.zip, normalized.descriptor, runtime.moduleCache, { commandMap: { python3: input.toolPaths.python3 }, execFile: async (command, args, options) => npmBoundedExecFile(command, args, { ...options, env: { ...runtime.env, PATH: process.env.PATH ?? '' }, timeout: Math.min(options.timeout ?? Number.POSITIVE_INFINITY, npmDeadlineRemaining(now, deadline)), killSignal: 'SIGTERM' }) })
+    requireEqual(checked.goModSha256, checked.archive.goModSha256, `Go ${runtime.kind} go.mod differs from ZIP member`)
+    checked.runtime = runtime
+    checked.runtimeVersion = runtimeVersion
+    runtime.checked = checked
+    await writeFile(join(runtime.consumer, 'main.go'), `package main\nimport _ "${normalized.descriptor.module}"\nfunc main() {}\n`)
+    await goObserverRun(run, input.toolPaths.go, ['mod', 'tidy'], { cwd: runtime.consumer, env: runtime.env }, `${runtime.kind}-tidy`, deadlineControl)
+    await goObserverRun(run, input.toolPaths.go, ['mod', 'download', 'all'], { cwd: runtime.consumer, env: runtime.env }, `${runtime.kind}-download-all`, deadlineControl)
+    const consumer = await goObserverRun(run, input.toolPaths.go, ['run', '.'], { cwd: runtime.consumer, env: runtime.env }, `${runtime.kind}-consumer`, deadlineControl)
+    runtime.consumerExitCode = consumer.exitCode
+    checked.consumerExitCode = consumer.exitCode
+  }
+  const moved = await tagRead('tag-recheck')
+  if (moved?.state === 'incomplete') return moved
+  const proxy = runtimes[0].checked; const direct = runtimes[1].checked
+  const receipt = { schemaVersion: 1, kind: 'go-public-observation', state: 'observed', complete: true, repository: EXPECTED_REPOSITORY, repositoryId: EXPECTED_REPOSITORY_ID, registry: 'proxy.golang.org', module: normalized.descriptor.module, version: normalized.descriptor.version, tag: normalized.descriptor.tag, sourceCommit, planSha256: input.planSha256, preparation: input.preparation, observer: input.observer, tooling: { pythonVersion }, tag: { ...tag, recheck: moved }, proxy: { runtimeVersion: proxy.runtimeVersion, origin: proxy.origin, infoSha256: proxy.infoSha256, goModSha256: proxy.goModSha256, sum: proxy.Sum, goModSum: proxy.GoModSum, zipSha256: proxy.zipSha256, members: proxy.archive.members, inventory: proxy.archive.inventory, consumerExitCode: proxy.consumerExitCode }, direct: { runtimeVersion: direct.runtimeVersion, origin: direct.origin, infoSha256: direct.infoSha256, goModSha256: direct.goModSha256, sum: direct.Sum, goModSum: direct.GoModSum, zipSha256: direct.zipSha256, members: direct.archive.members, inventory: direct.archive.inventory, consumerExitCode: direct.consumerExitCode }, auth: { requested: false, uploadAttempted: false }, observedAt: new Date().toISOString() }
+  if (canonicalJson(proxy.archive.inventory) !== canonicalJson(direct.archive.inventory) || proxy.Sum !== direct.Sum || proxy.GoModSum !== direct.GoModSum) fail('go-observe-proxy-direct-semantic-mismatch')
+  const temporaryOutput = `${outputFile}.tmp-${process.pid}-${Math.random().toString(16).slice(2)}`
+  try {
+    npmCheckDeadline(now, deadline)
+    await writeFile(temporaryOutput, `${canonicalJson(receipt)}\n`, { flag: 'wx' })
+    npmCheckDeadline(now, deadline)
+    await commitRename(temporaryOutput, outputFile)
+    npmCheckDeadline(now, deadline)
+  } catch (error) {
+    await rm(temporaryOutput, { force: true }).catch(() => {})
+    await rm(outputFile, { force: true }).catch(() => {})
+    throw error
+  }
+  return receipt
+}
+
 /** Authenticate Actions run/artifact metadata before any later bundle use. */
 export function validateReleaseSetPreparationMetadata({ plan, run, artifact, bindingArtifact, expected }) {
   const normalized = validateReleaseSetPlan(plan)
@@ -3427,6 +3710,23 @@ const run = async arguments_ => {
     const receipt = await observeRustArtifact({ descriptor: plan.rust, planSha256, preparation: { sourceCommit: preparation.context.sourceCommit, runId: binding.runId, runAttempt: binding.runAttempt, artifactId: binding.artifactId, bindingArtifactId: preparation.metadata.bindingArtifactId, planSha256: binding.planSha256 }, observer: { runId: env('RELEASE_SET_RUST_OBSERVER_RUN_ID'), runAttempt: env('RELEASE_SET_RUST_OBSERVER_ATTEMPT'), workflowPath: env('RELEASE_SET_RUST_OBSERVER_WORKFLOW'), sourceCommit: observerSource }, workDir: env('RELEASE_SET_RUST_WORK_DIR'), outputFile })
     if (receipt.state !== 'observed' || receipt.complete !== true) fail('rust-public-observation-incomplete')
     console.log(`rust-public-observation=${sha256Hex(canonicalJson(receipt))}`)
+    return
+  }
+
+  if (arguments_[0] === '--release-set-go-observe') {
+    const outputFile = await npmInvalidateOutput(process.env.RELEASE_SET_GO_OUTPUT_FILE, process.env.RELEASE_SET_GO_WORK_DIR, 'Go observer output file', 'go-public-observation')
+    requireExactInternalMode(arguments_, '--release-set-go-observe')
+    const plan = validateReleaseSetPlan(JSON.parse(await readFile(env('RELEASE_SET_PLAN_FILE'), 'utf8')))
+    const planSha256 = env('RELEASE_SET_PLAN_SHA256'); requireEqual(releaseSetPlanDigest(plan), planSha256, 'Go observer plan digest mismatch')
+    const context = { repository: env('REPOSITORY'), repositoryId: env('REPOSITORY_ID'), eventName: env('EVENT_NAME'), eventRef: env('EVENT_REF'), eventSha: env('EVENT_SHA'), expectedCommit: env('EXPECTED_COMMIT'), checkoutHead: env('CHECKOUT_HEAD'), checkoutStatus: env('CHECKOUT_STATUS'), workflowRef: env('WORKFLOW_REF'), workflowSha: env('WORKFLOW_SHA') }
+    validateReleaseSetContext(context, plan)
+    const preparedExpected = { runId: env('RELEASE_SET_PREPARED_RUN_ID'), runAttempt: env('RELEASE_SET_PREPARED_RUN_ATTEMPT'), artifactId: env('RELEASE_SET_PREPARED_ARTIFACT_ID'), bindingArtifactId: env('RELEASE_SET_PREPARED_BINDING_ARTIFACT_ID'), sourceCommit: plan.sourceCommit, bundleName: `release-set-bundle-${plan.sourceCommit}`, bindingName: `release-set-binding-${env('RELEASE_SET_PREPARED_RUN_ID')}-${env('RELEASE_SET_PREPARED_RUN_ATTEMPT')}` }
+    const binding = JSON.parse(await readFile(env('RELEASE_SET_BINDING_FILE'), 'utf8'))
+    const preparation = await verifyReleaseSetPreparation({ plan, context, run: JSON.parse(await readFile(env('RELEASE_SET_RUN_FILE'), 'utf8')), artifact: JSON.parse(await readFile(env('RELEASE_SET_ARTIFACT_METADATA_FILE'), 'utf8')), bindingArtifact: JSON.parse(await readFile(env('RELEASE_SET_BINDING_METADATA_FILE'), 'utf8')), binding, bundleZip: env('RELEASE_SET_BUNDLE_ZIP_FILE'), bindingZip: env('RELEASE_SET_BINDING_ZIP_FILE'), artifactDirectory: env('RELEASE_SET_ARTIFACT_DIR'), bindingDirectory: env('RELEASE_SET_BINDING_DIR'), expected: preparedExpected })
+    const observerSource = env('RELEASE_SET_GO_OBSERVER_SOURCE'); requireEqual(observerSource, context.eventSha, 'Go observer source must bind to execution context')
+    const receipt = await observeGoModule({ descriptor: plan.go, planSha256, preparation: { sourceCommit: preparation.context.sourceCommit, runId: binding.runId, runAttempt: binding.runAttempt, artifactId: binding.artifactId, bindingArtifactId: preparation.metadata.bindingArtifactId, planSha256: binding.planSha256 }, observer: { runId: env('RELEASE_SET_GO_OBSERVER_RUN_ID'), runAttempt: env('RELEASE_SET_GO_OBSERVER_ATTEMPT'), workflowPath: env('RELEASE_SET_GO_OBSERVER_WORKFLOW'), sourceCommit: observerSource }, workDir: env('RELEASE_SET_GO_WORK_DIR'), outputFile, toolPaths: { go: env('RELEASE_SET_GO_GO'), git: env('RELEASE_SET_GO_GIT'), python3: env('RELEASE_SET_GO_PYTHON') } })
+    if (receipt.state !== 'observed' || receipt.complete !== true) fail('go-public-observation-incomplete')
+    console.log(`go-public-observation=${sha256Hex(canonicalJson(receipt))}`)
     return
   }
 

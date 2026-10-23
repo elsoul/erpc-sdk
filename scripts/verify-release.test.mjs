@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
-import { chmod, cp, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises'
+import { chmod, cp, mkdir, mkdtemp, readFile, rename, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -43,6 +43,7 @@ import {
   observeNpmRelease,
   observePyPIRelease,
   observeRubyGemsRelease,
+  observeGoModule,
   observeRustArtifact,
   parseReleaseSetChecksums,
   releaseSetPlanDigest,
@@ -209,9 +210,12 @@ test('release argument parser rejects unknown, duplicate, and conflicting inputs
 
 test('current tree passes split cohorts while strict aggregate verification fails', async () => {
   const data = await readReleaseData(root.pathname)
+  const currentRustVersions = new Set(['0.10.0', '0.11.0'])
+  assert.ok(currentRustVersions.has(data.cargoVersion), `unexpected current Rust source version ${data.cargoVersion}`)
+  assert.equal(data.cargoLockPackage.version, data.cargoVersion)
   // The current Rust candidate deliberately remains release-invalid until P2b
   // promotes its mixed-source licence/archive controls.
-  assert.throws(() => validateReleaseData(data, { scope: 'rust', expectedVersion: '0.10.0' }), /Unexpected Rust crate license/)
+  assert.throws(() => validateReleaseData(data, { scope: 'rust', expectedVersion: data.cargoVersion }), /Unexpected Rust crate license/)
   const nonRustVersions = [data.packageJson.version, data.pythonVersion, data.pythonRuntimeVersion, data.rubyVersion, data.rubyLockVersion]
   if (new Set(nonRustVersions).size === 1) assert.equal(validateReleaseData(data, { scope: 'non-rust' }).version, data.packageJson.version)
   else assert.throws(() => validateReleaseData(data, { scope: 'non-rust' }), /Non-Rust package versions differ/)
@@ -223,7 +227,23 @@ test('current tree passes split cohorts while strict aggregate verification fail
 
 test('Rust verification binds the unique source-free local lock entry and MSRV', async () => {
   const data = await readReleaseData(root.pathname)
-  assert.equal(findLocalCargoPackage(data.cargoLock).version, '0.10.0')
+  const currentRustVersions = new Set(['0.10.0', '0.11.0'])
+  assert.ok(currentRustVersions.has(data.cargoVersion))
+  assert.equal(findLocalCargoPackage(data.cargoLock).version, data.cargoVersion)
+  for (const version of currentRustVersions) {
+    const transitionFixture = {
+      ...data,
+      cargoManifest: data.cargoManifest.replace(/version = "[^"]+"/, `version = "${version}"`).replace('MIT AND Apache-2.0', 'MIT'),
+      cargoVersion: version,
+      cargoLockPackage: { ...data.cargoLockPackage, version },
+    }
+    assert.equal(validateReleaseData(transitionFixture, { scope: 'rust', expectedVersion: version }).version, version)
+    assert.throws(() => validateReleaseData({ ...transitionFixture, cargoLockPackage: { ...transitionFixture.cargoLockPackage, version: '0.9.0' } }, { scope: 'rust', expectedVersion: version }), /Cargo\.lock local erpc-sdk version/)
+    assert.throws(() => validateReleaseData({ ...transitionFixture, cargoManifest: transitionFixture.cargoManifest.replace('rust-version = "1.85"', 'rust-version = "1.86"') }, { scope: 'rust', expectedVersion: version }), /Unexpected Rust MSRV/)
+    assert.throws(() => findLocalCargoPackage(`[[package]]\nname = "erpc-sdk"\nversion = "${version}"\n\n[[package]]\nname = "erpc-sdk"\nversion = "${version}"\n`), /exactly one source-free erpc-sdk/)
+  }
+  const unsupportedTransition = '0.12.0'
+  assert.equal(currentRustVersions.has(unsupportedTransition), false)
   assert.throws(
     () => findLocalCargoPackage('[[package]]\nname = "erpc-sdk"\nversion = "0.10.0"\n\n[[package]]\nname = "erpc-sdk"\nversion = "0.10.0"\n'),
     /exactly one source-free erpc-sdk/,
@@ -905,6 +925,94 @@ exec ${JSON.stringify(pypiRealPython)} "$@"
   await writeFile(pypiMetadataFile, JSON.stringify(pypiMetadata(false)))
   await assert.rejects(runVerifierCli(['--release-set-pypi-observe'], { ...pypiBaseEnvironment, RELEASE_SET_PYPI_WORK_DIR: pypiPartialWork, RELEASE_SET_PYPI_OUTPUT_FILE: pypiPartialOutput }), /pypi-public-observation-incomplete/)
   await assert.rejects(() => readFile(pypiPartialOutput, 'utf8'), { code: 'ENOENT' })
+  const goCliGit = join(directory, 'go-cli-git-fixture')
+  await writeFile(goCliGit, `#!/usr/bin/env node\nconsole.log('${sourceCommit}\\trefs/tags/packages/go/v0.11.0')\n`)
+  await chmod(goCliGit, 0o755)
+  const goCliPython = join(directory, 'go-cli-python-fixture')
+  await writeFile(goCliPython, '#!/usr/bin/env node\nconsole.log("Python 3.12.11")\n')
+  await chmod(goCliPython, 0o755)
+  const goCliWork = join(directory, 'go-cli-work'); const goCliOutput = join(directory, 'go-cli-output.json')
+  await mkdir(goCliWork)
+  await writeFile(goCliOutput, JSON.stringify({ schemaVersion: 1, kind: 'go-public-observation', state: 'observed', complete: true }))
+  await assert.rejects(runVerifierCli(['--release-set-go-observe'], { ...strictEnv, RELEASE_SET_GO_WORK_DIR: goCliWork, RELEASE_SET_GO_OUTPUT_FILE: goCliOutput, RELEASE_SET_GO_GIT: goCliGit, RELEASE_SET_GO_GO: '/usr/bin/false', RELEASE_SET_GO_PYTHON: goCliPython, RELEASE_SET_GO_OBSERVER_SOURCE: sourceCommit, RELEASE_SET_GO_OBSERVER_RUN_ID: '89201', RELEASE_SET_GO_OBSERVER_ATTEMPT: '1', RELEASE_SET_GO_OBSERVER_WORKFLOW: '.github/workflows/release.yml', GO_CLI_SOURCE: sourceCommit }), /go-observe-proxy-version-failed/)
+  await assert.rejects(() => readFile(goCliOutput, 'utf8'), { code: 'ENOENT' })
+  const goCliPlan = structuredClone(plan)
+  const goCliFiles = { LICENSE: 'MIT\n', 'go.mod': `module ${goCliPlan.go.module}\n\ngo 1.22\n`, 'rpc.go': 'package erpc\n' }
+  const goCliInventoryFiles = Object.entries(goCliFiles).map(([path, contents]) => ({ path, sha256: sha256Hex(contents) }))
+  goCliPlan.go.inventory = { files: goCliInventoryFiles, inventorySha256: sha256Hex(canonicalJson(goCliInventoryFiles)) }
+  const goCliPlanDirectory = join(directory, 'go-cli-plan-bundle')
+  await cp(bundle, goCliPlanDirectory, { recursive: true })
+  await writeFile(join(goCliPlanDirectory, 'release-set-plan.json'), `${canonicalJson(goCliPlan)}\n`)
+  const goCliPlanSha = releaseSetPlanDigest(goCliPlan)
+  await writeFile(join(goCliPlanDirectory, 'release-set-plan.sha256'), `${goCliPlanSha}\n`)
+  await writeFile(join(goCliPlanDirectory, 'go-inventory.json'), `${canonicalJson(goCliPlan.go.inventory)}\n`)
+  const goCliChecksumFiles = goCliPlan.approval.bundleFiles.filter(file => file !== 'checksums.txt')
+  await writeFile(join(goCliPlanDirectory, 'checksums.txt'), `${(await Promise.all(goCliChecksumFiles.map(async file => `${sha256Hex(await readFile(join(goCliPlanDirectory, file)))}  ./${file}`))).join('\n')}\n`)
+  const goCliBinding = { ...binding, planSha256: goCliPlanSha }
+  const goCliBindingFile = join(directory, 'go-cli-binding.json'); const goCliBindingDirectory = join(directory, 'go-cli-binding-directory')
+  await mkdir(goCliBindingDirectory)
+  await writeFile(goCliBindingFile, JSON.stringify(goCliBinding)); await writeFile(join(goCliBindingDirectory, 'release-set-binding.json'), JSON.stringify(goCliBinding))
+  const goCliBundleZip = join(directory, 'go-cli-bundle.zip'); const goCliBindingZip = join(directory, 'go-cli-binding.zip')
+  await execFileAsync('zip', ['-q', goCliBundleZip, ...goCliPlan.approval.bundleFiles], { cwd: goCliPlanDirectory })
+  await execFileAsync('zip', ['-q', goCliBindingZip, 'release-set-binding.json'], { cwd: goCliBindingDirectory })
+  const goCliBundleBytes = await readFile(goCliBundleZip); const goCliBindingBytes = await readFile(goCliBindingZip)
+  const goCliArtifactMetadataFile = join(directory, 'go-cli-artifact-metadata.json'); const goCliBindingMetadataFile = join(directory, 'go-cli-binding-metadata.json')
+  await writeFile(goCliArtifactMetadataFile, JSON.stringify({ ...strictMetadata, size_in_bytes: goCliBundleBytes.length, digest: `sha256:${sha256Hex(goCliBundleBytes)}` }))
+  await writeFile(goCliBindingMetadataFile, JSON.stringify({ ...strictBindingMetadata, size_in_bytes: goCliBindingBytes.length, digest: `sha256:${sha256Hex(goCliBindingBytes)}` }))
+  const goCliModuleRoot = join(directory, 'go-cli-module'); const goCliModulePrefix = `${goCliPlan.go.module}@${goCliPlan.go.version}`
+  await mkdir(join(goCliModuleRoot, goCliModulePrefix), { recursive: true })
+  for (const [file, contents] of Object.entries(goCliFiles)) await writeFile(join(goCliModuleRoot, goCliModulePrefix, file), contents)
+  const goCliModuleZip = join(directory, 'go-cli-module.zip')
+  await execFileAsync('zip', ['-q', '-r', goCliModuleZip, goCliModulePrefix], { cwd: goCliModuleRoot })
+  const goCliGo = join(directory, 'go-cli-go-fixture')
+  await writeFile(goCliGo, `#!/usr/bin/env node\nimport { copyFileSync, mkdirSync, writeFileSync } from 'node:fs'\nimport { join } from 'node:path'\nconst args = process.argv.slice(2)\nif (args[0] === 'version') { console.log('go version go1.22.12 linux/arm64'); process.exit(0) }\nif (args[0] === 'mod' && args[1] === 'download' && args[2] === '-json') {\n  const cache = process.env.GOMODCACHE; const download = join(cache, 'download'); mkdirSync(download, { recursive: true }); const info = join(download, 'module.info'); const goMod = join(download, 'module.mod'); const zip = join(download, 'module.zip'); const dir = join(cache, 'module-dir'); mkdirSync(dir, { recursive: true }); writeFileSync(info, JSON.stringify({ Version: '${goCliPlan.go.version}' })); writeFileSync(goMod, ${JSON.stringify(goCliFiles['go.mod'])}); copyFileSync(${JSON.stringify(goCliModuleZip)}, zip); console.log(JSON.stringify({ Path: '${goCliPlan.go.module}', Version: '${goCliPlan.go.version}', Info: info, GoMod: goMod, Zip: zip, Dir: dir, Sum: 'h1:${Buffer.from('a'.repeat(32)).toString('base64')}', GoModSum: 'h1:${Buffer.from('a'.repeat(32)).toString('base64')}', Origin: { VCS: 'git', URL: 'https://github.com/elsoul/erpc-sdk', Hash: '${sourceCommit}', Ref: 'refs/tags/${goCliPlan.go.tag}', Subdir: 'packages/go' } })); process.exit(0)\n}\nif (args[0] === 'mod' && (args[1] === 'tidy' || args[1] === 'download')) process.exit(0)\nif (args[0] === 'run') process.exit(0)\nprocess.exit(99)\n`)
+  await chmod(goCliGo, 0o755)
+  const goCliPythonPath = (await execFileAsync('which', ['python3.12'])).stdout.trim()
+  const goCliGitPositive = join(directory, 'go-cli-git-positive')
+  await writeFile(goCliGitPositive, `#!/usr/bin/env node\nconsole.log('${sourceCommit}\\trefs/tags/${goCliPlan.go.tag}')\n`); await chmod(goCliGitPositive, 0o755)
+  const goCliBaseEnvironment = { ...strictEnv, RELEASE_SET_PLAN_FILE: join(goCliPlanDirectory, 'release-set-plan.json'), RELEASE_SET_PLAN_SHA256: goCliPlanSha, RELEASE_SET_BINDING_FILE: goCliBindingFile, RELEASE_SET_ARTIFACT_DIR: goCliPlanDirectory, RELEASE_SET_BINDING_DIR: goCliBindingDirectory, RELEASE_SET_BUNDLE_ZIP_FILE: goCliBundleZip, RELEASE_SET_BINDING_ZIP_FILE: goCliBindingZip, RELEASE_SET_ARTIFACT_METADATA_FILE: goCliArtifactMetadataFile, RELEASE_SET_BINDING_METADATA_FILE: goCliBindingMetadataFile, RELEASE_SET_GO_GIT: goCliGitPositive, RELEASE_SET_GO_GO: goCliGo, RELEASE_SET_GO_PYTHON: goCliPythonPath, RELEASE_SET_GO_OBSERVER_SOURCE: sourceCommit, RELEASE_SET_GO_OBSERVER_RUN_ID: '89201', RELEASE_SET_GO_OBSERVER_ATTEMPT: '1', RELEASE_SET_GO_OBSERVER_WORKFLOW: '.github/workflows/release.yml' }
+  const goCliPositiveWork = join(directory, 'go-cli-positive-work'); const goCliPositiveOutput = join(directory, 'go-cli-positive.json'); await mkdir(goCliPositiveWork)
+  const goCliPositiveResult = await runVerifierCli(['--release-set-go-observe'], { ...goCliBaseEnvironment, RELEASE_SET_GO_WORK_DIR: goCliPositiveWork, RELEASE_SET_GO_OUTPUT_FILE: goCliPositiveOutput })
+  assert.match(goCliPositiveResult.stdout, /^go-public-observation=/m)
+  const goCliPositiveReceipt = JSON.parse(await readFile(goCliPositiveOutput, 'utf8')); assert.equal(goCliPositiveReceipt.complete, true); assert.equal(goCliPositiveReceipt.proxy.consumerExitCode, 0); assert.equal(goCliPositiveReceipt.direct.consumerExitCode, 0)
+  const deadlinePreload = join(directory, 'go-cli-deadline-preload.mjs')
+  await writeFile(deadlinePreload, `import fsp from 'node:fs/promises'; import { syncBuiltinESMExports } from 'node:module'; let clock = 0; Object.defineProperty(globalThis, 'performance', { value: { now: () => clock }, configurable: true }); const originalRename = fsp.rename; fsp.rename = async (...args) => { const result = await originalRename(...args); if (args[1] === process.env.RELEASE_SET_GO_OUTPUT_FILE) clock = 600001; return result }; syncBuiltinESMExports();\n`)
+  const goCliExpiredWork = join(directory, 'go-cli-expired-work'); const goCliExpiredOutput = join(directory, 'go-cli-expired.json'); await mkdir(goCliExpiredWork); await writeFile(goCliExpiredOutput, JSON.stringify({ schemaVersion: 1, kind: 'go-public-observation', state: 'observed', complete: true }))
+  await assert.rejects(runVerifierCli(['--release-set-go-observe'], { ...goCliBaseEnvironment, NODE_OPTIONS: `--import=${deadlinePreload}`, RELEASE_SET_GO_WORK_DIR: goCliExpiredWork, RELEASE_SET_GO_OUTPUT_FILE: goCliExpiredOutput }), /npm-observe-deadline-exceeded/)
+  await assert.rejects(() => readFile(goCliExpiredOutput, 'utf8'), { code: 'ENOENT' })
+  const makeClassifierGo = async (name, firstError) => {
+    const stateFile = join(directory, `${name}-go-state`); const tool = join(directory, `${name}-go`)
+    const source = `#!/usr/bin/env node
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+const args = process.argv.slice(2)
+if (args[0] === 'version') { console.log('go version go1.22.12 linux/arm64'); process.exit(0) }
+if (args[0] === 'mod' && args[1] === 'download' && args[2] === '-json') {
+  const state = ${JSON.stringify(stateFile)}; const count = existsSync(state) ? Number(readFileSync(state, 'utf8')) + 1 : 1; writeFileSync(state, String(count))
+  if (count === 1) { console.log(JSON.stringify({ Path: ${JSON.stringify(goCliPlan.go.module)}, Version: ${JSON.stringify(goCliPlan.go.version)}, Error: ${JSON.stringify(firstError)} })); process.exit(1) }
+  const cache = process.env.GOMODCACHE; const download = join(cache, 'download'); mkdirSync(download, { recursive: true }); const info = join(download, 'module.info'); const goMod = join(download, 'module.mod'); const zip = join(download, 'module.zip'); const dir = join(cache, 'module-dir'); mkdirSync(dir, { recursive: true }); writeFileSync(info, JSON.stringify({ Version: ${JSON.stringify(goCliPlan.go.version)} })); writeFileSync(goMod, ${JSON.stringify(goCliFiles['go.mod'])}); copyFileSync(${JSON.stringify(goCliModuleZip)}, zip); console.log(JSON.stringify({ Path: ${JSON.stringify(goCliPlan.go.module)}, Version: ${JSON.stringify(goCliPlan.go.version)}, Info: info, GoMod: goMod, Zip: zip, Dir: dir, Sum: 'h1:${Buffer.from('a'.repeat(32)).toString('base64')}', GoModSum: 'h1:${Buffer.from('a'.repeat(32)).toString('base64')}', Origin: { VCS: 'git', URL: 'https://github.com/elsoul/erpc-sdk', Hash: ${JSON.stringify(sourceCommit)}, Ref: ${JSON.stringify(`refs/tags/${goCliPlan.go.tag}`)}, Subdir: 'packages/go' } })); process.exit(0)
+}
+if (args[0] === 'mod' && (args[1] === 'tidy' || args[1] === 'download')) process.exit(0)
+if (args[0] === 'run') process.exit(0)
+process.exit(99)
+`
+    await writeFile(tool, source); await chmod(tool, 0o755); return { stateFile, tool }
+  }
+  const canonicalInfoUrl = `https://proxy.golang.org/${goCliPlan.go.module}/@v/${goCliPlan.go.version}.info`
+  const structured404 = `${goCliPlan.go.module}@${goCliPlan.go.version}: reading ${canonicalInfoUrl}: 404 Not Found\n\tserver response: not found: ${goCliPlan.go.module}@${goCliPlan.go.version}: invalid version: unknown revision ${goCliPlan.go.tag}`
+  const canonical403Body404 = `${goCliPlan.go.module}@${goCliPlan.go.version}: reading ${canonicalInfoUrl}: 403 Forbidden\n\tserver response: diagnostic reference ${canonicalInfoUrl}: 404 Not Found`
+  const foreignQuery404 = `${goCliPlan.go.module}@${goCliPlan.go.version}: reading ${canonicalInfoUrl}?diagnostic=404: 404 Not Found`
+  const classifierPreload = join(directory, 'go-cli-classifier-preload.mjs')
+  await writeFile(classifierPreload, `const originalSetTimeout = globalThis.setTimeout; globalThis.setTimeout = (callback, delay, ...args) => originalSetTimeout(callback, delay >= 60000 ? delay : 0, ...args);\n`)
+  const classifierPositive = await makeClassifierGo('canonical-404-positive', structured404)
+  const classifierPositiveWork = join(directory, 'canonical-404-positive-work'); const classifierPositiveOutput = join(directory, 'canonical-404-positive.json'); await mkdir(classifierPositiveWork)
+  const classifierPositiveResult = await runVerifierCli(['--release-set-go-observe'], { ...goCliBaseEnvironment, NODE_OPTIONS: `--import=${classifierPreload}`, RELEASE_SET_GO_GO: classifierPositive.tool, RELEASE_SET_GO_WORK_DIR: classifierPositiveWork, RELEASE_SET_GO_OUTPUT_FILE: classifierPositiveOutput })
+  assert.match(classifierPositiveResult.stdout, /^go-public-observation=/m); assert.equal(Number(await readFile(classifierPositive.stateFile, 'utf8')), 3); assert.equal(JSON.parse(await readFile(classifierPositiveOutput, 'utf8')).complete, true)
+  for (const [name, error] of [['canonical-403-body-404', canonical403Body404], ['foreign-query-404', foreignQuery404]]) {
+    const fixture = await makeClassifierGo(name, error); const work = join(directory, `${name}-work`); const output = join(directory, `${name}.json`); await mkdir(work); await writeFile(output, JSON.stringify({ schemaVersion: 1, kind: 'go-public-observation', state: 'observed', complete: true }))
+    await assert.rejects(runVerifierCli(['--release-set-go-observe'], { ...goCliBaseEnvironment, RELEASE_SET_GO_GO: fixture.tool, RELEASE_SET_GO_WORK_DIR: work, RELEASE_SET_GO_OUTPUT_FILE: output }), /go-observe-proxy-download-failed/)
+    assert.equal(Number(await readFile(fixture.stateFile, 'utf8')), 1); await assert.rejects(() => readFile(output, 'utf8'), { code: 'ENOENT' })
+  }
 })
 
 test('checkpoint A rejects malformed Rust roots/TOML/VCS and malformed Ruby containers/spec payloads', async t => {
@@ -1631,6 +1739,127 @@ with tarfile.open(out, 'w:gz') as archive:
   await assert.rejects(() => observeRustArtifact(publishedFlagInput, { request, now: (() => { let value = 0; return () => value += 1 })(), sleep: async () => {} }), /unknown field/)
 })
 
+test('B5 Go observer binds proxy/direct receipts, ZIP inventory, and command sequence', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'erpc-sdk-b5-go-'))
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  const module = 'github.com/elsoul/erpc-sdk/packages/go'; const sourceCommit = '7'.repeat(40); const sum = `h1:${Buffer.from('a'.repeat(32)).toString('base64')}`
+  const makeFixture = async (version, name) => {
+    const root = join(directory, name); const prefix = `${module}@${version}`; const moduleRoot = join(root, prefix)
+    await mkdir(moduleRoot, { recursive: true })
+    const files = { 'go.mod': `module ${module}\n\ngo 1.22\n`, 'LICENSE': 'MIT\n', 'rpc.go': 'package erpc\n' }
+    for (const [file, contents] of Object.entries(files)) await writeFile(join(moduleRoot, file), contents)
+    const inventoryFiles = Object.entries(files).map(([path, contents]) => ({ path, sha256: sha256Hex(contents) })); const inventory = { files: inventoryFiles, inventorySha256: sha256Hex(canonicalJson(inventoryFiles)) }
+    const zipPath = join(root, `${name}.zip`); await execFileAsync('zip', ['-q', '-r', zipPath, prefix], { cwd: root })
+    const infoPath = join(root, 'module.info'); const goModPath = join(root, 'module.mod'); const dirPath = join(root, 'module-dir'); await writeFile(infoPath, JSON.stringify({ Version: version, Time: '2026-10-23T00:00:00Z' })); await writeFile(goModPath, files['go.mod']); await mkdir(dirPath)
+    return { root, zipPath, infoPath, goModPath, dirPath, inventory, zipSha256: await sha256File(zipPath) }
+  }
+  const goTool = join(directory, 'go-fixture'); const gitTool = join(directory, 'git-fixture'); const commands = []
+  for (const version of ['v1.2.3', 'v1.2.4']) {
+    const fixture = await makeFixture(version, version.replaceAll('.', '-')); const origin = { VCS: 'git', URL: 'https://github.com/elsoul/erpc-sdk', Hash: sourceCommit, Ref: `refs/tags/packages/go/${version}`, Subdir: 'packages/go' }
+    const run = async (command, args, options = {}) => {
+      commands.push({ command, args, options })
+      if (args[0] === '--version') return { exitCode: 0, stdout: 'Python 3.12.11\n', stderr: '' }
+      if (args[0] === 'version') return { exitCode: 0, stdout: 'go version go1.22.12 linux/arm64\n', stderr: '' }
+      if (args.includes('ls-remote')) return { exitCode: 0, stdout: `${sourceCommit}\trefs/tags/packages/go/${version}\n`, stderr: '' }
+      if (args[0] === 'mod' && args[1] === 'download' && args[2] === '-json') {
+        const cacheRoot = options.env.GOMODCACHE; const receiptRoot = join(cacheRoot, 'download'); await mkdir(receiptRoot, { recursive: true }); const cacheName = version.replaceAll('.', '-'); const zip = join(receiptRoot, `${cacheName}.zip`); const info = join(receiptRoot, `${cacheName}.info`); const goMod = join(receiptRoot, `${cacheName}.mod`); const dir = join(cacheRoot, 'pkg', cacheName); await cp(fixture.zipPath, zip); await cp(fixture.infoPath, info); await cp(fixture.goModPath, goMod); await mkdir(dir, { recursive: true }); return { exitCode: 0, stdout: JSON.stringify({ Path: module, Version: version, Info: info, GoMod: goMod, Zip: zip, Dir: dir, Sum: sum, GoModSum: sum, Origin: origin, Reuse: false }), stderr: '' }
+      }
+      if (args[0] === 'mod' && (args[1] === 'tidy' || args[1] === 'download')) return { exitCode: 0, stdout: '', stderr: '' }
+      if (args[0] === 'run') return { exitCode: 0, stdout: '', stderr: '' }
+      throw new Error(`unexpected Go fixture command ${command} ${args.join(' ')}`)
+    }
+    const input = { descriptor: { module, version, tag: `packages/go/${version}`, sourceCommit, inventory: fixture.inventory }, planSha256: 'a'.repeat(64), preparation: { sourceCommit: '8'.repeat(40), runId: '74153', runAttempt: '1', artifactId: '74171', bindingArtifactId: '74191', planSha256: 'a'.repeat(64) }, observer: { runId: '89201', runAttempt: '1', workflowPath: '.github/workflows/release.yml', sourceCommit: '8'.repeat(40) }, workDir: join(directory, `work-${version}`), outputFile: join(directory, `receipt-${version}.json`), toolPaths: { go: goTool, git: gitTool, python3: '/usr/bin/python3' } }
+    await mkdir(input.workDir); const receipt = await observeGoModule(input, { run, now: (() => { let value = 0; return () => value += 1 })(), sleep: async () => {} })
+    assert.equal(receipt.state, 'observed'); assert.equal(receipt.complete, true); assert.equal(receipt.proxy.sum, sum); assert.equal(receipt.direct.goModSum, sum); assert.match(receipt.proxy.runtimeVersion, /^go version go1\.22\./); assert.match(receipt.direct.runtimeVersion, /^go version go1\.22\./); assert.equal(receipt.proxy.consumerExitCode, 0); assert.equal(receipt.direct.consumerExitCode, 0); assert.deepEqual(receipt.proxy.inventory, receipt.direct.inventory); assert.ok(receipt.proxy.zipSha256)
+    const runtimeCommands = commands.filter(command => command.args[0] === 'version')
+    assert.equal(runtimeCommands.length, (version === 'v1.2.3' ? 2 : 4))
+    assert.ok(runtimeCommands.every(command => command.options.env.GOTOOLCHAIN === 'local'))
+    const persisted = JSON.parse(await readFile(input.outputFile, 'utf8'))
+    assert.equal(persisted.proxy.consumerExitCode, 0); assert.equal(persisted.direct.consumerExitCode, 0)
+  }
+  assert.equal(commands.filter(command => command.args[0] === 'mod' && command.args[1] === 'tidy').length, 4)
+
+  const negativeFixture = await makeFixture('v1.2.5', 'negative-base')
+  const negativeOrigin = { VCS: 'git', URL: 'https://github.com/elsoul/erpc-sdk', Hash: sourceCommit, Ref: 'refs/tags/packages/go/v1.2.5', Subdir: 'packages/go' }
+  const makeNegativeInput = (name, inventory = negativeFixture.inventory) => ({
+    descriptor: { module, version: 'v1.2.5', tag: 'packages/go/v1.2.5', sourceCommit, inventory },
+    planSha256: 'a'.repeat(64),
+    preparation: { sourceCommit: '8'.repeat(40), runId: '74153', runAttempt: '1', artifactId: '74171', bindingArtifactId: '74191', planSha256: 'a'.repeat(64) },
+    observer: { runId: '89201', runAttempt: '1', workflowPath: '.github/workflows/release.yml', sourceCommit: '8'.repeat(40) },
+    workDir: join(directory, `negative-work-${name}`),
+    outputFile: join(directory, `negative-receipt-${name}.json`),
+    toolPaths: { go: goTool, git: gitTool, python3: '/usr/bin/python3' },
+  })
+  const runNegative = async (name, { origin = negativeOrigin, reuse, moveTag = false, missingTagOnce = false, proxy404Once = false, terminalError, thrown404 = false, foreign404 = false, foreignQuery404 = false, body404 = false, requireLocalToolchain = false, requireNewerGo = false, consumerExitCode = 0, zipPath = negativeFixture.zipPath, paths = {}, expireOnRename = false, shouldComplete = false, expectedDownloads } = {}, inventory = negativeFixture.inventory) => {
+    const input = makeNegativeInput(name, inventory)
+    await mkdir(input.workDir)
+    let tagReads = 0; let downloads = 0; let clock = 0
+    const run = async (command, args, options = {}) => {
+      if (args[0] === '--version') return { exitCode: 0, stdout: 'Python 3.12.11\n', stderr: '' }
+      if (args[0] === 'version') return { exitCode: 0, stdout: 'go version go1.22.12 linux/arm64\n', stderr: '' }
+      if (args.includes('ls-remote')) {
+        tagReads += 1
+        if (missingTagOnce && tagReads === 1) return { exitCode: 0, stdout: '', stderr: '' }
+        const commit = moveTag && tagReads > 1 ? '8'.repeat(40) : sourceCommit
+        return { exitCode: 0, stdout: `${commit}\trefs/tags/packages/go/v1.2.5\n`, stderr: '' }
+      }
+      if (args[0] === 'mod' && args[1] === 'download' && args[2] === '-json') {
+        downloads += 1
+        if (thrown404) throw new Error('TLS handshake trace id: 404')
+        if (proxy404Once && downloads === 1) return { exitCode: 1, stdout: JSON.stringify({ Path: module, Version: 'v1.2.5', Error: `${module}@v1.2.5: reading https://proxy.golang.org/${module}/@v/v1.2.5.info: 404 Not Found` }), stderr: 'UNTRUSTED_NATIVE_BODY_DO_NOT_ECHO' }
+        if (terminalError && downloads === 1) return { exitCode: 1, stdout: JSON.stringify({ Path: module, Version: 'v1.2.5', Error: `${module}@v1.2.5: reading https://proxy.golang.org/${module}/@v/v1.2.5.info: ${terminalError}` }), stderr: 'diagnostic id: 404' }
+        if (foreign404 && downloads === 1) return { exitCode: 1, stdout: JSON.stringify({ Path: 'example.invalid/foreign', Version: 'v1.2.5', Error: 'reading https://proxy.golang.org/example.invalid/foreign/@v/v1.2.5.info: 404 Not Found' }), stderr: '' }
+        if (foreignQuery404 && downloads === 1) return { exitCode: 1, stdout: JSON.stringify({ Path: module, Version: 'v1.2.5', Error: `${module}@v1.2.5: reading https://proxy.golang.org/${module}/@v/v1.2.5.info?query=404: 404 Not Found` }), stderr: '' }
+        if (body404 && downloads === 1) return { exitCode: 1, stdout: JSON.stringify({ Path: module, Version: 'v1.2.5', Error: `${module}@v1.2.5: reading https://proxy.golang.org/${module}/@v/v1.2.5.info: 403 Forbidden\n\tserver response: diagnostic reference https://proxy.golang.org/${module}/@v/v1.2.5.info: 404 Not Found` }), stderr: '' }
+        const cacheRoot = options.env.GOMODCACHE; const receiptRoot = join(cacheRoot, 'download'); await mkdir(receiptRoot, { recursive: true });
+        const pathsForReceipt = { info: join(receiptRoot, 'module.info'), goMod: join(receiptRoot, 'module.mod'), zip: join(receiptRoot, 'module.zip'), dir: join(cacheRoot, 'module-dir') }
+        await cp(negativeFixture.infoPath, pathsForReceipt.info); await cp(negativeFixture.goModPath, pathsForReceipt.goMod); await cp(zipPath, pathsForReceipt.zip); await mkdir(pathsForReceipt.dir, { recursive: true })
+        if (requireNewerGo) await writeFile(join(options.cwd, 'go.mod'), `module example.invalid/newer\n\ngo 1.23\n`)
+        return { exitCode: 0, stdout: JSON.stringify({ Path: module, Version: 'v1.2.5', Info: paths.info ?? pathsForReceipt.info, GoMod: paths.goMod ?? pathsForReceipt.goMod, Zip: paths.zip ?? pathsForReceipt.zip, Dir: paths.dir ?? pathsForReceipt.dir, Sum: sum, GoModSum: sum, Origin: origin, ...(reuse === undefined ? {} : { Reuse: reuse }) }), stderr: '' }
+      }
+      if (args[0] === 'mod' && (args[1] === 'tidy' || args[1] === 'download')) {
+        if (requireLocalToolchain && options.env.GOTOOLCHAIN !== 'local') return { exitCode: 1, stdout: '', stderr: 'automatic toolchain selection sentinel' }
+        if (requireNewerGo && args[1] === 'tidy') return options.env.GOTOOLCHAIN === 'local' ? { exitCode: 1, stdout: '', stderr: 'go.mod requires go >= 1.23.0 (running go1.22.12; GOTOOLCHAIN=local)' } : { exitCode: 0, stdout: '', stderr: '' }
+        return { exitCode: 0, stdout: '', stderr: '' }
+      }
+      if (args[0] === 'run') return { exitCode: consumerExitCode, stdout: '', stderr: consumerExitCode === 0 ? '' : 'consumer failed' }
+      throw new Error(`unexpected Go negative fixture command ${command} ${args.join(' ')}`)
+    }
+    const adapters = { run, now: () => clock, sleep: async () => {} }
+    if (expireOnRename) adapters.rename = async (from, to) => { await rename(from, to); clock = 600001 }
+    if (shouldComplete) {
+      const receipt = await observeGoModule(input, adapters)
+      assert.equal(receipt.state, 'observed'); assert.equal(receipt.complete, true); assert.equal(receipt.proxy.consumerExitCode, 0); assert.equal(receipt.direct.consumerExitCode, 0)
+      if (expectedDownloads !== undefined) assert.equal(downloads, expectedDownloads)
+      return receipt
+    }
+    await assert.rejects(() => observeGoModule(input, adapters))
+    await assert.rejects(() => readFile(input.outputFile), { code: 'ENOENT' })
+    if (expectedDownloads !== undefined) assert.equal(downloads, expectedDownloads)
+  }
+  await runNegative('wrong-origin', { origin: { ...negativeOrigin, Hash: '8'.repeat(40) } })
+  const wrongInventoryFiles = negativeFixture.inventory.files.map(file => file.path === 'rpc.go' ? { ...file, sha256: '9'.repeat(64) } : file)
+  await runNegative('wrong-inventory', {}, { files: wrongInventoryFiles, inventorySha256: sha256Hex(canonicalJson(wrongInventoryFiles)) })
+  await runNegative('reused-cache', { reuse: true })
+  await runNegative('moved-tag', { moveTag: true })
+  await runNegative('consumer-failure', { consumerExitCode: 1 })
+  await runNegative('missing-tag-then-visible', { missingTagOnce: true, shouldComplete: true })
+  await runNegative('proxy-404-then-visible', { proxy404Once: true, expectedDownloads: 3, shouldComplete: true })
+  await runNegative('terminal-403-incidental-404', { terminalError: '403 Forbidden', expectedDownloads: 1 })
+  await runNegative('thrown-tls-incidental-404', { thrown404: true, expectedDownloads: 1 })
+  await runNegative('foreign-module-404', { foreign404: true, expectedDownloads: 1 })
+  await runNegative('foreign-query-404', { foreignQuery404: true, expectedDownloads: 1 })
+  await runNegative('body-404', { body404: true, expectedDownloads: 1 })
+  await runNegative('newer-go-rejected-locally', { requireNewerGo: true })
+  await runNegative('toolchain-policy-observed', { requireLocalToolchain: true, shouldComplete: true })
+  await runNegative('final-rename-deadline', { expireOnRename: true })
+  const escapedPath = join(directory, 'escaped-module.info'); await writeFile(escapedPath, '{}')
+  await runNegative('escaped-receipt-path', { paths: { info: escapedPath } })
+  const symlinkZip = join(directory, 'go-symlink.zip')
+  await execFileAsync('python3', ['-c', 'import sys,zipfile; z=zipfile.ZipFile(sys.argv[1], "w"); i=zipfile.ZipInfo("github.com/elsoul/erpc-sdk/packages/go@v1.2.5/link"); i.create_system=3; i.external_attr=(0o120777 << 16); z.writestr(i, "rpc.go"); z.close()', symlinkZip])
+  await runNegative('symlink-member', { zipPath: symlinkZip })
+})
+
 test('foundation proof aggregate binds observed receipts, auth paths, and attestation claims', async t => {
   const directory = await mkdtemp(join(tmpdir(), 'erpc-sdk-proof-set-'))
   t.after(() => rm(directory, { recursive: true, force: true }))
@@ -1848,6 +2077,8 @@ test('every internal verifier mode rejects extra, duplicate, and conflicting CLI
   await mkdir(rubyGemsModeEnvironment.RELEASE_SET_RUBYGEMS_WORK_DIR, { recursive: true })
   const rustModeEnvironment = { RELEASE_SET_RUST_OUTPUT_FILE: '/tmp/erpc-sdk-rust-mode-test.json', RELEASE_SET_RUST_WORK_DIR: '/tmp/erpc-sdk-rust-mode-test-work' }
   await mkdir(rustModeEnvironment.RELEASE_SET_RUST_WORK_DIR, { recursive: true })
+  const goModeEnvironment = { RELEASE_SET_GO_OUTPUT_FILE: '/tmp/erpc-sdk-go-mode-test.json', RELEASE_SET_GO_WORK_DIR: '/tmp/erpc-sdk-go-mode-test-work' }
+  await mkdir(goModeEnvironment.RELEASE_SET_GO_WORK_DIR, { recursive: true })
   const cases = [
     [['--workflow-guard', '--unknown'], workflowEnvironment],
     [['--workflow-guard', '--scope', 'all'], workflowEnvironment],
@@ -1876,6 +2107,8 @@ test('every internal verifier mode rejects extra, duplicate, and conflicting CLI
     [['--release-set-rubygems-observe', '--release-set-rubygems-observe'], rubyGemsModeEnvironment],
     [['--release-set-rust-observe', '--unknown'], rustModeEnvironment],
     [['--release-set-rust-observe', '--release-set-rust-observe'], rustModeEnvironment],
+    [['--release-set-go-observe', '--unknown'], goModeEnvironment],
+    [['--release-set-go-observe', '--release-set-go-observe'], goModeEnvironment],
   ]
   for (const [arguments_, environment] of cases) {
     await assert.rejects(
