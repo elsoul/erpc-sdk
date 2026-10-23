@@ -1736,6 +1736,47 @@ test('recovery Go proof block exercises transitive checksum preparation and host
   await runPython(makeReceipt(validZip, { ...expectedOrigin, Hash: 'c'.repeat(40) }), makeReceipt(validZip, { ...expectedOrigin, Hash: 'c'.repeat(40) }), false)
 })
 
+test('recovery Go disposable consumer reproduces the old failure and passes the extracted tidy/download-all recipe on a portable offline proxy', async t => {
+  const workflow = await readFile(new URL('../.github/workflows/reconcile-foundation.yml', import.meta.url), 'utf8')
+  const fragment = extractWorkflowFragment(workflow, 'Verify Go proxy, checksum, origin, and exact module members', 'cat > "$RUNNER_TEMP/go-consumer/main.go"')
+  assert.match(fragment, /go mod tidy/)
+  assert.match(fragment, /go mod download all/)
+  const directory = await mkdtemp(join(tmpdir(), 'erpc-sdk-recovery-go-consumer-'))
+  t.after(async () => { await execFileAsync('chmod', ['-R', 'u+rwX', directory]).catch(() => {}); await rm(directory, { recursive: true, force: true }) })
+  const proxy = join(directory, 'proxy')
+  const consumer = join(directory, 'go-consumer')
+  await mkdir(consumer, { recursive: true })
+  const module = 'github.com/elsoul/erpc-sdk/packages/go'
+  const version = 'v0.9.1'
+  const transitive = 'fixture.invalid/transitive'
+  const transitiveVersion = 'v0.1.0'
+  const moduleGoMod = `module ${module}\n\ngo 1.22\n\nrequire ${transitive} ${transitiveVersion}\n`
+  const moduleSource = `package erpc\nimport _ "${transitive}"\n`
+  const transitiveGoMod = `module ${transitive}\n\ngo 1.22\n`
+  const transitiveSource = 'package transitive\nvar Value = 1\n'
+  const moduleModFile = join(directory, 'module-mod'); const transitiveModFile = join(directory, 'transitive-mod')
+  await writeFile(moduleModFile, moduleGoMod); await writeFile(transitiveModFile, transitiveGoMod)
+  const writeProxyModuleWithMod = async (name, moduleVersion, modFile, sourceName, source) => {
+    const versionDirectory = join(proxy, name, '@v')
+    await mkdir(versionDirectory, { recursive: true })
+    await writeFile(join(versionDirectory, 'list'), `${moduleVersion}\n`)
+    await writeFile(join(versionDirectory, `${moduleVersion}.info`), JSON.stringify({ Version: moduleVersion, Time: '2026-01-01T00:00:00Z' }))
+    await writeFile(join(versionDirectory, `${moduleVersion}.mod`), await readFile(modFile))
+    const sourceFile = join(directory, `${sourceName}-${moduleVersion}.go`)
+    await writeFile(sourceFile, source)
+    await execFileAsync('python3', ['-c', 'import sys,zipfile; z=zipfile.ZipFile(sys.argv[1], "w"); z.write(sys.argv[2], sys.argv[3]); z.write(sys.argv[4], sys.argv[5]); z.close()', join(versionDirectory, `${moduleVersion}.zip`), modFile, `${name}@${moduleVersion}/go.mod`, sourceFile, `${name}@${moduleVersion}/${sourceName}`])
+  }
+  await writeProxyModuleWithMod(module, version, moduleModFile, 'erpc.go', moduleSource)
+  await writeProxyModuleWithMod(transitive, transitiveVersion, transitiveModFile, 'transitive.go', transitiveSource)
+  await writeFile(join(consumer, 'go.mod'), `module example.invalid/consumer\n\ngo 1.22\n\nrequire ${module} ${version}\n`)
+  await writeFile(join(consumer, 'main.go'), `package main\nimport _ "${module}"\nfunc main() {}\n`)
+  const consumerEnv = { ...process.env, RUNNER_TEMP: directory, MODULE: module, VERSION: version, GOMODCACHE: join(directory, 'modcache'), GOPROXY: `file://${proxy}`, GOSUMDB: 'off' }
+  await execFileAsync('go', ['mod', 'download', 'all'], { cwd: consumer, env: consumerEnv })
+  await assert.rejects(execFileAsync('go', ['run', '.'], { cwd: consumer, env: consumerEnv }), /go mod tidy|updates to go\.mod needed|missing go\.sum/i)
+  await execFileAsync('bash', ['-c', 'set -euo pipefail\n' + fragment], { cwd: new URL('../', import.meta.url).pathname, env: consumerEnv })
+  assert.ok((await readFile(join(consumer, 'go.sum'), 'utf8')).split(/\r?\n/).filter(Boolean).length > 2)
+})
+
 test('recovery tag and Release asset blocks fail closed before writes on conflicts', async t => {
   const workflow = await readFile(new URL('../.github/workflows/reconcile-foundation.yml', import.meta.url), 'utf8')
   const tagBlock = extractWorkflowRunBlock(workflow, 'Create or verify lightweight tags at immutable M')

@@ -1126,6 +1126,7 @@ jobs:
           import _ "github.com/elsoul/erpc-sdk/packages/go"
           func main() {}
           GO
+          (cd "$RUNNER_TEMP/go-consumer" && GOMODCACHE="$RUNNER_TEMP/go-mod-cache" GOPROXY="$GOPROXY" GOSUMDB="$GOSUMDB" go mod tidy)
           (cd "$RUNNER_TEMP/go-consumer" && GOMODCACHE="$RUNNER_TEMP/go-mod-cache" GOPROXY="$GOPROXY" GOSUMDB="$GOSUMDB" go mod download all)
           (cd "$RUNNER_TEMP/go-consumer" && GOMODCACHE="$RUNNER_TEMP/go-mod-cache" GOPROXY="$GOPROXY" GOSUMDB="$GOSUMDB" go run .)
       - name: Upload Go proof
