@@ -247,7 +247,9 @@
       },
       {
         "id": "typescript",
-        "exactPaths": [],
+        "exactPaths": [
+          "pnpm-lock.yaml"
+        ],
         "pathPrefixes": [
           "packages/typescript/"
         ],
