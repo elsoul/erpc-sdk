@@ -1560,6 +1560,13 @@ const releaseSetString = (value, label) => {
   return value
 }
 
+const requireFuturePositiveId = (value, label) => {
+  if ((typeof value !== 'string' && typeof value !== 'number') || !/^[1-9][0-9]*$/.test(String(value))) fail(`${label} must be a positive numeric ID`)
+  const numeric = Number(value)
+  if (!Number.isSafeInteger(numeric) || numeric <= 0 || String(numeric) !== String(value)) fail(`${label} must be a safe positive numeric ID`)
+  return String(value)
+}
+
 const releaseSetVersion = (value, label) => requireStableVersion(value, label)
 
 const releaseSetArtifactFilename = (kind, version) => ({
@@ -1660,7 +1667,7 @@ const releaseSetValidateRust = (rust, planSourceCommit) => {
   requireEqual(rust.archive.sha256, rust.sha256, 'Prepared Rust archive checksum mismatch')
   releaseSetKeys(rust.prepared, ['runId', 'runAttempt', 'artifactId', 'bindingArtifactId', 'sourceCommit', 'archiveSha256', 'licenseProfile'], 'Prepared Rust binding')
   requireEqual(rust.prepared.licenseProfile, 'MIT AND Apache-2.0', 'Prepared Rust license profile is not the approved named profile')
-  for (const [value, label] of [[rust.prepared.runId, 'Rust preparation run ID'], [rust.prepared.runAttempt, 'Rust preparation attempt'], [rust.prepared.artifactId, 'Rust preparation artifact ID'], [rust.prepared.bindingArtifactId, 'Rust preparation binding artifact ID']]) requirePositiveId(value, label)
+  for (const [value, label] of [[rust.prepared.runId, 'Rust preparation run ID'], [rust.prepared.runAttempt, 'Rust preparation attempt'], [rust.prepared.artifactId, 'Rust preparation artifact ID'], [rust.prepared.bindingArtifactId, 'Rust preparation binding artifact ID']]) requireFuturePositiveId(value, label)
   requireEqual(rust.prepared.sourceCommit, rust.sourceCommit, 'Prepared Rust binding source mismatch')
   requireEqual(rust.prepared.archiveSha256, rust.sha256, 'Prepared Rust binding checksum mismatch')
   return { ...rust }
@@ -1712,7 +1719,7 @@ export function validateReleaseSetPlan(plan) {
   releaseSetKeys(plan.ciProof, ['workflowPath', 'sourceCommit', 'runId', 'runAttempt', 'jobId', 'requiredJob', 'event', 'headBranch', 'status', 'conclusion'], 'Release-set CI proof')
   requireEqual(plan.ciProof.workflowPath, RELEASE_SET_CI_WORKFLOW, 'Release-set CI proof workflow mismatch')
   requireEqual(plan.ciProof.sourceCommit, plan.sourceCommit, 'Release-set CI proof source mismatch')
-  for (const [value, label] of [[plan.ciProof.runId, 'Release-set CI run ID'], [plan.ciProof.runAttempt, 'Release-set CI attempt'], [plan.ciProof.jobId, 'Release-set CI job ID']]) requirePositiveId(value, label)
+  for (const [value, label] of [[plan.ciProof.runId, 'Release-set CI run ID'], [plan.ciProof.runAttempt, 'Release-set CI attempt'], [plan.ciProof.jobId, 'Release-set CI job ID']]) requireFuturePositiveId(value, label)
   requireEqual(plan.ciProof.requiredJob, FOUNDATION_CI_JOB, 'Release-set CI job mismatch')
   requireEqual(plan.ciProof.event, 'push', 'Release-set CI event mismatch')
   requireEqual(plan.ciProof.headBranch, 'main', 'Release-set CI branch mismatch')
@@ -1791,7 +1798,7 @@ export function validateReleaseSetContext(context, plan) {
 
 export function validateReleaseSetPreparationBinding(binding, { plan, expected = {} }) {
   const normalized = validateReleaseSetPlan(plan)
-  releaseSetKeys(binding, ['schemaVersion', 'kind', 'repository', 'repositoryId', 'workflowPath', 'sourceCommit', 'versions', 'runId', 'runAttempt', 'artifactId', 'bindingArtifactId', 'planSha256'], 'Release-set preparation binding')
+  releaseSetKeys(binding, ['schemaVersion', 'kind', 'repository', 'repositoryId', 'workflowPath', 'sourceCommit', 'versions', 'runId', 'runAttempt', 'artifactId', 'planSha256'], 'Release-set preparation binding')
   requireEqual(binding.schemaVersion, RELEASE_SET_SCHEMA_VERSION, 'Release-set binding schema mismatch')
   requireEqual(binding.kind, RELEASE_SET_BINDING_KIND, 'Release-set binding kind mismatch')
   requireEqual(binding.repository, EXPECTED_REPOSITORY, 'Release-set binding repository mismatch')
@@ -1801,10 +1808,10 @@ export function validateReleaseSetPreparationBinding(binding, { plan, expected =
   releaseSetKeys(binding.versions, ['nonRustVersion', 'rustVersion'], 'Release-set binding versions')
   requireEqual(binding.versions.nonRustVersion, normalized.versions.nonRustVersion, 'Release-set binding non-Rust version mismatch')
   requireEqual(binding.versions.rustVersion, normalized.versions.rustVersion, 'Release-set binding Rust version mismatch')
-  for (const [value, label] of [[binding.runId, 'Release-set binding run ID'], [binding.runAttempt, 'Release-set binding attempt'], [binding.artifactId, 'Release-set binding artifact ID'], [binding.bindingArtifactId, 'Release-set binding artifact ID']]) requirePositiveId(value, label)
+  for (const [value, label] of [[binding.runId, 'Release-set binding run ID'], [binding.runAttempt, 'Release-set binding attempt'], [binding.artifactId, 'Release-set binding artifact ID']]) requireFuturePositiveId(value, label)
   requireArchiveSha(binding.planSha256, 'Release-set binding plan hash')
   requireEqual(binding.planSha256, releaseSetPlanDigest(normalized), 'Release-set binding plan hash mismatch')
-  for (const key of ['runId', 'runAttempt', 'artifactId', 'bindingArtifactId']) if (expected[key] !== undefined) requireEqual(String(binding[key]), String(expected[key]), `Release-set binding ${key} mismatch`)
+  for (const key of ['runId', 'runAttempt', 'artifactId']) if (expected[key] !== undefined) requireEqual(String(binding[key]), String(expected[key]), `Release-set binding ${key} mismatch`)
   return binding
 }
 
@@ -1922,7 +1929,7 @@ const releaseSetZipFileMembers = async zipFile => {
 
 /** Bind an Actions artifact API record to the exact downloaded ZIP and consumed files. */
 export async function verifyReleaseSetArtifactZip({ zipFile, metadata, expectedId, consumedDirectory, expectedName }) {
-  const id = requirePositiveId(expectedId, 'Release-set ZIP artifact ID')
+  const id = requireFuturePositiveId(expectedId, 'Release-set ZIP artifact ID')
   requireEqual(metadata?.id, Number(id), 'Release-set ZIP metadata ID mismatch')
   if (expectedName !== undefined) requireEqual(metadata?.name, expectedName, 'Release-set ZIP metadata name mismatch')
   requireEqual(metadata?.expired, false, 'Release-set ZIP artifact is expired')
@@ -2211,7 +2218,7 @@ const npmStrictInput = input => {
   requireSha(input.preparation.sourceCommit, 'npm observer preparation source')
   requireArchiveSha(input.preparation.planSha256, 'npm observer preparation plan SHA-256')
   requireEqual(input.preparation.planSha256, input.planSha256, 'npm observer preparation plan mismatch')
-  for (const [value, label] of [[input.preparation.runId, 'npm observer preparation run ID'], [input.preparation.runAttempt, 'npm observer preparation attempt'], [input.preparation.artifactId, 'npm observer preparation artifact ID'], [input.preparation.bindingArtifactId, 'npm observer preparation binding artifact ID']]) requirePositiveId(value, label)
+  for (const [value, label] of [[input.preparation.runId, 'npm observer preparation run ID'], [input.preparation.runAttempt, 'npm observer preparation attempt'], [input.preparation.artifactId, 'npm observer preparation artifact ID'], [input.preparation.bindingArtifactId, 'npm observer preparation binding artifact ID']]) requireFuturePositiveId(value, label)
   releaseSetKeys(input.publisher, ['repository', 'repositoryId', 'sourceCommit', 'workflowPath', 'ref', 'event', 'environment', 'publisherRunId', 'publisherAttempt'], 'npm observer publisher')
   requireEqual(input.publisher.repository, EXPECTED_REPOSITORY, 'npm observer publisher repository mismatch')
   requireEqual(String(input.publisher.repositoryId), EXPECTED_REPOSITORY_ID, 'npm observer publisher repository ID mismatch')
@@ -2220,11 +2227,11 @@ const npmStrictInput = input => {
   requireEqual(input.publisher.ref, 'refs/heads/main', 'npm observer publisher ref mismatch')
   requireEqual(input.publisher.event, 'workflow_dispatch', 'npm observer publisher event mismatch')
   requireEqual(input.publisher.environment, 'npm', 'npm observer publisher environment mismatch')
-  requirePositiveId(input.publisher.publisherRunId, 'npm observer publisher run ID')
-  requirePositiveId(input.publisher.publisherAttempt, 'npm observer publisher attempt')
+  requireFuturePositiveId(input.publisher.publisherRunId, 'npm observer publisher run ID')
+  requireFuturePositiveId(input.publisher.publisherAttempt, 'npm observer publisher attempt')
   releaseSetKeys(input.observer, ['runId', 'runAttempt', 'workflowPath', 'sourceCommit'], 'npm observer context')
-  requirePositiveId(input.observer.runId, 'npm observer run ID')
-  requirePositiveId(input.observer.runAttempt, 'npm observer attempt')
+  requireFuturePositiveId(input.observer.runId, 'npm observer run ID')
+  requireFuturePositiveId(input.observer.runAttempt, 'npm observer attempt')
   requireEqual(input.observer.workflowPath, RELEASE_SET_WORKFLOW, 'npm observer workflow mismatch')
   requireSha(input.observer.sourceCommit, 'npm observer source')
   releaseSetKeys(input.toolPaths, ['node', 'npmCli', 'python'], 'npm observer tool paths')
@@ -2492,7 +2499,7 @@ const pypiStrictInput = input => {
   requireSha(input.preparation.sourceCommit, 'PyPI observer preparation source')
   requireArchiveSha(input.preparation.planSha256, 'PyPI observer preparation plan SHA-256')
   requireEqual(input.preparation.planSha256, input.planSha256, 'PyPI observer preparation plan mismatch')
-  for (const [value, label] of [[input.preparation.runId, 'PyPI observer preparation run ID'], [input.preparation.runAttempt, 'PyPI observer preparation attempt'], [input.preparation.artifactId, 'PyPI observer preparation artifact ID'], [input.preparation.bindingArtifactId, 'PyPI observer preparation binding artifact ID']]) requirePositiveId(value, label)
+  for (const [value, label] of [[input.preparation.runId, 'PyPI observer preparation run ID'], [input.preparation.runAttempt, 'PyPI observer preparation attempt'], [input.preparation.artifactId, 'PyPI observer preparation artifact ID'], [input.preparation.bindingArtifactId, 'PyPI observer preparation binding artifact ID']]) requireFuturePositiveId(value, label)
   const publisherKeys = pypiExpectedKinds.map(kind => input.descriptors[kind].filename)
   releaseSetObject(input.publishers, 'PyPI observer publishers')
   if (Object.keys(input.publishers).some(filename => !publisherKeys.includes(filename))) fail('PyPI observer publishers contain an unknown file')
@@ -2505,11 +2512,11 @@ const pypiStrictInput = input => {
     requireEqual(publisher.ref, 'refs/heads/main', `PyPI observer publisher ${filename} ref mismatch`)
     requireEqual(publisher.event, 'workflow_dispatch', `PyPI observer publisher ${filename} event mismatch`)
     requireEqual(publisher.environment, 'pypi', `PyPI observer publisher ${filename} environment mismatch`)
-    requirePositiveId(publisher.publisherRunId, `PyPI observer publisher ${filename} run ID`)
-    requirePositiveId(publisher.publisherAttempt, `PyPI observer publisher ${filename} attempt`)
+    requireFuturePositiveId(publisher.publisherRunId, `PyPI observer publisher ${filename} run ID`)
+    requireFuturePositiveId(publisher.publisherAttempt, `PyPI observer publisher ${filename} attempt`)
   }
   releaseSetKeys(input.observer, ['runId', 'runAttempt', 'workflowPath', 'sourceCommit'], 'PyPI observer context')
-  requirePositiveId(input.observer.runId, 'PyPI observer run ID'); requirePositiveId(input.observer.runAttempt, 'PyPI observer attempt')
+  requireFuturePositiveId(input.observer.runId, 'PyPI observer run ID'); requireFuturePositiveId(input.observer.runAttempt, 'PyPI observer attempt')
   requireEqual(input.observer.workflowPath, RELEASE_SET_WORKFLOW, 'PyPI observer workflow mismatch'); requireSha(input.observer.sourceCommit, 'PyPI observer source')
   releaseSetKeys(input.toolPaths, ['python'], 'PyPI observer tool paths'); npmSafePath(input.toolPaths.python, 'PyPI observer Python path')
   return input
@@ -2643,10 +2650,10 @@ export async function observePyPIRelease(input, adapters = {}) {
 /** Authenticate Actions run/artifact metadata before any later bundle use. */
 export function validateReleaseSetPreparationMetadata({ plan, run, artifact, bindingArtifact, expected }) {
   const normalized = validateReleaseSetPlan(plan)
-  const runId = requirePositiveId(expected.runId, 'Release-set preparation run ID')
-  const runAttempt = requirePositiveId(expected.runAttempt, 'Release-set preparation attempt')
-  const artifactId = requirePositiveId(expected.artifactId, 'Release-set preparation artifact ID')
-  const bindingArtifactId = requirePositiveId(expected.bindingArtifactId, 'Release-set binding artifact ID')
+  const runId = requireFuturePositiveId(expected.runId, 'Release-set preparation run ID')
+  const runAttempt = requireFuturePositiveId(expected.runAttempt, 'Release-set preparation attempt')
+  const artifactId = requireFuturePositiveId(expected.artifactId, 'Release-set preparation artifact ID')
+  const bindingArtifactId = requireFuturePositiveId(expected.bindingArtifactId, 'Release-set binding artifact ID')
   requireSha(expected.sourceCommit, 'Release-set preparation source')
   requireEqual(expected.sourceCommit, normalized.sourceCommit, 'Release-set preparation source does not match the plan')
   requireEqual(run?.id, Number(runId), 'Release-set preparation run ID mismatch')
@@ -2827,7 +2834,7 @@ const run = async arguments_ => {
     const receipt = await observeNpmRelease({
       descriptor: plan.artifacts.find(artifact => artifact.kind === 'npm'),
       planSha256,
-      preparation: { sourceCommit: preparation.context.sourceCommit, runId: binding.runId, runAttempt: binding.runAttempt, artifactId: binding.artifactId, bindingArtifactId: binding.bindingArtifactId, planSha256: binding.planSha256 },
+      preparation: { sourceCommit: preparation.context.sourceCommit, runId: binding.runId, runAttempt: binding.runAttempt, artifactId: binding.artifactId, bindingArtifactId: preparation.metadata.bindingArtifactId, planSha256: binding.planSha256 },
       publisher,
       observer: { runId: env('RELEASE_SET_NPM_OBSERVER_RUN_ID'), runAttempt: env('RELEASE_SET_NPM_OBSERVER_ATTEMPT'), workflowPath: env('RELEASE_SET_NPM_OBSERVER_WORKFLOW'), sourceCommit: observerSource },
       workDir: env('RELEASE_SET_NPM_WORK_DIR'), outputFile,
@@ -2849,7 +2856,7 @@ const run = async arguments_ => {
     const preparation = await verifyReleaseSetPreparation({ plan, context, run: JSON.parse(await readFile(env('RELEASE_SET_RUN_FILE'), 'utf8')), artifact: JSON.parse(await readFile(env('RELEASE_SET_ARTIFACT_METADATA_FILE'), 'utf8')), bindingArtifact: JSON.parse(await readFile(env('RELEASE_SET_BINDING_METADATA_FILE'), 'utf8')), binding, bundleZip: env('RELEASE_SET_BUNDLE_ZIP_FILE'), bindingZip: env('RELEASE_SET_BINDING_ZIP_FILE'), artifactDirectory: env('RELEASE_SET_ARTIFACT_DIR'), bindingDirectory: env('RELEASE_SET_BINDING_DIR'), expected: preparedExpected })
     const observerSource = env('RELEASE_SET_PYPI_OBSERVER_SOURCE'); requireEqual(observerSource, context.eventSha, 'PyPI observer source must bind to execution context')
     const publishers = JSON.parse(await readFile(env('RELEASE_SET_PYPI_PUBLISHERS_FILE'), 'utf8'))
-    const receipt = await observePyPIRelease({ descriptors: { 'pypi-wheel': plan.artifacts.find(artifact => artifact.kind === 'pypi-wheel'), 'pypi-sdist': plan.artifacts.find(artifact => artifact.kind === 'pypi-sdist') }, planSha256, preparation: { sourceCommit: preparation.context.sourceCommit, runId: binding.runId, runAttempt: binding.runAttempt, artifactId: binding.artifactId, bindingArtifactId: binding.bindingArtifactId, planSha256: binding.planSha256 }, publishers, observer: { runId: env('RELEASE_SET_PYPI_OBSERVER_RUN_ID'), runAttempt: env('RELEASE_SET_PYPI_OBSERVER_ATTEMPT'), workflowPath: env('RELEASE_SET_PYPI_OBSERVER_WORKFLOW'), sourceCommit: observerSource }, workDir: env('RELEASE_SET_PYPI_WORK_DIR'), outputFile, toolPaths: { python: env('RELEASE_SET_PYPI_PYTHON') } })
+    const receipt = await observePyPIRelease({ descriptors: { 'pypi-wheel': plan.artifacts.find(artifact => artifact.kind === 'pypi-wheel'), 'pypi-sdist': plan.artifacts.find(artifact => artifact.kind === 'pypi-sdist') }, planSha256, preparation: { sourceCommit: preparation.context.sourceCommit, runId: binding.runId, runAttempt: binding.runAttempt, artifactId: binding.artifactId, bindingArtifactId: preparation.metadata.bindingArtifactId, planSha256: binding.planSha256 }, publishers, observer: { runId: env('RELEASE_SET_PYPI_OBSERVER_RUN_ID'), runAttempt: env('RELEASE_SET_PYPI_OBSERVER_ATTEMPT'), workflowPath: env('RELEASE_SET_PYPI_OBSERVER_WORKFLOW'), sourceCommit: observerSource }, workDir: env('RELEASE_SET_PYPI_WORK_DIR'), outputFile, toolPaths: { python: env('RELEASE_SET_PYPI_PYTHON') } })
     console.log(`pypi-public-observation=${sha256Hex(canonicalJson(receipt))}`)
     return
   }

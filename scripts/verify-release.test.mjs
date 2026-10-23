@@ -56,6 +56,7 @@ import {
   verifyFoundationBundle,
   verifyFoundationProofSet,
   verifyReleaseSetArtifactZip,
+  verifyReleaseSetPreparation,
 } from './verify-release.mjs'
 
 const root = new URL('../', import.meta.url)
@@ -529,8 +530,9 @@ end
   const validContext = { repository: 'elsoul/erpc-sdk', repositoryId: '1429568627', eventName: 'workflow_dispatch', eventRef: 'refs/heads/main', eventSha: sourceCommit, expectedCommit: sourceCommit, checkoutHead: sourceCommit, checkoutStatus: '', workflowRef: 'elsoul/erpc-sdk/.github/workflows/release.yml@refs/heads/main', workflowSha: sourceCommit }
   assert.equal(validateReleaseSetContext(validContext, plan).sourceCommit, sourceCommit)
   assert.throws(() => validateReleaseSetContext({ ...validContext, eventSha: 'd'.repeat(40) }, plan), /event SHA mismatch/)
-  const binding = { schemaVersion: 2, kind: 'erpc-sdk-release-set-preparation-binding', repository: 'elsoul/erpc-sdk', repositoryId: '1429568627', workflowPath: '.github/workflows/release.yml', sourceCommit, versions: { nonRustVersion: version, rustVersion: version }, runId: '51', runAttempt: '1', artifactId: '52', bindingArtifactId: '53', planSha256: releaseSetPlanDigest(plan) }
+  const binding = { schemaVersion: 2, kind: 'erpc-sdk-release-set-preparation-binding', repository: 'elsoul/erpc-sdk', repositoryId: '1429568627', workflowPath: '.github/workflows/release.yml', sourceCommit, versions: { nonRustVersion: version, rustVersion: version }, runId: '51', runAttempt: '1', artifactId: '52', planSha256: releaseSetPlanDigest(plan) }
   validateReleaseSetPreparationBinding(binding, { plan, expected: { runId: '51', runAttempt: '1', artifactId: '52', bindingArtifactId: '53' } })
+  assert.throws(() => validateReleaseSetPreparationBinding({ ...binding, bindingArtifactId: '53' }, { plan, expected: { runId: '51', runAttempt: '1', artifactId: '52', bindingArtifactId: '53' } }), /unknown field/)
   assert.throws(() => validateReleaseSetPreparationBinding({ ...binding, versions: { nonRustVersion: '9.9.9', rustVersion: version } }, { plan }), /version mismatch/)
   const run = { id: 51, run_attempt: 1, status: 'completed', conclusion: 'success', event: 'workflow_dispatch', head_branch: 'main', head_sha: sourceCommit, path: '.github/workflows/release.yml', repository: { full_name: 'elsoul/erpc-sdk', id: 1429568627 } }
   const metadata = { id: 52, name: `release-set-bundle-${sourceCommit}`, expired: false, size_in_bytes: 10, digest: `sha256:${'0'.repeat(64)}`, archive_download_url: 'https://api.github.com/repos/elsoul/erpc-sdk/actions/artifacts/52/zip', workflow_run: { id: 51, repository_id: 1429568627, head_repository_id: 1429568627, head_sha: sourceCommit, head_branch: 'main', run_attempt: 1, path: '.github/workflows/release.yml' } }
@@ -575,6 +577,184 @@ end
     REPOSITORY: 'elsoul/erpc-sdk', REPOSITORY_ID: '1429568627', EVENT_NAME: 'workflow_dispatch', EVENT_REF: 'refs/heads/main', EVENT_SHA: sourceCommit,
     EXPECTED_COMMIT: sourceCommit, CHECKOUT_HEAD: sourceCommit, CHECKOUT_STATUS: '', WORKFLOW_REF: 'elsoul/erpc-sdk/.github/workflows/release.yml@refs/heads/main', WORKFLOW_SHA: sourceCommit,
   }
+  const {
+    RELEASE_SET_RUN_FILE: _baselineRunFile,
+    RELEASE_SET_ARTIFACT_METADATA_FILE: _baselineArtifactMetadataFile,
+    RELEASE_SET_BINDING_METADATA_FILE: _baselineBindingMetadataFile,
+    RELEASE_SET_BINDING_FILE: _baselineBindingFile,
+    RELEASE_SET_BINDING_DIR: _baselineBindingDirectory,
+    RELEASE_SET_BUNDLE_ZIP_FILE: _baselineBundleZipFile,
+    RELEASE_SET_BINDING_ZIP_FILE: _baselineBindingZipFile,
+    RELEASE_SET_PREPARED_RUN_ID: _baselinePreparedRunId,
+    RELEASE_SET_PREPARED_RUN_ATTEMPT: _baselinePreparedRunAttempt,
+    RELEASE_SET_PREPARED_ARTIFACT_ID: _baselinePreparedArtifactId,
+    RELEASE_SET_PREPARED_BINDING_ARTIFACT_ID: _baselinePreparedBindingArtifactId,
+    ...producerEnvBase
+  } = strictEnv
+  const producerPairs = [
+    { runId: '74101', runAttempt: '1', artifactId: '74153', bindingArtifactId: '74171' },
+    { runId: '89201', runAttempt: '1', artifactId: '89273', bindingArtifactId: '89291' },
+  ]
+  const makeUploadService = allocation => {
+    let bundleUpload
+    let bindingUpload
+    const upload = async (kind, bytes) => {
+      if (kind === 'bundle' && bundleUpload !== undefined) throw new Error('fixture bundle upload called more than once')
+      if (kind === 'binding' && bindingUpload !== undefined) throw new Error('fixture binding upload called more than once')
+      if (kind === 'binding' && bundleUpload === undefined) throw new Error('fixture binding upload requires bundle upload')
+      const capturedBytes = Buffer.from(bytes)
+      const captured = {
+        kind,
+        id: kind === 'bundle' ? allocation.artifactId : allocation.bindingArtifactId,
+        bytes: capturedBytes,
+        sizeInBytes: capturedBytes.length,
+        sha256: sha256Hex(capturedBytes),
+      }
+      captured.archiveDownloadUrl = `https://api.github.com/repos/elsoul/erpc-sdk/actions/artifacts/${captured.id}/zip`
+      if (kind === 'bundle') bundleUpload = captured
+      else bindingUpload = captured
+      return captured
+    }
+    return {
+      upload,
+      get bindingArtifactId() {
+        if (bindingUpload === undefined) throw new Error('fixture binding artifact ID unavailable before upload')
+        return bindingUpload.id
+      },
+    }
+  }
+  const producerApiRecord = (upload, name, producerRun) => ({
+    id: Number(upload.id),
+    name,
+    expired: false,
+    size_in_bytes: upload.sizeInBytes,
+    digest: `sha256:${upload.sha256}`,
+    archive_download_url: upload.archiveDownloadUrl,
+    workflow_run: {
+      id: producerRun.id,
+      repository_id: 1429568627,
+      head_repository_id: 1429568627,
+      head_sha: sourceCommit,
+      head_branch: 'main',
+      run_attempt: producerRun.run_attempt,
+      path: '.github/workflows/release.yml',
+    },
+  })
+  const bindingBodyFields = ({ runId, runAttempt, artifactId }) => ({
+    schemaVersion: binding.schemaVersion,
+    kind: binding.kind,
+    repository: binding.repository,
+    repositoryId: binding.repositoryId,
+    workflowPath: binding.workflowPath,
+    sourceCommit: binding.sourceCommit,
+    versions: binding.versions,
+    runId,
+    runAttempt,
+    artifactId,
+    planSha256: binding.planSha256,
+  })
+  for (const [producerIndex, allocation] of producerPairs.entries()) {
+    const service = makeUploadService(allocation)
+    const producerRun = {
+      id: Number(allocation.runId),
+      run_attempt: Number(allocation.runAttempt),
+      status: 'completed',
+      conclusion: 'success',
+      event: 'workflow_dispatch',
+      head_branch: 'main',
+      head_sha: sourceCommit,
+      path: '.github/workflows/release.yml',
+      repository: { full_name: 'elsoul/erpc-sdk', id: 1429568627 },
+    }
+    const producerRunFile = join(directory, `producer-${allocation.artifactId}-run.json`)
+    await writeFile(producerRunFile, JSON.stringify(producerRun))
+    const frozenBundle = await service.upload('bundle', bundleZipBytes)
+    assert.equal(frozenBundle.id, allocation.artifactId)
+    assert.equal(frozenBundle.sizeInBytes, bundleZipBytes.length)
+    assert.equal(frozenBundle.sha256, sha256Hex(bundleZipBytes))
+    const producerBindingBody = bindingBodyFields({ runId: allocation.runId, runAttempt: allocation.runAttempt, artifactId: frozenBundle.id })
+    assert.equal(Object.hasOwn(producerBindingBody, 'bindingArtifactId'), false)
+    const producerBindingDirectory = join(directory, `producer-${allocation.artifactId}-binding-directory`)
+    await mkdir(producerBindingDirectory)
+    const producerBindingFile = join(directory, `producer-${allocation.artifactId}-binding.json`)
+    const producerBindingJson = JSON.stringify(producerBindingBody)
+    const producerBindingBodyDigest = sha256Hex(Buffer.from(producerBindingJson))
+    await writeFile(producerBindingFile, producerBindingJson)
+    await writeFile(join(producerBindingDirectory, 'release-set-binding.json'), producerBindingJson)
+    const producerBindingZip = join(directory, `producer-${allocation.artifactId}-binding.zip`)
+    await execFileAsync('zip', ['-q', producerBindingZip, 'release-set-binding.json'], { cwd: producerBindingDirectory })
+    const frozenBindingBytes = await readFile(producerBindingZip)
+    const frozenBindingDigest = sha256Hex(frozenBindingBytes)
+    assert.throws(() => service.bindingArtifactId, /unavailable before upload/)
+    const allocatedBinding = await service.upload('binding', frozenBindingBytes)
+    assert.equal(service.bindingArtifactId, allocatedBinding.id)
+    assert.equal(allocatedBinding.id, allocation.bindingArtifactId)
+    assert.equal(allocatedBinding.sizeInBytes, frozenBindingBytes.length)
+    assert.equal(allocatedBinding.sha256, frozenBindingDigest)
+    assert.equal(sha256Hex(await readFile(producerBindingFile)), producerBindingBodyDigest)
+    assert.equal(sha256Hex(await readFile(producerBindingZip)), frozenBindingDigest)
+    assert.equal(sha256Hex(await readFile(bundleZip)), frozenBundle.sha256)
+    const bundleName = `release-set-bundle-${sourceCommit}`
+    const bindingName = `release-set-binding-${allocation.runId}-${allocation.runAttempt}`
+    const producerArtifact = producerApiRecord(frozenBundle, bundleName, producerRun)
+    const producerBindingArtifact = producerApiRecord(allocatedBinding, bindingName, producerRun)
+    const producerArtifactMetadataFile = join(directory, `producer-${allocation.artifactId}-artifact-metadata.json`)
+    const producerBindingMetadataFile = join(directory, `producer-${allocation.artifactId}-binding-metadata.json`)
+    await writeFile(producerArtifactMetadataFile, JSON.stringify(producerArtifact))
+    await writeFile(producerBindingMetadataFile, JSON.stringify(producerBindingArtifact))
+    const producerExpected = {
+      runId: allocation.runId,
+      runAttempt: allocation.runAttempt,
+      artifactId: frozenBundle.id,
+      bindingArtifactId: allocatedBinding.id,
+      sourceCommit,
+      bundleName,
+      bindingName,
+    }
+    const producerEnv = {
+      ...producerEnvBase,
+      RELEASE_SET_RUN_FILE: producerRunFile,
+      RELEASE_SET_ARTIFACT_DIR: bundle,
+      RELEASE_SET_BINDING_FILE: producerBindingFile,
+      RELEASE_SET_BINDING_DIR: producerBindingDirectory,
+      RELEASE_SET_BUNDLE_ZIP_FILE: bundleZip,
+      RELEASE_SET_BINDING_ZIP_FILE: producerBindingZip,
+      RELEASE_SET_ARTIFACT_METADATA_FILE: producerArtifactMetadataFile,
+      RELEASE_SET_BINDING_METADATA_FILE: producerBindingMetadataFile,
+      RELEASE_SET_PREPARED_RUN_ID: producerExpected.runId,
+      RELEASE_SET_PREPARED_RUN_ATTEMPT: producerExpected.runAttempt,
+      RELEASE_SET_PREPARED_ARTIFACT_ID: producerExpected.artifactId,
+      RELEASE_SET_PREPARED_BINDING_ARTIFACT_ID: producerExpected.bindingArtifactId,
+    }
+    if (producerIndex === 1) {
+      const staleExpectedEnv = {
+        ...producerEnv,
+        RELEASE_SET_PREPARED_ARTIFACT_ID: producerPairs[0].artifactId,
+        RELEASE_SET_PREPARED_BINDING_ARTIFACT_ID: producerPairs[0].bindingArtifactId,
+      }
+      await assert.rejects(runVerifierCli(['--release-set-verify'], staleExpectedEnv), /ID mismatch/)
+      t.diagnostic(`stale expected pair ${producerPairs[0].artifactId}/${producerPairs[0].bindingArtifactId} rejected against allocated ${frozenBundle.id}/${allocatedBinding.id}`)
+    }
+    const helperResult = await verifyReleaseSetPreparation({
+      plan,
+      context: validContext,
+      run: producerRun,
+      artifact: producerArtifact,
+      bindingArtifact: producerBindingArtifact,
+      binding: producerBindingBody,
+      bundleZip,
+      bindingZip: producerBindingZip,
+      artifactDirectory: bundle,
+      bindingDirectory: producerBindingDirectory,
+      expected: producerExpected,
+    })
+    assert.equal(helperResult.bundleZip.id, Number(frozenBundle.id))
+    assert.equal(helperResult.bindingZip.id, Number(allocatedBinding.id))
+    await runVerifierCli(['--release-set-verify'], producerEnv)
+    t.diagnostic(`producer allocation pair ${producerIndex + 1}: bundle=${frozenBundle.id}, binding=${allocatedBinding.id}`)
+  }
+  await assert.rejects(runVerifierCli(['--release-set-verify'], { ...strictEnv, RELEASE_SET_PREPARED_BINDING_ARTIFACT_ID: '54' }), /ID mismatch/)
+  await assert.rejects(runVerifierCli(['--release-set-verify'], { ...strictEnv, RELEASE_SET_PREPARED_BINDING_ARTIFACT_ID: '9007199254740993' }), /safe positive numeric ID/)
   const differentBindingDirectory = join(directory, 'different-binding')
   await mkdir(differentBindingDirectory)
   const differentBinding = { ...binding, bindingArtifactId: '54' }
@@ -583,7 +763,7 @@ end
   await writeFile(join(differentBindingDirectory, 'release-set-binding.json'), JSON.stringify(differentBinding))
   const differentBindingMetadataFile = join(directory, 'different-binding-metadata.json')
   await writeFile(differentBindingMetadataFile, JSON.stringify({ ...strictBindingMetadata, id: 54, archive_download_url: 'https://api.github.com/repos/elsoul/erpc-sdk/actions/artifacts/54/zip' }))
-  await assert.rejects(runVerifierCli(['--release-set-verify'], { ...strictEnv, RELEASE_SET_BINDING_FILE: differentBindingFile, RELEASE_SET_BINDING_DIR: differentBindingDirectory, RELEASE_SET_BINDING_METADATA_FILE: differentBindingMetadataFile, RELEASE_SET_PREPARED_BINDING_ARTIFACT_ID: '54' }), /ZIP member bytes differ|binding ZIP\/consumed binding mismatch/)
+  await assert.rejects(runVerifierCli(['--release-set-verify'], { ...strictEnv, RELEASE_SET_BINDING_FILE: differentBindingFile, RELEASE_SET_BINDING_DIR: differentBindingDirectory, RELEASE_SET_BINDING_METADATA_FILE: differentBindingMetadataFile, RELEASE_SET_PREPARED_BINDING_ARTIFACT_ID: '54' }), /unknown field|ZIP member bytes differ|binding ZIP\/consumed binding mismatch/)
   await writeFile(join(bindingDirectory, 'unrelated.json'), 'unrelated')
   await assert.rejects(runVerifierCli(['--release-set-verify'], strictEnv), /ZIP members do not equal consumed files|exactly release-set-binding/)
   await rm(join(bindingDirectory, 'unrelated.json'))
@@ -1012,7 +1192,12 @@ test('B2 PyPI observer executes wheel/sdist byte, attestation, partial, and cons
   const sdistDescriptor = { kind: 'pypi-sdist', filename: 'erpc_sdk-1.2.3.tar.gz', name: 'erpc-sdk', version: '1.2.3', sha256: sdistSha, files: ['erpc_sdk-1.2.3', 'erpc_sdk-1.2.3/LICENSE', 'erpc_sdk-1.2.3/PKG-INFO', 'erpc_sdk-1.2.3/erpc_sdk.py'] }
   const base = 'https://files.pythonhosted.org/packages/test/'; const metadata = { info: { name: 'erpc-sdk', version: '1.2.3' }, urls: [{ filename: wheelDescriptor.filename, url: `${base}${wheelDescriptor.filename}`, packagetype: 'bdist_wheel', yanked: false, digests: { sha256: wheelSha } }, { filename: sdistDescriptor.filename, url: `${base}${sdistDescriptor.filename}`, packagetype: 'sdist', yanked: false, digests: { sha256: sdistSha } }] }
   const sourceCommit = '4'.repeat(40); const invocation = 'https://github.com/elsoul/erpc-sdk/actions/runs/39871872971/attempts/1'; const claims = { claims: Object.fromEntries([[8, 'https://token.actions.githubusercontent.com'], [9, 'https://github.com/elsoul/erpc-sdk/.github/workflows/release.yml@refs/heads/main'], [10, sourceCommit], [12, 'https://github.com/elsoul/erpc-sdk'], [13, sourceCommit], [14, 'refs/heads/main'], [15, '1429568627'], [18, 'https://github.com/elsoul/erpc-sdk/.github/workflows/release.yml@refs/heads/main'], [19, sourceCommit], [20, 'workflow_dispatch'], [21, invocation]].map(([key, value]) => [`1.3.6.1.4.1.57264.1.${key}`, value])), publisher: { kind: 'GitHub', repository: 'elsoul/erpc-sdk', workflow: 'release.yml', environment: 'pypi' } }
-  let partialMode = false; let sdistOnly = false; let retryDownload = false; const request = async url => url.endsWith('/json') ? { status: 200, headers: {}, body: Buffer.from(JSON.stringify(partialMode ? { ...metadata, urls: [sdistOnly ? metadata.urls[1] : metadata.urls[0]] } : metadata)) } : (retryDownload && url.endsWith('.whl') ? (retryDownload = false, { status: 404, headers: {}, body: Buffer.from('{}') }) : url.endsWith('.whl')) ? { status: 200, headers: {}, body: wheelBytes } : url.endsWith('.tar.gz') ? { status: 200, headers: {}, body: sdistBytes } : { status: 200, headers: {}, body: Buffer.from('{}') }
+  let partialMode = false; let sdistOnly = false; let retryDownload = false; const retryStatuses = []; const request = async url => {
+    if (url.endsWith('/json')) return { status: 200, headers: {}, body: Buffer.from(JSON.stringify(partialMode ? { ...metadata, urls: [sdistOnly ? metadata.urls[1] : metadata.urls[0]] } : metadata)) }
+    if (url.endsWith('.whl')) { const status = retryDownload ? 404 : 200; if (retryDownload) retryDownload = false; retryStatuses.push(status); return { status, headers: {}, body: status === 200 ? wheelBytes : Buffer.from('{}') } }
+    if (url.endsWith('.tar.gz')) return { status: 200, headers: {}, body: sdistBytes }
+    return { status: 200, headers: {}, body: Buffer.from('{}') }
+  }
   const run = async (command, args, options = {}) => {
     if (args[0] === '--version') return { exitCode: 0, stdout: 'Python 3.12.11\n', stderr: '' }
     if (args[0] === '-m' && args[1] === 'pypi_attestations') return { exitCode: 0, stdout: '', stderr: '' }
@@ -1035,7 +1220,7 @@ test('B2 PyPI observer executes wheel/sdist byte, attestation, partial, and cons
   metadata.urls[0].digests.sha256 = approvedWheelSha
   sdistOnly = true; await mkdir(join(directory, 'sdist-only-work')); const sdistPartial = await observePyPIRelease(makeInput('sdist-only'), { request, run, now: (() => { let value = 0; return () => value += 1 })(), sleep: async () => {} }); assert.equal(sdistPartial.state, 'partial'); assert.equal(sdistPartial.consumers.sdist.exitCode, 0)
   sdistOnly = false; partialMode = false; await mkdir(join(directory, 'missing-publisher-work')); await assert.rejects(() => observePyPIRelease({ ...makeInput('missing-publisher'), publishers: { [sdistDescriptor.filename]: publisher } }, { request, run, now: (() => { let value = 0; return () => value += 1 })(), sleep: async () => {} }), /publisher-context-missing/)
-  retryDownload = true; await mkdir(join(directory, 'retry-work')); const retryReceipt = await observePyPIRelease(makeInput('retry'), { request, run, now: (() => { let value = 0; return () => value += 1 })(), sleep: async () => {} }); assert.equal(retryReceipt.state, 'observed')
+  retryDownload = true; retryStatuses.length = 0; let retrySleeps = 0; await mkdir(join(directory, 'retry-work')); const retryReceipt = await observePyPIRelease(makeInput('retry'), { request, run, now: (() => { let value = 0; return () => value += 1 })(), sleep: async () => { retrySleeps += 1 } }); assert.equal(retryReceipt.state, 'observed'); assert.deepEqual(retryStatuses, [404, 200]); assert.equal(retrySleeps >= 1, true)
   claims.claims['1.3.6.1.4.1.57264.1.23'] = 'npm'; await mkdir(join(directory, 'wrong-environment-work')); await assert.rejects(() => observePyPIRelease(makeInput('wrong-environment'), { request, run, now: (() => { let value = 0; return () => value += 1 })(), sleep: async () => {} }), /environment claim/)
 })
 
