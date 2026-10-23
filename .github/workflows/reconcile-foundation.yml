@@ -1627,21 +1627,23 @@ jobs:
           while IFS= read -r name; do
             if ! grep -Fxq "$name" "$remote_assets"; then missing+=("$ASSET_DIR/$name"); fi
           done < "$expected_assets"
-          for asset in "${missing[@]}"; do
-            name="$(basename "$asset")"
-            encoded_name="$(node --input-type=module - "$name" <<'NODE'
+          if [ "${#missing[@]}" -gt 0 ]; then
+            for asset in "${missing[@]}"; do
+              name="$(basename "$asset")"
+              encoded_name="$(node --input-type=module - "$name" <<'NODE'
           const name = process.argv[2]
           process.stdout.write(encodeURIComponent(name))
           NODE
-            )"
-            upload_response="$RUNNER_TEMP/upload-$name.json"
-            curl --fail --silent --show-error --max-time 60 --user-agent "$RELEASE_USER_AGENT" --request POST --header "Authorization: Bearer $GH_TOKEN" --header 'Accept: application/vnd.github+json' --header 'Content-Type: application/octet-stream' --data-binary "@$asset" --output "$upload_response" "https://uploads.github.com/repos/$REPOSITORY/releases/$release_id/assets?name=$encoded_name"
-            node --input-type=module - "$upload_response" "$name" "$release_id" <<'NODE'
+              )"
+              upload_response="$RUNNER_TEMP/upload-$name.json"
+              curl --fail --silent --show-error --max-time 60 --user-agent "$RELEASE_USER_AGENT" --request POST --header "Authorization: Bearer $GH_TOKEN" --header 'Accept: application/vnd.github+json' --header 'Content-Type: application/octet-stream' --data-binary "@$asset" --output "$upload_response" "https://uploads.github.com/repos/$REPOSITORY/releases/$release_id/assets?name=$encoded_name"
+              node --input-type=module - "$upload_response" "$name" "$release_id" <<'NODE'
           import { readFileSync } from 'node:fs'
           const upload = JSON.parse(readFileSync(process.argv[2], 'utf8'))
           if (!Number.isSafeInteger(upload.id) || upload.id <= 0 || upload.name !== process.argv[3] || upload.state !== 'uploaded' || upload.release?.id !== undefined && upload.release.id !== Number(process.argv[4])) throw new Error('uploaded Release asset identity/state mismatch')
           NODE
-          done
+            done
+          fi
           gh api --header 'Accept: application/vnd.github+json' --paginate --slurp "/repos/$REPOSITORY/releases/$release_id/assets?per_page=100" > "$remote_pages"
           node --input-type=module - "$remote_pages" "$remote" "$expected_assets" <<'NODE'
           import { readFileSync, writeFileSync } from 'node:fs'
@@ -1660,6 +1662,26 @@ jobs:
             download_asset "$name" "$download_dir/$name"
             test "$(sha256sum "$download_dir/$name" | awk '{print $1}')" = "$(sha256sum "$ASSET_DIR/$name" | awk '{print $1}')"
           done < "$expected_assets"
+          verified_asset_receipt="$RUNNER_TEMP/verified-release-assets.json"
+          node --input-type=module - "$remote" "$expected_assets" "$download_dir" "$verified_asset_receipt" "$release_id" <<'NODE'
+          import { createHash } from 'node:crypto'
+          import { readFileSync, writeFileSync } from 'node:fs'
+          const [remoteFile, expectedFile, downloadDir, receiptFile, releaseId] = process.argv.slice(2)
+          const remote = JSON.parse(readFileSync(remoteFile, 'utf8'))
+          const expected = readFileSync(expectedFile, 'utf8').split(/\r?\n/).filter(Boolean)
+          if (expected.length !== 15 || remote.length !== expected.length || remote.some(asset => !expected.includes(asset.name))) throw new Error('verified Release asset receipt has an unexpected set')
+          const names = new Set()
+          const ids = new Set()
+          const assets = remote.map(asset => {
+            if (!Number.isSafeInteger(asset.id) || asset.id <= 0 || typeof asset.name !== 'string' || names.has(asset.name) || ids.has(asset.id)) throw new Error('verified Release asset receipt has duplicate identity')
+            names.add(asset.name)
+            ids.add(asset.id)
+            const bytes = readFileSync(`${downloadDir}/${asset.name}`)
+            return { id: asset.id, name: asset.name, sha256: createHash('sha256').update(bytes).digest('hex') }
+          })
+          if (assets.length !== 15 || names.size !== expected.length) throw new Error('verified Release asset receipt is incomplete')
+          writeFileSync(receiptFile, JSON.stringify({ releaseId: Number(releaseId), assets }))
+          NODE
 
       - name: Publish the matching draft and verify the final immutable Release
         env:
@@ -1669,10 +1691,56 @@ jobs:
           TAG: ${{ env.FOUNDATION_TAG }}
           BODY_FILE: ${{ runner.temp }}/sdk-foundation-bundle/release-body.md
           ASSET_DIR: ${{ runner.temp }}/release-assets
+          VERIFIED_ASSET_RECEIPT: ${{ runner.temp }}/verified-release-assets.json
         run: |
           set -euo pipefail
           release_json="$RUNNER_TEMP/release-final.json"
           test "$RELEASE_ID" = 421343859
+          verify_verified_assets() {
+            latest_pages="$1"
+            latest_map="$2"
+            latest_download_dir="$3"
+            gh api --header 'Accept: application/vnd.github+json' --paginate --slurp "/repos/$REPOSITORY/releases/$RELEASE_ID/assets?per_page=100" > "$latest_pages"
+            mkdir -p "$latest_download_dir"
+            node --input-type=module - "$VERIFIED_ASSET_RECEIPT" "$latest_pages" "$ASSET_DIR" "$latest_map" <<'NODE'
+          import { readFileSync, writeFileSync, readdirSync } from 'node:fs'
+          const [receiptFile, pagesFile, assetDir, mapFile] = process.argv.slice(2)
+          const receipt = JSON.parse(readFileSync(receiptFile, 'utf8'))
+          const pages = JSON.parse(readFileSync(pagesFile, 'utf8'))
+          const expected = readdirSync(assetDir).sort()
+          if (receipt.releaseId !== 421343859 || !Array.isArray(receipt.assets) || receipt.assets.length !== 15 || expected.length !== 15) throw new Error('verified Release asset receipt metadata is invalid')
+          if (!Array.isArray(pages) || pages.some(page => !Array.isArray(page))) throw new Error('final Release asset pagination is malformed')
+          const latest = pages.flat()
+          const valid = (assets, label) => {
+            const names = new Set()
+            const ids = new Set()
+            if (assets.length !== expected.length) throw new Error(`${label} asset count conflicts with the approved set`)
+            for (const asset of assets) {
+              if (!Number.isSafeInteger(asset.id) || asset.id <= 0 || typeof asset.name !== 'string' || !expected.includes(asset.name) || names.has(asset.name) || ids.has(asset.id)) throw new Error(`${label} asset identity conflicts`)
+              names.add(asset.name)
+              ids.add(asset.id)
+            }
+            if (names.size !== expected.length) throw new Error(`${label} asset names are incomplete`)
+            return new Map(assets.map(asset => [asset.name, asset]))
+          }
+          const recorded = valid(receipt.assets, 'recorded')
+          const current = valid(latest, 'current')
+          const lines = []
+          for (const name of expected) {
+            const recordedAsset = recorded.get(name)
+            const currentAsset = current.get(name)
+            if (recordedAsset.id !== currentAsset.id || !/^[0-9a-f]{64}$/.test(recordedAsset.sha256)) throw new Error(`current Release asset ID/digest changed for ${name}`)
+            lines.push(`${name}\t${recordedAsset.id}\t${recordedAsset.sha256}`)
+          }
+          writeFileSync(mapFile, lines.join('\n') + '\n')
+          NODE
+            while IFS=$'\t' read -r name asset_id expected_digest; do
+              destination="$latest_download_dir/$name"
+              curl --fail --silent --show-error --location --max-time 60 --retry 0 --user-agent "$RELEASE_USER_AGENT" --header "Authorization: Bearer $GH_TOKEN" --header 'Accept: application/octet-stream' --output "$destination" "https://api.github.com/repos/$REPOSITORY/releases/assets/$asset_id"
+              test "$(sha256sum "$destination" | awk '{print $1}')" = "$expected_digest"
+            done < "$latest_map"
+          }
+          test -s "$VERIFIED_ASSET_RECEIPT"
           gh api --header 'Accept: application/vnd.github+json' "/repos/$REPOSITORY/releases/$RELEASE_ID" > "$release_json"
           node --input-type=module - "$release_json" "$BODY_FILE" <<'NODE'
           import { readdirSync, readFileSync } from 'node:fs'
@@ -1683,11 +1751,13 @@ jobs:
           const names = assets.map(asset => asset.name)
           if (release.id !== 421343859 || release.tag_name !== 'non-rust-v0.9.1' || release.name !== 'SDK release state: non-Rust 0.9.1 / Rust 0.10.0' || release.body !== body || (release.target_commitish !== '4677d67d14c8fbb17ada3ba824d1623180c6b4d9' && release.target_commitish !== 'non-rust-v0.9.1') || release.prerelease !== false || typeof release.draft !== 'boolean' || assets.length !== 15 || expected.length !== 15 || names.slice().sort().join('\n') !== expected.join('\n') || assets.some(asset => !Number.isSafeInteger(asset.id) || asset.id <= 0) || new Set(names).size !== names.length) throw new Error('pre-publish Release identity/body/assets conflict')
           NODE
+          verify_verified_assets "$RUNNER_TEMP/final-assets-pre-pages.json" "$RUNNER_TEMP/final-assets-pre-map.tsv" "$RUNNER_TEMP/final-assets-pre-downloads"
           if [ "$(jq -r '.draft' "$release_json")" = true ]; then
             printf '%s' '{"draft":false,"make_latest":"false"}' | gh api --header 'Accept: application/vnd.github+json' --method PATCH "/repos/$REPOSITORY/releases/$RELEASE_ID" --input - > "$RUNNER_TEMP/release-patch.json"
             test "$(jq -r '.id' "$RUNNER_TEMP/release-patch.json")" = "$RELEASE_ID"
           fi
           gh api --header 'Accept: application/vnd.github+json' "/repos/$REPOSITORY/releases/$RELEASE_ID" > "$release_json"
+          verify_verified_assets "$RUNNER_TEMP/final-assets-post-pages.json" "$RUNNER_TEMP/final-assets-post-map.tsv" "$RUNNER_TEMP/final-assets-post-downloads"
           node --input-type=module - "$release_json" "$BODY_FILE" <<'NODE'
           import { readdirSync, readFileSync } from 'node:fs'
           const release = JSON.parse(readFileSync(process.argv[2], 'utf8'))

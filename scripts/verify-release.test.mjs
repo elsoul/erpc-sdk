@@ -1925,14 +1925,48 @@ test('final numeric-ID publication block patches only the approved draft and rej
   for (const name of assetNames) await writeFile(join(assetDirectory, name), name + '\n')
   const patches = join(directory, 'patches')
   await writeFile(patches, '')
+  const verifiedAssetReceipt = join(directory, 'verified-assets.json')
+  const recordedAssets = assetNames.map((name, index) => ({ id: index + 1, name, sha256: sha256Hex(name + '\n') }))
+  await writeFile(verifiedAssetReceipt, JSON.stringify({ releaseId: 421343859, assets: recordedAssets }))
   const gh = join(directory, 'gh')
   await writeFile(gh, '#!/usr/bin/env node\n' +
-    'const fs=require("node:fs"); const args=process.argv.slice(2); const endpoint=args.find(value=>value.includes("/releases/")); fs.appendFileSync(process.env.CALLS,JSON.stringify(args)+"\\n"); if(args.includes("--method")&&args.includes("PATCH")){let data="";process.stdin.on("data",chunk=>data+=chunk);process.stdin.on("end",()=>{if(data!=="{\\"draft\\":false,\\"make_latest\\":\\"false\\"}")process.exit(43);fs.appendFileSync(process.env.PATCHES,"PATCH\\n");fs.writeFileSync(process.env.STATE,"published");process.stdout.write(JSON.stringify({id:421343859}));});return} if(endpoint?.endsWith("/releases/421343859")){const mode=process.env.PUBLISH_CASE; const release={id:421343859,draft:!fs.existsSync(process.env.STATE),make_latest:false,tag_name:"non-rust-v0.9.1",name:"SDK release state: non-Rust 0.9.1 / Rust 0.10.0",body:"APPROVED\\n",target_commitish:"4677d67d14c8fbb17ada3ba824d1623180c6b4d9",prerelease:false,assets:Array.from({length:15},(_,i)=>({id:i+1,name:"asset-"+String(i+1).padStart(2,"0")+".txt"}))}; if(mode==="body")release.body="wrong\\n"; if(mode==="source")release.target_commitish="wrong"; if(mode==="prerelease")release.prerelease=true; if(mode==="assets")release.assets=release.assets.slice(0,14); process.stdout.write(JSON.stringify(release));process.exit(0)} process.exit(42)\n')
+    'const fs=require("node:fs"); const args=process.argv.slice(2); const endpoint=args.find(value=>value.includes("/releases/")); const baseAssets=Array.from({length:15},(_,i)=>({id:i+1,name:"asset-"+String(i+1).padStart(2,"0")+".txt"})); const getAssets=()=>{const assets=baseAssets.map(asset=>({...asset})); if(process.env.PUBLISH_CASE==="swapped-id"){assets[0].id=2; assets[1].id=1} return assets}; fs.appendFileSync(process.env.CALLS,JSON.stringify(args)+"\\n"); if(args.includes("--paginate")){process.stdout.write(JSON.stringify([getAssets()]));process.exit(0)} if(args.includes("--method")&&args.includes("PATCH")){let data="";process.stdin.on("data",chunk=>data+=chunk);process.stdin.on("end",()=>{if(data!=="{\\"draft\\":false,\\"make_latest\\":\\"false\\"}")process.exit(43);fs.appendFileSync(process.env.PATCHES,"PATCH\\n");fs.writeFileSync(process.env.STATE,"published");process.stdout.write(JSON.stringify({id:421343859}));});return} if(endpoint?.endsWith("/releases/421343859")){const mode=process.env.PUBLISH_CASE; const release={id:421343859,draft:!fs.existsSync(process.env.STATE),make_latest:false,tag_name:"non-rust-v0.9.1",name:"SDK release state: non-Rust 0.9.1 / Rust 0.10.0",body:"APPROVED\\n",target_commitish:"4677d67d14c8fbb17ada3ba824d1623180c6b4d9",prerelease:false,assets:getAssets()}; if(mode==="body")release.body="wrong\\n"; if(mode==="source")release.target_commitish="wrong"; if(mode==="prerelease")release.prerelease=true; if(mode==="assets")release.assets=release.assets.slice(0,14); process.stdout.write(JSON.stringify(release));process.exit(0)} process.exit(42)\n')
   await chmod(gh, 0o755)
-  const env = { ...process.env, PATH: directory + ':' + (process.env.PATH ?? ''), RUNNER_TEMP: directory, CALLS: calls, PATCHES: patches, STATE: join(directory, 'published'), PUBLISH_CASE: 'success', GH_TOKEN: 'fixture', REPOSITORY: 'elsoul/erpc-sdk', RELEASE_ID: '421343859', TAG: 'non-rust-v0.9.1', BODY_FILE: body, ASSET_DIR: assetDirectory }
+  const curl = join(directory, 'curl')
+  await writeFile(curl, '#!/usr/bin/env node\n' +
+    'const fs=require("node:fs"); const args=process.argv.slice(2); const output=args[args.indexOf("--output")+1]; const url=args.at(-1); const id=Number(url.split("/").at(-1)); const name="asset-"+String(id).padStart(2,"0")+".txt"; if((process.env.PUBLISH_CASE==="changed-pre"||process.env.PUBLISH_CASE==="changed-post"&&fs.existsSync(process.env.STATE))&&id===1)fs.writeFileSync(output,"changed after publication\\n"); else fs.copyFileSync(process.env.ASSET_DIR+"/"+name,output); process.exit(0)\n')
+  await chmod(curl, 0o755)
+  const env = { ...process.env, PATH: directory + ':' + (process.env.PATH ?? ''), RUNNER_TEMP: directory, CALLS: calls, PATCHES: patches, STATE: join(directory, 'published'), PUBLISH_CASE: 'success', GH_TOKEN: 'fixture', RELEASE_USER_AGENT, REPOSITORY: 'elsoul/erpc-sdk', RELEASE_ID: '421343859', TAG: 'non-rust-v0.9.1', BODY_FILE: body, ASSET_DIR: assetDirectory, VERIFIED_ASSET_RECEIPT: verifiedAssetReceipt }
   await execFileAsync('bash', ['-c', 'set -euo pipefail\n' + block], { cwd: new URL('../', import.meta.url).pathname, env })
   assert.match(await readFile(calls, 'utf8'), /releases\/421343859/)
   assert.equal((await readFile(patches, 'utf8')).trim(), 'PATCH')
+  await execFileAsync('bash', ['-c', 'set -euo pipefail\n' + block], { cwd: new URL('../', import.meta.url).pathname, env })
+  assert.equal((await readFile(patches, 'utf8')).trim().split(/\r?\n/).filter(Boolean).length, 1)
+  const swappedDirectory = join(directory, 'swapped-publish')
+  await mkdir(swappedDirectory)
+  await writeFile(patches, '')
+  await assert.rejects(execFileAsync('bash', ['-c', 'set -euo pipefail\n' + block], {
+    cwd: new URL('../', import.meta.url).pathname,
+    env: { ...env, PUBLISH_CASE: 'swapped-id', RUNNER_TEMP: swappedDirectory, STATE: join(swappedDirectory, 'published') },
+  }))
+  assert.equal((await readFile(patches, 'utf8')).trim(), '')
+  await writeFile(patches, '')
+  const changedPreDirectory = join(directory, 'changed-pre-publish')
+  await mkdir(changedPreDirectory)
+  await assert.rejects(execFileAsync('bash', ['-c', 'set -euo pipefail\n' + block], {
+    cwd: new URL('../', import.meta.url).pathname,
+    env: { ...env, PUBLISH_CASE: 'changed-pre', RUNNER_TEMP: changedPreDirectory, STATE: join(changedPreDirectory, 'published') },
+  }))
+  assert.equal((await readFile(patches, 'utf8')).trim(), '')
+  const changedDirectory = join(directory, 'changed-post-publish')
+  await mkdir(changedDirectory)
+  await writeFile(patches, '')
+  await assert.rejects(execFileAsync('bash', ['-c', 'set -euo pipefail\n' + block], {
+    cwd: new URL('../', import.meta.url).pathname,
+    env: { ...env, PUBLISH_CASE: 'changed-post', RUNNER_TEMP: changedDirectory, STATE: join(changedDirectory, 'published') },
+  }))
+  assert.equal((await readFile(patches, 'utf8')).trim(), 'PATCH')
+  await assert.rejects(readFile(join(changedDirectory, 'final-release-proof.json')))
   for (const publishCase of ['body', 'source', 'prerelease', 'assets']) {
     await writeFile(patches, '')
     await assert.rejects(execFileAsync('bash', ['-c', 'set -euo pipefail\n' + block], {
@@ -1981,6 +2015,10 @@ test('final numeric-ID asset block handles partial assets idempotently and stops
   const env = { ...process.env, PATH: bin + ':' + (process.env.PATH ?? ''), RUNNER_TEMP: directory, REPOSITORY: 'elsoul/erpc-sdk', RELEASE_ID: '421343859', TAG: 'non-rust-v0.9.1', ASSET_DIR: assetDirectory, REMOTE_STATE: state, REMOTE_DIR: remoteDirectory, UPLOAD_LOG: log, REQUESTS: requests, GH_TOKEN: 'fixture', RELEASE_USER_AGENT, SOURCE_M: '4677d67d14c8fbb17ada3ba824d1623180c6b4d9', FOUNDATION_PLAN_SHA256: 'a'.repeat(64), FOUNDATION_PREPARED_RUN_ID: '39862319930', FOUNDATION_PREPARED_RUN_ATTEMPT: '1', FOUNDATION_PREPARED_ARTIFACT_ID: '12461868771' }
   await execFileAsync('bash', ['-c', 'set -euo pipefail\n' + block], { cwd: new URL('../', import.meta.url).pathname, env })
   assert.equal((await readFile(log, 'utf8')).trim().split(/\r?\n/).filter(Boolean).length, 1)
+  const verifiedReceipt = JSON.parse(await readFile(join(directory, 'verified-release-assets.json'), 'utf8'))
+  assert.equal(verifiedReceipt.releaseId, 421343859)
+  assert.deepEqual(verifiedReceipt.assets.map(asset => asset.name).sort(), names)
+  assert.ok(verifiedReceipt.assets.every(asset => Number.isSafeInteger(asset.id) && /^[0-9a-f]{64}$/.test(asset.sha256)))
   const requestArgs = (await readFile(requests, 'utf8')).trim().split(/\r?\n/).filter(Boolean).map(line => JSON.parse(line))
   const post = requestArgs.find(arguments_ => arguments_.includes('--request') && arguments_.includes('POST'))
   assert.ok(post)
