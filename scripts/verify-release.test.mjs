@@ -41,6 +41,7 @@ import {
   inspectReleaseSetRubyGemBytes,
   inspectReleaseSetRustArchiveBytes,
   observeNpmRelease,
+  observePyPIRelease,
   parseReleaseSetChecksums,
   releaseSetPlanDigest,
   sha256File,
@@ -997,6 +998,47 @@ test('B1 canonical output boundary preserves a sentinel behind a symlinked repos
   assert.equal(await readFile(sentinel, 'utf8'), 'KEEP-UNRELATED-FILE')
 })
 
+test('B2 PyPI observer executes wheel/sdist byte, attestation, partial, and consumer paths', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'erpc-sdk-b2-pypi-'))
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  const pythonPath = (await execFileAsync('which', ['python3'])).stdout.trim()
+  const wheel = join(directory, 'erpc_sdk-1.2.3-py3-none-any.whl'); const sdist = join(directory, 'erpc_sdk-1.2.3.tar.gz')
+  await execFileAsync('python3', ['-c', 'import sys,zipfile; z=zipfile.ZipFile(sys.argv[1],"w"); z.writestr("erpc_sdk/__init__.py","__version__ = \'1.2.3\'\\n"); z.writestr("erpc_sdk-1.2.3.dist-info/METADATA","Name: erpc-sdk\\nVersion: 1.2.3\\n"); z.writestr("erpc_sdk-1.2.3.dist-info/LICENSE","MIT\\n"); z.close()', wheel])
+  const sdistRoot = join(directory, 'sdist-root', 'erpc_sdk-1.2.3'); await mkdir(sdistRoot, { recursive: true })
+  await writeFile(join(sdistRoot, 'PKG-INFO'), 'Name: erpc-sdk\nVersion: 1.2.3\n'); await writeFile(join(sdistRoot, 'LICENSE'), 'MIT\n'); await writeFile(join(sdistRoot, 'erpc_sdk.py'), '__version__ = "1.2.3"\n')
+  await execFileAsync('tar', ['-czf', sdist, '-C', join(directory, 'sdist-root'), 'erpc_sdk-1.2.3'], { env: { ...process.env, COPYFILE_DISABLE: '1' } })
+  const wheelBytes = await readFile(wheel); const sdistBytes = await readFile(sdist); const wheelSha = sha256Hex(wheelBytes); const sdistSha = sha256Hex(sdistBytes)
+  const wheelDescriptor = { kind: 'pypi-wheel', filename: 'erpc_sdk-1.2.3-py3-none-any.whl', name: 'erpc-sdk', version: '1.2.3', sha256: wheelSha, files: ['erpc_sdk/__init__.py', 'erpc_sdk-1.2.3.dist-info/LICENSE', 'erpc_sdk-1.2.3.dist-info/METADATA'] }
+  const sdistDescriptor = { kind: 'pypi-sdist', filename: 'erpc_sdk-1.2.3.tar.gz', name: 'erpc-sdk', version: '1.2.3', sha256: sdistSha, files: ['erpc_sdk-1.2.3', 'erpc_sdk-1.2.3/LICENSE', 'erpc_sdk-1.2.3/PKG-INFO', 'erpc_sdk-1.2.3/erpc_sdk.py'] }
+  const base = 'https://files.pythonhosted.org/packages/test/'; const metadata = { info: { name: 'erpc-sdk', version: '1.2.3' }, urls: [{ filename: wheelDescriptor.filename, url: `${base}${wheelDescriptor.filename}`, packagetype: 'bdist_wheel', yanked: false, digests: { sha256: wheelSha } }, { filename: sdistDescriptor.filename, url: `${base}${sdistDescriptor.filename}`, packagetype: 'sdist', yanked: false, digests: { sha256: sdistSha } }] }
+  const sourceCommit = '4'.repeat(40); const invocation = 'https://github.com/elsoul/erpc-sdk/actions/runs/39871872971/attempts/1'; const claims = { claims: Object.fromEntries([[8, 'https://token.actions.githubusercontent.com'], [9, 'https://github.com/elsoul/erpc-sdk/.github/workflows/release.yml@refs/heads/main'], [10, sourceCommit], [12, 'https://github.com/elsoul/erpc-sdk'], [13, sourceCommit], [14, 'refs/heads/main'], [15, '1429568627'], [18, 'https://github.com/elsoul/erpc-sdk/.github/workflows/release.yml@refs/heads/main'], [19, sourceCommit], [20, 'workflow_dispatch'], [21, invocation]].map(([key, value]) => [`1.3.6.1.4.1.57264.1.${key}`, value])), publisher: { kind: 'GitHub', repository: 'elsoul/erpc-sdk', workflow: 'release.yml', environment: 'pypi' } }
+  let partialMode = false; let sdistOnly = false; let retryDownload = false; const request = async url => url.endsWith('/json') ? { status: 200, headers: {}, body: Buffer.from(JSON.stringify(partialMode ? { ...metadata, urls: [sdistOnly ? metadata.urls[1] : metadata.urls[0]] } : metadata)) } : (retryDownload && url.endsWith('.whl') ? (retryDownload = false, { status: 404, headers: {}, body: Buffer.from('{}') }) : url.endsWith('.whl')) ? { status: 200, headers: {}, body: wheelBytes } : url.endsWith('.tar.gz') ? { status: 200, headers: {}, body: sdistBytes } : { status: 200, headers: {}, body: Buffer.from('{}') }
+  const run = async (command, args, options = {}) => {
+    if (args[0] === '--version') return { exitCode: 0, stdout: 'Python 3.12.11\n', stderr: '' }
+    if (args[0] === '-m' && args[1] === 'pypi_attestations') return { exitCode: 0, stdout: '', stderr: '' }
+    if (args[0] === '-c' && args[1]?.includes('import sys,importlib.metadata')) return { exitCode: 0, stdout: '3.12.11\n0.0.30\n46.0.3\n', stderr: '' }
+    if (args[0] === '-c' && args[1]?.includes('Provenance')) { const filename = args.at(-2).includes('whl') ? wheelDescriptor.filename : sdistDescriptor.filename; return { exitCode: 0, stdout: JSON.stringify({ ...claims, subject: { name: filename, digest: { sha256: filename.endsWith('.whl') ? wheelSha : sdistSha } } }), stderr: '' } }
+    if (args[0] === '-m' && args[1] === 'venv') { await mkdir(join(args[2], 'bin'), { recursive: true }); await mkdir(join(args[2], 'lib', 'python3.12', 'site-packages', 'erpc_sdk'), { recursive: true }); await writeFile(join(args[2], 'lib', 'python3.12', 'site-packages', 'erpc_sdk', '__init__.py'), '__version__ = "1.2.3"\n'); return { exitCode: 0, stdout: '', stderr: '' } }
+    if (args[0] === '-m' && args[1] === 'build' && args.includes('--version')) return { exitCode: 0, stdout: 'build 1.6.0\n', stderr: '' }
+    if (args[0] === '-m' && args[1] === 'build') { const outdir = args[args.indexOf('--outdir') + 1]; await cp(wheel, join(outdir, wheelDescriptor.filename)); return { exitCode: 0, stdout: '', stderr: '' } }
+    if (args[0] === '-c' && args[1]?.includes('import erpc_sdk')) return { exitCode: 0, stdout: JSON.stringify({ origin: join(command, '..', '..', 'lib', 'python3.12', 'site-packages', 'erpc_sdk', '__init__.py'), version: '1.2.3' }) + '\n', stderr: '' }
+    return { exitCode: 0, stdout: '', stderr: '' }
+  }
+  const publisher = { repository: 'elsoul/erpc-sdk', repositoryId: '1429568627', sourceCommit, workflowPath: '.github/workflows/release.yml', ref: 'refs/heads/main', event: 'workflow_dispatch', environment: 'pypi', publisherRunId: '39871872971', publisherAttempt: '1' }
+  const makeInput = (name, descriptors = { 'pypi-wheel': wheelDescriptor, 'pypi-sdist': sdistDescriptor }) => ({ descriptors, planSha256: 'a'.repeat(64), preparation: { sourceCommit, runId: '51', runAttempt: '1', artifactId: '52', bindingArtifactId: '53', planSha256: 'a'.repeat(64) }, publishers: { [wheelDescriptor.filename]: publisher, [sdistDescriptor.filename]: publisher }, observer: { runId: '9001', runAttempt: '1', workflowPath: '.github/workflows/release.yml', sourceCommit: 'b'.repeat(40) }, workDir: join(directory, `${name}-work`), outputFile: join(directory, `${name}.json`), toolPaths: { python: pythonPath } })
+  await mkdir(join(directory, 'complete-work')); const receipt = await observePyPIRelease(makeInput('complete'), { request, run, now: (() => { let value = 0; return () => value += 1 })(), sleep: async () => {} }); assert.equal(receipt.state, 'observed'); assert.equal(receipt.files.length, 2)
+  partialMode = true; await mkdir(join(directory, 'partial-work')); const partial = await observePyPIRelease(makeInput('partial'), { request, run, now: (() => { let value = 0; return () => value += 1 })(), sleep: async () => {} }); assert.equal(partial.state, 'partial'); await assert.rejects(() => readFile(join(directory, 'partial.json'), 'utf8'), { code: 'ENOENT' })
+  const approvedWheelSha = metadata.urls[0].digests.sha256
+  metadata.urls[0].digests.sha256 = 'f'.repeat(64)
+  await mkdir(join(directory, 'conflict-work'))
+  await assert.rejects(() => observePyPIRelease(makeInput('conflict'), { request, run, now: (() => { let value = 0; return () => value += 1 })(), sleep: async () => {} }), /metadata digest conflicts/)
+  metadata.urls[0].digests.sha256 = approvedWheelSha
+  sdistOnly = true; await mkdir(join(directory, 'sdist-only-work')); const sdistPartial = await observePyPIRelease(makeInput('sdist-only'), { request, run, now: (() => { let value = 0; return () => value += 1 })(), sleep: async () => {} }); assert.equal(sdistPartial.state, 'partial'); assert.equal(sdistPartial.consumers.sdist.exitCode, 0)
+  sdistOnly = false; partialMode = false; await mkdir(join(directory, 'missing-publisher-work')); await assert.rejects(() => observePyPIRelease({ ...makeInput('missing-publisher'), publishers: { [sdistDescriptor.filename]: publisher } }, { request, run, now: (() => { let value = 0; return () => value += 1 })(), sleep: async () => {} }), /publisher-context-missing/)
+  retryDownload = true; await mkdir(join(directory, 'retry-work')); const retryReceipt = await observePyPIRelease(makeInput('retry'), { request, run, now: (() => { let value = 0; return () => value += 1 })(), sleep: async () => {} }); assert.equal(retryReceipt.state, 'observed')
+  claims.claims['1.3.6.1.4.1.57264.1.23'] = 'npm'; await mkdir(join(directory, 'wrong-environment-work')); await assert.rejects(() => observePyPIRelease(makeInput('wrong-environment'), { request, run, now: (() => { let value = 0; return () => value += 1 })(), sleep: async () => {} }), /environment claim/)
+})
+
 test('foundation proof aggregate binds observed receipts, auth paths, and attestation claims', async t => {
   const directory = await mkdtemp(join(tmpdir(), 'erpc-sdk-proof-set-'))
   t.after(() => rm(directory, { recursive: true, force: true }))
@@ -1208,6 +1250,8 @@ test('every internal verifier mode rejects extra, duplicate, and conflicting CLI
   }
   const npmModeEnvironment = { RELEASE_SET_NPM_OUTPUT_FILE: '/tmp/erpc-sdk-npm-mode-test.json', RELEASE_SET_NPM_WORK_DIR: '/tmp/erpc-sdk-npm-mode-test-work' }
   await mkdir(npmModeEnvironment.RELEASE_SET_NPM_WORK_DIR, { recursive: true })
+  const pypiModeEnvironment = { RELEASE_SET_PYPI_OUTPUT_FILE: '/tmp/erpc-sdk-pypi-mode-test.json', RELEASE_SET_PYPI_WORK_DIR: '/tmp/erpc-sdk-pypi-mode-test-work' }
+  await mkdir(pypiModeEnvironment.RELEASE_SET_PYPI_WORK_DIR, { recursive: true })
   const cases = [
     [['--workflow-guard', '--unknown'], workflowEnvironment],
     [['--workflow-guard', '--scope', 'all'], workflowEnvironment],
@@ -1230,6 +1274,8 @@ test('every internal verifier mode rejects extra, duplicate, and conflicting CLI
     [['--foundation-pypi-proof', '--unknown'], {}],
     [['--release-set-npm-observe', '--unknown'], npmModeEnvironment],
     [['--release-set-npm-observe', '--release-set-npm-observe'], npmModeEnvironment],
+    [['--release-set-pypi-observe', '--unknown'], pypiModeEnvironment],
+    [['--release-set-pypi-observe', '--release-set-pypi-observe'], pypiModeEnvironment],
   ]
   for (const [arguments_, environment] of cases) {
     await assert.rejects(

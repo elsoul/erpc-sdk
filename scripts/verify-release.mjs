@@ -2085,7 +2085,7 @@ const npmSafePath = (path, label) => {
   return resolved
 }
 
-const npmInvalidateOutput = async (path, workPath, label) => {
+const npmInvalidateOutput = async (path, workPath, label, expectedKind = 'npm-public-observation') => {
   const workDir = npmSafePath(workPath, 'npm observer work directory')
   const workStat = await lstat(workDir)
   if (!workStat.isDirectory()) fail('npm observer work directory must be a directory')
@@ -2103,7 +2103,7 @@ const npmInvalidateOutput = async (path, workPath, label) => {
     if (!existingOutput.isFile() && !existingOutput.isSymbolicLink()) fail(`${label} must be a file path`)
     let priorReceipt
     try { priorReceipt = JSON.parse(await readFile(outputFile, 'utf8')) } catch { fail(`${label} is not a prior npm observation receipt`) }
-    if (priorReceipt?.schemaVersion !== 1 || priorReceipt?.kind !== 'npm-public-observation' || priorReceipt?.state !== 'observed') fail(`${label} is not a prior npm observation receipt`)
+    if (priorReceipt?.schemaVersion !== 1 || priorReceipt?.kind !== expectedKind || !['observed', 'partial'].includes(priorReceipt?.state)) fail(`${label} is not a prior ${expectedKind} receipt`)
     await rm(outputFile)
   } catch (error) {
     if (error?.code !== 'ENOENT') throw error
@@ -2134,6 +2134,21 @@ const npmChildEnvironment = ({ workDir, emptyUserConfig, emptyGlobalConfig }) =>
   npm_config_registry: npmRegistryOrigin,
   NODE_OPTIONS: '',
   NODE_PATH: '',
+})
+
+const pypiChildEnvironment = ({ workDir, emptyPipConfig }) => ({
+  PATH: process.env.PATH ?? '',
+  TMPDIR: workDir,
+  LANG: 'C.UTF-8',
+  LC_ALL: 'C.UTF-8',
+  PIP_CONFIG_FILE: '/dev/null',
+  PIP_INDEX_URL: 'https://pypi.org/simple',
+  PIP_EXTRA_INDEX_URL: '',
+  PIP_CACHE_DIR: join(workDir, 'pip-cache'),
+  PIP_NO_INPUT: '1',
+  PIP_DISABLE_PIP_VERSION_CHECK: '1',
+  PYTHONNOUSERSITE: '1',
+  PYTHONPATH: '',
 })
 
 const npmClaimsPython = String.raw`
@@ -2410,6 +2425,221 @@ export async function observeNpmRelease(input, adapters = {}) {
   return receipt
 }
 
+const pypiMetadataUrl = version => `https://pypi.org/pypi/erpc-sdk/${version}/json`
+const pypiProvenanceUrl = (version, filename) => `https://pypi.org/integrity/erpc-sdk/${version}/${filename}/provenance`
+const pypiExpectedKinds = Object.freeze(['pypi-wheel', 'pypi-sdist'])
+const pypiCanonicalFileUrl = value => {
+  if (typeof value !== 'string') return null
+  try {
+    const url = new URL(value)
+    if (url.protocol !== 'https:' || url.hostname !== 'files.pythonhosted.org' || url.username || url.password || url.port || url.search || url.hash) return null
+    return url.href
+  } catch { return null }
+}
+
+const pypiClaimsPython = String.raw`
+import json, sys
+from cryptography import x509
+from pypi_attestations import Distribution, GitHubPublisher, Provenance
+document = Provenance.model_validate_json(open(sys.argv[1], encoding='utf-8').read())
+filename, digest = sys.argv[2:]
+verified = []
+for bundle in document.attestation_bundles:
+    for attestation in bundle.attestations:
+        statement = json.loads(attestation.envelope.statement.decode('utf-8'))
+        subjects = [subject for subject in statement.get('subject', []) if subject.get('name') == filename and subject.get('digest', {}).get('sha256') == digest]
+        if statement.get('predicateType') != 'https://docs.pypi.org/attestations/publish/v1' or len(subjects) != 1:
+            continue
+        publisher = bundle.publisher
+        try:
+            attestation.verify(GitHubPublisher(repository='elsoul/erpc-sdk', workflow='release.yml', environment='pypi'), Distribution(name=filename, digest=digest))
+        except Exception:
+            continue
+        claims = {}
+        cert = x509.load_der_x509_certificate(attestation.verification_material.certificate)
+        for extension in cert.extensions:
+            oid = extension.oid.dotted_string
+            if not oid.startswith('1.3.6.1.4.1.57264.'): continue
+            value = getattr(extension.value, 'value', b'')
+            if value[:1] == b'\x0c':
+                length = value[1]; offset = 2
+                if length & 0x80:
+                    count = length & 0x7f; length = int.from_bytes(value[offset:offset + count], 'big'); offset += count
+                value = value[offset:offset + length]
+            try: claims[oid] = value.decode('utf-8')
+            except UnicodeDecodeError: pass
+        verified.append({'claims': claims, 'subject': subjects[0], 'publisher': publisher.model_dump()})
+if len(verified) != 1:
+    raise SystemExit('expected exactly one verified publish attestation')
+print(json.dumps(verified[0], sort_keys=True))
+`
+
+const pypiStrictInput = input => {
+  releaseSetKeys(input, ['descriptors', 'planSha256', 'preparation', 'publishers', 'observer', 'workDir', 'outputFile', 'toolPaths'], 'PyPI observer input')
+  releaseSetKeys(input.descriptors, ['pypi-wheel', 'pypi-sdist'], 'PyPI observer descriptors')
+  for (const kind of pypiExpectedKinds) {
+    const descriptor = input.descriptors[kind]
+    releaseSetKeys(descriptor, ['kind', 'filename', 'name', 'version', 'sha256', 'files'], `PyPI observer ${kind} descriptor`)
+    requireEqual(descriptor.kind, kind, `PyPI observer ${kind} kind mismatch`)
+    requireEqual(descriptor.name, 'erpc-sdk', `PyPI observer ${kind} name mismatch`)
+    releaseSetVersion(descriptor.version, `PyPI observer ${kind} version`)
+    requireEqual(descriptor.filename, releaseSetArtifactFilename(kind, descriptor.version), `PyPI observer ${kind} filename mismatch`)
+    requireArchiveSha(descriptor.sha256, `PyPI observer ${kind} SHA-256`)
+  }
+  requireEqual(input.descriptors['pypi-wheel'].version, input.descriptors['pypi-sdist'].version, 'PyPI observer versions differ')
+  requireArchiveSha(input.planSha256, 'PyPI observer plan SHA-256')
+  releaseSetKeys(input.preparation, ['sourceCommit', 'runId', 'runAttempt', 'artifactId', 'bindingArtifactId', 'planSha256'], 'PyPI observer preparation')
+  requireSha(input.preparation.sourceCommit, 'PyPI observer preparation source')
+  requireArchiveSha(input.preparation.planSha256, 'PyPI observer preparation plan SHA-256')
+  requireEqual(input.preparation.planSha256, input.planSha256, 'PyPI observer preparation plan mismatch')
+  for (const [value, label] of [[input.preparation.runId, 'PyPI observer preparation run ID'], [input.preparation.runAttempt, 'PyPI observer preparation attempt'], [input.preparation.artifactId, 'PyPI observer preparation artifact ID'], [input.preparation.bindingArtifactId, 'PyPI observer preparation binding artifact ID']]) requirePositiveId(value, label)
+  const publisherKeys = pypiExpectedKinds.map(kind => input.descriptors[kind].filename)
+  releaseSetObject(input.publishers, 'PyPI observer publishers')
+  if (Object.keys(input.publishers).some(filename => !publisherKeys.includes(filename))) fail('PyPI observer publishers contain an unknown file')
+  for (const [filename, publisher] of Object.entries(input.publishers)) {
+    releaseSetKeys(publisher, ['repository', 'repositoryId', 'sourceCommit', 'workflowPath', 'ref', 'event', 'environment', 'publisherRunId', 'publisherAttempt'], `PyPI observer publisher ${filename}`)
+    requireEqual(publisher.repository, EXPECTED_REPOSITORY, `PyPI observer publisher ${filename} repository mismatch`)
+    requireEqual(String(publisher.repositoryId), EXPECTED_REPOSITORY_ID, `PyPI observer publisher ${filename} repository ID mismatch`)
+    requireEqual(publisher.sourceCommit, input.preparation.sourceCommit, `PyPI observer publisher ${filename} source mismatch`)
+    requireEqual(publisher.workflowPath, RELEASE_SET_WORKFLOW, `PyPI observer publisher ${filename} workflow mismatch`)
+    requireEqual(publisher.ref, 'refs/heads/main', `PyPI observer publisher ${filename} ref mismatch`)
+    requireEqual(publisher.event, 'workflow_dispatch', `PyPI observer publisher ${filename} event mismatch`)
+    requireEqual(publisher.environment, 'pypi', `PyPI observer publisher ${filename} environment mismatch`)
+    requirePositiveId(publisher.publisherRunId, `PyPI observer publisher ${filename} run ID`)
+    requirePositiveId(publisher.publisherAttempt, `PyPI observer publisher ${filename} attempt`)
+  }
+  releaseSetKeys(input.observer, ['runId', 'runAttempt', 'workflowPath', 'sourceCommit'], 'PyPI observer context')
+  requirePositiveId(input.observer.runId, 'PyPI observer run ID'); requirePositiveId(input.observer.runAttempt, 'PyPI observer attempt')
+  requireEqual(input.observer.workflowPath, RELEASE_SET_WORKFLOW, 'PyPI observer workflow mismatch'); requireSha(input.observer.sourceCommit, 'PyPI observer source')
+  releaseSetKeys(input.toolPaths, ['python'], 'PyPI observer tool paths'); npmSafePath(input.toolPaths.python, 'PyPI observer Python path')
+  return input
+}
+
+const pypiConsumerProof = async (result, pythonPath, expectedVersion, label) => {
+  let proof
+  try { proof = JSON.parse(result.stdout) } catch { fail(`pypi-observe-${label}-proof-invalid`) }
+  releaseSetKeys(proof, ['version', 'origin'], `PyPI ${label} consumer proof`)
+  requireEqual(proof.version, expectedVersion, `PyPI ${label} consumer version mismatch`)
+  if (typeof proof.origin !== 'string' || !proof.origin.endsWith('/erpc_sdk/__init__.py')) fail(`pypi-observe-${label}-consumer-origin-invalid`)
+  const venvRoot = await realpath(resolve(pythonPath, '..', '..'))
+  const origin = await realpath(proof.origin)
+  if (!origin.startsWith(`${venvRoot}${sep}`) || !origin.includes(`${sep}site-packages${sep}erpc_sdk${sep}`)) fail(`pypi-observe-${label}-consumer-origin-invalid`)
+  return proof
+}
+
+/** Read-only PyPI wheel/sdist observation. */
+export async function observePyPIRelease(input, adapters = {}) {
+  const outputFile = await npmInvalidateOutput(input?.outputFile, input?.workDir, 'PyPI observer output file', 'pypi-public-observation')
+  pypiStrictInput(input)
+  const request = adapters.request ?? npmDefaultRequest; const run = adapters.run ?? npmDefaultRun
+  const now = adapters.now ?? (() => performance.now()); const sleep = adapters.sleep ?? (milliseconds => new Promise(resolve_ => setTimeout(resolve_, milliseconds)))
+  const workDir = npmSafePath(input.workDir, 'PyPI observer work directory')
+  if ((await readdir(workDir, { withFileTypes: true })).length !== 0) fail('pypi-observe-work-directory-not-fresh')
+  const deadline = now() + 600_000; const deadlineControl = { now, deadline }; const headers = { 'user-agent': RELEASE_USER_AGENT, accept: 'application/json' }
+  const get = async (url, timeoutMs) => {
+    try { const response = await request(url, { headers, timeoutMs: Math.min(timeoutMs, npmDeadlineRemaining(now, deadline)), deadline }); npmCheckDeadline(now, deadline); return response }
+    catch (error) { if (error?.message === 'npm-observe-deadline-exceeded') throw error; fail('pypi-observe-http-failed') }
+  }
+  const version = input.descriptors['pypi-wheel'].version; const metadataUrl = pypiMetadataUrl(version)
+  let metadataResponse
+  while (true) { metadataResponse = await get(metadataUrl, 20_000); if (metadataResponse.status === 200) break; if (metadataResponse.status !== 404) fail(`pypi-observe-metadata-http-${metadataResponse.status}`); await sleep(Math.min(30_000, npmDeadlineRemaining(now, deadline))); npmCheckDeadline(now, deadline) }
+  let metadata; try { metadata = JSON.parse(npmResponseBody(metadataResponse).toString('utf8')) } catch { fail('pypi-observe-metadata-json-invalid') }
+  if (metadata.info?.name !== 'erpc-sdk' || metadata.info?.version !== version || !Array.isArray(metadata.urls)) fail('pypi-observe-metadata-identity-failed')
+  const expected = Object.fromEntries(pypiExpectedKinds.map(kind => [input.descriptors[kind].filename, { kind, descriptor: input.descriptors[kind] }]))
+  const files = new Map()
+  for (const file of metadata.urls) {
+    const expectedFile = expected[file?.filename]; if (!expectedFile || files.has(file.filename)) fail('pypi-observe-metadata-file-set-failed')
+    const packageType = expectedFile.kind === 'pypi-wheel' ? 'bdist_wheel' : 'sdist'; const url = pypiCanonicalFileUrl(file.url)
+    if (file.yanked !== false || file.packagetype !== packageType || url === null || !ARCHIVE_SHA256.test(file.digests?.sha256 ?? '')) fail(`pypi-observe-metadata-file-invalid-${file?.filename ?? 'unknown'}`)
+    requireEqual(file.digests.sha256, expectedFile.descriptor.sha256, `PyPI ${file.filename} metadata digest conflicts with preparation`)
+    files.set(file.filename, { ...file, url, kind: expectedFile.kind, descriptor: expectedFile.descriptor })
+  }
+  if (files.size === 0) fail('pypi-observe-version-files-absent')
+  const missing = pypiExpectedKinds.filter(kind => !files.has(input.descriptors[kind].filename))
+  const emptyPipConfig = join(workDir, 'empty-pip.conf'); await writeFile(emptyPipConfig, ''); const isolatedEnv = pypiChildEnvironment({ workDir, emptyPipConfig })
+  const archiveExecutor = async (command, arguments_, options = {}) => { const result = await npmBoundedExecFile(command, arguments_, { ...options, cwd: options.cwd ?? workDir, env: isolatedEnv, timeout: Math.min(options.timeout ?? Number.POSITIVE_INFINITY, npmDeadlineRemaining(now, deadline)), killSignal: 'SIGTERM' }); npmCheckDeadline(now, deadline); return result }
+  const toolVersion = await npmInvoke(run, input.toolPaths.python, ['-c', 'import sys,importlib.metadata,cryptography; print(sys.version.split()[0]); print(importlib.metadata.version("pypi-attestations")); print(cryptography.__version__)'], { cwd: workDir, env: isolatedEnv }, 'pypi-tool-versions', deadlineControl)
+  const toolLines = String(toolVersion.stdout).trim().split(/\r?\n/)
+  if (toolLines.length < 3 || !/^3\.12\./.test(toolLines[0]) || toolLines[1] !== '0.0.30' || toolLines[2] !== '46.0.3') fail('pypi-observe-tool-version-mismatch')
+  const buildVersion = await npmInvoke(run, input.toolPaths.python, ['-m', 'build', '--version'], { cwd: workDir, env: isolatedEnv }, 'pypi-build-version', deadlineControl)
+  if (!/^build 1\.6\.0(?:\s|\(|$)/.test(String(buildVersion.stdout).trim())) fail('pypi-observe-build-version-mismatch')
+  const observations = []
+  for (const file of files.values()) {
+    const publisher = input.publishers[file.filename]
+    if (publisher === undefined) fail(`pypi-observe-publisher-context-missing-${file.filename}`)
+    let response
+    while (true) {
+      response = await get(file.url, 60_000)
+      if (response.status === 200) break
+      if (response.status !== 404) fail(`pypi-observe-download-http-${response.status}`)
+      await sleep(Math.min(30_000, npmDeadlineRemaining(now, deadline)))
+      npmCheckDeadline(now, deadline)
+    }
+    const bytes = npmResponseBody(response); const observedSha256 = sha256Hex(bytes); requireEqual(observedSha256, file.digests.sha256, `PyPI ${file.filename} downloaded digest mismatch`); requireEqual(observedSha256, file.descriptor.sha256, `PyPI ${file.filename} prepared digest mismatch`)
+    const archivePath = join(workDir, file.filename); await writeFile(archivePath, bytes); await inspectReleaseSetArtifactBytes(file.descriptor, archivePath, publisher.sourceCommit, { execFile: archiveExecutor, commandMap: { python3: input.toolPaths.python } })
+    const provenanceUrl = pypiProvenanceUrl(version, file.filename)
+    let provenanceResponse
+    while (true) {
+      provenanceResponse = await get(provenanceUrl, 20_000)
+      if (provenanceResponse.status === 200) break
+      if (provenanceResponse.status !== 404) fail(`pypi-observe-provenance-http-${provenanceResponse.status}`)
+      await sleep(Math.min(30_000, npmDeadlineRemaining(now, deadline)))
+      npmCheckDeadline(now, deadline)
+    }
+    const provenanceFile = join(workDir, `${file.filename}.provenance.json`); await writeFile(provenanceFile, npmResponseBody(provenanceResponse))
+    await npmInvoke(run, input.toolPaths.python, ['-m', 'pypi_attestations', 'verify', 'pypi', '--repository', `https://github.com/${EXPECTED_REPOSITORY}`, '--provenance-file', provenanceFile, archivePath], { cwd: workDir, env: isolatedEnv }, `pypi-attestation-${file.filename}`, deadlineControl)
+    const claimsResult = await npmInvoke(run, input.toolPaths.python, ['-c', pypiClaimsPython, provenanceFile, file.filename, observedSha256], { cwd: workDir, env: isolatedEnv }, `pypi-claims-${file.filename}`, deadlineControl)
+    let claims; try { claims = JSON.parse(claimsResult.stdout) } catch { fail(`pypi-observe-claims-invalid-${file.filename}`) }
+    if (claims.publisher?.kind !== 'GitHub' || claims.publisher.repository !== EXPECTED_REPOSITORY || claims.publisher.workflow !== 'release.yml' || claims.publisher.environment !== 'pypi') fail(`pypi-observe-publisher-invalid-${file.filename}`)
+    const expectedInvocation = `https://github.com/${EXPECTED_REPOSITORY}/actions/runs/${publisher.publisherRunId}/attempts/${publisher.publisherAttempt}`
+    for (const [key, expectedClaim, label] of [['1.3.6.1.4.1.57264.1.9', `https://github.com/${EXPECTED_REPOSITORY}/.github/workflows/release.yml@refs/heads/main`, 'workflow-legacy'], ['1.3.6.1.4.1.57264.1.18', `https://github.com/${EXPECTED_REPOSITORY}/.github/workflows/release.yml@refs/heads/main`, 'workflow'], ['1.3.6.1.4.1.57264.1.10', publisher.sourceCommit, 'source-legacy'], ['1.3.6.1.4.1.57264.1.13', publisher.sourceCommit, 'source'], ['1.3.6.1.4.1.57264.1.19', publisher.sourceCommit, 'source-workflow'], ['1.3.6.1.4.1.57264.1.12', `https://github.com/${EXPECTED_REPOSITORY}`, 'repository'], ['1.3.6.1.4.1.57264.1.14', 'refs/heads/main', 'ref'], ['1.3.6.1.4.1.57264.1.15', EXPECTED_REPOSITORY_ID, 'repository-id'], ['1.3.6.1.4.1.57264.1.20', 'workflow_dispatch', 'event'], ['1.3.6.1.4.1.57264.1.21', expectedInvocation, 'invocation']]) npmRequireClaim(claims.claims, [key], expectedClaim, `${label}-${file.filename}`)
+    if (claims.claims['1.3.6.1.4.1.57264.1.8'] !== 'https://token.actions.githubusercontent.com' && claims.claims['1.3.6.1.4.1.57264.1.1'] !== 'https://token.actions.githubusercontent.com') fail(`pypi-observe-issuer-${file.filename}`)
+    if (claims.claims['1.3.6.1.4.1.57264.1.23'] !== undefined) requireEqual(claims.claims['1.3.6.1.4.1.57264.1.23'], 'pypi', `PyPI ${file.filename} environment claim`)
+    if (claims.claims['1.3.6.1.4.1.57264.1.24'] !== undefined) requireEqual(claims.claims['1.3.6.1.4.1.57264.1.24'], `repo:elsoul@42315168/erpc-sdk@${EXPECTED_REPOSITORY_ID}:environment:pypi`, `PyPI ${file.filename} environment identity claim`)
+    if (claims.subject?.name !== file.filename || claims.subject?.digest?.sha256 !== observedSha256) fail(`pypi-observe-subject-${file.filename}`)
+    if (claims.publisher?.repository !== publisher.repository || String(claims.publisher?.repository_id ?? publisher.repositoryId) !== String(publisher.repositoryId) || claims.publisher?.workflow !== 'release.yml' || claims.publisher?.environment !== publisher.environment) fail(`pypi-observe-publisher-context-${file.filename}`)
+    observations.push({ filename: file.filename, kind: file.kind, url: file.url, sha256: observedSha256, provenanceUrl, certificateClaims: claims.claims, environmentClaimsPresent: { environment: claims.claims['1.3.6.1.4.1.57264.1.23'] !== undefined, identity: claims.claims['1.3.6.1.4.1.57264.1.24'] !== undefined }, subject: claims.subject, publisher: { ...publisher, invocation: expectedInvocation } })
+  }
+  if (missing.length > 0) {
+    const verifiedExisting = observations.map(file => ({ filename: file.filename, kind: file.kind, sha256: file.sha256, publisher: file.publisher, certificateClaims: file.certificateClaims, subject: file.subject }))
+    const partialConsumers = {}
+    const availableWheel = observations.find(file => file.kind === 'pypi-wheel')
+    if (availableWheel !== undefined) {
+      const venv = await mkdtemp(join(workDir, 'partial-wheel-venv-')); await npmInvoke(run, input.toolPaths.python, ['-m', 'venv', venv], { cwd: workDir, env: isolatedEnv }, 'pypi-partial-wheel-venv', deadlineControl)
+      const wheelPython = join(venv, 'bin', 'python'); await npmInvoke(run, wheelPython, ['-m', 'pip', 'install', join(workDir, availableWheel.filename)], { cwd: workDir, env: isolatedEnv }, 'pypi-partial-wheel-install', deadlineControl)
+      const wheelImport = await npmInvoke(run, wheelPython, ['-c', 'import erpc_sdk, importlib.metadata, json; print(json.dumps({"origin": erpc_sdk.__file__, "version": importlib.metadata.version("erpc-sdk")}))'], { cwd: workDir, env: isolatedEnv }, 'pypi-partial-wheel-consumer', deadlineControl)
+      partialConsumers.wheel = { exitCode: wheelImport.exitCode, proof: await pypiConsumerProof(wheelImport, wheelPython, version, 'partial-wheel') }
+    }
+    const availableSdist = observations.find(file => file.kind === 'pypi-sdist')
+    if (availableSdist !== undefined) {
+      const partialBuild = join(workDir, 'partial-sdist-wheel'); await mkdir(partialBuild)
+      await npmInvoke(run, input.toolPaths.python, ['-m', 'build', '--wheel', '--outdir', partialBuild, join(workDir, availableSdist.filename)], { cwd: workDir, env: isolatedEnv }, 'pypi-partial-sdist-build', deadlineControl)
+      const partialWheels = (await readdir(partialBuild, { withFileTypes: true })).filter(entry => entry.isFile() && entry.name.endsWith('.whl'))
+      if (partialWheels.length !== 1) fail('pypi-observe-partial-sdist-wheel-ambiguous')
+      const partialVenv = await mkdtemp(join(workDir, 'partial-sdist-venv-')); await npmInvoke(run, input.toolPaths.python, ['-m', 'venv', partialVenv], { cwd: workDir, env: isolatedEnv }, 'pypi-partial-sdist-venv', deadlineControl)
+      const partialPython = join(partialVenv, 'bin', 'python'); await npmInvoke(run, partialPython, ['-m', 'pip', 'install', join(partialBuild, partialWheels[0].name)], { cwd: workDir, env: isolatedEnv }, 'pypi-partial-sdist-install', deadlineControl)
+      const partialImport = await npmInvoke(run, partialPython, ['-c', 'import erpc_sdk, importlib.metadata, json; print(json.dumps({"origin": erpc_sdk.__file__, "version": importlib.metadata.version("erpc-sdk")}))'], { cwd: workDir, env: isolatedEnv }, 'pypi-partial-sdist-consumer', deadlineControl)
+      partialConsumers.sdist = { exitCode: partialImport.exitCode, proof: await pypiConsumerProof(partialImport, partialPython, version, 'partial-sdist') }
+    }
+    return { schemaVersion: 1, kind: 'pypi-public-observation', state: 'partial', complete: false, version, missingKinds: missing, observedKinds: observations.map(file => file.kind), verifiedExisting, consumers: partialConsumers, auth: { requested: false, uploadAttempted: false } }
+  }
+  const wheel = observations.find(item => item.kind === 'pypi-wheel'); const sdist = observations.find(item => item.kind === 'pypi-sdist')
+  const wheelVenv = await mkdtemp(join(workDir, 'wheel-venv-')); await npmInvoke(run, input.toolPaths.python, ['-m', 'venv', wheelVenv], { cwd: workDir, env: isolatedEnv }, 'pypi-wheel-venv', deadlineControl)
+  const wheelPython = join(wheelVenv, 'bin', 'python'); await npmInvoke(run, wheelPython, ['-m', 'pip', 'install', join(workDir, wheel.filename)], { cwd: workDir, env: isolatedEnv }, 'pypi-wheel-install', deadlineControl)
+  const wheelImport = await npmInvoke(run, wheelPython, ['-c', 'import erpc_sdk, importlib.metadata, json; print(json.dumps({"origin": erpc_sdk.__file__, "version": importlib.metadata.version("erpc-sdk")}))'], { cwd: workDir, env: isolatedEnv }, 'pypi-wheel-consumer', deadlineControl); const wheelProof = await pypiConsumerProof(wheelImport, wheelPython, version, 'wheel')
+  const sdistBuild = join(workDir, 'sdist-wheel'); await mkdir(sdistBuild); await npmInvoke(run, input.toolPaths.python, ['-m', 'build', '--wheel', '--outdir', sdistBuild, join(workDir, sdist.filename)], { cwd: workDir, env: isolatedEnv }, 'pypi-sdist-build', deadlineControl)
+  const builtWheels = (await readdir(sdistBuild, { withFileTypes: true })).filter(entry => entry.isFile() && entry.name.endsWith('.whl')); if (builtWheels.length !== 1) fail('pypi-observe-sdist-wheel-ambiguous')
+  const sdistVenv = await mkdtemp(join(workDir, 'sdist-venv-')); await npmInvoke(run, input.toolPaths.python, ['-m', 'venv', sdistVenv], { cwd: workDir, env: isolatedEnv }, 'pypi-sdist-venv', deadlineControl); const sdistPython = join(sdistVenv, 'bin', 'python'); await npmInvoke(run, sdistPython, ['-m', 'pip', 'install', join(sdistBuild, builtWheels[0].name)], { cwd: workDir, env: isolatedEnv }, 'pypi-sdist-install', deadlineControl)
+  const sdistImport = await npmInvoke(run, sdistPython, ['-c', 'import erpc_sdk, importlib.metadata, json; print(json.dumps({"origin": erpc_sdk.__file__, "version": importlib.metadata.version("erpc-sdk")}))'], { cwd: workDir, env: isolatedEnv }, 'pypi-sdist-consumer', deadlineControl); const sdistProof = await pypiConsumerProof(sdistImport, sdistPython, version, 'sdist')
+  npmCheckDeadline(now, deadline)
+  const receipt = { schemaVersion: 1, kind: 'pypi-public-observation', state: 'observed', complete: true, repository: EXPECTED_REPOSITORY, repositoryId: EXPECTED_REPOSITORY_ID, planSha256: input.planSha256, preparation: input.preparation, version, publishers: Object.fromEntries(observations.map(file => [file.filename, file.publisher])), observer: input.observer, metadata: { url: metadataUrl, status: metadataResponse.status, bodySha256: sha256Hex(npmResponseBody(metadataResponse)) }, files: observations, consumers: { wheel: { exitCode: wheelImport.exitCode, proof: wheelProof }, sdist: { exitCode: sdistImport.exitCode, proof: sdistProof } }, auth: { requested: false, uploadAttempted: false }, observedAt: new Date().toISOString() }
+  const temporaryOutput = `${outputFile}.tmp-${process.pid}-${Math.random().toString(16).slice(2)}`
+  await writeFile(temporaryOutput, `${canonicalJson(receipt)}\n`, { flag: 'wx' })
+  await rename(temporaryOutput, outputFile)
+  try { npmCheckDeadline(now, deadline) } catch (error) { await rm(outputFile, { force: true }); throw error }
+  return receipt
+}
+
 /** Authenticate Actions run/artifact metadata before any later bundle use. */
 export function validateReleaseSetPreparationMetadata({ plan, run, artifact, bindingArtifact, expected }) {
   const normalized = validateReleaseSetPlan(plan)
@@ -2604,6 +2834,23 @@ const run = async arguments_ => {
       toolPaths: { node: env('RELEASE_SET_NPM_NODE'), npmCli: env('RELEASE_SET_NPM_CLI'), python: env('RELEASE_SET_NPM_PYTHON') },
     })
     console.log(`npm-public-observation=${sha256Hex(canonicalJson(receipt))}`)
+    return
+  }
+
+  if (arguments_[0] === '--release-set-pypi-observe') {
+    const outputFile = await npmInvalidateOutput(process.env.RELEASE_SET_PYPI_OUTPUT_FILE, process.env.RELEASE_SET_PYPI_WORK_DIR, 'PyPI observer output file', 'pypi-public-observation')
+    requireExactInternalMode(arguments_, '--release-set-pypi-observe')
+    const plan = validateReleaseSetPlan(JSON.parse(await readFile(env('RELEASE_SET_PLAN_FILE'), 'utf8')))
+    const planSha256 = env('RELEASE_SET_PLAN_SHA256'); requireEqual(releaseSetPlanDigest(plan), planSha256, 'PyPI observer plan digest mismatch')
+    const context = { repository: env('REPOSITORY'), repositoryId: env('REPOSITORY_ID'), eventName: env('EVENT_NAME'), eventRef: env('EVENT_REF'), eventSha: env('EVENT_SHA'), expectedCommit: env('EXPECTED_COMMIT'), checkoutHead: env('CHECKOUT_HEAD'), checkoutStatus: env('CHECKOUT_STATUS'), workflowRef: env('WORKFLOW_REF'), workflowSha: env('WORKFLOW_SHA') }
+    validateReleaseSetContext(context, plan)
+    const preparedExpected = { runId: env('RELEASE_SET_PREPARED_RUN_ID'), runAttempt: env('RELEASE_SET_PREPARED_RUN_ATTEMPT'), artifactId: env('RELEASE_SET_PREPARED_ARTIFACT_ID'), bindingArtifactId: env('RELEASE_SET_PREPARED_BINDING_ARTIFACT_ID'), sourceCommit: plan.sourceCommit, bundleName: `release-set-bundle-${plan.sourceCommit}`, bindingName: `release-set-binding-${env('RELEASE_SET_PREPARED_RUN_ID')}-${env('RELEASE_SET_PREPARED_RUN_ATTEMPT')}` }
+    const binding = JSON.parse(await readFile(env('RELEASE_SET_BINDING_FILE'), 'utf8'))
+    const preparation = await verifyReleaseSetPreparation({ plan, context, run: JSON.parse(await readFile(env('RELEASE_SET_RUN_FILE'), 'utf8')), artifact: JSON.parse(await readFile(env('RELEASE_SET_ARTIFACT_METADATA_FILE'), 'utf8')), bindingArtifact: JSON.parse(await readFile(env('RELEASE_SET_BINDING_METADATA_FILE'), 'utf8')), binding, bundleZip: env('RELEASE_SET_BUNDLE_ZIP_FILE'), bindingZip: env('RELEASE_SET_BINDING_ZIP_FILE'), artifactDirectory: env('RELEASE_SET_ARTIFACT_DIR'), bindingDirectory: env('RELEASE_SET_BINDING_DIR'), expected: preparedExpected })
+    const observerSource = env('RELEASE_SET_PYPI_OBSERVER_SOURCE'); requireEqual(observerSource, context.eventSha, 'PyPI observer source must bind to execution context')
+    const publishers = JSON.parse(await readFile(env('RELEASE_SET_PYPI_PUBLISHERS_FILE'), 'utf8'))
+    const receipt = await observePyPIRelease({ descriptors: { 'pypi-wheel': plan.artifacts.find(artifact => artifact.kind === 'pypi-wheel'), 'pypi-sdist': plan.artifacts.find(artifact => artifact.kind === 'pypi-sdist') }, planSha256, preparation: { sourceCommit: preparation.context.sourceCommit, runId: binding.runId, runAttempt: binding.runAttempt, artifactId: binding.artifactId, bindingArtifactId: binding.bindingArtifactId, planSha256: binding.planSha256 }, publishers, observer: { runId: env('RELEASE_SET_PYPI_OBSERVER_RUN_ID'), runAttempt: env('RELEASE_SET_PYPI_OBSERVER_ATTEMPT'), workflowPath: env('RELEASE_SET_PYPI_OBSERVER_WORKFLOW'), sourceCommit: observerSource }, workDir: env('RELEASE_SET_PYPI_WORK_DIR'), outputFile, toolPaths: { python: env('RELEASE_SET_PYPI_PYTHON') } })
+    console.log(`pypi-public-observation=${sha256Hex(canonicalJson(receipt))}`)
     return
   }
 
