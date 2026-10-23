@@ -1853,26 +1853,26 @@ const releaseSetReadMetadata = async (filePath, kind, version, name, execution =
   return members
 }
 
-const releaseSetInspectRustArchive = async (filePath, version, expectedCommit) => {
-  const members = await archiveEntries(filePath, 'tar')
+const releaseSetInspectRustArchive = async (filePath, version, expectedCommit, execution = {}) => {
+  const members = await archiveEntries(filePath, 'tar', execution)
   const root = `${CRATE_NAME}-${version}`
   const roots = new Set(members.map(member => member.split('/')[0]))
   if (roots.size !== 1 || !roots.has(root)) fail(`Rust archive must contain exactly one ${root} root`)
   const required = [`${root}/Cargo.toml`, `${root}/LICENSE`, `${root}/README.md`, `${root}/.cargo_vcs_info.json`]
   for (const member of required) if (!members.includes(member)) fail(`Rust archive is missing ${member}`)
-  const manifest = await archiveText(filePath, `${root}/Cargo.toml`)
+  const manifest = await archiveText(filePath, `${root}/Cargo.toml`, false, execution)
   const packageSections = manifest.match(/^\[package\]\s*$/gm) ?? []
   if (packageSections.length !== 1) fail('Rust archive Cargo.toml must contain exactly one [package] table')
   const packageBody = manifest.split(/^\[package\]\s*$/m)[1]?.split(/^\[[^\]]+\]\s*$/m)[0] ?? ''
   if (packageBody.match(/^name\s*=\s*"([^"]+)"$/m)?.[1] !== CRATE_NAME || packageBody.match(/^version\s*=\s*"([^"]+)"$/m)?.[1] !== version) fail('Rust archive [package] identity/version mismatch')
   let vcs
-  try { vcs = JSON.parse(await archiveText(filePath, `${root}/.cargo_vcs_info.json`)) } catch { fail('Rust archive VCS metadata is malformed') }
+  try { vcs = JSON.parse(await archiveText(filePath, `${root}/.cargo_vcs_info.json`, false, execution)) } catch { fail('Rust archive VCS metadata is malformed') }
   if ((vcs.git?.sha1 ?? vcs.git?.commit) !== expectedCommit || (vcs.git?.dirty !== undefined && vcs.git.dirty !== false) || vcs.path_in_vcs !== 'packages/rust') fail('Rust archive VCS provenance mismatch')
   return members
 }
 
-export async function inspectReleaseSetRustArchiveBytes({ filePath, version, sourceCommit }) {
-  return releaseSetInspectRustArchive(filePath, version, sourceCommit)
+export async function inspectReleaseSetRustArchiveBytes({ filePath, version, sourceCommit, execution = {} }) {
+  return releaseSetInspectRustArchive(filePath, version, sourceCommit, execution)
 }
 
 export async function inspectReleaseSetRubyGemBytes({ filePath, name, version }) {
@@ -3006,6 +3006,178 @@ export async function observeRubyGemsRelease(input, adapters = {}) {
   return receipt
 }
 
+const cratesIoOrigin = 'https://crates.io'
+const cratesIoMetadataUrl = version => `${cratesIoOrigin}/api/v1/crates/${CRATE_NAME}/${version}`
+const cratesIoDownloadUrl = version => `${cratesIoOrigin}/api/v1/crates/${CRATE_NAME}/${version}/download`
+const cratesIoStaticDownloadUrl = version => `https://static.crates.io/crates/${CRATE_NAME}/${CRATE_NAME}-${version}.crate`
+
+const rustObserverDescriptor = descriptor => {
+  releaseSetKeys(descriptor, ['mode', 'version', 'sourceCommit', 'sha256', 'archive', 'reuse', 'prepared'], 'Rust observer descriptor')
+  if (!RELEASE_SET_RUST_MODES.includes(descriptor.mode)) fail('Rust observer mode is invalid')
+  releaseSetVersion(descriptor.version, 'Rust observer version')
+  requireSha(descriptor.sourceCommit, 'Rust observer source commit')
+  requireArchiveSha(descriptor.sha256, 'Rust observer archive SHA-256')
+  const filename = `${CRATE_NAME}-${descriptor.version}.crate`
+  if (descriptor.mode === 'reuse') {
+    if (descriptor.archive !== undefined || descriptor.prepared !== undefined) fail('Rust reuse observer descriptor contains publish fields')
+    releaseSetKeys(descriptor.reuse, ['registry', 'downloadUrl', 'sourceCommit', 'sha256', 'yanked'], 'Rust observer reuse')
+    requireEqual(descriptor.reuse.registry, 'crates.io', 'Rust observer reuse registry mismatch')
+    requireEqual(descriptor.reuse.downloadUrl, cratesIoDownloadUrl(descriptor.version), 'Rust observer reuse URL mismatch')
+    requireEqual(descriptor.reuse.sourceCommit, descriptor.sourceCommit, 'Rust observer reuse source mismatch')
+    requireEqual(descriptor.reuse.sha256, descriptor.sha256, 'Rust observer reuse checksum mismatch')
+    requireEqual(descriptor.reuse.yanked, false, 'Rust observer reuse is yanked')
+  } else {
+    if (descriptor.reuse !== undefined) fail('Rust publish observer descriptor contains reuse fields')
+    releaseSetKeys(descriptor.archive, ['filename', 'sha256'], 'Rust observer archive')
+    requireEqual(descriptor.archive.filename, filename, 'Rust observer archive filename mismatch')
+    requireEqual(descriptor.archive.sha256, descriptor.sha256, 'Rust observer archive checksum mismatch')
+  }
+  return { mode: descriptor.mode, version: descriptor.version, sourceCommit: descriptor.sourceCommit, sha256: descriptor.sha256, filename }
+}
+
+const rustObserverInput = input => {
+  releaseSetKeys(input, ['descriptor', 'planSha256', 'preparation', 'observer', 'workDir', 'outputFile'], 'Rust observer input')
+  const descriptor = rustObserverDescriptor(input.descriptor)
+  if (input.planSha256 !== undefined) requireArchiveSha(input.planSha256, 'Rust observer plan SHA-256')
+  if (input.preparation !== undefined) {
+    releaseSetKeys(input.preparation, ['sourceCommit', 'runId', 'runAttempt', 'artifactId', 'bindingArtifactId', 'planSha256'], 'Rust observer preparation')
+    requireSha(input.preparation.sourceCommit, 'Rust observer preparation source')
+    requireFuturePositiveId(input.preparation.runId, 'Rust observer preparation run ID')
+    requireFuturePositiveId(input.preparation.runAttempt, 'Rust observer preparation attempt')
+    requireFuturePositiveId(input.preparation.artifactId, 'Rust observer preparation artifact ID')
+    requireFuturePositiveId(input.preparation.bindingArtifactId, 'Rust observer preparation binding artifact ID')
+    requireArchiveSha(input.preparation.planSha256, 'Rust observer preparation plan SHA-256')
+    if (input.planSha256 !== undefined) requireEqual(input.preparation.planSha256, input.planSha256, 'Rust observer preparation plan mismatch')
+  }
+  releaseSetKeys(input.observer, ['runId', 'runAttempt', 'workflowPath', 'sourceCommit'], 'Rust observer context')
+  requireFuturePositiveId(input.observer.runId, 'Rust observer run ID')
+  requireFuturePositiveId(input.observer.runAttempt, 'Rust observer attempt')
+  requireEqual(input.observer.workflowPath, RELEASE_SET_WORKFLOW, 'Rust observer workflow mismatch')
+  requireSha(input.observer.sourceCommit, 'Rust observer source')
+  return { ...input, descriptor }
+}
+
+const rustObserverDeadlineRemaining = (now, deadline) => {
+  const remaining = deadline - now()
+  if (!(remaining > 0)) fail('rust-observe-deadline-exceeded')
+  return Math.max(1, Math.ceil(remaining))
+}
+
+const rustObserverCheckDeadline = (now, deadline) => {
+  if (now() >= deadline) fail('rust-observe-deadline-exceeded')
+}
+
+const rustObserverIncomplete = ({ input, metadataUrl, metadataResponse, planSha256 }) => ({
+  schemaVersion: 1,
+  kind: 'rust-artifact-observation',
+  state: 'incomplete',
+  complete: false,
+  repository: EXPECTED_REPOSITORY,
+  repositoryId: EXPECTED_REPOSITORY_ID,
+  mode: input.descriptor.mode,
+  version: input.descriptor.version,
+  planSha256,
+  preparation: input.preparation,
+  observer: input.observer,
+  metadata: { url: metadataUrl, status: metadataResponse.status, bodySha256: sha256Hex(npmResponseBody(metadataResponse)) },
+  auth: { requested: false, uploadAttempted: false },
+})
+
+/** Observe a crates.io artifact and its actual source archive without publication claims. */
+export async function observeRustArtifact(input, adapters = {}) {
+  const outputFile = await npmInvalidateOutput(input?.outputFile, input?.workDir, 'Rust observer output file', 'rust-artifact-observation')
+  const normalizedInput = rustObserverInput(input)
+  const request = adapters.request ?? npmDefaultRequest
+  const now = adapters.now ?? (() => performance.now())
+  const sleep = adapters.sleep ?? (milliseconds => new Promise(resolve_ => setTimeout(resolve_, milliseconds)))
+  const run = adapters.run ?? npmDefaultRun
+  const workDir = npmSafePath(input.workDir, 'Rust observer work directory')
+  const workEntries = await readdir(workDir, { withFileTypes: true })
+  if (workEntries.length !== 0) fail('rust-observe-work-directory-not-fresh')
+  const deadline = now() + 600_000
+  const headers = { 'user-agent': RELEASE_USER_AGENT, accept: 'application/json' }
+  const get = async (url, timeoutMs, accept = 'application/json') => {
+    const response = await request(url, { headers: { ...headers, accept }, timeoutMs: Math.min(timeoutMs, rustObserverDeadlineRemaining(now, deadline)), deadline })
+    return response
+  }
+  const fetch404Bounded = async (url, timeoutMs, accept, allowRedirect = false) => {
+    let lastResponse
+    while (true) {
+      if (lastResponse !== undefined && now() >= deadline) return { response: lastResponse, incomplete: true }
+      const response = await get(url, timeoutMs, accept)
+      lastResponse = response
+      if (response.status === 200) return { response, incomplete: false }
+      if (allowRedirect && [301, 302, 303, 307, 308].includes(response.status)) return { response, incomplete: false }
+      if (response.status !== 404) fail(`rust-observe-http-${response.status}`)
+      if (now() >= deadline) return { response, incomplete: true }
+      await sleep(Math.min(30_000, rustObserverDeadlineRemaining(now, deadline)))
+      if (now() >= deadline) return { response, incomplete: true }
+    }
+  }
+  const version = normalizedInput.descriptor.version
+  const metadataUrl = cratesIoMetadataUrl(version)
+  const metadataResult = await fetch404Bounded(metadataUrl, 30_000)
+  if (metadataResult.incomplete) return rustObserverIncomplete({ input: normalizedInput, metadataUrl, metadataResponse: metadataResult.response, planSha256: input.planSha256 })
+  const metadataBody = npmResponseBody(metadataResult.response)
+  let metadata
+  try { metadata = JSON.parse(metadataBody.toString('utf8')) } catch { fail('rust-observe-metadata-json-invalid') }
+  const classification = classifyRegistryResponse({ status: metadataResult.response.status, body: metadataBody.toString('utf8'), expectedVersion: version, expectedChecksum: normalizedInput.descriptor.sha256 })
+  if (classification.state !== 'match') fail(`rust-observe-metadata-${classification.state}`)
+  const apiDownloadUrl = cratesIoDownloadUrl(version)
+  const staticDownloadUrl = cratesIoStaticDownloadUrl(version)
+  let currentUrl = apiDownloadUrl
+  const redirects = []
+  let downloadResponse
+  while (true) {
+    const result = await fetch404Bounded(currentUrl, 60_000, 'application/octet-stream', true)
+    if (result.incomplete) return { ...rustObserverIncomplete({ input: normalizedInput, metadataUrl, metadataResponse: metadataResult.response, planSha256: input.planSha256 }), download: { url: currentUrl, status: result.response.status } }
+    downloadResponse = result.response
+    if (downloadResponse.status === 200) break
+    const location = downloadResponse.headers?.location ?? downloadResponse.headers?.Location
+    if (![301, 302, 303, 307, 308].includes(downloadResponse.status) || location !== staticDownloadUrl || redirects.includes(location)) fail('rust-observe-download-redirect-unsafe')
+    redirects.push(location)
+    currentUrl = location
+  }
+  rustObserverCheckDeadline(now, deadline)
+  const crateBytes = npmResponseBody(downloadResponse)
+  const observedSha256 = sha256Hex(crateBytes)
+  requireEqual(observedSha256, classification.checksum, 'Rust downloaded digest does not match registry metadata')
+  requireEqual(observedSha256, normalizedInput.descriptor.sha256, 'Rust downloaded digest does not match preparation')
+  const cratePath = join(workDir, normalizedInput.descriptor.filename)
+  await writeFile(cratePath, crateBytes, { flag: 'wx' })
+  const archiveExecutor = async (command, arguments_, options = {}) => {
+    const result = await npmBoundedExecFile(command, arguments_, { ...options, cwd: options.cwd ?? workDir, env: { PATH: process.env.PATH ?? '', TMPDIR: workDir, LANG: 'C.UTF-8', LC_ALL: 'C.UTF-8' }, timeout: Math.min(options.timeout ?? Number.POSITIVE_INFINITY, rustObserverDeadlineRemaining(now, deadline)), killSignal: 'SIGTERM' })
+    rustObserverCheckDeadline(now, deadline)
+    return result
+  }
+  const archive = await inspectReleaseSetRustArchiveBytes({ filePath: cratePath, version, sourceCommit: normalizedInput.descriptor.sourceCommit, execution: { execFile: archiveExecutor } })
+  rustObserverCheckDeadline(now, deadline)
+  const receipt = {
+    schemaVersion: 1,
+    kind: 'rust-artifact-observation',
+    state: 'observed',
+    complete: true,
+    repository: EXPECTED_REPOSITORY,
+    repositoryId: EXPECTED_REPOSITORY_ID,
+    registry: 'crates.io',
+    mode: normalizedInput.descriptor.mode,
+    version,
+    planSha256: input.planSha256,
+    preparation: input.preparation,
+    observer: input.observer,
+    metadata: { url: metadataUrl, status: metadataResult.response.status, bodySha256: sha256Hex(metadataBody), checksum: classification.checksum, yanked: false },
+    download: { requestedUrl: apiDownloadUrl, url: currentUrl, status: downloadResponse.status, redirects, sha256: observedSha256, sizeInBytes: crateBytes.length },
+    archive: { filename: normalizedInput.descriptor.filename, sha256: observedSha256, members: archive, sourceCommit: normalizedInput.descriptor.sourceCommit, pathInVcs: 'packages/rust' },
+    auth: { requested: false, uploadAttempted: false },
+    observedAt: new Date().toISOString(),
+  }
+  const temporaryOutput = `${outputFile}.tmp-${process.pid}-${Math.random().toString(16).slice(2)}`
+  await writeFile(temporaryOutput, `${canonicalJson(receipt)}\n`, { flag: 'wx' })
+  await rename(temporaryOutput, outputFile)
+  try { rustObserverCheckDeadline(now, deadline) } catch (error) { await rm(outputFile, { force: true }); throw error }
+  return receipt
+}
+
 /** Authenticate Actions run/artifact metadata before any later bundle use. */
 export function validateReleaseSetPreparationMetadata({ plan, run, artifact, bindingArtifact, expected }) {
   const normalized = validateReleaseSetPlan(plan)
@@ -3216,6 +3388,7 @@ const run = async arguments_ => {
     const observerSource = env('RELEASE_SET_PYPI_OBSERVER_SOURCE'); requireEqual(observerSource, context.eventSha, 'PyPI observer source must bind to execution context')
     const publishers = JSON.parse(await readFile(env('RELEASE_SET_PYPI_PUBLISHERS_FILE'), 'utf8'))
     const receipt = await observePyPIRelease({ descriptors: { 'pypi-wheel': plan.artifacts.find(artifact => artifact.kind === 'pypi-wheel'), 'pypi-sdist': plan.artifacts.find(artifact => artifact.kind === 'pypi-sdist') }, planSha256, preparation: { sourceCommit: preparation.context.sourceCommit, runId: binding.runId, runAttempt: binding.runAttempt, artifactId: binding.artifactId, bindingArtifactId: preparation.metadata.bindingArtifactId, planSha256: binding.planSha256 }, publishers, observer: { runId: env('RELEASE_SET_PYPI_OBSERVER_RUN_ID'), runAttempt: env('RELEASE_SET_PYPI_OBSERVER_ATTEMPT'), workflowPath: env('RELEASE_SET_PYPI_OBSERVER_WORKFLOW'), sourceCommit: observerSource }, workDir: env('RELEASE_SET_PYPI_WORK_DIR'), outputFile, toolPaths: { python: env('RELEASE_SET_PYPI_PYTHON') } })
+    if (receipt.state !== 'observed' || receipt.complete !== true) fail('pypi-public-observation-incomplete')
     console.log(`pypi-public-observation=${sha256Hex(canonicalJson(receipt))}`)
     return
   }
@@ -3235,6 +3408,25 @@ const run = async arguments_ => {
     requireEqual(observerSource, context.eventSha, 'RubyGems observer source must bind to execution context')
     const receipt = await observeRubyGemsRelease({ descriptor: plan.artifacts.find(artifact => artifact.kind === 'rubygems'), planSha256, preparation: { sourceCommit: preparation.context.sourceCommit, runId: binding.runId, runAttempt: binding.runAttempt, artifactId: binding.artifactId, bindingArtifactId: preparation.metadata.bindingArtifactId, planSha256: binding.planSha256 }, observer: { runId: env('RELEASE_SET_RUBYGEMS_OBSERVER_RUN_ID'), runAttempt: env('RELEASE_SET_RUBYGEMS_OBSERVER_ATTEMPT'), workflowPath: env('RELEASE_SET_RUBYGEMS_OBSERVER_WORKFLOW'), sourceCommit: observerSource }, workDir: env('RELEASE_SET_RUBYGEMS_WORK_DIR'), outputFile, toolPaths: { ruby31: env('RELEASE_SET_RUBYGEMS_RUBY31'), ruby34: env('RELEASE_SET_RUBYGEMS_RUBY34') } })
     console.log(`rubygems-public-observation=${sha256Hex(canonicalJson(receipt))}`)
+    return
+  }
+
+  if (arguments_[0] === '--release-set-rust-observe') {
+    const outputFile = await npmInvalidateOutput(process.env.RELEASE_SET_RUST_OUTPUT_FILE, process.env.RELEASE_SET_RUST_WORK_DIR, 'Rust observer output file', 'rust-artifact-observation')
+    requireExactInternalMode(arguments_, '--release-set-rust-observe')
+    const plan = validateReleaseSetPlan(JSON.parse(await readFile(env('RELEASE_SET_PLAN_FILE'), 'utf8')))
+    const planSha256 = env('RELEASE_SET_PLAN_SHA256')
+    requireEqual(releaseSetPlanDigest(plan), planSha256, 'Rust observer plan digest mismatch')
+    const context = { repository: env('REPOSITORY'), repositoryId: env('REPOSITORY_ID'), eventName: env('EVENT_NAME'), eventRef: env('EVENT_REF'), eventSha: env('EVENT_SHA'), expectedCommit: env('EXPECTED_COMMIT'), checkoutHead: env('CHECKOUT_HEAD'), checkoutStatus: env('CHECKOUT_STATUS'), workflowRef: env('WORKFLOW_REF'), workflowSha: env('WORKFLOW_SHA') }
+    validateReleaseSetContext(context, plan)
+    const preparedExpected = { runId: env('RELEASE_SET_PREPARED_RUN_ID'), runAttempt: env('RELEASE_SET_PREPARED_RUN_ATTEMPT'), artifactId: env('RELEASE_SET_PREPARED_ARTIFACT_ID'), bindingArtifactId: env('RELEASE_SET_PREPARED_BINDING_ARTIFACT_ID'), sourceCommit: plan.sourceCommit, bundleName: `release-set-bundle-${plan.sourceCommit}`, bindingName: `release-set-binding-${env('RELEASE_SET_PREPARED_RUN_ID')}-${env('RELEASE_SET_PREPARED_RUN_ATTEMPT')}` }
+    const binding = JSON.parse(await readFile(env('RELEASE_SET_BINDING_FILE'), 'utf8'))
+    const preparation = await verifyReleaseSetPreparation({ plan, context, run: JSON.parse(await readFile(env('RELEASE_SET_RUN_FILE'), 'utf8')), artifact: JSON.parse(await readFile(env('RELEASE_SET_ARTIFACT_METADATA_FILE'), 'utf8')), bindingArtifact: JSON.parse(await readFile(env('RELEASE_SET_BINDING_METADATA_FILE'), 'utf8')), binding, bundleZip: env('RELEASE_SET_BUNDLE_ZIP_FILE'), bindingZip: env('RELEASE_SET_BINDING_ZIP_FILE'), artifactDirectory: env('RELEASE_SET_ARTIFACT_DIR'), bindingDirectory: env('RELEASE_SET_BINDING_DIR'), expected: preparedExpected })
+    const observerSource = env('RELEASE_SET_RUST_OBSERVER_SOURCE')
+    requireEqual(observerSource, context.eventSha, 'Rust observer source must bind to execution context')
+    const receipt = await observeRustArtifact({ descriptor: plan.rust, planSha256, preparation: { sourceCommit: preparation.context.sourceCommit, runId: binding.runId, runAttempt: binding.runAttempt, artifactId: binding.artifactId, bindingArtifactId: preparation.metadata.bindingArtifactId, planSha256: binding.planSha256 }, observer: { runId: env('RELEASE_SET_RUST_OBSERVER_RUN_ID'), runAttempt: env('RELEASE_SET_RUST_OBSERVER_ATTEMPT'), workflowPath: env('RELEASE_SET_RUST_OBSERVER_WORKFLOW'), sourceCommit: observerSource }, workDir: env('RELEASE_SET_RUST_WORK_DIR'), outputFile })
+    if (receipt.state !== 'observed' || receipt.complete !== true) fail('rust-public-observation-incomplete')
+    console.log(`rust-public-observation=${sha256Hex(canonicalJson(receipt))}`)
     return
   }
 

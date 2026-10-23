@@ -43,6 +43,7 @@ import {
   observeNpmRelease,
   observePyPIRelease,
   observeRubyGemsRelease,
+  observeRustArtifact,
   parseReleaseSetChecksums,
   releaseSetPlanDigest,
   sha256File,
@@ -824,6 +825,86 @@ end
   await assert.rejects(runVerifierCli(['--release-set-npm-observe'], npmCliEnvironment), /Missing RELEASE_SET_RUN_FILE/)
   await assert.rejects(() => readFile(npmOutput, 'utf8'), { code: 'ENOENT' })
   await assert.rejects(runVerifierCli(['--release-set-observe'], { RELEASE_SET_PLAN_FILE: planFile, RELEASE_SET_PLAN_SHA256: releaseSetPlanDigest(plan), RELEASE_SET_PROOF_FILE: join(directory, 'missing-proof.json') }), /unavailable until checkpoint B/)
+  const rustCliFixture = join(directory, 'rust-cli-public-fixture.mjs')
+  await writeFile(rustCliFixture, `import { readFileSync } from 'node:fs'
+let clock = 0
+Object.defineProperty(globalThis, 'performance', { value: { now: () => clock }, configurable: true })
+globalThis.fetch = async url => {
+  const value = String(url)
+  if (process.env.RUST_FIXTURE_MODE === 'absent') { clock = 600001; return new Response('{}', { status: 404 }) }
+  if (value === 'https://crates.io/api/v1/crates/erpc-sdk/0.11.0') return new Response(JSON.stringify({ version: { crate: 'erpc-sdk', num: '0.11.0', checksum: process.env.RUST_FIXTURE_SHA, yanked: false } }), { status: 200 })
+  if (value === 'https://crates.io/api/v1/crates/erpc-sdk/0.11.0/download') return new Response(null, { status: 302, headers: { location: 'https://static.crates.io/crates/erpc-sdk/erpc-sdk-0.11.0.crate' } })
+  if (value === 'https://static.crates.io/crates/erpc-sdk/erpc-sdk-0.11.0.crate') return new Response(readFileSync(process.env.RUST_FIXTURE_CRATE), { status: 200 })
+  throw new Error('unexpected Rust fixture URL ' + value)
+}
+`)
+  const rustBaseEnvironment = { ...strictEnv, NODE_OPTIONS: `--import=${rustCliFixture}`, RELEASE_SET_RUST_OBSERVER_SOURCE: sourceCommit, RELEASE_SET_RUST_OBSERVER_RUN_ID: '89201', RELEASE_SET_RUST_OBSERVER_ATTEMPT: '1', RELEASE_SET_RUST_OBSERVER_WORKFLOW: '.github/workflows/release.yml', RUST_FIXTURE_SHA: plan.rust.sha256, RUST_FIXTURE_CRATE: join(bundle, `erpc-sdk-${version}.crate`) }
+  const rustCompleteWork = join(directory, 'rust-complete-work')
+  const rustCompleteOutput = join(directory, 'rust-complete.json')
+  await mkdir(rustCompleteWork)
+  const rustCompleteResult = await runVerifierCli(['--release-set-rust-observe'], { ...rustBaseEnvironment, RELEASE_SET_RUST_WORK_DIR: rustCompleteWork, RELEASE_SET_RUST_OUTPUT_FILE: rustCompleteOutput })
+  assert.match(rustCompleteResult.stdout, /^rust-public-observation=/m)
+  assert.equal(JSON.parse(await readFile(rustCompleteOutput, 'utf8')).complete, true)
+  const rustAbsentWork = join(directory, 'rust-absent-work')
+  const rustAbsentOutput = join(directory, 'rust-absent.json')
+  await mkdir(rustAbsentWork)
+  await writeFile(rustAbsentOutput, JSON.stringify({ schemaVersion: 1, kind: 'rust-artifact-observation', state: 'observed', complete: true }))
+  await assert.rejects(runVerifierCli(['--release-set-rust-observe'], { ...rustBaseEnvironment, RUST_FIXTURE_MODE: 'absent', RELEASE_SET_RUST_WORK_DIR: rustAbsentWork, RELEASE_SET_RUST_OUTPUT_FILE: rustAbsentOutput }), /rust-public-observation-incomplete/)
+  await assert.rejects(() => readFile(rustAbsentOutput, 'utf8'), { code: 'ENOENT' })
+  const wheelDescriptor = plan.artifacts.find(artifact => artifact.kind === 'pypi-wheel')
+  const sdistDescriptor = plan.artifacts.find(artifact => artifact.kind === 'pypi-sdist')
+  const pypiWheelPath = join(bundle, wheelDescriptor.filename)
+  const pypiSdistPath = join(bundle, sdistDescriptor.filename)
+  const pypiCliFixture = join(directory, 'pypi-cli-public-fixture.mjs')
+  await writeFile(pypiCliFixture, `import { readFileSync } from 'node:fs'
+globalThis.fetch = async url => {
+  const value = String(url)
+  if (value.endsWith('/json')) return new Response(readFileSync(process.env.PYPI_FIXTURE_METADATA), { status: 200 })
+  if (value.endsWith('.whl')) return new Response(readFileSync(process.env.PYPI_FIXTURE_WHEEL), { status: 200 })
+  if (value.endsWith('.tar.gz')) return new Response(readFileSync(process.env.PYPI_FIXTURE_SDIST), { status: 200 })
+  if (value.endsWith('/provenance')) return new Response('{}', { status: 200 })
+  throw new Error('unexpected PyPI fixture URL ' + value)
+}
+`)
+  const pypiFixturePython = join(directory, 'pypi-cli-python-fixture')
+  const pypiRealPython = (await execFileAsync('which', ['python3'])).stdout.trim()
+  await writeFile(pypiFixturePython, `#!/bin/sh
+set -eu
+if [ "$1" = '-m' ] && [ "$2" = 'pypi_attestations' ]; then exit 0; fi
+if [ "$1" = '-m' ] && [ "$2" = 'pip' ]; then exit 0; fi
+if [ "$1" = '-c' ] && printf '%s' "$2" | grep -q 'import sys,importlib.metadata,cryptography'; then printf '3.12.11\\n0.0.30\\n46.0.3\\n'; exit 0; fi
+if [ "$1" = '-c' ] && printf '%s' "$2" | grep -q 'from pypi_attestations'; then
+  filename="$4"; digest="$5"; source='${sourceCommit}'
+  printf '{"claims":{"1.3.6.1.4.1.57264.1.8":"https://token.actions.githubusercontent.com","1.3.6.1.4.1.57264.1.9":"https://github.com/elsoul/erpc-sdk/.github/workflows/release.yml@refs/heads/main","1.3.6.1.4.1.57264.1.10":"%s","1.3.6.1.4.1.57264.1.12":"https://github.com/elsoul/erpc-sdk","1.3.6.1.4.1.57264.1.13":"%s","1.3.6.1.4.1.57264.1.14":"refs/heads/main","1.3.6.1.4.1.57264.1.15":"1429568627","1.3.6.1.4.1.57264.1.18":"https://github.com/elsoul/erpc-sdk/.github/workflows/release.yml@refs/heads/main","1.3.6.1.4.1.57264.1.19":"%s","1.3.6.1.4.1.57264.1.20":"workflow_dispatch","1.3.6.1.4.1.57264.1.21":"https://github.com/elsoul/erpc-sdk/actions/runs/39871872971/attempts/1","1.3.6.1.4.1.57264.1.23":"pypi","1.3.6.1.4.1.57264.1.24":"repo:elsoul@42315168/erpc-sdk@1429568627:environment:pypi"},"publisher":{"kind":"GitHub","repository":"elsoul/erpc-sdk","workflow":"release.yml","environment":"pypi"},"subject":{"name":"%s","digest":{"sha256":"%s"}}}' "$source" "$source" "$source" "$filename" "$digest"
+  exit 0
+fi
+if [ "$1" = '-m' ] && [ "$2" = 'venv' ]; then mkdir -p "$3/bin"; cp "$0" "$3/bin/python"; chmod +x "$3/bin/python"; exit 0; fi
+if [ "$1" = '-m' ] && [ "$2" = 'build' ] && [ "$3" = '--version' ]; then printf 'build 1.6.0\\n'; exit 0; fi
+if [ "$1" = '-m' ] && [ "$2" = 'build' ]; then outdir="$5"; mkdir -p "$outdir"; cp '${pypiWheelPath}' "$outdir/$(basename '${pypiWheelPath}')"; exit 0; fi
+if [ "$1" = '-c' ] && printf '%s' "$2" | grep -q 'import erpc_sdk'; then venv=$(dirname "$(dirname "$0")"); origin="$venv/lib/python3.12/site-packages/erpc_sdk/__init__.py"; mkdir -p "$(dirname "$origin")"; printf '__version__ = "0.11.0"\\n' > "$origin"; printf '{"origin":"%s","version":"0.11.0"}\\n' "$origin"; exit 0; fi
+exec ${JSON.stringify(pypiRealPython)} "$@"
+`)
+  await chmod(pypiFixturePython, 0o755)
+  const pypiMetadataFile = join(directory, 'pypi-cli-metadata.json')
+  const pypiPublisherFile = join(directory, 'pypi-cli-publishers.json')
+  const publisherContext = { repository: 'elsoul/erpc-sdk', repositoryId: '1429568627', sourceCommit, workflowPath: '.github/workflows/release.yml', ref: 'refs/heads/main', event: 'workflow_dispatch', environment: 'pypi', publisherRunId: '39871872971', publisherAttempt: '1' }
+  await writeFile(pypiPublisherFile, JSON.stringify({ [wheelDescriptor.filename]: publisherContext, [sdistDescriptor.filename]: publisherContext }))
+  const pypiMetadata = includeSdist => ({ info: { name: 'erpc-sdk', version }, urls: [wheelDescriptor, ...(includeSdist ? [sdistDescriptor] : [])].map(descriptor => ({ filename: descriptor.filename, url: `https://files.pythonhosted.org/packages/fixture/${descriptor.filename}`, packagetype: descriptor.kind === 'pypi-wheel' ? 'bdist_wheel' : 'sdist', yanked: false, digests: { sha256: descriptor.sha256 } })) })
+  const pypiBaseEnvironment = { ...strictEnv, NODE_OPTIONS: `--import=${pypiCliFixture}`, RELEASE_SET_PYPI_PUBLISHERS_FILE: pypiPublisherFile, RELEASE_SET_PYPI_PYTHON: pypiFixturePython, RELEASE_SET_PYPI_OBSERVER_SOURCE: sourceCommit, RELEASE_SET_PYPI_OBSERVER_RUN_ID: '89201', RELEASE_SET_PYPI_OBSERVER_ATTEMPT: '1', RELEASE_SET_PYPI_OBSERVER_WORKFLOW: '.github/workflows/release.yml', PYPI_FIXTURE_METADATA: pypiMetadataFile, PYPI_FIXTURE_WHEEL: pypiWheelPath, PYPI_FIXTURE_SDIST: pypiSdistPath, PYPI_REAL_PYTHON: pypiRealPython }
+  const pypiCompleteWork = join(directory, 'pypi-complete-work')
+  const pypiCompleteOutput = join(directory, 'pypi-complete.json')
+  await mkdir(pypiCompleteWork)
+  await writeFile(pypiMetadataFile, JSON.stringify(pypiMetadata(true)))
+  const pypiCompleteResult = await runVerifierCli(['--release-set-pypi-observe'], { ...pypiBaseEnvironment, RELEASE_SET_PYPI_WORK_DIR: pypiCompleteWork, RELEASE_SET_PYPI_OUTPUT_FILE: pypiCompleteOutput })
+  assert.match(pypiCompleteResult.stdout, /^pypi-public-observation=/m)
+  assert.equal(JSON.parse(await readFile(pypiCompleteOutput, 'utf8')).complete, true)
+  const pypiPartialWork = join(directory, 'pypi-partial-work')
+  const pypiPartialOutput = join(directory, 'pypi-partial.json')
+  await mkdir(pypiPartialWork)
+  await writeFile(pypiPartialOutput, JSON.stringify({ schemaVersion: 1, kind: 'pypi-public-observation', state: 'observed', complete: true }))
+  await writeFile(pypiMetadataFile, JSON.stringify(pypiMetadata(false)))
+  await assert.rejects(runVerifierCli(['--release-set-pypi-observe'], { ...pypiBaseEnvironment, RELEASE_SET_PYPI_WORK_DIR: pypiPartialWork, RELEASE_SET_PYPI_OUTPUT_FILE: pypiPartialOutput }), /pypi-public-observation-incomplete/)
+  await assert.rejects(() => readFile(pypiPartialOutput, 'utf8'), { code: 'ENOENT' })
 })
 
 test('checkpoint A rejects malformed Rust roots/TOML/VCS and malformed Ruby containers/spec payloads', async t => {
@@ -1452,6 +1533,104 @@ end
   await assert.rejects(() => readFile(wrongRuntimeInput.outputFile), { code: 'ENOENT' })
 })
 
+test('B4 crates.io observer verifies redirects, bytes, and historical Rust source', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'erpc-sdk-b4-rust-'))
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  const sourceCommit = '5'.repeat(40)
+  const rustScript = `import io, json, sys, tarfile
+out, version, commit, mode = sys.argv[1:]
+root = 'erpc-sdk-' + version
+vcs = {'git': {'sha1': commit, 'dirty': False}, 'path_in_vcs': 'packages/rust'}
+if mode == 'dirty': vcs['git']['dirty'] = True
+with tarfile.open(out, 'w:gz') as archive:
+    def add(name, data):
+        info = tarfile.TarInfo(name); info.size = len(data); archive.addfile(info, io.BytesIO(data))
+    add(root + '/Cargo.toml', ('[package]\\nname = "erpc-sdk"\\nversion = "' + version + '"\\n').encode())
+    add(root + '/LICENSE', b'MIT\\n')
+    add(root + '/README.md', b'# SDK\\n')
+    add(root + '/src/bitcoin.rs', b'pub fn bitcoin() {}\\n')
+    add(root + '/tests/bitcoin.rs', b'#[test] fn bitcoin() {}\\n')
+    add(root + '/.cargo_vcs_info.json', json.dumps(vcs).encode())
+`
+  const makeCrate = async (version, mode = 'valid') => {
+    const file = join(directory, `erpc-sdk-${version}-${mode}.crate`)
+    await execFileAsync('python3', ['-c', rustScript, file, version, sourceCommit, mode])
+    return { file, bytes: await readFile(file), sha256: await sha256File(file) }
+  }
+  const makeInput = (name, descriptor, outputName = name) => ({ descriptor, planSha256: 'a'.repeat(64), preparation: { sourceCommit: '6'.repeat(40), runId: '74153', runAttempt: '1', artifactId: '74171', bindingArtifactId: '74191', planSha256: 'a'.repeat(64) }, observer: { runId: '89273', runAttempt: '1', workflowPath: '.github/workflows/release.yml', sourceCommit: '6'.repeat(40) }, workDir: join(directory, `${name}-work`), outputFile: join(directory, `${outputName}.json`) })
+  const valid = {}
+  for (const version of ['1.2.3', '1.2.4']) {
+    valid[version] = await makeCrate(version)
+    valid[version].descriptor = { mode: 'publish', version, sourceCommit, sha256: valid[version].sha256, archive: { filename: `erpc-sdk-${version}.crate`, sha256: valid[version].sha256 } }
+  }
+  const requests = []
+  let retryMetadata = false
+  let retrySleeps = 0
+  const request = async (url, options) => {
+    requests.push({ url, headers: options.headers })
+    assert.equal(options.headers['user-agent'], RELEASE_USER_AGENT)
+    const version = url.match(/erpc-sdk\/(1\.2\.[34])/)?.[1] ?? url.match(/erpc-sdk-(1\.2\.[34])\.crate/)?.[1]
+    const item = valid[version]
+    if (url.endsWith(`/api/v1/crates/erpc-sdk/${version}`)) {
+      if (retryMetadata) { retryMetadata = false; return { status: 404, headers: {}, body: Buffer.from('{}') } }
+      return { status: 200, headers: {}, body: Buffer.from(JSON.stringify({ version: { crate: 'erpc-sdk', num: version, checksum: item.sha256, yanked: false } })) }
+    }
+    if (url === `https://crates.io/api/v1/crates/erpc-sdk/${version}/download`) return { status: 302, headers: { location: `https://static.crates.io/crates/erpc-sdk/erpc-sdk-${version}.crate` }, body: Buffer.alloc(0) }
+    if (url === `https://static.crates.io/crates/erpc-sdk/erpc-sdk-${version}.crate`) return { status: 200, headers: {}, body: item.bytes }
+    throw new Error(`unexpected URL ${url}`)
+  }
+  for (const version of ['1.2.3', '1.2.4']) {
+    const input = makeInput(`positive-${version}`, valid[version].descriptor)
+    await mkdir(input.workDir)
+    const receipt = await observeRustArtifact(input, { request, now: (() => { let value = 0; return () => value += 1 })(), sleep: async () => {} })
+    assert.equal(receipt.state, 'observed')
+    assert.equal(receipt.complete, true)
+    assert.equal(receipt.download.redirects.length, 1)
+    assert.equal(receipt.download.url, `https://static.crates.io/crates/erpc-sdk/erpc-sdk-${version}.crate`)
+    assert.equal(receipt.archive.sourceCommit, sourceCommit)
+  }
+  retryMetadata = true
+  const retryInput = makeInput('metadata-retry', valid['1.2.3'].descriptor)
+  await mkdir(retryInput.workDir)
+  await observeRustArtifact(retryInput, { request, now: (() => { let value = 0; return () => value += 1 })(), sleep: async () => { retrySleeps += 1 } })
+  assert.equal(retrySleeps, 1)
+  const conflictInput = makeInput('metadata-conflict', { ...valid['1.2.3'].descriptor, sha256: 'f'.repeat(64), archive: { filename: 'erpc-sdk-1.2.3.crate', sha256: 'f'.repeat(64) } })
+  await mkdir(conflictInput.workDir)
+  await assert.rejects(() => observeRustArtifact(conflictInput, { request, now: (() => { let value = 0; return () => value += 1 })(), sleep: async () => {} }), /metadata-conflict/)
+  await assert.rejects(() => readFile(conflictInput.outputFile), { code: 'ENOENT' })
+  const yankedInput = makeInput('yanked', valid['1.2.3'].descriptor)
+  await mkdir(yankedInput.workDir)
+  await assert.rejects(() => observeRustArtifact(yankedInput, { request: async (url, options) => url.includes('/1.2.3') && url.includes('/api/') ? { status: 200, headers: {}, body: Buffer.from(JSON.stringify({ version: { crate: 'erpc-sdk', num: '1.2.3', checksum: valid['1.2.3'].sha256, yanked: true } })) } : request(url, options), now: (() => { let value = 0; return () => value += 1 })(), sleep: async () => {} }), /metadata-yanked/)
+  const corrupt = await makeCrate('1.2.5')
+  const corruptDescriptor = { mode: 'publish', version: '1.2.5', sourceCommit, sha256: corrupt.sha256, archive: { filename: 'erpc-sdk-1.2.5.crate', sha256: corrupt.sha256 } }
+  const corruptInput = makeInput('corrupt', corruptDescriptor)
+  await mkdir(corruptInput.workDir)
+  const corruptRequest = async url => {
+    if (url.endsWith('/1.2.5')) return { status: 200, headers: {}, body: Buffer.from(JSON.stringify({ version: { crate: 'erpc-sdk', num: '1.2.5', checksum: corrupt.sha256, yanked: false } })) }
+    if (url.includes('/download')) return { status: 302, headers: { location: 'https://static.crates.io/crates/erpc-sdk/erpc-sdk-1.2.5.crate' }, body: Buffer.alloc(0) }
+    return { status: 200, headers: {}, body: Buffer.from('corrupt') }
+  }
+  await assert.rejects(() => observeRustArtifact(corruptInput, { request: corruptRequest, now: (() => { let value = 0; return () => value += 1 })(), sleep: async () => {} }), /digest|Archive|malformed/)
+  const redirectInput = makeInput('unsafe-redirect', valid['1.2.3'].descriptor)
+  await mkdir(redirectInput.workDir)
+  await assert.rejects(() => observeRustArtifact(redirectInput, { request: async (url, options) => url.includes('/download') ? { status: 302, headers: { location: 'https://evil.invalid/erpc-sdk.crate' }, body: Buffer.alloc(0) } : request(url, options), now: (() => { let value = 0; return () => value += 1 })(), sleep: async () => {} }), /redirect-unsafe/)
+  const dirty = await makeCrate('1.2.6', 'dirty')
+  const dirtyDescriptor = { mode: 'publish', version: '1.2.6', sourceCommit, sha256: dirty.sha256, archive: { filename: 'erpc-sdk-1.2.6.crate', sha256: dirty.sha256 } }
+  const dirtyInput = makeInput('dirty-vcs', dirtyDescriptor)
+  await mkdir(dirtyInput.workDir)
+  await assert.rejects(() => observeRustArtifact({ ...dirtyInput, descriptor: dirtyDescriptor }, { request: async url => url.endsWith('/1.2.6') ? { status: 200, headers: {}, body: Buffer.from(JSON.stringify({ version: { crate: 'erpc-sdk', num: '1.2.6', checksum: dirty.sha256, yanked: false } })) } : url.includes('/download') ? { status: 302, headers: { location: 'https://static.crates.io/crates/erpc-sdk/erpc-sdk-1.2.6.crate' }, body: Buffer.alloc(0) } : { status: 200, headers: {}, body: dirty.bytes }, now: (() => { let value = 0; return () => value += 1 })(), sleep: async () => {} }), /VCS provenance/)
+  const incompleteInput = makeInput('incomplete-404', valid['1.2.3'].descriptor)
+  await mkdir(incompleteInput.workDir)
+  let incompleteCalls = 0
+  const incomplete = await observeRustArtifact(incompleteInput, { request: async () => ({ status: 404, headers: {}, body: Buffer.from('{}') }), now: () => incompleteCalls++ < 2 ? 0 : 600001, sleep: async () => {} })
+  assert.equal(incomplete.state, 'incomplete')
+  assert.equal(incomplete.complete, false)
+  await assert.rejects(() => readFile(incompleteInput.outputFile), { code: 'ENOENT' })
+  const publishedFlagInput = makeInput('published-flag', { ...valid['1.2.3'].descriptor, published: true })
+  await mkdir(publishedFlagInput.workDir)
+  await assert.rejects(() => observeRustArtifact(publishedFlagInput, { request, now: (() => { let value = 0; return () => value += 1 })(), sleep: async () => {} }), /unknown field/)
+})
+
 test('foundation proof aggregate binds observed receipts, auth paths, and attestation claims', async t => {
   const directory = await mkdtemp(join(tmpdir(), 'erpc-sdk-proof-set-'))
   t.after(() => rm(directory, { recursive: true, force: true }))
@@ -1667,6 +1846,8 @@ test('every internal verifier mode rejects extra, duplicate, and conflicting CLI
   await mkdir(pypiModeEnvironment.RELEASE_SET_PYPI_WORK_DIR, { recursive: true })
   const rubyGemsModeEnvironment = { RELEASE_SET_RUBYGEMS_OUTPUT_FILE: '/tmp/erpc-sdk-rubygems-mode-test.json', RELEASE_SET_RUBYGEMS_WORK_DIR: '/tmp/erpc-sdk-rubygems-mode-test-work' }
   await mkdir(rubyGemsModeEnvironment.RELEASE_SET_RUBYGEMS_WORK_DIR, { recursive: true })
+  const rustModeEnvironment = { RELEASE_SET_RUST_OUTPUT_FILE: '/tmp/erpc-sdk-rust-mode-test.json', RELEASE_SET_RUST_WORK_DIR: '/tmp/erpc-sdk-rust-mode-test-work' }
+  await mkdir(rustModeEnvironment.RELEASE_SET_RUST_WORK_DIR, { recursive: true })
   const cases = [
     [['--workflow-guard', '--unknown'], workflowEnvironment],
     [['--workflow-guard', '--scope', 'all'], workflowEnvironment],
@@ -1693,6 +1874,8 @@ test('every internal verifier mode rejects extra, duplicate, and conflicting CLI
     [['--release-set-pypi-observe', '--release-set-pypi-observe'], pypiModeEnvironment],
     [['--release-set-rubygems-observe', '--unknown'], rubyGemsModeEnvironment],
     [['--release-set-rubygems-observe', '--release-set-rubygems-observe'], rubyGemsModeEnvironment],
+    [['--release-set-rust-observe', '--unknown'], rustModeEnvironment],
+    [['--release-set-rust-observe', '--release-set-rust-observe'], rustModeEnvironment],
   ]
   for (const [arguments_, environment] of cases) {
     await assert.rejects(
