@@ -742,7 +742,9 @@ jobs:
           GEM_CACHE_DIR="$RUNNER_TEMP/gem-cache-${RUBY_VERSION_UNDER_TEST}"
           GEMRC_FILE="$RUNNER_TEMP/empty-gemrc-${RUBY_VERSION_UNDER_TEST}"
           BUNDLE_CONFIG_DIR="$RUNNER_TEMP/empty-bundle-config-${RUBY_VERSION_UNDER_TEST}"
-          mkdir -p "$GEM_HOME_DIR" "$GEM_CACHE_DIR" "$BUNDLE_CONFIG_DIR"
+          CONSUMER_DIR="$RUNNER_TEMP/ruby-consumer-${RUBY_VERSION_UNDER_TEST}"
+          mkdir -p "$GEM_HOME_DIR" "$GEM_CACHE_DIR" "$BUNDLE_CONFIG_DIR" "$CONSUMER_DIR"
+          cd "$CONSUMER_DIR"
           : > "$GEMRC_FILE"
           for credential_file in "$HOME/.gem/credentials" "$HOME/.config/gem/credentials"; do test ! -e "$credential_file"; done
           env -u GEM_HOST_API_KEY -u BUNDLE_GEM__PUSH_KEY -u RUBYGEMS_API_KEY -u RUBYGEMS_GEMDEPS -u BUNDLER_ORIG_BUNDLE_BIN_PATH -u BUNDLER_ORIG_BUNDLE_GEMFILE -u BUNDLER_ORIG_BUNDLE_PATH -u BUNDLER_ORIG_BUNDLE_WITH -u BUNDLER_ORIG_BUNDLE_WITHOUT -u BUNDLER_ORIG_RUBYOPT -u BUNDLER_ORIG_RUBYLIB -u BUNDLE_GEMFILE -u BUNDLE_PATH -u BUNDLE_WITH -u BUNDLE_WITHOUT -u RUBYOPT -u RUBYLIB BUNDLE_USER_CONFIG="$BUNDLE_CONFIG_DIR" BUNDLE_USER_CACHE="$GEM_CACHE_DIR" GEM_HOME="$GEM_HOME_DIR" GEM_PATH="$GEM_HOME_DIR" GEM_SPEC_CACHE="$GEM_CACHE_DIR" GEMRC="$GEMRC_FILE" gem install "$GEM_FILE" --install-dir "$GEM_HOME_DIR" --both --clear-sources --source https://rubygems.org/ --no-document
@@ -1124,6 +1126,7 @@ jobs:
           import _ "github.com/elsoul/erpc-sdk/packages/go"
           func main() {}
           GO
+          (cd "$RUNNER_TEMP/go-consumer" && GOMODCACHE="$RUNNER_TEMP/go-mod-cache" GOPROXY="$GOPROXY" GOSUMDB="$GOSUMDB" go mod download all)
           (cd "$RUNNER_TEMP/go-consumer" && GOMODCACHE="$RUNNER_TEMP/go-mod-cache" GOPROXY="$GOPROXY" GOSUMDB="$GOSUMDB" go run .)
       - name: Upload Go proof
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
@@ -1290,7 +1293,7 @@ jobs:
           import { readFileSync } from 'node:fs'
           const [artifactFile, proofRoot] = process.argv.slice(2)
           const artifacts = JSON.parse(readFileSync(artifactFile, 'utf8')).artifacts
-          const names = ['foundation-recovery-context-' + process.env.GITHUB_RUN_ID + '-' + process.env.GITHUB_RUN_ATTEMPT, 'foundation-proof-npm-' + process.env.GITHUB_RUN_ID, 'foundation-proof-pypi-' + process.env.GITHUB_RUN_ID, 'foundation-proof-rubygems-' + process.env.GITHUB_RUN_ID, 'foundation-proof-rust-' + process.env.GITHUB_RUN_ID, 'foundation-proof-tags-' + process.env.GITHUB_RUN_ID, 'foundation-proof-go-' + process.env.GITHUB_RUN_ID]
+          const names = ['foundation-recovery-context-' + process.env.GITHUB_RUN_ID + '-' + process.env.GITHUB_RUN_ATTEMPT, 'foundation-proof-npm-' + process.env.GITHUB_RUN_ID, 'foundation-proof-pypi-' + process.env.GITHUB_RUN_ID, 'foundation-proof-rubygems-' + process.env.GITHUB_RUN_ID, 'foundation-proof-rust-' + process.env.GITHUB_RUN_ID, 'foundation-proof-tags-' + process.env.GITHUB_RUN_ID, 'foundation-proof-go-' + process.env.GITHUB_RUN_ID, 'foundation-ruby-consumer-' + process.env.GITHUB_RUN_ID + '-3.1', 'foundation-ruby-consumer-' + process.env.GITHUB_RUN_ID + '-3.4']
           for (const name of names) {
             const artifact = artifacts.find(item => item.name === name)
             if (!artifact || artifact.expired || artifact.workflow_run?.id !== Number(process.env.GITHUB_RUN_ID) || artifact.workflow_run?.head_sha !== process.env.GITHUB_SHA || typeof artifact.digest !== 'string' || !artifact.digest.startsWith('sha256:')) throw new Error(`artifact metadata is not bound to this observer run: ${name}`)
