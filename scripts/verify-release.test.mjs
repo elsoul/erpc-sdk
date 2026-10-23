@@ -1816,14 +1816,19 @@ test('recovery tag and Release asset blocks fail closed before writes on conflic
     await writeFile(join(assetDirectory, name), 'local-' + name)
     if (name !== 'asset-15.txt') await writeFile(join(remoteDirectory, name), 'local-' + name)
   }
+  const assetState = join(directory, 'asset-state.json')
+  await writeFile(assetState, JSON.stringify(assetNames.slice(0, 14).map((name, index) => ({ id: index + 1, name }))))
   const assetGh = join(assetBin, 'gh')
   await writeFile(assetGh, '#!/usr/bin/env node\n' +
-    'const fs=require("node:fs"); const args=process.argv.slice(2); const log=process.env.ASSET_LOG; if(args[0]==="api"&&args.includes("--jq")){process.stdout.write("1");process.exit(0)} if(args[0]==="api"){process.stdout.write(process.env.GH_ASSETS_JSON);process.exit(0)} if(args[0]==="release"&&args[1]==="download"){const dir=args[args.indexOf("--dir")+1];const name=args[args.indexOf("--pattern")+1];fs.copyFileSync(process.env.REMOTE_ASSETS+"/"+name,dir+"/"+name);process.exit(0)} if(args[0]==="release"&&args[1]==="upload"){const file=args.at(-1);fs.appendFileSync(log,"upload "+file+"\\n");fs.copyFileSync(file,process.env.REMOTE_ASSETS+"/"+file.split("/").at(-1));process.exit(0)} process.exit(99)\n')
+    'const fs=require("node:fs"); const args=process.argv.slice(2); if(args[0]==="api"&&args.includes("--paginate")){process.stdout.write(JSON.stringify([JSON.parse(fs.readFileSync(process.env.ASSET_STATE))]));process.exit(0)} process.exit(99)\n')
   await chmod(assetGh, 0o755)
-  const assetNamesJson = JSON.stringify(assetNames.slice(0, 14).map(name => ({ name })))
+  const assetCurl = join(assetBin, 'curl')
+  await writeFile(assetCurl, '#!/usr/bin/env node\n' +
+    'const fs=require("node:fs"); const args=process.argv.slice(2); const output=args[args.indexOf("--output")+1]; const url=args.at(-1); const stateFile=process.env.ASSET_STATE; const records=JSON.parse(fs.readFileSync(stateFile)); if(args.includes("--request")&&args.includes("POST")){const file=args.find(value=>value.startsWith("@")).slice(1); const name=new URL(url).searchParams.get("name"); const id=records.length+1; fs.copyFileSync(file,process.env.REMOTE_ASSETS+"/"+name); records.push({id,name}); fs.writeFileSync(stateFile,JSON.stringify(records)); fs.appendFileSync(process.env.ASSET_LOG,"upload "+name+"\\n"); fs.writeFileSync(output,JSON.stringify({id,name,state:"uploaded",release:{id:421343859}})); process.exit(0)} const id=Number(url.split("/").at(-1)); const record=records.find(value=>value.id===id); if(!record)process.exit(44); fs.copyFileSync(process.env.REMOTE_ASSETS+"/"+record.name,output); process.exit(0)\n')
+  await chmod(assetCurl, 0o755)
   const assetTemp = join(directory, 'asset-temp')
   await mkdir(assetTemp)
-  const assetEnv = { ...process.env, PATH: assetBin + ':' + (process.env.PATH ?? ''), RUNNER_TEMP: assetTemp, ASSET_DIR: assetDirectory, REMOTE_ASSETS: remoteDirectory, ASSET_LOG: assetLog, GH_ASSETS_JSON: assetNamesJson, GH_TOKEN: 'fixture', REPOSITORY: 'elsoul/erpc-sdk', TAG: 'non-rust-v0.9.1', RELEASE_USER_AGENT, SOURCE_M: '4677d67d14c8fbb17ada3ba824d1623180c6b4d9', PLAN_SHA256: 'a'.repeat(64), PREPARED_RUN_ID: '39862319930', PREPARED_RUN_ATTEMPT: '1', PREPARED_ARTIFACT_ID: '12461868771' }
+  const assetEnv = { ...process.env, PATH: assetBin + ':' + (process.env.PATH ?? ''), RUNNER_TEMP: assetTemp, ASSET_DIR: assetDirectory, REMOTE_ASSETS: remoteDirectory, ASSET_STATE: assetState, ASSET_LOG: assetLog, GH_TOKEN: 'fixture', REPOSITORY: 'elsoul/erpc-sdk', RELEASE_ID: '421343859', TAG: 'non-rust-v0.9.1', RELEASE_USER_AGENT, SOURCE_M: '4677d67d14c8fbb17ada3ba824d1623180c6b4d9', PLAN_SHA256: 'a'.repeat(64), PREPARED_RUN_ID: '39862319930', PREPARED_RUN_ATTEMPT: '1', PREPARED_ARTIFACT_ID: '12461868771' }
   await execFileAsync('bash', ['-c', 'set -euo pipefail\n' + releaseAssetBlock], { cwd: new URL('../', import.meta.url).pathname, env: assetEnv })
   assert.equal((await readFile(assetLog, 'utf8')).trim().split(/\r?\n/).filter(Boolean).length, 1)
   await writeFile(assetLog, '')
@@ -1881,4 +1886,160 @@ test('all five recovery artifact ZIP requests reject old media type and follow a
   assert.equal(apiRequests.filter(item => item.accept === 'application/vnd.github+json').length, 5)
   const tampered = Buffer.from(zipBytes); tampered[tampered.length - 1] ^= 1
   assert.notEqual(sha256Hex(tampered), zipDigest)
+})
+
+test('final Release draft lookup paginates to the approved numeric ID and rejects missing, ambiguous, wrong, and error listings', async t => {
+  const workflow = await readFile(new URL('../.github/workflows/reconcile-foundation.yml', import.meta.url), 'utf8')
+  const block = extractWorkflowRunBlock(workflow, 'Resolve and validate the existing draft Release by numeric ID')
+  const directory = await mkdtemp(join(tmpdir(), 'erpc-sdk-recovery-draft-lookup-'))
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  const gh = join(directory, 'gh')
+  const calls = join(directory, 'calls')
+  await writeFile(calls, '')
+  await writeFile(gh, '#!/usr/bin/env node\n' +
+    'const fs=require("node:fs"); const args=process.argv.slice(2); fs.appendFileSync(process.env.CALLS,JSON.stringify(args)+"\\n"); const endpoint=args.find(value=>value.includes("/releases")); const makeRelease=()=>{const mode=process.env.DRAFT_CASE; const release={id:mode==="wrong-id"?999:421343859,tag_name:"non-rust-v0.9.1",name:"SDK release state: non-Rust 0.9.1 / Rust 0.10.0",body:"APPROVED\\n",target_commitish:"4677d67d14c8fbb17ada3ba824d1623180c6b4d9",prerelease:false,draft:true}; if(mode==="wrong-body")release.body="WRONG\\n"; if(mode==="wrong-title")release.name="wrong title"; if(mode==="wrong-source")release.target_commitish="wrong"; if(mode==="wrong-prerelease")release.prerelease=true; if(mode==="published")release.draft=false; return release}; if(args.includes("--paginate")){if(process.env.DRAFT_CASE==="error")process.exit(42); const match=makeRelease(); process.stdout.write(process.env.DRAFT_CASE==="missing"?"[[]]":process.env.DRAFT_CASE==="ambiguous"?JSON.stringify([[match],[match]]):JSON.stringify([[],[match]])); process.exit(0)} if(endpoint?.endsWith("/releases/421343859")){process.stdout.write(JSON.stringify(makeRelease()));process.exit(0)} process.exit(41)\n')
+  await chmod(gh, 0o755)
+  const body = join(directory, 'body.md')
+  const plan = join(directory, 'plan.json')
+  await writeFile(body, 'APPROVED\n')
+  await writeFile(plan, JSON.stringify({ githubRelease: { body: 'APPROVED\n', bodySha256: sha256Hex('APPROVED\n') } }))
+  const baseEnv = { ...process.env, PATH: directory + ':' + (process.env.PATH ?? ''), RUNNER_TEMP: directory, CALLS: calls, DRAFT_CASE: 'success', GH_TOKEN: 'fixture', REPOSITORY: 'elsoul/erpc-sdk', TAG: 'non-rust-v0.9.1', EXPECTED_COMMIT: '4677d67d14c8fbb17ada3ba824d1623180c6b4d9', BODY_FILE: body, PLAN_FILE: plan, FOUNDATION_RELEASE_TITLE: 'SDK release state: non-Rust 0.9.1 / Rust 0.10.0', GITHUB_OUTPUT: join(directory, 'output') }
+  await execFileAsync('bash', ['-c', 'set -euo pipefail\n' + block], { cwd: new URL('../', import.meta.url).pathname, env: baseEnv })
+  assert.match(await readFile(join(directory, 'output'), 'utf8'), /release_id=421343859/)
+  for (const draftCase of ['missing', 'ambiguous', 'wrong-id', 'wrong-body', 'wrong-title', 'wrong-source', 'wrong-prerelease', 'error']) await assert.rejects(execFileAsync('bash', ['-c', 'set -euo pipefail\n' + block], { cwd: new URL('../', import.meta.url).pathname, env: { ...baseEnv, DRAFT_CASE: draftCase } }))
+  assert.equal((await readFile(calls, 'utf8')).includes('releases/tags/'), false)
+})
+
+test('final numeric-ID publication block patches only the approved draft and rejects ID substitution', async t => {
+  const workflow = await readFile(new URL('../.github/workflows/reconcile-foundation.yml', import.meta.url), 'utf8')
+  const block = extractWorkflowRunBlock(workflow, 'Publish the matching draft and verify the final immutable Release')
+  const directory = await mkdtemp(join(tmpdir(), 'erpc-sdk-recovery-draft-publish-'))
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  const body = join(directory, 'body.md')
+  const calls = join(directory, 'calls')
+  await writeFile(body, 'APPROVED\n')
+  await writeFile(calls, '')
+  const assetDirectory = join(directory, 'assets')
+  await mkdir(assetDirectory)
+  const assetNames = Array.from({ length: 15 }, (_, index) => 'asset-' + String(index + 1).padStart(2, '0') + '.txt')
+  for (const name of assetNames) await writeFile(join(assetDirectory, name), name + '\n')
+  const patches = join(directory, 'patches')
+  await writeFile(patches, '')
+  const verifiedAssetReceipt = join(directory, 'verified-assets.json')
+  const recordedAssets = assetNames.map((name, index) => ({ id: index + 1, name, sha256: sha256Hex(name + '\n') }))
+  await writeFile(verifiedAssetReceipt, JSON.stringify({ releaseId: 421343859, assets: recordedAssets }))
+  const gh = join(directory, 'gh')
+  await writeFile(gh, '#!/usr/bin/env node\n' +
+    'const fs=require("node:fs"); const args=process.argv.slice(2); const endpoint=args.find(value=>value.includes("/releases/")); const baseAssets=Array.from({length:15},(_,i)=>({id:i+1,name:"asset-"+String(i+1).padStart(2,"0")+".txt"})); const getAssets=()=>{const assets=baseAssets.map(asset=>({...asset})); if(process.env.PUBLISH_CASE==="swapped-id"){assets[0].id=2; assets[1].id=1} return assets}; fs.appendFileSync(process.env.CALLS,JSON.stringify(args)+"\\n"); if(args.includes("--paginate")){process.stdout.write(JSON.stringify([getAssets()]));process.exit(0)} if(args.includes("--method")&&args.includes("PATCH")){let data="";process.stdin.on("data",chunk=>data+=chunk);process.stdin.on("end",()=>{if(data!=="{\\"draft\\":false,\\"make_latest\\":\\"false\\"}")process.exit(43);fs.appendFileSync(process.env.PATCHES,"PATCH\\n");fs.writeFileSync(process.env.STATE,"published");process.stdout.write(JSON.stringify({id:421343859}));});return} if(endpoint?.endsWith("/releases/421343859")){const mode=process.env.PUBLISH_CASE; const release={id:421343859,draft:!fs.existsSync(process.env.STATE),make_latest:false,tag_name:"non-rust-v0.9.1",name:"SDK release state: non-Rust 0.9.1 / Rust 0.10.0",body:"APPROVED\\n",target_commitish:"4677d67d14c8fbb17ada3ba824d1623180c6b4d9",prerelease:false,assets:getAssets()}; if(mode==="body")release.body="wrong\\n"; if(mode==="source")release.target_commitish="wrong"; if(mode==="prerelease")release.prerelease=true; if(mode==="assets")release.assets=release.assets.slice(0,14); process.stdout.write(JSON.stringify(release));process.exit(0)} process.exit(42)\n')
+  await chmod(gh, 0o755)
+  const curl = join(directory, 'curl')
+  await writeFile(curl, '#!/usr/bin/env node\n' +
+    'const fs=require("node:fs"); const args=process.argv.slice(2); const output=args[args.indexOf("--output")+1]; const url=args.at(-1); const id=Number(url.split("/").at(-1)); const name="asset-"+String(id).padStart(2,"0")+".txt"; if((process.env.PUBLISH_CASE==="changed-pre"||process.env.PUBLISH_CASE==="changed-post"&&fs.existsSync(process.env.STATE))&&id===1)fs.writeFileSync(output,"changed after publication\\n"); else fs.copyFileSync(process.env.ASSET_DIR+"/"+name,output); process.exit(0)\n')
+  await chmod(curl, 0o755)
+  const env = { ...process.env, PATH: directory + ':' + (process.env.PATH ?? ''), RUNNER_TEMP: directory, CALLS: calls, PATCHES: patches, STATE: join(directory, 'published'), PUBLISH_CASE: 'success', GH_TOKEN: 'fixture', RELEASE_USER_AGENT, REPOSITORY: 'elsoul/erpc-sdk', RELEASE_ID: '421343859', TAG: 'non-rust-v0.9.1', BODY_FILE: body, ASSET_DIR: assetDirectory, VERIFIED_ASSET_RECEIPT: verifiedAssetReceipt }
+  await execFileAsync('bash', ['-c', 'set -euo pipefail\n' + block], { cwd: new URL('../', import.meta.url).pathname, env })
+  assert.match(await readFile(calls, 'utf8'), /releases\/421343859/)
+  assert.equal((await readFile(patches, 'utf8')).trim(), 'PATCH')
+  await execFileAsync('bash', ['-c', 'set -euo pipefail\n' + block], { cwd: new URL('../', import.meta.url).pathname, env })
+  assert.equal((await readFile(patches, 'utf8')).trim().split(/\r?\n/).filter(Boolean).length, 1)
+  const swappedDirectory = join(directory, 'swapped-publish')
+  await mkdir(swappedDirectory)
+  await writeFile(patches, '')
+  await assert.rejects(execFileAsync('bash', ['-c', 'set -euo pipefail\n' + block], {
+    cwd: new URL('../', import.meta.url).pathname,
+    env: { ...env, PUBLISH_CASE: 'swapped-id', RUNNER_TEMP: swappedDirectory, STATE: join(swappedDirectory, 'published') },
+  }))
+  assert.equal((await readFile(patches, 'utf8')).trim(), '')
+  await writeFile(patches, '')
+  const changedPreDirectory = join(directory, 'changed-pre-publish')
+  await mkdir(changedPreDirectory)
+  await assert.rejects(execFileAsync('bash', ['-c', 'set -euo pipefail\n' + block], {
+    cwd: new URL('../', import.meta.url).pathname,
+    env: { ...env, PUBLISH_CASE: 'changed-pre', RUNNER_TEMP: changedPreDirectory, STATE: join(changedPreDirectory, 'published') },
+  }))
+  assert.equal((await readFile(patches, 'utf8')).trim(), '')
+  const changedDirectory = join(directory, 'changed-post-publish')
+  await mkdir(changedDirectory)
+  await writeFile(patches, '')
+  await assert.rejects(execFileAsync('bash', ['-c', 'set -euo pipefail\n' + block], {
+    cwd: new URL('../', import.meta.url).pathname,
+    env: { ...env, PUBLISH_CASE: 'changed-post', RUNNER_TEMP: changedDirectory, STATE: join(changedDirectory, 'published') },
+  }))
+  assert.equal((await readFile(patches, 'utf8')).trim(), 'PATCH')
+  await assert.rejects(readFile(join(changedDirectory, 'final-release-proof.json')))
+  for (const publishCase of ['body', 'source', 'prerelease', 'assets']) {
+    await writeFile(patches, '')
+    await assert.rejects(execFileAsync('bash', ['-c', 'set -euo pipefail\n' + block], {
+      cwd: new URL('../', import.meta.url).pathname,
+      env: { ...env, PUBLISH_CASE: publishCase, STATE: join(directory, `published-${publishCase}`) },
+    }))
+    assert.equal((await readFile(patches, 'utf8')).trim(), '')
+  }
+  await assert.rejects(execFileAsync('bash', ['-c', 'set -euo pipefail\n' + block], {
+    cwd: new URL('../', import.meta.url).pathname,
+    env: { ...env, RELEASE_ID: '421343858', STATE: join(directory, 'published-wrong-id') },
+  }))
+})
+
+test('final numeric-ID asset block handles partial assets idempotently and stops before upload on a late conflict', async t => {
+  const workflow = await readFile(new URL('../.github/workflows/reconcile-foundation.yml', import.meta.url), 'utf8')
+  const block = extractWorkflowRunBlock(workflow, 'Reconcile fifteen Release assets without overwrite')
+  assert.match(block, /foundation-proof-manifest\.json/)
+  assert.match(block, /snapshot_receipts_artifact/)
+  const directory = await mkdtemp(join(tmpdir(), 'erpc-sdk-recovery-final-assets-'))
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  const assetDirectory = join(directory, 'assets')
+  const remoteDirectory = join(directory, 'remote')
+  const bin = join(directory, 'bin')
+  const log = join(directory, 'uploads.log')
+  const requests = join(directory, 'requests.log')
+  const state = join(directory, 'remote.json')
+  await Promise.all([mkdir(assetDirectory), mkdir(remoteDirectory), mkdir(bin)])
+  await writeFile(log, '')
+  await writeFile(requests, '')
+  const names = Array.from({ length: 15 }, (_, i) => 'asset-' + String(i + 1).padStart(2, '0') + '.txt')
+  const remoteRecords = []
+  for (const [index, name] of names.entries()) {
+    await writeFile(join(assetDirectory, name), 'local-' + name)
+    if (index < 14) { await writeFile(join(remoteDirectory, name), 'local-' + name); remoteRecords.push({ id: index + 1, name }) }
+  }
+  await writeFile(state, JSON.stringify(remoteRecords))
+  const gh = join(bin, 'gh')
+  await writeFile(gh, '#!/usr/bin/env node\n' +
+    'const fs=require("node:fs"); const args=process.argv.slice(2); if(args[0]==="api"&&args.includes("--paginate")){process.stdout.write(JSON.stringify([JSON.parse(fs.readFileSync(process.env.REMOTE_STATE))]));process.exit(0)} process.exit(99)\n')
+  await chmod(gh, 0o755)
+  const curl = join(bin, 'curl')
+  await writeFile(curl, '#!/usr/bin/env node\n' +
+    'const fs=require("node:fs"); const args=process.argv.slice(2); fs.appendFileSync(process.env.REQUESTS,JSON.stringify(args)+"\\n"); const out=args[args.indexOf("--output")+1]; const url=args.at(-1); if(args.includes("--request")&&args.includes("POST")){const file=args.find(x=>x.startsWith("@")).slice(1); const name=new URL(url).searchParams.get("name"); const records=JSON.parse(fs.readFileSync(process.env.REMOTE_STATE)); const id=records.length+1; fs.copyFileSync(file,process.env.REMOTE_DIR+"/"+name); records.push({id,name}); fs.writeFileSync(process.env.REMOTE_STATE,JSON.stringify(records)); fs.appendFileSync(process.env.UPLOAD_LOG,name+"\\n"); fs.writeFileSync(out,JSON.stringify({id,name,state:"uploaded",release:{id:421343859}})); process.stdout.write(""); process.exit(0)} const id=Number(url.split("/").at(-1)); const records=JSON.parse(fs.readFileSync(process.env.REMOTE_STATE)); const record=records.find(x=>x.id===id); fs.copyFileSync(process.env.REMOTE_DIR+"/"+record.name,out); process.stdout.write("");\n')
+  await chmod(curl, 0o755)
+  const env = { ...process.env, PATH: bin + ':' + (process.env.PATH ?? ''), RUNNER_TEMP: directory, REPOSITORY: 'elsoul/erpc-sdk', RELEASE_ID: '421343859', TAG: 'non-rust-v0.9.1', ASSET_DIR: assetDirectory, REMOTE_STATE: state, REMOTE_DIR: remoteDirectory, UPLOAD_LOG: log, REQUESTS: requests, GH_TOKEN: 'fixture', RELEASE_USER_AGENT, SOURCE_M: '4677d67d14c8fbb17ada3ba824d1623180c6b4d9', FOUNDATION_PLAN_SHA256: 'a'.repeat(64), FOUNDATION_PREPARED_RUN_ID: '39862319930', FOUNDATION_PREPARED_RUN_ATTEMPT: '1', FOUNDATION_PREPARED_ARTIFACT_ID: '12461868771' }
+  await execFileAsync('bash', ['-c', 'set -euo pipefail\n' + block], { cwd: new URL('../', import.meta.url).pathname, env })
+  assert.equal((await readFile(log, 'utf8')).trim().split(/\r?\n/).filter(Boolean).length, 1)
+  const verifiedReceipt = JSON.parse(await readFile(join(directory, 'verified-release-assets.json'), 'utf8'))
+  assert.equal(verifiedReceipt.releaseId, 421343859)
+  assert.deepEqual(verifiedReceipt.assets.map(asset => asset.name).sort(), names)
+  assert.ok(verifiedReceipt.assets.every(asset => Number.isSafeInteger(asset.id) && /^[0-9a-f]{64}$/.test(asset.sha256)))
+  const requestArgs = (await readFile(requests, 'utf8')).trim().split(/\r?\n/).filter(Boolean).map(line => JSON.parse(line))
+  const post = requestArgs.find(arguments_ => arguments_.includes('--request') && arguments_.includes('POST'))
+  assert.ok(post)
+  assert.equal(post.includes('--location'), false)
+  assert.equal(post.includes('--retry'), false)
+  assert.ok(post.includes('Accept: application/vnd.github+json'))
+  assert.ok(post.includes('Content-Type: application/octet-stream'))
+  assert.ok(post.some(value => value === 'https://uploads.github.com/repos/elsoul/erpc-sdk/releases/421343859/assets?name=asset-15.txt'))
+  assert.deepEqual(await readFile(join(remoteDirectory, 'asset-15.txt')), await readFile(join(assetDirectory, 'asset-15.txt')))
+  assert.ok(requestArgs.filter(arguments_ => arguments_.includes('Accept: application/octet-stream')).every(arguments_ => arguments_.some(value => value.startsWith('https://api.github.com/repos/elsoul/erpc-sdk/releases/assets/'))))
+  await writeFile(log, '')
+  await execFileAsync('bash', ['-c', 'set -euo pipefail\n' + block], { cwd: new URL('../', import.meta.url).pathname, env })
+  assert.equal((await readFile(log, 'utf8')).trim(), '')
+  await writeFile(state, JSON.stringify([...remoteRecords, { id: 99, name: 'unexpected.txt' }]))
+  await assert.rejects(execFileAsync('bash', ['-c', 'set -euo pipefail\n' + block], { cwd: new URL('../', import.meta.url).pathname, env }))
+  assert.equal((await readFile(log, 'utf8')).trim(), '')
+  await writeFile(state, JSON.stringify([...remoteRecords, { id: 99, name: 'asset-01.txt' }]))
+  await assert.rejects(execFileAsync('bash', ['-c', 'set -euo pipefail\n' + block], { cwd: new URL('../', import.meta.url).pathname, env }))
+  assert.equal((await readFile(log, 'utf8')).trim(), '')
+  await writeFile(state, JSON.stringify(remoteRecords))
+  await writeFile(join(remoteDirectory, 'asset-01.txt'), 'late conflict')
+  await assert.rejects(execFileAsync('bash', ['-c', 'set -euo pipefail\n' + block], { cwd: new URL('../', import.meta.url).pathname, env }))
+  assert.equal((await readFile(log, 'utf8')).trim(), '')
 })
