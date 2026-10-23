@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
 import { chmod, cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -1829,4 +1830,55 @@ test('recovery tag and Release asset blocks fail closed before writes on conflic
   await writeFile(join(remoteDirectory, 'asset-01.txt'), 'conflict')
   await assert.rejects(execFileAsync('bash', ['-c', 'set -euo pipefail\n' + releaseAssetBlock], { cwd: new URL('../', import.meta.url).pathname, env: assetEnv }))
   assert.equal((await readFile(assetLog, 'utf8')).trim(), '')
+})
+
+test('all five recovery artifact ZIP requests reject old media type and follow a real local redirect with the JSON media type', async t => {
+  const workflow = await readFile(new URL('../.github/workflows/reconcile-foundation.yml', import.meta.url), 'utf8')
+  const requests = extractWorkflowCurlInvocations(workflow).filter(invocation => invocation.includes('/actions/artifacts/') && invocation.includes('/zip'))
+  assert.equal(requests.length, 5)
+  for (const request of requests) assert.match(request, /Accept: application\/vnd\.github\+json/)
+  const directory = await mkdtemp(join(tmpdir(), 'erpc-sdk-recovery-http-415-'))
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  const zipFile = join(directory, 'fixture.zip')
+  await execFileAsync('python3', ['-c', 'import sys,zipfile; z=zipfile.ZipFile(sys.argv[1],"w"); z.writestr("npm-proof.json", "fixture-proof"); z.close()', zipFile])
+  const zipBytes = await readFile(zipFile)
+  const zipDigest = sha256Hex(zipBytes)
+  const received = []
+  const server = createServer((request, response) => {
+    received.push({ path: request.url, accept: request.headers.accept })
+    if (request.url === '/fixture.zip') {
+      response.writeHead(200, { 'content-type': 'application/zip', 'content-length': zipBytes.length })
+      response.end(zipBytes)
+      return
+    }
+    if (request.headers.accept !== 'application/vnd.github+json') {
+      response.writeHead(415, { 'content-type': 'application/json' })
+      response.end(JSON.stringify({ message: 'unsupported Accept' }))
+      return
+    }
+    response.writeHead(302, { location: '/fixture.zip' })
+    response.end()
+  })
+  await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve) })
+  t.after(() => server.close())
+  const port = server.address().port
+  const baseEnv = { ...process.env, RUNNER_TEMP: directory, EXPECTED_REPOSITORY: 'elsoul/erpc-sdk', REPOSITORY: 'elsoul/erpc-sdk', RELEASE_USER_AGENT, GH_TOKEN: 'fixture-token', artifact_id: '12468544754', RECEIPT_ARTIFACT_ID: '12468544754', AGGREGATE_ARTIFACT_ID: '12468544754', snapshot_receipts_artifact: '12468544754', REPOSITORY: 'elsoul/erpc-sdk' }
+  for (let index = 0; index < requests.length; index += 1) {
+    const corrected = requests[index].replaceAll('https://api.github.com', `http://127.0.0.1:${port}`)
+    const output = join(directory, `corrected-${index}.zip`)
+    const replaceVariables = value => value
+      .replace(/--output "\$RUNNER_TEMP\/[^" ]+"/, `--output "${output}"`)
+      .replaceAll('"$recovery_zip"', `"${output}"`)
+      .replaceAll('$snapshot_receipts_artifact', '12468544754')
+    const oldHeader = replaceVariables(corrected).replaceAll('application/vnd.github+json', 'application/zip')
+    await assert.rejects(execFileAsync('bash', ['-c', `set -euo pipefail\n${oldHeader}`], { cwd: new URL('../', import.meta.url).pathname, env: baseEnv }), /Command failed|exit code: 22/)
+    const runnable = replaceVariables(corrected)
+    await execFileAsync('bash', ['-c', `set -euo pipefail\n${runnable}`], { cwd: new URL('../', import.meta.url).pathname, env: baseEnv })
+    assert.equal(sha256Hex(await readFile(output)), zipDigest)
+  }
+  const apiRequests = received.filter(item => item.path.includes('/actions/artifacts/'))
+  assert.equal(apiRequests.filter(item => item.accept === 'application/zip').length, 5)
+  assert.equal(apiRequests.filter(item => item.accept === 'application/vnd.github+json').length, 5)
+  const tampered = Buffer.from(zipBytes); tampered[tampered.length - 1] ^= 1
+  assert.notEqual(sha256Hex(tampered), zipDigest)
 })

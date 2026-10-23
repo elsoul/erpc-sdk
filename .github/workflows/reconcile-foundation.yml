@@ -930,7 +930,7 @@ jobs:
             artifact_digest="$(jq -r --arg name "$name" '.artifacts[] | select(.name == $name) | .digest' "$RUNNER_TEMP/current-artifacts.json")"
             test "$artifact_id" != null
             test "$artifact_digest" != null
-            curl --fail --silent --show-error --location --max-time 60 --retry 0 --user-agent "$RELEASE_USER_AGENT" --header "Authorization: Bearer $GH_TOKEN" --header 'Accept: application/zip' --output "$RUNNER_TEMP/$artifact_id.zip" "https://api.github.com/repos/$EXPECTED_REPOSITORY/actions/artifacts/$artifact_id/zip"
+            curl --fail --silent --show-error --location --max-time 60 --retry 0 --user-agent "$RELEASE_USER_AGENT" --header "Authorization: Bearer $GH_TOKEN" --header 'Accept: application/vnd.github+json' --output "$RUNNER_TEMP/$artifact_id.zip" "https://api.github.com/repos/$EXPECTED_REPOSITORY/actions/artifacts/$artifact_id/zip"
             test "sha256:$(sha256sum "$RUNNER_TEMP/$artifact_id.zip" | awk '{print $1}')" = "$artifact_digest"
           done
           verified_tag_artifacts="$RUNNER_TEMP/verified-tag-artifacts"
@@ -1269,7 +1269,7 @@ jobs:
             artifact_digest="$(jq -r --arg name "$name" '.artifacts[] | select(.name == $name) | .digest' "$RUNNER_TEMP/current-artifacts.json")"
             test "$artifact_id" != null
             test "$artifact_digest" != null
-            curl --fail --silent --show-error --location --max-time 60 --retry 0 --user-agent "$RELEASE_USER_AGENT" --header "Authorization: Bearer $GH_TOKEN" --header 'Accept: application/zip' --output "$RUNNER_TEMP/$artifact_id.zip" "https://api.github.com/repos/$EXPECTED_REPOSITORY/actions/artifacts/$artifact_id/zip"
+            curl --fail --silent --show-error --location --max-time 60 --retry 0 --user-agent "$RELEASE_USER_AGENT" --header "Authorization: Bearer $GH_TOKEN" --header 'Accept: application/vnd.github+json' --output "$RUNNER_TEMP/$artifact_id.zip" "https://api.github.com/repos/$EXPECTED_REPOSITORY/actions/artifacts/$artifact_id/zip"
             test "sha256:$(sha256sum "$RUNNER_TEMP/$artifact_id.zip" | awk '{print $1}')" = "$artifact_digest"
             mkdir -p "$verified_root/$name"
             unzip -q "$RUNNER_TEMP/$artifact_id.zip" -d "$verified_root/$name"
@@ -1338,7 +1338,7 @@ jobs:
           test "$(jq -r '.workflow_run.head_sha' "$metadata")" = "$GITHUB_SHA"
           digest="$(jq -r '.digest' "$metadata")"
           test "$digest" != null
-          curl --fail --silent --show-error --location --max-time 60 --retry 0 --user-agent "$RELEASE_USER_AGENT" --header "Authorization: Bearer $GH_TOKEN" --header 'Accept: application/zip' --output "$RUNNER_TEMP/receipt-artifact.zip" "https://api.github.com/repos/$EXPECTED_REPOSITORY/actions/artifacts/$RECEIPT_ARTIFACT_ID/zip"
+          curl --fail --silent --show-error --location --max-time 60 --retry 0 --user-agent "$RELEASE_USER_AGENT" --header "Authorization: Bearer $GH_TOKEN" --header 'Accept: application/vnd.github+json' --output "$RUNNER_TEMP/receipt-artifact.zip" "https://api.github.com/repos/$EXPECTED_REPOSITORY/actions/artifacts/$RECEIPT_ARTIFACT_ID/zip"
           test "sha256:$(sha256sum "$RUNNER_TEMP/receipt-artifact.zip" | awk '{print $1}')" = "$digest"
       - name: Revalidate the manifest against the current receipt artifact
         env:
@@ -1430,7 +1430,7 @@ jobs:
           test "$(jq -r '.workflow_run.head_sha' "$metadata")" = "$GITHUB_SHA"
           digest="$(jq -r '.digest' "$metadata")"
           test "$digest" != null
-          curl --fail --silent --show-error --location --max-time 60 --retry 0 --user-agent "$RELEASE_USER_AGENT" --header "Authorization: Bearer $GH_TOKEN" --header 'Accept: application/zip' --output "$RUNNER_TEMP/aggregate-artifact.zip" "https://api.github.com/repos/$EXPECTED_REPOSITORY/actions/artifacts/$AGGREGATE_ARTIFACT_ID/zip"
+          curl --fail --silent --show-error --location --max-time 60 --retry 0 --user-agent "$RELEASE_USER_AGENT" --header "Authorization: Bearer $GH_TOKEN" --header 'Accept: application/vnd.github+json' --output "$RUNNER_TEMP/aggregate-artifact.zip" "https://api.github.com/repos/$EXPECTED_REPOSITORY/actions/artifacts/$AGGREGATE_ARTIFACT_ID/zip"
           test "sha256:$(sha256sum "$RUNNER_TEMP/aggregate-artifact.zip" | awk '{print $1}')" = "$digest"
           verified_aggregate="$RUNNER_TEMP/verified-aggregate"
           mkdir -p "$verified_aggregate"
@@ -1572,7 +1572,7 @@ jobs:
             recovery_zip="$RUNNER_TEMP/foundation-proof-receipts-recovery.zip"
             recovery_dir="$RUNNER_TEMP/foundation-proof-receipts-recovery"
             mkdir -p "$recovery_dir"
-            curl --fail --silent --show-error --location --max-time 60 --retry 0 --user-agent "$RELEASE_USER_AGENT" --header "Authorization: Bearer $GH_TOKEN" --header 'Accept: application/zip' --output "$recovery_zip" "https://api.github.com/repos/$REPOSITORY/actions/artifacts/$snapshot_receipts_artifact/zip"
+            curl --fail --silent --show-error --location --max-time 60 --retry 0 --user-agent "$RELEASE_USER_AGENT" --header "Authorization: Bearer $GH_TOKEN" --header 'Accept: application/vnd.github+json' --output "$recovery_zip" "https://api.github.com/repos/$REPOSITORY/actions/artifacts/$snapshot_receipts_artifact/zip"
             unzip -q "$recovery_zip" -d "$recovery_dir"
             for proof in npm-proof.json pypi-proof.json rubygems-proof.json rust-proof.json tag-proof.json go-proof.json; do
               expected_digest="$(jq -r --arg name "$proof" '.receipts[$name]' "$snapshot_dir/foundation-proof-manifest.json")"
