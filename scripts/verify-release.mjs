@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
-import { execFile as execFileCallback } from 'node:child_process'
-import { lstat, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
-import { join, resolve } from 'node:path'
+import { execFile as execFileCallback, spawn } from 'node:child_process'
+import { lstat, mkdir, mkdtemp, readdir, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { join, resolve, sep } from 'node:path'
 import { tmpdir } from 'node:os'
 import { pathToFileURL } from 'node:url'
 import { promisify } from 'node:util'
@@ -729,9 +729,18 @@ export async function sha256File(filePath) {
   return sha256Hex(await readFile(filePath))
 }
 
-const commandText = async (command, arguments_) => {
-  const result = await execFile(command, arguments_, { encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 })
+const commandText = async (command, arguments_, execution = {}) => {
+  const executor = execution.execFile ?? execFile
+  const resolvedCommand = execution.commandMap?.[command] ?? command
+  const result = await executor(resolvedCommand, arguments_, { encoding: 'utf8', maxBuffer: 4 * 1024 * 1024, ...(execution.execOptions ?? {}) })
   return result.stdout.trim()
+}
+
+const commandBuffer = async (command, arguments_, execution = {}) => {
+  const executor = execution.execFile ?? execFile
+  const resolvedCommand = execution.commandMap?.[command] ?? command
+  const result = await executor(resolvedCommand, arguments_, { encoding: 'buffer', maxBuffer: 16 * 1024 * 1024, ...(execution.execOptions ?? {}) })
+  return result.stdout
 }
 
 const archiveInspectionScript = String.raw`
@@ -759,8 +768,8 @@ else:
 print(json.dumps(entries))
 `
 
-const archiveEntries = async (filePath, kind) => {
-  const raw = await commandText('python3', ['-c', archiveInspectionScript, filePath, kind])
+const archiveEntries = async (filePath, kind, execution = {}) => {
+  const raw = await commandText('python3', ['-c', archiveInspectionScript, filePath, kind], execution)
   let records
   try { records = JSON.parse(raw) } catch { fail(`Archive inspection is malformed for ${filePath}`) }
   if (!Array.isArray(records) || records.length === 0) fail(`Archive ${filePath} is empty`)
@@ -778,13 +787,13 @@ const archiveEntries = async (filePath, kind) => {
   return names
 }
 
-const archiveFiles = async (filePath, kind = filePath.endsWith('.whl') ? 'zip' : 'tar') =>
-  archiveEntries(filePath, kind)
+const archiveFiles = async (filePath, kind = filePath.endsWith('.whl') ? 'zip' : 'tar', execution = {}) =>
+  archiveEntries(filePath, kind, execution)
 
-const archiveText = async (filePath, member, wheel = false) => {
+const archiveText = async (filePath, member, wheel = false, execution = {}) => {
   const output = wheel
-    ? await commandText('unzip', ['-p', filePath, member])
-    : await commandText('tar', ['-xOf', filePath, member])
+    ? await commandText('unzip', ['-p', filePath, member], execution)
+    : await commandText('tar', ['-xOf', filePath, member], execution)
   return output
 }
 
@@ -1803,31 +1812,31 @@ const releaseSetMemberSet = (left, right, label) => {
   if (canonicalJson([...left].sort()) !== canonicalJson([...right].sort())) fail(`${label} member set mismatch`)
 }
 
-const releaseSetReadMetadata = async (filePath, kind, version, name) => {
-  const members = await archiveEntries(filePath, kind === 'pypi-wheel' ? 'zip' : 'tar')
+const releaseSetReadMetadata = async (filePath, kind, version, name, execution = {}) => {
+  const members = await archiveEntries(filePath, kind === 'pypi-wheel' ? 'zip' : 'tar', execution)
   if (kind === 'npm') {
     const metadataPath = 'package/package.json'
     if (!members.includes(metadataPath)) fail('npm archive is missing package/package.json')
-    const metadata = JSON.parse(await archiveText(filePath, metadataPath))
+    const metadata = JSON.parse(await archiveText(filePath, metadataPath, false, execution))
     if (metadata.name !== name || metadata.version !== version) fail('npm archive identity/version mismatch')
     if (!members.includes('package/LICENSE') || !members.includes('package/README.md') || !members.some(member => member.startsWith('package/dist/'))) fail('npm archive is missing required package files')
   } else if (kind === 'pypi-wheel' || kind === 'pypi-sdist') {
     const metadataPath = members.find(member => kind === 'pypi-wheel' ? /\.dist-info\/METADATA$/.test(member) : /(?:^|\/)PKG-INFO$/.test(member))
     if (!metadataPath) fail(`${kind} archive metadata is missing`)
-    const metadata = await archiveText(filePath, metadataPath, kind === 'pypi-wheel')
+    const metadata = await archiveText(filePath, metadataPath, kind === 'pypi-wheel', execution)
     if (metadataValue(metadata, 'Name') !== name || metadataValue(metadata, 'Version') !== version) fail(`${kind} archive identity/version mismatch`)
   } else if (kind === 'rubygems') {
-    const specification = JSON.parse(await commandText('ruby', ['-rrubygems/package', '-rjson', '-e', 'spec = Gem::Package.new(ARGV.fetch(0)).spec; puts JSON.generate({"name" => spec.name, "version" => spec.version.to_s, "platform" => spec.platform.to_s, "files" => spec.files})', filePath]))
+    const specification = JSON.parse(await commandText('ruby', ['-rrubygems/package', '-rjson', '-e', 'spec = Gem::Package.new(ARGV.fetch(0)).spec; puts JSON.generate({"name" => spec.name, "version" => spec.version.to_s, "platform" => spec.platform.to_s, "files" => spec.files})', filePath], execution))
     if (specification.name !== name || specification.version !== version || specification.platform !== 'ruby') fail('Ruby gem identity/version/platform mismatch')
     const outerMembers = new Set(members)
     const expectedOuterMembers = new Set(['metadata.gz', 'data.tar.gz', 'checksums.yaml.gz'])
     if (outerMembers.size !== expectedOuterMembers.size || [...expectedOuterMembers].some(member => !outerMembers.has(member))) fail('Ruby gem outer member set mismatch')
     const temporaryDirectory = await mkdtemp(join(tmpdir(), 'erpc-sdk-release-set-gem-'))
     try {
-      const dataTar = await execFile('tar', ['-xOf', filePath, 'data.tar.gz'], { encoding: 'buffer', maxBuffer: 16 * 1024 * 1024 })
+      const dataTar = await commandBuffer('tar', ['-xOf', filePath, 'data.tar.gz'], execution)
       const dataPath = join(temporaryDirectory, 'data.tar.gz')
-      await writeFile(dataPath, dataTar.stdout)
-      const dataMembers = await archiveEntries(dataPath, 'tar')
+      await writeFile(dataPath, dataTar)
+      const dataMembers = await archiveEntries(dataPath, 'tar', execution)
       releaseSetMemberSet(dataMembers, specification.files, 'Ruby gem specification/data')
       return dataMembers
     } finally {
@@ -1864,9 +1873,9 @@ export async function inspectReleaseSetRubyGemBytes({ filePath, name, version })
 }
 
 /** Read and validate genuine prepared archive bytes; plaintext files fail closed. */
-export async function inspectReleaseSetArtifactBytes(descriptor, filePath, expectedSourceCommit) {
+export async function inspectReleaseSetArtifactBytes(descriptor, filePath, expectedSourceCommit, execution = {}) {
   if (await sha256File(filePath) !== descriptor.sha256) fail(`Prepared artifact bytes do not match ${descriptor.filename}`)
-  const members = await releaseSetReadMetadata(filePath, descriptor.kind, descriptor.version, descriptor.name)
+  const members = await releaseSetReadMetadata(filePath, descriptor.kind, descriptor.version, descriptor.name, execution)
   releaseSetMemberSet(members, descriptor.files, descriptor.kind)
   return { filename: descriptor.filename, sha256: descriptor.sha256, members }
 }
@@ -1947,6 +1956,458 @@ export async function verifyReleaseSetPreparation({ plan, context, run, artifact
   requireEqual(canonicalJson(JSON.parse(await readFile(join(bindingDirectory, 'release-set-binding.json'), 'utf8'))), canonicalJson(binding), 'Release-set binding ZIP/consumed binding mismatch')
   const prepared = await ingestReleaseSetBundle({ plan: normalized, artifactDirectory })
   return { context: { sourceCommit: normalized.sourceCommit }, metadata, bundleZip: bundleZipEvidence, bindingZip: bindingZipEvidence, prepared }
+}
+
+const npmRegistryOrigin = 'https://registry.npmjs.org'
+const npmRegistryExactUrl = version => `https://registry.npmjs.org/%40elsoul%2Ferpc-sdk/${version}`
+const npmTarballUrl = version => `https://registry.npmjs.org/@elsoul/erpc-sdk/-/erpc-sdk-${version}.tgz`
+
+const npmCanonicalRegistry = value => {
+  if (typeof value !== 'string') return null
+  try {
+    const url = new URL(value)
+    if (url.protocol !== 'https:' || url.hostname !== 'registry.npmjs.org' || url.username || url.password || url.port || url.search || url.hash || !['', '/'].includes(url.pathname)) return null
+    return npmRegistryOrigin
+  } catch {
+    return null
+  }
+}
+
+const npmResponseBody = response => Buffer.isBuffer(response?.body) ? response.body : Buffer.from(response?.body ?? '')
+
+const npmRequireRunSuccess = (result, stage) => {
+  if (!result || result.exitCode !== 0) fail(`npm-observe-${stage}-failed`)
+  return result
+}
+
+const npmDefaultRequest = async (url, options = {}) => {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? 20_000)
+  try {
+    const response = await fetch(url, { headers: options.headers ?? {}, redirect: 'manual', signal: controller.signal })
+    return { status: response.status, headers: Object.fromEntries(response.headers.entries()), body: Buffer.from(await response.arrayBuffer()) }
+  } catch {
+    fail('npm-observe-http-failed')
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+const npmSpawnProcess = (command, arguments_, options = {}) => new Promise(resolve_ => {
+  let child
+  try {
+    child = spawn(command, arguments_, { cwd: options.cwd, env: options.env, stdio: ['ignore', 'pipe', 'pipe'] })
+  } catch (error) {
+    resolve_({ exitCode: 1, stdout: Buffer.alloc(0), stderr: Buffer.from(String(error?.message ?? error)), signal: null, timedOut: false })
+    return
+  }
+  const stdout = []
+  const stderr = []
+  let stdoutBytes = 0
+  let stderrBytes = 0
+  let timedOut = false
+  let settled = false
+  let timeoutTimer
+  let killTimer
+  const maxBuffer = options.maxBuffer ?? 32 * 1024 * 1024
+  const terminate = () => {
+    if (settled) return
+    try { child.kill(options.killSignal ?? 'SIGTERM') } catch {}
+    killTimer = setTimeout(() => {
+      if (!settled) {
+        try { child.kill('SIGKILL') } catch {}
+      }
+    }, 100)
+  }
+  const finish = (exitCode, signal) => {
+    if (settled) return
+    settled = true
+    clearTimeout(timeoutTimer)
+    clearTimeout(killTimer)
+    resolve_({ exitCode: Number.isInteger(exitCode) ? exitCode : 1, stdout: Buffer.concat(stdout), stderr: Buffer.concat(stderr), signal, timedOut })
+  }
+  child.stdout.on('data', chunk => {
+    const buffer = Buffer.from(chunk)
+    stdoutBytes += buffer.length
+    if (stdoutBytes <= maxBuffer) stdout.push(buffer)
+    else terminate()
+  })
+  child.stderr.on('data', chunk => {
+    const buffer = Buffer.from(chunk)
+    stderrBytes += buffer.length
+    if (stderrBytes <= maxBuffer) stderr.push(buffer)
+    else terminate()
+  })
+  child.once('error', error => {
+    if (!settled) resolve_({ exitCode: 1, stdout: Buffer.concat(stdout), stderr: Buffer.concat([...stderr, Buffer.from(String(error?.message ?? error))]), signal: null, timedOut })
+    settled = true
+    clearTimeout(timeoutTimer)
+    clearTimeout(killTimer)
+  })
+  child.once('close', finish)
+  if (options.timeout !== undefined) {
+    timeoutTimer = setTimeout(() => {
+      timedOut = true
+      terminate()
+    }, Math.max(1, options.timeout))
+  }
+})
+
+const npmBoundedExecFile = async (command, arguments_, options = {}) => {
+  const result = await npmSpawnProcess(command, arguments_, options)
+  const encoding = options.encoding === 'buffer' ? 'buffer' : options.encoding ?? 'utf8'
+  const stdout = encoding === 'buffer' ? result.stdout : result.stdout.toString(encoding)
+  const stderr = encoding === 'buffer' ? result.stderr : result.stderr.toString(encoding)
+  if (result.exitCode !== 0) {
+    const error = new Error(`Command failed: ${command}`)
+    error.code = result.exitCode
+    error.stdout = stdout
+    error.stderr = stderr
+    throw error
+  }
+  return { stdout, stderr }
+}
+
+const npmDefaultRun = async (command, arguments_, options = {}) => {
+  try {
+    const result = await npmBoundedExecFile(command, arguments_, { ...options, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 })
+    return { exitCode: 0, stdout: result.stdout ?? '', stderr: result.stderr ?? '' }
+  } catch (error) {
+    return { exitCode: Number.isInteger(error?.code) ? error.code : 1, stdout: error?.stdout ?? '', stderr: error?.stderr ?? '' }
+  }
+}
+
+const npmSafePath = (path, label) => {
+  if (typeof path !== 'string' || path.length === 0) fail(`${label} is required`)
+  const resolved = resolve(path)
+  const root = `${REPOSITORY_ROOT}${sep}`
+  if (!resolved.startsWith('/') || resolved === REPOSITORY_ROOT || resolved.startsWith(root)) fail(`${label} must be outside the repository`)
+  return resolved
+}
+
+const npmInvalidateOutput = async (path, workPath, label) => {
+  const workDir = npmSafePath(workPath, 'npm observer work directory')
+  const workStat = await lstat(workDir)
+  if (!workStat.isDirectory()) fail('npm observer work directory must be a directory')
+  const repositoryRoot = await realpath(REPOSITORY_ROOT)
+  const canonicalWorkDir = await realpath(workDir)
+  const insideRepository = value => value === repositoryRoot || value.startsWith(`${repositoryRoot}${sep}`)
+  if (insideRepository(canonicalWorkDir)) fail('npm observer work directory must be outside the repository')
+  const workParent = await realpath(resolve(canonicalWorkDir, '..'))
+  const outputFile = npmSafePath(path, label)
+  const outputParent = await realpath(resolve(outputFile, '..'))
+  if (insideRepository(outputParent)) fail(`${label} must be outside the repository`)
+  if (outputParent !== workParent) fail(`${label} must share the external work root`)
+  try {
+    const existingOutput = await lstat(outputFile)
+    if (!existingOutput.isFile() && !existingOutput.isSymbolicLink()) fail(`${label} must be a file path`)
+    let priorReceipt
+    try { priorReceipt = JSON.parse(await readFile(outputFile, 'utf8')) } catch { fail(`${label} is not a prior npm observation receipt`) }
+    if (priorReceipt?.schemaVersion !== 1 || priorReceipt?.kind !== 'npm-public-observation' || priorReceipt?.state !== 'observed') fail(`${label} is not a prior npm observation receipt`)
+    await rm(outputFile)
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error
+  }
+  return outputFile
+}
+
+const npmDeadlineRemaining = (now, deadline) => {
+  const remaining = deadline - now()
+  if (!(remaining > 0)) fail('npm-observe-deadline-exceeded')
+  return Math.max(1, Math.ceil(remaining))
+}
+
+const npmCheckDeadline = (now, deadline) => {
+  if (now() >= deadline) fail('npm-observe-deadline-exceeded')
+}
+
+const npmChildEnvironment = ({ workDir, emptyUserConfig, emptyGlobalConfig }) => ({
+  PATH: process.env.PATH ?? '',
+  TMPDIR: workDir,
+  LANG: 'C.UTF-8',
+  LC_ALL: 'C.UTF-8',
+  NPM_CONFIG_USERCONFIG: emptyUserConfig,
+  NPM_CONFIG_GLOBALCONFIG: emptyGlobalConfig,
+  NPM_CONFIG_CACHE: join(workDir, 'npm-cache'),
+  NPM_CONFIG_PREFIX: join(workDir, 'npm-prefix'),
+  NPM_CONFIG_REGISTRY: npmRegistryOrigin,
+  npm_config_registry: npmRegistryOrigin,
+  NODE_OPTIONS: '',
+  NODE_PATH: '',
+})
+
+const npmClaimsPython = String.raw`
+import base64, json, sys
+from cryptography import x509
+from cryptography.hazmat.primitives import serialization
+
+raw = base64.b64decode(json.load(open(sys.argv[1]))['rawBytes'])
+cert = x509.load_der_x509_certificate(raw)
+claims = {}
+for extension in cert.extensions:
+    oid = extension.oid.dotted_string
+    if not oid.startswith('1.3.6.1.4.1.57264.'):
+        continue
+    value = getattr(extension.value, 'value', b'')
+    if value[:1] == b'\x0c':
+        length = value[1]
+        offset = 2
+        if length & 0x80:
+            count = length & 0x7f
+            length = int.from_bytes(value[offset:offset + count], 'big')
+            offset += count
+        value = value[offset:offset + length]
+    try:
+        claims[oid] = value.decode('utf-8')
+    except UnicodeDecodeError:
+        continue
+print(json.dumps(claims, sort_keys=True))
+`
+
+const npmRequireClaim = (claims, keys, expected, label) => {
+  const present = keys.filter(key => claims[key] !== undefined)
+  if (present.length === 0 || present.some(key => claims[key] !== expected)) fail(`npm-observe-${label}-claim-failed`)
+  return claims[present[0]]
+}
+
+const npmInvoke = async (run, command, arguments_, options, stage, deadlineControl) => {
+  const boundedOptions = deadlineControl === undefined
+    ? options
+    : {
+        ...options,
+        timeout: Math.min(options.timeout ?? Number.POSITIVE_INFINITY, npmDeadlineRemaining(deadlineControl.now, deadlineControl.deadline)),
+        killSignal: 'SIGTERM',
+      }
+  const result = npmRequireRunSuccess(await run(command, arguments_, boundedOptions), stage)
+  if (deadlineControl !== undefined) npmCheckDeadline(deadlineControl.now, deadlineControl.deadline)
+  return result
+}
+
+const npmStrictInput = input => {
+  releaseSetKeys(input, ['descriptor', 'planSha256', 'preparation', 'publisher', 'observer', 'workDir', 'outputFile', 'toolPaths'], 'npm observer input')
+  releaseSetKeys(input.descriptor, ['kind', 'filename', 'name', 'version', 'sha256', 'files'], 'npm observer descriptor')
+  requireEqual(input.descriptor.kind, 'npm', 'npm observer descriptor kind mismatch')
+  requireEqual(input.descriptor.name, '@elsoul/erpc-sdk', 'npm observer package identity mismatch')
+  releaseSetVersion(input.descriptor.version, 'npm observer version')
+  requireEqual(input.descriptor.filename, releaseSetArtifactFilename('npm', input.descriptor.version), 'npm observer archive filename mismatch')
+  requireArchiveSha(input.descriptor.sha256, 'npm observer descriptor SHA-256')
+  requireArchiveSha(input.planSha256, 'npm observer plan SHA-256')
+  releaseSetKeys(input.preparation, ['sourceCommit', 'runId', 'runAttempt', 'artifactId', 'bindingArtifactId', 'planSha256'], 'npm observer preparation')
+  requireSha(input.preparation.sourceCommit, 'npm observer preparation source')
+  requireArchiveSha(input.preparation.planSha256, 'npm observer preparation plan SHA-256')
+  requireEqual(input.preparation.planSha256, input.planSha256, 'npm observer preparation plan mismatch')
+  for (const [value, label] of [[input.preparation.runId, 'npm observer preparation run ID'], [input.preparation.runAttempt, 'npm observer preparation attempt'], [input.preparation.artifactId, 'npm observer preparation artifact ID'], [input.preparation.bindingArtifactId, 'npm observer preparation binding artifact ID']]) requirePositiveId(value, label)
+  releaseSetKeys(input.publisher, ['repository', 'repositoryId', 'sourceCommit', 'workflowPath', 'ref', 'event', 'environment', 'publisherRunId', 'publisherAttempt'], 'npm observer publisher')
+  requireEqual(input.publisher.repository, EXPECTED_REPOSITORY, 'npm observer publisher repository mismatch')
+  requireEqual(String(input.publisher.repositoryId), EXPECTED_REPOSITORY_ID, 'npm observer publisher repository ID mismatch')
+  requireEqual(input.publisher.sourceCommit, input.preparation.sourceCommit, 'npm observer publisher source mismatch')
+  requireEqual(input.publisher.workflowPath, RELEASE_SET_WORKFLOW, 'npm observer publisher workflow mismatch')
+  requireEqual(input.publisher.ref, 'refs/heads/main', 'npm observer publisher ref mismatch')
+  requireEqual(input.publisher.event, 'workflow_dispatch', 'npm observer publisher event mismatch')
+  requireEqual(input.publisher.environment, 'npm', 'npm observer publisher environment mismatch')
+  requirePositiveId(input.publisher.publisherRunId, 'npm observer publisher run ID')
+  requirePositiveId(input.publisher.publisherAttempt, 'npm observer publisher attempt')
+  releaseSetKeys(input.observer, ['runId', 'runAttempt', 'workflowPath', 'sourceCommit'], 'npm observer context')
+  requirePositiveId(input.observer.runId, 'npm observer run ID')
+  requirePositiveId(input.observer.runAttempt, 'npm observer attempt')
+  requireEqual(input.observer.workflowPath, RELEASE_SET_WORKFLOW, 'npm observer workflow mismatch')
+  requireSha(input.observer.sourceCommit, 'npm observer source')
+  releaseSetKeys(input.toolPaths, ['node', 'npmCli', 'python'], 'npm observer tool paths')
+  for (const [name, value] of Object.entries(input.toolPaths)) npmSafePath(value, `npm observer ${name} path`)
+  return input
+}
+
+/**
+ * Execute the real read-only npm observation operation. Adapters are limited
+ * to raw HTTP, subprocess, monotonic clock, and sleep; they cannot return a
+ * trusted receipt or bypass any verification stage.
+ */
+export async function observeNpmRelease(input, adapters = {}) {
+  const outputFile = await npmInvalidateOutput(input?.outputFile, input?.workDir, 'npm observer output file')
+  npmStrictInput(input)
+  const request = adapters.request ?? npmDefaultRequest
+  const run = adapters.run ?? npmDefaultRun
+  const now = adapters.now ?? (() => performance.now())
+  const sleep = adapters.sleep ?? (milliseconds => new Promise(resolve_ => setTimeout(resolve_, milliseconds)))
+  const workDir = npmSafePath(input.workDir, 'npm observer work directory')
+  const workEntries = await readdir(workDir, { withFileTypes: true })
+  if (workEntries.length !== 0) fail('npm-observe-work-directory-not-fresh')
+  const started = now()
+  const deadline = started + 600_000
+  const deadlineControl = { now, deadline }
+  const headers = { 'user-agent': RELEASE_USER_AGENT, accept: 'application/json' }
+  const get = async (url, timeoutMs) => {
+    const remaining = npmDeadlineRemaining(now, deadline)
+    try {
+      const response = await request(url, { headers, timeoutMs: Math.min(timeoutMs, remaining), deadline })
+      npmCheckDeadline(now, deadline)
+      return response
+    } catch (error) {
+      if (error?.message === 'npm-observe-deadline-exceeded') throw error
+      fail('npm-observe-http-failed')
+    }
+  }
+  const version = input.descriptor.version
+  const exactUrl = npmRegistryExactUrl(version)
+  const fullUrl = `${npmRegistryOrigin}/%40elsoul%2Ferpc-sdk`
+  let exactResponse
+  let fullResponse
+  let exactPayload
+  let exact404 = false
+  while (true) {
+    exactResponse = await get(exactUrl, 20_000)
+    const exactBody = npmResponseBody(exactResponse)
+    if (exactResponse.status === 200) {
+      try { exactPayload = JSON.parse(exactBody.toString('utf8')) } catch { fail('npm-observe-exact-json-invalid') }
+      exact404 = false
+      break
+    }
+    if (exactResponse.status !== 404) fail(`npm-observe-exact-http-${exactResponse.status}`)
+    exact404 = true
+    const candidateFullResponse = await get(fullUrl, 20_000)
+    if (candidateFullResponse.status === 200) {
+      let candidateFullPayload
+      try { candidateFullPayload = JSON.parse(npmResponseBody(candidateFullResponse).toString('utf8')) } catch { fail('npm-observe-full-json-invalid') }
+      if (candidateFullPayload.name === '@elsoul/erpc-sdk' && candidateFullPayload.versions?.[version]) {
+        fullResponse = candidateFullResponse
+        break
+      }
+    } else if (candidateFullResponse.status !== 404) {
+      fail(`npm-observe-full-http-${candidateFullResponse.status}`)
+    }
+    npmCheckDeadline(now, deadline)
+    const remaining = npmDeadlineRemaining(now, deadline)
+    await sleep(Math.min(30_000, remaining))
+    npmCheckDeadline(now, deadline)
+  }
+  // A full-packument response from a prior exact-version 404 is never reused
+  // after the exact endpoint becomes visible. Fetch the current packument.
+  if (!fullResponse || exactResponse.status === 200) fullResponse = await get(fullUrl, 20_000)
+  const fullBody = npmResponseBody(fullResponse)
+  if (fullResponse.status !== 200) fail(`npm-observe-full-http-${fullResponse.status}`)
+  let fullPayload
+  try { fullPayload = JSON.parse(fullBody.toString('utf8')) } catch { fail('npm-observe-full-json-invalid') }
+  if (fullPayload.name !== '@elsoul/erpc-sdk' || !fullPayload.versions?.[version]) fail('npm-observe-full-selected-version-missing')
+  const selected = fullPayload.versions[version]
+  const comparable = metadata => ({ name: metadata?.name, version: metadata?.version, tarball: metadata?.dist?.tarball, integrity: metadata?.dist?.integrity })
+  if (!exact404 && canonicalJson(comparable(exactPayload)) !== canonicalJson(comparable(selected))) fail('npm-observe-exact-full-conflict')
+  const metadata = selected
+  if (metadata.name !== '@elsoul/erpc-sdk' || metadata.version !== version) fail('npm-observe-metadata-identity-failed')
+  const canonicalUrl = npmTarballUrl(version)
+  if (metadata.dist?.tarball !== canonicalUrl || typeof metadata.dist?.integrity !== 'string' || !/^sha512-[A-Za-z0-9+/]+={0,2}$/.test(metadata.dist.integrity)) fail('npm-observe-metadata-integrity-failed')
+  const archiveResponse = await get(canonicalUrl, 60_000)
+  if (archiveResponse.status !== 200) fail(`npm-observe-archive-http-${archiveResponse.status}`)
+  const archiveBytes = npmResponseBody(archiveResponse)
+  npmCheckDeadline(now, deadline)
+  const archivePath = join(workDir, input.descriptor.filename)
+  await writeFile(archivePath, archiveBytes)
+  const observedSha256 = sha256Hex(archiveBytes)
+  const observedSha512 = createHash('sha512').update(archiveBytes).digest('hex')
+  const observedSRI = `sha512-${createHash('sha512').update(archiveBytes).digest('base64')}`
+  requireEqual(observedSha256, input.descriptor.sha256, 'npm-observe archive SHA-256 mismatch')
+  requireEqual(observedSRI, metadata.dist.integrity, 'npm-observe archive SRI mismatch')
+  const emptyUserConfig = join(workDir, 'empty-npmrc')
+  const emptyGlobalConfig = join(workDir, 'empty-global-npmrc')
+  await writeFile(emptyUserConfig, '')
+  await writeFile(emptyGlobalConfig, '')
+  const isolatedEnv = npmChildEnvironment({ workDir, emptyUserConfig, emptyGlobalConfig })
+  const archiveExecutor = async (command, arguments_, options = {}) => {
+    const remaining = npmDeadlineRemaining(now, deadline)
+    const result = await npmBoundedExecFile(command, arguments_, {
+      ...options,
+      cwd: options.cwd ?? workDir,
+      env: isolatedEnv,
+      timeout: Math.min(options.timeout ?? Number.POSITIVE_INFINITY, remaining),
+      killSignal: 'SIGTERM',
+    })
+    npmCheckDeadline(now, deadline)
+    return result
+  }
+  await inspectReleaseSetArtifactBytes(input.descriptor, archivePath, input.publisher.sourceCommit, {
+    execFile: archiveExecutor,
+    commandMap: { python3: input.toolPaths.python },
+  })
+
+  const auditDirectory = await mkdtemp(join(workDir, 'audit-consumer-'))
+  const smokeDirectory = await mkdtemp(join(workDir, 'smoke-consumer-'))
+  const nodeVersion = await npmInvoke(run, input.toolPaths.node, ['--version'], { cwd: workDir, env: isolatedEnv }, 'node-version', deadlineControl)
+  const npmVersion = await npmInvoke(run, input.toolPaths.node, [input.toolPaths.npmCli, '--version'], { cwd: workDir, env: isolatedEnv }, 'npm-version', deadlineControl)
+  if (!/^v24\./.test(String(nodeVersion.stdout).trim()) || String(npmVersion.stdout).trim() !== '11.19.1') fail('npm-observe-tool-version-mismatch')
+  const pythonVersion = await npmInvoke(run, input.toolPaths.python, ['-c', 'import sys, cryptography; print(sys.version.split()[0]); print(cryptography.__version__)'], { cwd: workDir, env: isolatedEnv }, 'python-version', deadlineControl)
+  if (!/^3\.12\./m.test(pythonVersion.stdout) || !/^46\.0\.3$/m.test(pythonVersion.stdout)) fail('npm-observe-python-tool-version-mismatch')
+  const install = await npmInvoke(run, input.toolPaths.node, [input.toolPaths.npmCli, 'install', '--ignore-scripts', '--no-audit', '--no-fund', '--prefix', auditDirectory, `@elsoul/erpc-sdk@${version}`, `--registry=${npmRegistryOrigin}`], { cwd: auditDirectory, env: isolatedEnv }, 'audit-install', deadlineControl)
+  const lockFile = join(auditDirectory, 'package-lock.json')
+  const lock = JSON.parse(await readFile(lockFile, 'utf8'))
+  const lockMatches = Object.entries(lock.packages ?? {}).filter(([key]) => key === 'node_modules/@elsoul/erpc-sdk' || key.endsWith('/node_modules/@elsoul/erpc-sdk'))
+  if (lockMatches.length !== 1) fail('npm-observe-audit-lock-target-ambiguous')
+  const lockPackage = lockMatches[0][1]
+  if (lockPackage.version !== version || lockPackage.resolved !== canonicalUrl || lockPackage.integrity !== metadata.dist.integrity) fail('npm-observe-audit-lock-binding-failed')
+  const audit = await npmInvoke(run, input.toolPaths.node, [input.toolPaths.npmCli, 'audit', 'signatures', '--json', '--include-attestations', '--prefix', auditDirectory], { cwd: auditDirectory, env: isolatedEnv }, 'audit-signatures', deadlineControl)
+  let auditPayload
+  try { auditPayload = JSON.parse(audit.stdout) } catch { fail('npm-observe-audit-json-invalid') }
+  if (!Array.isArray(auditPayload.invalid) || auditPayload.invalid.length !== 0 || !Array.isArray(auditPayload.missing) || auditPayload.missing.length !== 0 || !Array.isArray(auditPayload.verified)) fail('npm-observe-audit-result-invalid')
+  const targets = auditPayload.verified.filter(item => item.name === '@elsoul/erpc-sdk' && item.version === version && npmCanonicalRegistry(item.registry) === npmRegistryOrigin)
+  if (targets.length !== 1) fail('npm-observe-audit-target-ambiguous')
+  const slsaBundles = (targets[0].attestationBundles ?? []).filter(bundle => bundle.predicateType === 'https://slsa.dev/provenance/v1' && bundle.bundle?.verificationMaterial?.certificate?.rawBytes && bundle.bundle?.dsseEnvelope?.payload)
+  if (slsaBundles.length !== 1) fail('npm-observe-slsa-bundle-ambiguous')
+  const slsa = slsaBundles[0].bundle
+  const certificateFile = join(workDir, 'npm-certificate.json')
+  await writeFile(certificateFile, JSON.stringify({ rawBytes: slsa.verificationMaterial.certificate.rawBytes }))
+  const claimsResult = await npmInvoke(run, input.toolPaths.python, ['-c', npmClaimsPython, certificateFile], { cwd: workDir, env: isolatedEnv }, 'certificate-claims', deadlineControl)
+  let claims
+  try { claims = JSON.parse(claimsResult.stdout) } catch { fail('npm-observe-certificate-claims-invalid') }
+  const expectedInvocation = `https://github.com/${EXPECTED_REPOSITORY}/actions/runs/${input.publisher.publisherRunId}/attempts/${input.publisher.publisherAttempt}`
+  npmRequireClaim(claims, ['1.3.6.1.4.1.57264.1.8', '1.3.6.1.4.1.57264.1.1'], 'https://token.actions.githubusercontent.com', 'issuer')
+  for (const [key, expected, label] of [
+    ['1.3.6.1.4.1.57264.1.9', `https://github.com/${EXPECTED_REPOSITORY}/${RELEASE_SET_WORKFLOW}@refs/heads/main`, 'workflow-legacy'],
+    ['1.3.6.1.4.1.57264.1.18', `https://github.com/${EXPECTED_REPOSITORY}/${RELEASE_SET_WORKFLOW}@refs/heads/main`, 'workflow'],
+    ['1.3.6.1.4.1.57264.1.10', input.publisher.sourceCommit, 'source-legacy'],
+    ['1.3.6.1.4.1.57264.1.13', input.publisher.sourceCommit, 'source'],
+    ['1.3.6.1.4.1.57264.1.19', input.publisher.sourceCommit, 'source-workflow'],
+    ['1.3.6.1.4.1.57264.1.12', `https://github.com/${EXPECTED_REPOSITORY}`, 'repository'],
+    ['1.3.6.1.4.1.57264.1.14', 'refs/heads/main', 'ref'],
+    ['1.3.6.1.4.1.57264.1.15', EXPECTED_REPOSITORY_ID, 'repository-id'],
+    ['1.3.6.1.4.1.57264.1.20', 'workflow_dispatch', 'event'],
+    ['1.3.6.1.4.1.57264.1.21', expectedInvocation, 'invocation'],
+  ]) npmRequireClaim(claims, [key], expected, label)
+  if (claims['1.3.6.1.4.1.57264.1.23'] !== undefined) requireEqual(claims['1.3.6.1.4.1.57264.1.23'], 'npm', 'npm-observe environment claim mismatch')
+  if (claims['1.3.6.1.4.1.57264.1.24'] !== undefined) requireEqual(claims['1.3.6.1.4.1.57264.1.24'], `repo:elsoul@42315168/erpc-sdk@${EXPECTED_REPOSITORY_ID}:environment:npm`, 'npm-observe environment identity claim mismatch')
+  let provenance
+  try { provenance = JSON.parse(Buffer.from(slsa.dsseEnvelope.payload, 'base64').toString('utf8')) } catch { fail('npm-observe-slsa-payload-invalid') }
+  const subject = provenance.subject?.filter(item => item.name === `pkg:npm/%40elsoul/erpc-sdk@${version}`)
+  if (subject?.length !== 1 || subject[0].digest?.sha512 !== observedSha512) fail('npm-observe-slsa-subject-mismatch')
+  const predicate = provenance.predicate
+  const workflow = predicate?.buildDefinition?.externalParameters?.workflow
+  const github = predicate?.buildDefinition?.internalParameters?.github
+  const dependencies = predicate?.buildDefinition?.resolvedDependencies ?? []
+  if (provenance.predicateType !== 'https://slsa.dev/provenance/v1' || workflow?.repository !== `https://github.com/${EXPECTED_REPOSITORY}` || workflow?.path !== RELEASE_SET_WORKFLOW || workflow?.ref !== 'refs/heads/main' || String(github?.repository_id) !== EXPECTED_REPOSITORY_ID || github?.event_name !== 'workflow_dispatch' || !dependencies.some(item => item.digest?.gitCommit === input.publisher.sourceCommit)) fail('npm-observe-slsa-build-binding-failed')
+  if (predicate.runDetails?.metadata?.invocationId !== expectedInvocation) fail('npm-observe-slsa-invocation-mismatch')
+  const smokeInstall = await npmInvoke(run, input.toolPaths.node, [input.toolPaths.npmCli, 'install', '--ignore-scripts', '--no-audit', '--no-fund', '--prefix', smokeDirectory, archivePath, `--registry=${npmRegistryOrigin}`], { cwd: smokeDirectory, env: isolatedEnv }, 'smoke-install', deadlineControl)
+  const smokePackage = resolve(smokeDirectory, 'node_modules/@elsoul/erpc-sdk')
+  const smokeMetadata = JSON.parse(await readFile(join(smokePackage, 'package.json'), 'utf8'))
+  if (smokeMetadata.name !== '@elsoul/erpc-sdk' || smokeMetadata.version !== version || !smokePackage.startsWith(`${resolve(smokeDirectory)}${sep}`)) fail('npm-observe-smoke-identity-failed')
+  const smokeRequire = await npmInvoke(run, input.toolPaths.node, ['-e', 'const fs=require("node:fs"); const path=require("node:path"); const root=fs.realpathSync(process.env.ERPC_EXPECTED_ROOT); const p=fs.realpathSync(require.resolve("@elsoul/erpc-sdk")); if (!p.startsWith(root + path.sep)) process.exit(2); require("@elsoul/erpc-sdk")'], { cwd: smokeDirectory, env: { ...isolatedEnv, ERPC_EXPECTED_ROOT: join(smokeDirectory, 'node_modules', '@elsoul', 'erpc-sdk') } }, 'smoke-require', deadlineControl)
+  const smokeImport = await npmInvoke(run, input.toolPaths.node, ['--input-type=module', '-e', 'import fs from "node:fs"; import path from "node:path"; import { fileURLToPath } from "node:url"; const root=fs.realpathSync(process.env.ERPC_EXPECTED_ROOT); const p=await import.meta.resolve("@elsoul/erpc-sdk"); if (!p.startsWith("file://") || !fs.realpathSync(fileURLToPath(p)).startsWith(root + path.sep)) process.exit(2); await import("@elsoul/erpc-sdk")'], { cwd: smokeDirectory, env: { ...isolatedEnv, ERPC_EXPECTED_ROOT: join(smokeDirectory, 'node_modules', '@elsoul', 'erpc-sdk') } }, 'smoke-import', deadlineControl)
+  npmCheckDeadline(now, deadline)
+  const receipt = {
+    schemaVersion: 1, kind: 'npm-public-observation', state: 'observed', repository: EXPECTED_REPOSITORY, repositoryId: EXPECTED_REPOSITORY_ID,
+    planSha256: input.planSha256, preparation: input.preparation, descriptor: { kind: 'npm', name: '@elsoul/erpc-sdk', version, filename: input.descriptor.filename, expectedSha256: input.descriptor.sha256, observedSha256, observedSRI },
+    registry: { exactUrl, fullUrl, exactStatus: exactResponse.status, fullStatus: fullResponse.status, exactBodySha256: sha256Hex(npmResponseBody(exactResponse)), fullBodySha256: sha256Hex(fullBody), tarballUrl: canonicalUrl },
+    publisher: { ...input.publisher, invocation: expectedInvocation }, observer: input.observer, provenance: { certificateClaims: claims, subject: subject[0], workflow, invocation: predicate.runDetails.metadata.invocationId },
+    toolVersions: { node: String(nodeVersion.stdout).trim(), npm: String(npmVersion.stdout).trim(), python: String(pythonVersion.stdout).trim() },
+    consumer: { audit: { exitCode: audit.exitCode, invalid: auditPayload.invalid.length, missing: auditPayload.missing.length, verifiedTargetCount: targets.length }, smoke: { exitCodes: { install: smokeInstall.exitCode, require: smokeRequire.exitCode, import: smokeImport.exitCode }, packageRoot: 'external-consumer/node_modules/@elsoul/erpc-sdk' } },
+    auth: { requested: false, uploadAttempted: false }, observedAt: new Date().toISOString(),
+  }
+  const temporaryOutput = `${outputFile}.tmp-${process.pid}-${Math.random().toString(16).slice(2)}`
+  await writeFile(temporaryOutput, `${canonicalJson(receipt)}\n`, { flag: 'wx' })
+  await rename(temporaryOutput, outputFile)
+  try {
+    npmCheckDeadline(now, deadline)
+  } catch (error) {
+    await rm(outputFile, { force: true })
+    throw error
+  }
+  return receipt
 }
 
 /** Authenticate Actions run/artifact metadata before any later bundle use. */
@@ -2093,6 +2554,57 @@ const run = async arguments_ => {
   if (arguments_[0] === '--release-set-observe') {
     requireExactInternalMode(arguments_, '--release-set-observe')
     fail('Future public observation remains unavailable until checkpoint B')
+  }
+
+  if (arguments_[0] === '--release-set-npm-observe') {
+    const outputFile = await npmInvalidateOutput(process.env.RELEASE_SET_NPM_OUTPUT_FILE, process.env.RELEASE_SET_NPM_WORK_DIR, 'npm observer output file')
+    requireExactInternalMode(arguments_, '--release-set-npm-observe')
+    const plan = validateReleaseSetPlan(JSON.parse(await readFile(env('RELEASE_SET_PLAN_FILE'), 'utf8')))
+    const planSha256 = env('RELEASE_SET_PLAN_SHA256')
+    requireEqual(releaseSetPlanDigest(plan), planSha256, 'npm observer plan digest mismatch')
+    const context = {
+      repository: env('REPOSITORY'), repositoryId: env('REPOSITORY_ID'), eventName: env('EVENT_NAME'), eventRef: env('EVENT_REF'),
+      eventSha: env('EVENT_SHA'), expectedCommit: env('EXPECTED_COMMIT'), checkoutHead: env('CHECKOUT_HEAD'), checkoutStatus: env('CHECKOUT_STATUS'),
+      workflowRef: env('WORKFLOW_REF'), workflowSha: env('WORKFLOW_SHA'),
+    }
+    validateReleaseSetContext(context, plan)
+    const preparedExpected = {
+      runId: env('RELEASE_SET_PREPARED_RUN_ID'),
+      runAttempt: env('RELEASE_SET_PREPARED_RUN_ATTEMPT'),
+      artifactId: env('RELEASE_SET_PREPARED_ARTIFACT_ID'),
+      bindingArtifactId: env('RELEASE_SET_PREPARED_BINDING_ARTIFACT_ID'),
+      sourceCommit: plan.sourceCommit,
+      bundleName: `release-set-bundle-${plan.sourceCommit}`,
+      bindingName: `release-set-binding-${env('RELEASE_SET_PREPARED_RUN_ID')}-${env('RELEASE_SET_PREPARED_RUN_ATTEMPT')}`,
+    }
+    const binding = JSON.parse(await readFile(env('RELEASE_SET_BINDING_FILE'), 'utf8'))
+    const preparation = await verifyReleaseSetPreparation({
+      plan,
+      context,
+      run: JSON.parse(await readFile(env('RELEASE_SET_RUN_FILE'), 'utf8')),
+      artifact: JSON.parse(await readFile(env('RELEASE_SET_ARTIFACT_METADATA_FILE'), 'utf8')),
+      bindingArtifact: JSON.parse(await readFile(env('RELEASE_SET_BINDING_METADATA_FILE'), 'utf8')),
+      binding,
+      bundleZip: env('RELEASE_SET_BUNDLE_ZIP_FILE'),
+      bindingZip: env('RELEASE_SET_BINDING_ZIP_FILE'),
+      artifactDirectory: env('RELEASE_SET_ARTIFACT_DIR'),
+      bindingDirectory: env('RELEASE_SET_BINDING_DIR'),
+      expected: preparedExpected,
+    })
+    const observerSource = env('RELEASE_SET_NPM_OBSERVER_SOURCE')
+    requireEqual(observerSource, context.eventSha, 'npm observer source must bind to execution context')
+    const publisher = JSON.parse(await readFile(env('RELEASE_SET_NPM_PUBLISHER_FILE'), 'utf8'))
+    const receipt = await observeNpmRelease({
+      descriptor: plan.artifacts.find(artifact => artifact.kind === 'npm'),
+      planSha256,
+      preparation: { sourceCommit: preparation.context.sourceCommit, runId: binding.runId, runAttempt: binding.runAttempt, artifactId: binding.artifactId, bindingArtifactId: binding.bindingArtifactId, planSha256: binding.planSha256 },
+      publisher,
+      observer: { runId: env('RELEASE_SET_NPM_OBSERVER_RUN_ID'), runAttempt: env('RELEASE_SET_NPM_OBSERVER_ATTEMPT'), workflowPath: env('RELEASE_SET_NPM_OBSERVER_WORKFLOW'), sourceCommit: observerSource },
+      workDir: env('RELEASE_SET_NPM_WORK_DIR'), outputFile,
+      toolPaths: { node: env('RELEASE_SET_NPM_NODE'), npmCli: env('RELEASE_SET_NPM_CLI'), python: env('RELEASE_SET_NPM_PYTHON') },
+    })
+    console.log(`npm-public-observation=${sha256Hex(canonicalJson(receipt))}`)
+    return
   }
 
   if (arguments_[0] === '--foundation-guard') {

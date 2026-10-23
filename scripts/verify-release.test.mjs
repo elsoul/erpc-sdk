@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
-import { chmod, cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { chmod, cp, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
+import { pathToFileURL } from 'node:url'
 import { promisify } from 'node:util'
 
 import {
@@ -39,8 +40,10 @@ import {
   inspectReleaseSetArtifactBytes,
   inspectReleaseSetRubyGemBytes,
   inspectReleaseSetRustArchiveBytes,
+  observeNpmRelease,
   parseReleaseSetChecksums,
   releaseSetPlanDigest,
+  sha256File,
   validateReleaseSetContext,
   validateReleaseSetPlan,
   validateReleaseSetPreparationBinding,
@@ -51,6 +54,7 @@ import {
   verifyArchiveContents,
   verifyFoundationBundle,
   verifyFoundationProofSet,
+  verifyReleaseSetArtifactZip,
 } from './verify-release.mjs'
 
 const root = new URL('../', import.meta.url)
@@ -600,6 +604,43 @@ end
     RELEASE_SET_PREPARED_RUN_ID: '51', RELEASE_SET_PREPARED_RUN_ATTEMPT: '1', RELEASE_SET_PREPARED_ARTIFACT_ID: '52', RELEASE_SET_PREPARED_BINDING_ARTIFACT_ID: '53',
     REPOSITORY: 'elsoul/erpc-sdk', REPOSITORY_ID: '1429568627', EVENT_NAME: 'workflow_dispatch', EVENT_REF: 'refs/heads/main', EVENT_SHA: 'd'.repeat(40), EXPECTED_COMMIT: sourceCommit, CHECKOUT_HEAD: sourceCommit, CHECKOUT_STATUS: '', WORKFLOW_REF: 'elsoul/erpc-sdk/.github/workflows/release.yml@refs/heads/main', WORKFLOW_SHA: sourceCommit,
   }), /event SHA mismatch|Missing RELEASE_SET_RUN_FILE/)
+  const recomputedBindingMetadata = async zipFile => {
+    const bytes = await readFile(zipFile)
+    return { ...strictBindingMetadata, size_in_bytes: bytes.length, digest: `sha256:${sha256Hex(bytes)}` }
+  }
+  const b1DifferentBindingDirectory = join(directory, 'b1-different-binding-directory')
+  await mkdir(b1DifferentBindingDirectory)
+  await writeFile(join(b1DifferentBindingDirectory, 'release-set-binding.json'), JSON.stringify({ ...binding, sourceCommit: 'd'.repeat(40) }))
+  const b1DifferentBindingZip = join(directory, 'b1-different-binding.zip')
+  await execFileAsync('zip', ['-q', b1DifferentBindingZip, 'release-set-binding.json'], { cwd: b1DifferentBindingDirectory })
+  const b1DifferentBindingMetadataFile = join(directory, 'b1-different-binding-metadata.json')
+  await writeFile(b1DifferentBindingMetadataFile, JSON.stringify(await recomputedBindingMetadata(b1DifferentBindingZip)))
+  await assert.rejects(runVerifierCli(['--release-set-verify'], { ...strictEnv, RELEASE_SET_BINDING_DIR: b1DifferentBindingDirectory, RELEASE_SET_BINDING_ZIP_FILE: b1DifferentBindingZip, RELEASE_SET_BINDING_METADATA_FILE: b1DifferentBindingMetadataFile }), /binding ZIP\/consumed binding mismatch/)
+
+  const b1UnrelatedBindingDirectory = join(directory, 'b1-unrelated-binding-directory')
+  await mkdir(b1UnrelatedBindingDirectory)
+  await writeFile(join(b1UnrelatedBindingDirectory, 'unrelated.json'), '{"unrelated":true}\n')
+  const b1UnrelatedBindingZip = join(directory, 'b1-unrelated-binding.zip')
+  await execFileAsync('zip', ['-q', b1UnrelatedBindingZip, 'unrelated.json'], { cwd: b1UnrelatedBindingDirectory })
+  const b1UnrelatedBindingMetadataFile = join(directory, 'b1-unrelated-binding-metadata.json')
+  await writeFile(b1UnrelatedBindingMetadataFile, JSON.stringify(await recomputedBindingMetadata(b1UnrelatedBindingZip)))
+  await assert.rejects(runVerifierCli(['--release-set-verify'], { ...strictEnv, RELEASE_SET_BINDING_DIR: b1UnrelatedBindingDirectory, RELEASE_SET_BINDING_ZIP_FILE: b1UnrelatedBindingZip, RELEASE_SET_BINDING_METADATA_FILE: b1UnrelatedBindingMetadataFile }), /exactly release-set-binding/)
+
+  const typedSymlinkZip = join(directory, 'b1-typed-symlink-binding.zip')
+  await execFileAsync('python3', ['-c', 'import sys,zipfile; z=zipfile.ZipFile(sys.argv[1],"w"); i=zipfile.ZipInfo("link"); i.create_system=3; i.external_attr=(0o120777 << 16); z.writestr(i,"release-set-binding.json"); z.writestr("release-set-binding.json",open(sys.argv[2],"rb").read()); z.close()', typedSymlinkZip, bindingFile])
+  const typedSymlinkMetadataFile = join(directory, 'b1-typed-symlink-binding-metadata.json')
+  await writeFile(typedSymlinkMetadataFile, JSON.stringify(await recomputedBindingMetadata(typedSymlinkZip)))
+  await assert.rejects(runVerifierCli(['--release-set-verify'], { ...strictEnv, RELEASE_SET_BINDING_ZIP_FILE: typedSymlinkZip, RELEASE_SET_BINDING_METADATA_FILE: typedSymlinkMetadataFile }), /non-regular|symlink/)
+  const npmPublisherFile = join(directory, 'npm-publisher.json')
+  await writeFile(npmPublisherFile, JSON.stringify({ repository: 'elsoul/erpc-sdk', repositoryId: '1429568627', sourceCommit, workflowPath: '.github/workflows/release.yml', ref: 'refs/heads/main', event: 'workflow_dispatch', environment: 'npm', publisherRunId: '39871872971', publisherAttempt: '1' }))
+  const npmOutput = join(directory, 'npm-receipt.json')
+  await writeFile(npmOutput, `${JSON.stringify({ schemaVersion: 1, kind: 'npm-public-observation', state: 'observed' })}\n`)
+  const npmWork = join(directory, 'npm-work')
+  await mkdir(npmWork)
+  const npmCliEnvironment = { ...strictEnv, RELEASE_SET_NPM_PUBLISHER_FILE: npmPublisherFile, RELEASE_SET_NPM_OUTPUT_FILE: npmOutput, RELEASE_SET_NPM_WORK_DIR: npmWork, RELEASE_SET_NPM_OBSERVER_RUN_ID: '9001', RELEASE_SET_NPM_OBSERVER_ATTEMPT: '1', RELEASE_SET_NPM_OBSERVER_WORKFLOW: '.github/workflows/release.yml', RELEASE_SET_NPM_OBSERVER_SOURCE: sourceCommit, RELEASE_SET_NPM_NODE: process.execPath, RELEASE_SET_NPM_CLI: process.execPath, RELEASE_SET_NPM_PYTHON: process.execPath }
+  delete npmCliEnvironment.RELEASE_SET_RUN_FILE
+  await assert.rejects(runVerifierCli(['--release-set-npm-observe'], npmCliEnvironment), /Missing RELEASE_SET_RUN_FILE/)
+  await assert.rejects(() => readFile(npmOutput, 'utf8'), { code: 'ENOENT' })
   await assert.rejects(runVerifierCli(['--release-set-observe'], { RELEASE_SET_PLAN_FILE: planFile, RELEASE_SET_PLAN_SHA256: releaseSetPlanDigest(plan), RELEASE_SET_PROOF_FILE: join(directory, 'missing-proof.json') }), /unavailable until checkpoint B/)
 })
 
@@ -684,6 +725,276 @@ with tarfile.open(output, 'w:') as outer:
     await execFileAsync('python3', ['-c', mutateGemScript, gem, mutated, mode])
     await assert.rejects(() => inspectReleaseSetRubyGemBytes({ filePath: mutated, name: 'erpc-sdk', version: '0.11.0' }), /outer member|specification\/data|mismatch/)
   }
+})
+
+test('B1 npm observer executes actual HTTP/process/crypto-policy/consumer paths without trusted receipt inputs', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'erpc-sdk-b1-npm-'))
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  const pythonPath = (await execFileAsync('which', ['python3'])).stdout.trim()
+  const packageRoot = join(directory, 'package-root')
+  await mkdir(join(packageRoot, 'package', 'dist'), { recursive: true })
+  await writeFile(join(packageRoot, 'package', 'package.json'), JSON.stringify({ name: '@elsoul/erpc-sdk', version: '0.9.1', exports: { '.': { require: './dist/index.cjs', import: './dist/index.mjs' } } }))
+  await writeFile(join(packageRoot, 'package', 'LICENSE'), 'MIT\n')
+  await writeFile(join(packageRoot, 'package', 'README.md'), '# historical fixture\n')
+  await writeFile(join(packageRoot, 'package', 'dist', 'index.cjs'), 'module.exports = { ok: true }\n')
+  await writeFile(join(packageRoot, 'package', 'dist', 'index.mjs'), 'export const ok = true\n')
+  const archive = join(directory, 'elsoul-erpc-sdk-0.9.1.tgz')
+  await execFileAsync('tar', ['-czf', archive, '-C', packageRoot, 'package'], { env: { ...process.env, COPYFILE_DISABLE: '1' } })
+  const archiveBytes = await readFile(archive)
+  const archiveSha256 = sha256Hex(archiveBytes)
+  const archiveSha512 = (await import('node:crypto')).createHash('sha512').update(archiveBytes).digest('hex')
+  const integrity = `sha512-${(await import('node:crypto')).createHash('sha512').update(archiveBytes).digest('base64')}`
+  const descriptor = { kind: 'npm', filename: 'elsoul-erpc-sdk-0.9.1.tgz', name: '@elsoul/erpc-sdk', version: '0.9.1', sha256: archiveSha256, files: ['package', 'package/dist', 'package/LICENSE', 'package/README.md', 'package/dist/index.cjs', 'package/dist/index.mjs', 'package/package.json'] }
+  const metadata = { name: descriptor.name, version: descriptor.version, dist: { tarball: 'https://registry.npmjs.org/@elsoul/erpc-sdk/-/erpc-sdk-0.9.1.tgz', integrity } }
+  const sourceCommit = '4'.repeat(40)
+  const publisher = { repository: 'elsoul/erpc-sdk', repositoryId: '1429568627', sourceCommit, workflowPath: '.github/workflows/release.yml', ref: 'refs/heads/main', event: 'workflow_dispatch', environment: 'npm', publisherRunId: '39871872971', publisherAttempt: '1' }
+  const invocation = 'https://github.com/elsoul/erpc-sdk/actions/runs/39871872971/attempts/1'
+  const claims = {
+    '1.3.6.1.4.1.57264.1.8': 'https://token.actions.githubusercontent.com',
+    '1.3.6.1.4.1.57264.1.9': 'https://github.com/elsoul/erpc-sdk/.github/workflows/release.yml@refs/heads/main',
+    '1.3.6.1.4.1.57264.1.10': sourceCommit,
+    '1.3.6.1.4.1.57264.1.12': 'https://github.com/elsoul/erpc-sdk',
+    '1.3.6.1.4.1.57264.1.13': sourceCommit,
+    '1.3.6.1.4.1.57264.1.14': 'refs/heads/main',
+    '1.3.6.1.4.1.57264.1.15': '1429568627',
+    '1.3.6.1.4.1.57264.1.18': 'https://github.com/elsoul/erpc-sdk/.github/workflows/release.yml@refs/heads/main',
+    '1.3.6.1.4.1.57264.1.19': sourceCommit,
+    '1.3.6.1.4.1.57264.1.20': 'workflow_dispatch',
+    '1.3.6.1.4.1.57264.1.21': invocation,
+    '1.3.6.1.4.1.57264.1.23': 'npm',
+    '1.3.6.1.4.1.57264.1.24': 'repo:elsoul@42315168/erpc-sdk@1429568627:environment:npm',
+  }
+  const provenance = { predicateType: 'https://slsa.dev/provenance/v1', subject: [{ name: 'pkg:npm/%40elsoul/erpc-sdk@0.9.1', digest: { sha512: archiveSha512 } }], predicate: { buildDefinition: { externalParameters: { workflow: { repository: 'https://github.com/elsoul/erpc-sdk', path: '.github/workflows/release.yml', ref: 'refs/heads/main' } }, internalParameters: { github: { repository_id: '1429568627', event_name: 'workflow_dispatch' } }, resolvedDependencies: [{ digest: { gitCommit: sourceCommit } }] }, runDetails: { metadata: { invocationId: invocation } } } }
+  const audit = { invalid: [], missing: [], verified: [{ name: descriptor.name, version: descriptor.version, registry: 'https://registry.npmjs.org/', attestationBundles: [{ predicateType: 'https://slsa.dev/provenance/v1', bundle: { verificationMaterial: { certificate: { rawBytes: Buffer.from('certificate-fixture').toString('base64') } }, dsseEnvelope: { payload: Buffer.from(JSON.stringify(provenance)).toString('base64') } } }] }] }
+  const calls = []
+  const server = createServer((request_, response) => {
+    const path = decodeURIComponent(new URL(request_.url, 'http://loopback').pathname)
+    response.setHeader('content-type', 'application/json')
+    if (path === '/@elsoul/erpc-sdk/0.9.1') {
+      response.statusCode = 200
+      response.end(JSON.stringify(metadata))
+    } else if (path === '/@elsoul/erpc-sdk') {
+      response.statusCode = 200
+      response.end(JSON.stringify({ name: descriptor.name, versions: { '0.9.1': metadata } }))
+    } else if (path === '/@elsoul/erpc-sdk/-/erpc-sdk-0.9.1.tgz') {
+      response.statusCode = 200
+      response.setHeader('content-type', 'application/gzip')
+      response.end(archiveBytes)
+    } else {
+      response.statusCode = 404
+      response.end(JSON.stringify({ error: 'not-found' }))
+    }
+  })
+  await new Promise((resolve_, reject_) => {
+    server.once('error', reject_)
+    server.listen(0, '127.0.0.1', resolve_)
+  })
+  t.after(() => new Promise(resolve_ => server.close(resolve_)))
+  const port = server.address().port
+  const request = async url => {
+    calls.push(['request', url])
+    const logical = new URL(url)
+    if (logical.origin !== 'https://registry.npmjs.org') throw new Error('unexpected registry route')
+    const response = await fetch(`http://127.0.0.1:${port}${logical.pathname}`)
+    return { status: response.status, headers: Object.fromEntries(response.headers.entries()), body: Buffer.from(await response.arrayBuffer()) }
+  }
+  let brokenEsm = false
+  const run = async (command, args, options = {}) => {
+    calls.push(['run', command, args, options.cwd, options.env])
+    if (args.includes('--version')) return { exitCode: 0, stdout: args.length === 1 ? 'v24.1.0\n' : '11.19.1\n', stderr: '' }
+    if (command.includes('python') && args[0] === '-c' && args.at(-1)?.endsWith('.json')) return { exitCode: 0, stdout: `${JSON.stringify(claims)}\n`, stderr: '' }
+    if (command.includes('python') && args[0] === '-c') return { exitCode: 0, stdout: '3.12.11\n46.0.3\n', stderr: '' }
+    if (args.includes('install')) {
+      const prefix = args[args.indexOf('--prefix') + 1]
+      const packageDirectory = join(prefix, 'node_modules', '@elsoul', 'erpc-sdk')
+      await rm(packageDirectory, { recursive: true, force: true })
+      await mkdir(join(prefix, 'node_modules', '@elsoul'), { recursive: true })
+      await cp(join(packageRoot, 'package'), packageDirectory, { recursive: true })
+      if (brokenEsm && args.some(value => String(value).endsWith('.tgz'))) await writeFile(join(packageDirectory, 'dist', 'index.mjs'), 'throw new Error("fixture-esm-broken")\n')
+      if (args.includes(`@elsoul/erpc-sdk@${descriptor.version}`)) await writeFile(join(prefix, 'package-lock.json'), JSON.stringify({ packages: { 'node_modules/@elsoul/erpc-sdk': { version: descriptor.version, resolved: metadata.dist.tarball, integrity: metadata.dist.integrity } } }))
+      return { exitCode: 0, stdout: '', stderr: '' }
+    }
+    if (args.includes('audit') && args.includes('signatures')) return { exitCode: 0, stdout: JSON.stringify(audit), stderr: '' }
+    if (args.includes('--input-type=module') || args.some(value => String(value).includes('require.resolve'))) {
+      try {
+        const result = await execFileAsync(process.execPath, args, { cwd: options.cwd, env: options.env })
+        return { exitCode: 0, stdout: result.stdout, stderr: result.stderr }
+      } catch (error) {
+        return { exitCode: Number.isInteger(error.code) ? error.code : 1, stdout: error.stdout ?? '', stderr: error.stderr ?? '' }
+      }
+    }
+    return { exitCode: 0, stdout: '', stderr: '' }
+  }
+  const outputFile = join(directory, 'npm-observation.json')
+  await mkdir(join(directory, 'work'))
+  const dummyEnvironment = { npm_config_userconfig: '/tmp/dummy-user', npm_config_globalconfig: '/tmp/dummy-global', npm_config_cache: '/tmp/dummy-cache', npm_config_prefix: '/tmp/dummy-prefix', 'npm_config_@elsoul:registry': 'https://dummy.invalid', GH_TOKEN: 'DUMMY-GH', GITHUB_TOKEN: 'DUMMY-GITHUB', ACTIONS_ID_TOKEN_REQUEST_TOKEN: 'DUMMY-OIDC' }
+  const previousEnvironment = Object.fromEntries(Object.keys(dummyEnvironment).map(name => [name, process.env[name]]))
+  Object.assign(process.env, dummyEnvironment)
+  let receipt
+  try {
+    receipt = await observeNpmRelease({ descriptor, planSha256: 'a'.repeat(64), preparation: { sourceCommit, runId: '51', runAttempt: '1', artifactId: '52', bindingArtifactId: '53', planSha256: 'a'.repeat(64) }, publisher, observer: { runId: '9001', runAttempt: '1', workflowPath: '.github/workflows/release.yml', sourceCommit: 'b'.repeat(40) }, workDir: join(directory, 'work'), outputFile, toolPaths: { node: join(directory, 'node'), npmCli: join(directory, 'npm-cli.js'), python: pythonPath } }, { request, run, now: (() => { let value = 0; return () => value += 1 })(), sleep: async () => {} })
+  } finally {
+    for (const [name, value] of Object.entries(previousEnvironment)) {
+      if (value === undefined) delete process.env[name]
+      else process.env[name] = value
+    }
+  }
+  assert.equal(receipt.state, 'observed')
+  assert.equal(receipt.descriptor.observedSha256, archiveSha256)
+  assert.equal(receipt.auth.uploadAttempted, false)
+  const auditCall = calls.find(call => call[0] === 'run' && call[2].includes('audit') && call[2].includes('signatures'))
+  assert.ok(auditCall)
+  assert.equal(auditCall[4].NPM_CONFIG_REGISTRY, 'https://registry.npmjs.org')
+  assert.equal(auditCall[4].npm_config_registry, 'https://registry.npmjs.org')
+  for (const name of Object.keys(dummyEnvironment)) assert.equal(auditCall[4][name], undefined)
+  assert.ok(calls.some(call => call[0] === 'run' && call[2].some(value => String(value).includes('require.resolve'))))
+  assert.equal(JSON.parse(await readFile(outputFile, 'utf8')).descriptor.observedSRI, integrity)
+  brokenEsm = true
+  const brokenOutput = join(directory, 'broken-esm.json')
+  await mkdir(join(directory, 'broken-work'))
+  await assert.rejects(() => observeNpmRelease({ descriptor, planSha256: 'a'.repeat(64), preparation: { sourceCommit, runId: '51', runAttempt: '1', artifactId: '52', bindingArtifactId: '53', planSha256: 'a'.repeat(64) }, publisher, observer: { runId: '9001', runAttempt: '1', workflowPath: '.github/workflows/release.yml', sourceCommit: 'b'.repeat(40) }, workDir: join(directory, 'broken-work'), outputFile: brokenOutput, toolPaths: { node: join(directory, 'node'), npmCli: join(directory, 'npm-cli.js'), python: pythonPath } }, { request, run, now: (() => { let value = 0; return () => value += 1 })(), sleep: async () => {} }), /smoke-import-failed/)
+  await assert.rejects(() => readFile(brokenOutput, 'utf8'), { code: 'ENOENT' })
+  brokenEsm = false
+  const missingClaimsOutput = join(directory, 'missing-claims.json')
+  const missingClaimsWork = join(directory, 'missing-claims-work')
+  await mkdir(missingClaimsWork)
+  await assert.rejects(() => observeNpmRelease({ descriptor, planSha256: 'a'.repeat(64), preparation: { sourceCommit, runId: '51', runAttempt: '1', artifactId: '52', bindingArtifactId: '53', planSha256: 'a'.repeat(64) }, publisher, observer: { runId: '9001', runAttempt: '1', workflowPath: '.github/workflows/release.yml', sourceCommit: 'b'.repeat(40) }, workDir: missingClaimsWork, outputFile: missingClaimsOutput, toolPaths: { node: join(directory, 'node'), npmCli: join(directory, 'npm-cli.js'), python: pythonPath } }, { request, run: async (command, args, options) => { const result = await run(command, args, options); if (command.includes('python') && args[0] === '-c' && args.at(-1)?.endsWith('.json')) { const missing = JSON.parse(result.stdout); delete missing['1.3.6.1.4.1.57264.1.9']; return { ...result, stdout: JSON.stringify(missing) } } return result }, now: (() => { let value = 0; return () => value += 1 })(), sleep: async () => {} }), /workflow-legacy-claim-failed/)
+  await assert.rejects(() => readFile(missingClaimsOutput, 'utf8'), { code: 'ENOENT' })
+  let lateClock = 0
+  const lateOutput = join(directory, 'late.json')
+  const lateWork = join(directory, 'late-work')
+  await mkdir(lateWork)
+  await assert.rejects(() => observeNpmRelease({ descriptor, planSha256: 'a'.repeat(64), preparation: { sourceCommit, runId: '51', runAttempt: '1', artifactId: '52', bindingArtifactId: '53', planSha256: 'a'.repeat(64) }, publisher, observer: { runId: '9001', runAttempt: '1', workflowPath: '.github/workflows/release.yml', sourceCommit: 'b'.repeat(40) }, workDir: lateWork, outputFile: lateOutput, toolPaths: { node: join(directory, 'node'), npmCli: join(directory, 'npm-cli.js'), python: pythonPath } }, { request, run: async (command, args, options) => { const result = await run(command, args, options); if (args.includes('audit')) lateClock = 600001; return result }, now: () => lateClock, sleep: async () => {} }), /deadline-exceeded/)
+  await assert.rejects(() => readFile(lateOutput, 'utf8'), { code: 'ENOENT' })
+  await mkdir(join(directory, 'failed-work'))
+  const failedOutput = join(directory, 'failed.json')
+  await writeFile(failedOutput, `${JSON.stringify({ schemaVersion: 1, kind: 'npm-public-observation', state: 'observed' })}\n`)
+  await assert.rejects(() => observeNpmRelease({ descriptor, planSha256: 'a'.repeat(64), preparation: { sourceCommit, runId: '51', runAttempt: '1', artifactId: '52', bindingArtifactId: '53', planSha256: 'a'.repeat(64) }, publisher, observer: { runId: '9001', runAttempt: '1', workflowPath: '.github/workflows/release.yml', sourceCommit: 'b'.repeat(40) }, workDir: join(directory, 'failed-work'), outputFile: failedOutput, toolPaths: { node: join(directory, 'node'), npmCli: join(directory, 'npm-cli.js'), python: join(directory, 'python') } }, { request: async url => url.endsWith('.tgz') ? { status: 200, headers: {}, body: Buffer.from('changed') } : request(url), run, now: (() => { let value = 0; return () => value += 1 })(), sleep: async () => {} }), /archive SHA-256 mismatch/)
+  await assert.rejects(() => readFile(failedOutput, 'utf8'), { code: 'ENOENT' })
+  const invalidOutput = join(directory, 'invalid.json')
+  await writeFile(invalidOutput, `${JSON.stringify({ schemaVersion: 1, kind: 'npm-public-observation', state: 'observed' })}\n`)
+  await mkdir(join(directory, 'invalid-work'))
+  await assert.rejects(() => observeNpmRelease({ descriptor: { ...descriptor, filename: 'invalid-name.tgz' }, planSha256: 'a'.repeat(64), preparation: { sourceCommit, runId: '51', runAttempt: '1', artifactId: '52', bindingArtifactId: '53', planSha256: 'a'.repeat(64) }, publisher, observer: { runId: '9001', runAttempt: '1', workflowPath: '.github/workflows/release.yml', sourceCommit: 'b'.repeat(40) }, workDir: join(directory, 'invalid-work'), outputFile: invalidOutput, toolPaths: { node: join(directory, 'node'), npmCli: join(directory, 'npm-cli.js'), python: pythonPath } }, { request: async () => { throw new Error('unexpected request') }, run }), /archive filename mismatch/)
+  await assert.rejects(() => readFile(invalidOutput, 'utf8'), { code: 'ENOENT' })
+  const unrelatedRoot = join(directory, 'unrelated-root')
+  await mkdir(unrelatedRoot)
+  const unrelatedOutput = join(unrelatedRoot, 'unrelated.json')
+  await writeFile(unrelatedOutput, 'UNRELATED-FILE\n')
+  await assert.rejects(() => observeNpmRelease({ descriptor: { ...descriptor, filename: 'invalid-name.tgz' }, planSha256: 'a'.repeat(64), preparation: { sourceCommit, runId: '51', runAttempt: '1', artifactId: '52', bindingArtifactId: '53', planSha256: 'a'.repeat(64) }, publisher, observer: { runId: '9001', runAttempt: '1', workflowPath: '.github/workflows/release.yml', sourceCommit: 'b'.repeat(40) }, workDir: join(directory, 'invalid-work'), outputFile: unrelatedOutput, toolPaths: { node: join(directory, 'node'), npmCli: join(directory, 'npm-cli.js'), python: pythonPath } }, { request: async () => { throw new Error('unexpected request') }, run }), /share the external work root/)
+  assert.equal(await readFile(unrelatedOutput, 'utf8'), 'UNRELATED-FILE\n')
+  const foreignRoot = join(directory, 'foreign-root')
+  const escapedParent = join(directory, 'escaped-parent')
+  await mkdir(foreignRoot)
+  await symlink(foreignRoot, escapedParent, 'dir')
+  const escapedOutput = join(escapedParent, 'escaped.json')
+  await assert.rejects(() => observeNpmRelease({ descriptor: { ...descriptor, filename: 'invalid-name.tgz' }, planSha256: 'a'.repeat(64), preparation: { sourceCommit, runId: '51', runAttempt: '1', artifactId: '52', bindingArtifactId: '53', planSha256: 'a'.repeat(64) }, publisher, observer: { runId: '9001', runAttempt: '1', workflowPath: '.github/workflows/release.yml', sourceCommit: 'b'.repeat(40) }, workDir: join(directory, 'invalid-work'), outputFile: escapedOutput, toolPaths: { node: join(directory, 'node'), npmCli: join(directory, 'npm-cli.js'), python: pythonPath } }, { request: async () => { throw new Error('unexpected request') }, run }), /share the external work root/)
+  await assert.rejects(() => readFile(join(foreignRoot, 'escaped.json'), 'utf8'), { code: 'ENOENT' })
+})
+
+test('B1 synthetic npm archive inspection covers two future versions from actual bytes', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'erpc-sdk-b1-future-npm-'))
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  for (const version of ['0.11.0', '1.2.3']) {
+    const packageRoot = join(directory, `root-${version}`)
+    await mkdir(join(packageRoot, 'package', 'dist'), { recursive: true })
+    await writeFile(join(packageRoot, 'package', 'package.json'), JSON.stringify({ name: '@elsoul/erpc-sdk', version, main: 'dist/index.js' }))
+    await writeFile(join(packageRoot, 'package', 'LICENSE'), 'MIT\n')
+    await writeFile(join(packageRoot, 'package', 'README.md'), `# ${version}\n`)
+    await writeFile(join(packageRoot, 'package', 'dist', 'index.js'), 'module.exports = {}\n')
+    const archive = join(directory, `elsoul-erpc-sdk-${version}.tgz`)
+    await execFileAsync('tar', ['-czf', archive, '-C', packageRoot, 'package'], { env: { ...process.env, COPYFILE_DISABLE: '1' } })
+    const files = ['package', 'package/dist', 'package/LICENSE', 'package/README.md', 'package/dist/index.js', 'package/package.json']
+    const descriptor = { kind: 'npm', filename: `elsoul-erpc-sdk-${version}.tgz`, name: '@elsoul/erpc-sdk', version, sha256: sha256Hex(await readFile(archive)), files }
+    const inspected = await inspectReleaseSetArtifactBytes(descriptor, archive, 'a'.repeat(40))
+    assert.equal(inspected.sha256, descriptor.sha256)
+    assert.deepEqual(inspected.members.slice().sort(), files.slice().sort())
+  }
+})
+
+test('B1 carries A3 recomputed ZIP/API binding, member-set, and symlink regressions', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'erpc-sdk-b1-a3-zip-'))
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  const consumed = join(directory, 'consumed')
+  await mkdir(consumed)
+  const binding = Buffer.from('{"kind":"erpc-sdk-release-set-preparation-binding","sourceCommit":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}\n')
+  await writeFile(join(consumed, 'release-set-binding.json'), binding)
+  const makeZip = async (name, script) => {
+    const zip = join(directory, name)
+    await execFileAsync('python3', ['-c', script, zip, join(consumed, 'release-set-binding.json')])
+    return zip
+  }
+  const validZip = await makeZip('valid.zip', 'import sys,zipfile; z=zipfile.ZipFile(sys.argv[1],"w"); z.write(sys.argv[2],"release-set-binding.json"); z.close()')
+  const metadataFor = async zip => ({ id: 53, name: 'release-set-binding-51-1', expired: false, size_in_bytes: (await stat(zip)).size, digest: `sha256:${await sha256File(zip)}`, archive_download_url: 'https://api.github.com/repos/elsoul/erpc-sdk/actions/artifacts/53/zip' })
+  const expected = { zipFile: validZip, metadata: await metadataFor(validZip), expectedId: '53', consumedDirectory: consumed, expectedName: 'release-set-binding-51-1' }
+  assert.equal((await verifyReleaseSetArtifactZip(expected)).members[0], 'release-set-binding.json')
+
+  const changedZip = await makeZip('changed.zip', 'import sys,zipfile; z=zipfile.ZipFile(sys.argv[1],"w"); z.writestr("release-set-binding.json",b"{\\"kind\\":\\"different\\"}\\n"); z.close()')
+  const changedMetadata = await metadataFor(changedZip)
+  await assert.rejects(() => verifyReleaseSetArtifactZip({ ...expected, zipFile: changedZip, metadata: changedMetadata }), /member bytes differ/)
+
+  const unrelatedZip = await makeZip('unrelated.zip', 'import sys,zipfile; z=zipfile.ZipFile(sys.argv[1],"w"); z.writestr("unrelated.json",b"{}\\n"); z.close()')
+  const unrelatedMetadata = await metadataFor(unrelatedZip)
+  await assert.rejects(() => verifyReleaseSetArtifactZip({ ...expected, zipFile: unrelatedZip, metadata: unrelatedMetadata }), /members do not equal consumed files/)
+
+  const symlinkZip = await makeZip('symlink.zip', 'import sys,zipfile; z=zipfile.ZipFile(sys.argv[1],"w"); i=zipfile.ZipInfo("release-set-binding.json"); i.create_system=3; i.external_attr=(0o120777 << 16); z.writestr(i,"release-set-binding.json"); z.close()')
+  const symlinkMetadata = await metadataFor(symlinkZip)
+  await assert.rejects(() => verifyReleaseSetArtifactZip({ ...expected, zipFile: symlinkZip, metadata: symlinkMetadata }), /non-regular|symlink/)
+})
+
+test('B1 default subprocess timeout kills a child that ignores SIGTERM', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'erpc-sdk-b1-timeout-'))
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  const pythonPath = (await execFileAsync('which', ['python3'])).stdout.trim()
+  const packageRoot = join(directory, 'package-root')
+  await mkdir(join(packageRoot, 'package', 'dist'), { recursive: true })
+  await writeFile(join(packageRoot, 'package', 'package.json'), JSON.stringify({ name: '@elsoul/erpc-sdk', version: '1.2.3', main: 'dist/index.js' }))
+  await writeFile(join(packageRoot, 'package', 'LICENSE'), 'MIT\n')
+  await writeFile(join(packageRoot, 'package', 'README.md'), '# timeout\n')
+  await writeFile(join(packageRoot, 'package', 'dist', 'index.js'), 'module.exports = {}\n')
+  const archive = join(directory, 'elsoul-erpc-sdk-1.2.3.tgz')
+  await execFileAsync('tar', ['-czf', archive, '-C', packageRoot, 'package'], { env: { ...process.env, COPYFILE_DISABLE: '1' } })
+  const bytes = await readFile(archive)
+  const sha256 = sha256Hex(bytes)
+  const integrity = `sha512-${(await import('node:crypto')).createHash('sha512').update(bytes).digest('base64')}`
+  const descriptor = { kind: 'npm', filename: 'elsoul-erpc-sdk-1.2.3.tgz', name: '@elsoul/erpc-sdk', version: '1.2.3', sha256, files: ['package', 'package/dist', 'package/LICENSE', 'package/README.md', 'package/dist/index.js', 'package/package.json'] }
+  const metadata = { name: descriptor.name, version: descriptor.version, dist: { tarball: 'https://registry.npmjs.org/@elsoul/erpc-sdk/-/erpc-sdk-1.2.3.tgz', integrity } }
+  const sourceCommit = '4'.repeat(40)
+  const root = join(directory, 'work')
+  await mkdir(root)
+  const workDir = join(root, 'observer-work')
+  await mkdir(workDir)
+  const outputFile = join(root, 'receipt.json')
+  const pidFile = join(root, 'child.pid')
+  const termFile = join(root, 'term.received')
+  const trap = join(root, 'trap-node')
+  await writeFile(trap, `#!${process.execPath}\nconst fs=require('node:fs'); fs.writeFileSync(${JSON.stringify(pidFile)}, String(process.pid)); process.on('SIGTERM', () => fs.writeFileSync(${JSON.stringify(termFile)}, 'received')); setInterval(() => {}, 1000)\n`)
+  await chmod(trap, 0o755)
+  const input = { descriptor, planSha256: 'a'.repeat(64), preparation: { sourceCommit, runId: '51', runAttempt: '1', artifactId: '52', bindingArtifactId: '53', planSha256: 'a'.repeat(64) }, publisher: { repository: 'elsoul/erpc-sdk', repositoryId: '1429568627', sourceCommit, workflowPath: '.github/workflows/release.yml', ref: 'refs/heads/main', event: 'workflow_dispatch', environment: 'npm', publisherRunId: '39871872971', publisherAttempt: '1' }, observer: { runId: '9001', runAttempt: '1', workflowPath: '.github/workflows/release.yml', sourceCommit: 'b'.repeat(40) }, workDir, outputFile, toolPaths: { node: trap, npmCli: join(root, 'npm-cli.js'), python: pythonPath } }
+  const request = async url => url.endsWith('.tgz') ? { status: 200, headers: {}, body: bytes } : url.endsWith('/1.2.3') ? { status: 200, headers: {}, body: Buffer.from(JSON.stringify(metadata)) } : { status: 200, headers: {}, body: Buffer.from(JSON.stringify({ name: descriptor.name, versions: { '1.2.3': metadata } })) }
+  let clockCalls = 0
+  await assert.rejects(() => observeNpmRelease(input, { request, now: () => clockCalls++ === 0 ? 0 : 599500 }), /node-version-failed/)
+  assert.equal((await readFile(termFile, 'utf8')), 'received')
+  const pid = Number(await readFile(pidFile, 'utf8'))
+  assert.throws(() => process.kill(pid, 0))
+  await assert.rejects(() => readFile(outputFile, 'utf8'), { code: 'ENOENT' })
+})
+
+test('B1 canonical output boundary preserves a sentinel behind a symlinked repository ancestor', async t => {
+  const fixture = await mkdtemp(join(tmpdir(), 'erpc-sdk-b1-path-boundary-'))
+  t.after(() => rm(fixture, { recursive: true, force: true }))
+  const fakeRepo = join(fixture, 'synthetic-repository')
+  await mkdir(join(fakeRepo, 'scripts'), { recursive: true })
+  await mkdir(join(fakeRepo, 'registry'), { recursive: true })
+  await mkdir(join(fakeRepo, 'work'), { recursive: true })
+  await cp(new URL('../scripts/verify-release.mjs', import.meta.url), join(fakeRepo, 'scripts', 'verify-release.mjs'))
+  await cp(new URL('../registry/ruby-lockfile.mjs', import.meta.url), join(fakeRepo, 'registry', 'ruby-lockfile.mjs'))
+  const alias = join(fixture, 'external-alias')
+  await symlink(fakeRepo, alias, 'dir')
+  const sentinel = join(fakeRepo, 'protected-sentinel.txt')
+  await writeFile(sentinel, 'KEEP-UNRELATED-FILE')
+  const verifier = await import(pathToFileURL(join(fakeRepo, 'scripts', 'verify-release.mjs')).href)
+  await assert.rejects(() => verifier.observeNpmRelease({ workDir: join(alias, 'work'), outputFile: join(alias, 'protected-sentinel.txt'), descriptor: {} }), /outside the repository/)
+  assert.equal(await readFile(sentinel, 'utf8'), 'KEEP-UNRELATED-FILE')
 })
 
 test('foundation proof aggregate binds observed receipts, auth paths, and attestation claims', async t => {
@@ -895,6 +1206,8 @@ test('every internal verifier mode rejects extra, duplicate, and conflicting CLI
     ARCHIVE_DIR: '/tmp/erpc-sdk-no-such-archive-directory',
     EXPECTED_VERSION: '0.10.0',
   }
+  const npmModeEnvironment = { RELEASE_SET_NPM_OUTPUT_FILE: '/tmp/erpc-sdk-npm-mode-test.json', RELEASE_SET_NPM_WORK_DIR: '/tmp/erpc-sdk-npm-mode-test-work' }
+  await mkdir(npmModeEnvironment.RELEASE_SET_NPM_WORK_DIR, { recursive: true })
   const cases = [
     [['--workflow-guard', '--unknown'], workflowEnvironment],
     [['--workflow-guard', '--scope', 'all'], workflowEnvironment],
@@ -915,6 +1228,8 @@ test('every internal verifier mode rejects extra, duplicate, and conflicting CLI
     [['--foundation-proof-verify', '--unknown'], {}],
     [['--foundation-registry', '--unknown'], {}],
     [['--foundation-pypi-proof', '--unknown'], {}],
+    [['--release-set-npm-observe', '--unknown'], npmModeEnvironment],
+    [['--release-set-npm-observe', '--release-set-npm-observe'], npmModeEnvironment],
   ]
   for (const [arguments_, environment] of cases) {
     await assert.rejects(
