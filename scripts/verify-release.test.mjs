@@ -63,6 +63,15 @@ const extractWorkflowRunBlock = (workflow, stepName) => {
   return dedent(afterRun.slice(0, afterRun.indexOf('\n      - name:')))
 }
 
+const extractWorkflowFragment = (workflow, stepName, startMarker, endMarker) => {
+  const block = extractWorkflowRunBlock(workflow, stepName)
+  const start = block.indexOf(startMarker)
+  assert.notEqual(start, -1, `missing workflow fragment start ${startMarker}`)
+  const end = endMarker === undefined ? block.length : block.indexOf(endMarker, start)
+  assert.notEqual(end, -1, `missing workflow fragment end ${endMarker}`)
+  return block.slice(start, end)
+}
+
 const extractWorkflowHeredoc = (workflow, marker, terminator) => {
   const start = workflow.indexOf(marker)
   assert.notEqual(start, -1, `missing workflow heredoc ${marker}`)
@@ -1266,4 +1275,558 @@ test('CI invokes split release cohorts and runs release behavior tests', async (
   assert.match(ci, /node scripts\/verify-release\.mjs --scope rust/)
   assert.match(ci, /node scripts\/verify-release\.mjs --scope non-rust/)
   assert.match(ci, /node --test scripts\/verify-release\.test\.mjs/)
+})
+
+test('recovery workflow is manual, M-bound, read-only for registries, and keeps the fifteen-asset boundary', async () => {
+  const workflow = await readFile(new URL('../.github/workflows/reconcile-foundation.yml', import.meta.url), 'utf8')
+  const originalWorkflow = await readFile(new URL('../.github/workflows/release.yml', import.meta.url), 'utf8')
+  const originalVerifier = await readFile(new URL('./verify-release.mjs', import.meta.url), 'utf8')
+  const expectedWorkflow = (await execFileAsync('git', ['show', 'HEAD:.github/workflows/release.yml'])).stdout
+  const expectedVerifier = (await execFileAsync('git', ['show', 'HEAD:scripts/verify-release.mjs'])).stdout
+  assert.equal(originalWorkflow, expectedWorkflow)
+  assert.equal(originalVerifier, expectedVerifier)
+  assert.match(workflow, /workflow_dispatch:/)
+  assert.doesNotMatch(workflow, /^\s+(schedule|push|pull_request|pull_request_target|workflow_call|release):/m)
+  assert.match(workflow, /expected_control_commit:/)
+  assert.match(workflow, /cancel-in-progress:\s*false/)
+  assert.match(workflow, /permissions:\n\s+contents: read/)
+  assert.match(workflow, /GH_TOKEN: \$\{\{ github\.token \}\}[\s\S]*CONTROL_COMMIT: \$\{\{ steps\.guard\.outputs\.control_commit \}\}/)
+  assert.match(workflow, /Recheck main remains C at the read-before-write boundary[\s\S]*CONTROL_COMMIT: \$\{\{ steps\.guard\.outputs\.control_commit \}\}/)
+  assert.doesNotMatch(workflow, /id-token:\s*write/)
+  assert.doesNotMatch(workflow, /npm\s+publish|npm\s+dist-tag|twine\s+upload|gem\s+push|pypa\/gh-action-pypi-publish|configure-rubygems-credentials/)
+  assert.doesNotMatch(workflow, /--local(?:\s|$)/m)
+  assert.match(workflow, /SOURCE_M:\s*4677d67d14c8fbb17ada3ba824d1623180c6b4d9/)
+  assert.match(workflow, /PUBLISH_RUN_ID:\s*'39871872971'/)
+  assert.match(workflow, /PREPARED_ARTIFACT_ID:\s*'12461868771'/)
+  assert.match(workflow, /PREPARED_BINDING_ARTIFACT_ID:\s*'12463070497'/)
+  assert.match(workflow, /foundation-recovery-context-\$\{\{ github\.run_id \}\}/)
+  assert.match(workflow, /gem install [^\n]*--both[^\n]*--clear-sources --source https:\/\/rubygems\.org\//)
+  assert.match(workflow, /npm audit signatures --json --include-attestations/)
+  assert.match(workflow, /pypi_attestations import Distribution, GitHubPublisher, Provenance/)
+  assert.match(workflow, /test "\$\(find "\$ASSET_DIR" -maxdepth 1 -type f \| wc -l \| tr -d ' '\)" = 15/)
+  const aggregateStep = workflow.slice(workflow.indexOf('- name: Verify current receipt/context artifact metadata and both Ruby consumers'), workflow.indexOf('\n      - name:', workflow.indexOf('- name: Verify current receipt/context artifact metadata and both Ruby consumers') + 1))
+  assert.match(aggregateStep, /FOUNDATION_PLAN_FILE:/)
+  assert.match(aggregateStep, /--foundation-verify/)
+  assert.match(aggregateStep, /--foundation-proof-verify/)
+  assert.match(workflow, /compare_consumed \"foundation-ruby-consumer-\$GITHUB_RUN_ID-3\.1\"/)
+})
+
+test('recovery control guard executes valid C/M fixtures and rejects event and projection changes', async t => {
+  const workflow = await readFile(new URL('../.github/workflows/reconcile-foundation.yml', import.meta.url), 'utf8')
+  const block = extractWorkflowRunBlock(workflow, 'Guard repository, event, control C, source M, and exact projection')
+  const directory = await mkdtemp(join(tmpdir(), 'erpc-sdk-recovery-guard-'))
+  const outputDirectory = await mkdtemp(join(tmpdir(), 'erpc-sdk-recovery-guard-output-'))
+  t.after(() => Promise.all([rm(directory, { recursive: true, force: true }), rm(outputDirectory, { recursive: true, force: true })]))
+  const runGit = arguments_ => execFileAsync('git', arguments_, { cwd: directory })
+  await runGit(['init', '-q'])
+  await runGit(['config', 'user.email', 'fixture@example.invalid'])
+  await runGit(['config', 'user.name', 'fixture'])
+  await mkdir(join(directory, '.github', 'workflows'), { recursive: true })
+  await mkdir(join(directory, 'scripts'), { recursive: true })
+  await mkdir(join(directory, 'docs'), { recursive: true })
+  await writeFile(join(directory, '.github/workflows/release.yml'), 'immutable release\n')
+  await writeFile(join(directory, 'scripts/verify-release.mjs'), 'immutable verifier\n')
+  await writeFile(join(directory, 'scripts/verify-release.test.mjs'), 'old test\n')
+  await writeFile(join(directory, 'docs/RELEASING.md'), 'old docs\n')
+  const gh = join(directory, 'gh')
+  await writeFile(gh, '#!/usr/bin/env node\n' +
+    'const args = process.argv.slice(2)\n' +
+    'if (args.includes("--jq")) process.stdout.write(process.env.CONTROL_COMMIT + "\\n")\n' +
+    'else process.stdout.write(JSON.stringify({ object: { sha: process.env.CONTROL_COMMIT } }))\n')
+  await chmod(gh, 0o755)
+  await runGit(['add', '.'])
+  await runGit(['commit', '-qm', 'M fixture'])
+  const sourceCommit = (await runGit(['rev-parse', 'HEAD'])).stdout.trim()
+  await writeFile(join(directory, '.github/workflows/reconcile-foundation.yml'), 'recovery workflow\n')
+  await writeFile(join(directory, 'scripts/verify-release.test.mjs'), 'new test\n')
+  await writeFile(join(directory, 'docs/RELEASING.md'), 'new docs\n')
+  await runGit(['add', '.'])
+  await runGit(['commit', '-qm', 'C fixture'])
+  const controlCommit = (await runGit(['rev-parse', 'HEAD'])).stdout.trim()
+  const outputFile = join(outputDirectory, 'output')
+  const runGuard = (overrides = {}) => execFileAsync('bash', ['-c', 'set -euo pipefail\n' + block], {
+    cwd: directory,
+    env: {
+      ...process.env,
+      PATH: directory + ':' + (process.env.PATH ?? ''),
+      CONTROL_COMMIT: controlCommit,
+      EVENT_SHA: controlCommit,
+      WORKFLOW_SHA: controlCommit,
+      WORKFLOW_REF: 'elsoul/erpc-sdk/.github/workflows/reconcile-foundation.yml@refs/heads/main',
+      EVENT_NAME: 'workflow_dispatch',
+      EVENT_REF: 'refs/heads/main',
+      REPOSITORY: 'elsoul/erpc-sdk',
+      REPOSITORY_ID: '1429568627',
+      EXPECTED_REPOSITORY: 'elsoul/erpc-sdk',
+      EXPECTED_REPOSITORY_ID: '1429568627',
+      SOURCE_M: sourceCommit,
+      GITHUB_OUTPUT: outputFile,
+      ...overrides,
+    },
+  })
+  await runGuard()
+  assert.match(await readFile(outputFile, 'utf8'), new RegExp('control_commit=' + controlCommit))
+  await assert.rejects(runGuard({ EVENT_NAME: 'push' }))
+  await writeFile(join(directory, 'packages-extra.txt'), 'unapproved path\n')
+  await runGit(['add', 'packages-extra.txt'])
+  await runGit(['commit', '-qm', 'unapproved projection'])
+  const hostileCommit = (await runGit(['rev-parse', 'HEAD'])).stdout.trim()
+  await assert.rejects(runGuard({ CONTROL_COMMIT: hostileCommit, EVENT_SHA: hostileCommit, WORKFLOW_SHA: hostileCommit }))
+})
+
+test('recovery Ruby consumer block executes the isolated dependency path and fails on install errors', async t => {
+  const workflow = await readFile(new URL('../.github/workflows/reconcile-foundation.yml', import.meta.url), 'utf8')
+  const block = extractWorkflowRunBlock(workflow, 'Run the exact gem with declared dependencies from only RubyGems.org')
+  const directory = await mkdtemp(join(tmpdir(), 'erpc-sdk-recovery-ruby-'))
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  const gemFile = join(directory, 'erpc-sdk-0.9.1.gem')
+  await writeFile(gemFile, 'approved gem fixture\n')
+  const gemArgs = join(directory, 'gem-args')
+  const gem = join(directory, 'gem')
+  await writeFile(gem, '#!/bin/sh\n' +
+    'printf "%s\\n" "$@" > "$GEM_ARGS"\n' +
+    'pwd > "$GEM_PWD_FILE"\n' +
+    'if [ "$GEM_FAIL" = 1 ]; then exit 23; fi\n')
+  await chmod(gem, 0o755)
+  const ruby = join(directory, 'ruby')
+  await writeFile(ruby, '#!/bin/sh\n' +
+    'cat > "$RUBY_STDIN"\n' +
+    'if [ "$RUBY_FAIL" = 1 ]; then exit 24; fi\n')
+  await chmod(ruby, 0o755)
+  const proof = join(directory, 'rubygems-proof.json')
+  const baseEnvironment = {
+    ...process.env,
+    PATH: directory + ':' + (process.env.PATH ?? ''),
+    RUNNER_TEMP: directory,
+    GEM_FILE: gemFile,
+    GEM_SHA256: '9af4312d655206e3f71481a2414382095cf8857fd481fed878503577b2a946d2',
+    RUBY_VERSION_UNDER_TEST: '3.4',
+    GEM_ARGS: gemArgs,
+    GEM_PWD_FILE: join(directory, 'gem-pwd'),
+    RUBY_STDIN: join(directory, 'ruby-stdin'),
+    RUBY_EVIDENCE_FILE: join(directory, 'ruby-consumer-3.4.json'),
+    EXPECTED_REPOSITORY: 'elsoul/erpc-sdk',
+    SOURCE_M: '4677d67d14c8fbb17ada3ba824d1623180c6b4d9',
+    PLAN_SHA256: '779aa1c48dc9ba2178fcfe021e102a12df85e4098c66120b1a3d2e8d7ca1911c',
+    PREPARED_RUN_ID: '39862319930',
+    PREPARED_RUN_ATTEMPT: '1',
+    PREPARED_ARTIFACT_ID: '12461868771',
+    GITHUB_RUN_ID: '777777',
+    GITHUB_RUN_ATTEMPT: '1',
+  }
+  for (const key of ['GEM_HOST_API_KEY', 'BUNDLE_GEM__PUSH_KEY', 'RUBYGEMS_API_KEY', 'RUBYGEMS_GEMDEPS', 'BUNDLER_ORIG_BUNDLE_BIN_PATH', 'BUNDLER_ORIG_BUNDLE_GEMFILE', 'BUNDLER_ORIG_BUNDLE_PATH', 'BUNDLER_ORIG_BUNDLE_WITH', 'BUNDLER_ORIG_BUNDLE_WITHOUT', 'BUNDLER_ORIG_RUBYOPT', 'BUNDLER_ORIG_RUBYLIB', 'BUNDLE_GEMFILE', 'BUNDLE_PATH', 'BUNDLE_WITH', 'BUNDLE_WITHOUT', 'RUBYOPT', 'RUBYLIB']) delete baseEnvironment[key]
+  const runConsumer = (overrides = {}) => execFileAsync('bash', ['-c', 'set -euo pipefail\n' + block], {
+    cwd: directory,
+    env: { ...baseEnvironment, ...overrides },
+  })
+  await runConsumer()
+  assert.equal((await readFile(join(directory, 'gem-pwd'), 'utf8')).trim(), join(directory, 'ruby-consumer-3.4'))
+  const arguments_ = (await readFile(gemArgs, 'utf8')).trim().split(/\r?\n/)
+  assert.ok(arguments_.includes(gemFile))
+  assert.ok(arguments_.includes('--both'))
+  assert.ok(arguments_.includes('--clear-sources'))
+  assert.ok(arguments_.includes('--source'))
+  assert.ok(arguments_.includes('https://rubygems.org/'))
+  assert.equal(arguments_.includes('--local'), false)
+  assert.equal(arguments_.includes('--ignore-dependencies'), false)
+  const receipt = JSON.parse(await readFile(proof, 'utf8'))
+  assert.equal(receipt.state, 'reused')
+  assert.deepEqual(receipt.auth, { requested: false, uploadAttempted: false, credentialObserved: false })
+  await rm(proof, { force: true })
+  await assert.rejects(runConsumer({ GEM_FAIL: '1' }))
+  await assert.rejects(runConsumer({ RUBY_FAIL: '1' }))
+  await assert.rejects(runConsumer({ RUBYGEMS_GEMDEPS: join(directory, 'Gemfile') }))
+})
+
+test('recovery npm metadata block executes exact/full normalization and fails closed on hostile HTTP fixtures', async t => {
+  const workflow = await readFile(new URL('../.github/workflows/reconcile-foundation.yml', import.meta.url), 'utf8')
+  const block = extractWorkflowRunBlock(workflow, 'Download exact npm metadata with 404-only bounded observation')
+  const directory = await mkdtemp(join(tmpdir(), 'erpc-sdk-recovery-npm-metadata-'))
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  const exactFile = join(directory, 'exact.json')
+  const fullFile = join(directory, 'full.json')
+  const responseFile = join(directory, 'npm-version.json')
+  const fullResponseFile = join(directory, 'npm-packument.json')
+  const curl = join(directory, 'curl')
+  await writeFile(curl, `#!/usr/bin/env node
+const fs = require('node:fs')
+const args = process.argv.slice(2)
+const output = args[args.indexOf('--output') + 1]
+const url = args.at(-1)
+const full = !url.endsWith('/0.9.1')
+if (process.env.NPM_CASE === 'transport') { fs.writeFileSync(output, ''); process.exit(7) }
+const caseName = process.env.NPM_CASE
+const status = full ? (caseName === 'exact404-full200' || caseName === 'missing-selected' ? 200 : 200) : (caseName === 'exact404-full200' || caseName === 'missing-selected' ? 404 : caseName === 'http503' ? 503 : 200)
+const file = full ? process.env.FULL_FIXTURE : process.env.EXACT_FIXTURE
+fs.writeFileSync(output, fs.readFileSync(file))
+process.stdout.write(String(status))
+`)
+  await chmod(curl, 0o755)
+  const canonicalTarball = 'https://registry.npmjs.org/@elsoul/erpc-sdk/-/erpc-sdk-0.9.1.tgz'
+  const metadata = { name: '@elsoul/erpc-sdk', version: '0.9.1', dist: { integrity: 'sha512-AAAA', tarball: canonicalTarball } }
+  const full = { name: '@elsoul/erpc-sdk', versions: { '0.9.1': metadata } }
+  const runCase = async (caseName, exact, packument, succeeds) => {
+    await writeFile(exactFile, JSON.stringify(exact))
+    await writeFile(fullFile, JSON.stringify(packument))
+    const result = execFileAsync('bash', ['-c', `set -euo pipefail\n${block}`], {
+      cwd: new URL('../', import.meta.url).pathname,
+      env: {
+        ...process.env,
+        PATH: `${directory}:${process.env.PATH ?? ''}`,
+        NPM_CASE: caseName,
+        EXACT_FIXTURE: exactFile,
+        FULL_FIXTURE: fullFile,
+        RESPONSE_FILE: responseFile,
+        FULL_RESPONSE_FILE: fullResponseFile,
+        RUNNER_TEMP: directory,
+        RELEASE_USER_AGENT,
+        EXPECTED_VERSION: '0.9.1',
+        EXPECTED_REPOSITORY: 'elsoul/erpc-sdk',
+      },
+    })
+    if (succeeds) await result
+    else await assert.rejects(result)
+  }
+  await runCase('exact200-full200', metadata, full, true)
+  await runCase('exact404-full200', {}, full, true)
+  await runCase('missing-selected', {}, { name: '@elsoul/erpc-sdk', versions: {} }, false)
+  await runCase('malformed200', { malformed: true }, full, false)
+  await runCase('conflicting200', metadata, { name: '@elsoul/erpc-sdk', versions: { '0.9.1': { ...metadata, dist: { ...metadata.dist, integrity: 'sha512-BBBB' } } } }, false)
+  await runCase('http503', metadata, full, false)
+  await runCase('transport', metadata, full, false)
+})
+
+test('recovery npm provenance blocks execute cryptographic claim and SLSA policy negatives', async t => {
+  const workflow = await readFile(new URL('../.github/workflows/reconcile-foundation.yml', import.meta.url), 'utf8')
+  const claimsCode = extractWorkflowHeredoc(workflow, 'python - "$RUNNER_TEMP/npm-audit.json" "$RUNNER_TEMP/npm-certificate-claims.json" <<\'PY\'', 'PY')
+  const proofCode = extractWorkflowHeredoc(workflow, 'node --input-type=module - "$RUNNER_TEMP/npm-audit.json" "$RUNNER_TEMP/npm-proof.json" <<\'NODE\'', 'NODE')
+  const directory = await mkdtemp(join(tmpdir(), 'erpc-sdk-recovery-npm-provenance-'))
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  const pythonPath = join(directory, 'claims.py')
+  const proofPath = join(directory, 'proof.mjs')
+  await writeFile(pythonPath, claimsCode)
+  await writeFile(proofPath, proofCode)
+  let python = 'python3'
+  try { await execFileAsync(python, ['-c', 'import cryptography']) } catch {
+    const venv = join(directory, 'venv')
+    await execFileAsync('python3', ['-m', 'venv', venv])
+    python = join(venv, 'bin', 'python')
+    await execFileAsync(python, ['-m', 'pip', 'install', '--quiet', '--disable-pip-version-check', 'cryptography==46.0.3'])
+  }
+  const source = '4677d67d14c8fbb17ada3ba824d1623180c6b4d9'
+  const expectedWorkflow = 'https://github.com/elsoul/erpc-sdk/.github/workflows/release.yml@refs/heads/main'
+  const makeCertificate = async ({ sourceClaim = source, workflowClaim = expectedWorkflow, invocation = 'https://github.com/elsoul/erpc-sdk/actions/runs/39871872971/attempts/1' } = {}) => {
+    const config = join(directory, `cert-${Math.random().toString(16).slice(2)}.cnf`)
+    const key = `${config}.key`
+    const cert = `${config}.der`
+    const issuer = Buffer.from('https://token.actions.githubusercontent.com').toString('hex')
+    await writeFile(config, `[req]\nprompt = no\ndistinguished_name = dn\nx509_extensions = claims\n[dn]\nCN = Fulcio fixture\n[claims]\n1.3.6.1.4.1.57264.1.1 = DER:${issuer}\n1.3.6.1.4.1.57264.1.9 = ASN1:UTF8String:${workflowClaim}\n1.3.6.1.4.1.57264.1.10 = ASN1:UTF8String:${sourceClaim}\n1.3.6.1.4.1.57264.1.12 = ASN1:UTF8String:https://github.com/elsoul/erpc-sdk\n1.3.6.1.4.1.57264.1.13 = ASN1:UTF8String:${sourceClaim}\n1.3.6.1.4.1.57264.1.14 = ASN1:UTF8String:refs/heads/main\n1.3.6.1.4.1.57264.1.15 = ASN1:UTF8String:1429568627\n1.3.6.1.4.1.57264.1.18 = ASN1:UTF8String:${workflowClaim}\n1.3.6.1.4.1.57264.1.19 = ASN1:UTF8String:${sourceClaim}\n1.3.6.1.4.1.57264.1.20 = ASN1:UTF8String:workflow_dispatch\n1.3.6.1.4.1.57264.1.21 = ASN1:UTF8String:${invocation}\n`)
+    await execFileAsync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', key, '-out', cert, '-outform', 'DER', '-days', '1', '-config', config], { maxBuffer: 1024 * 1024 })
+    return (await readFile(cert)).toString('base64')
+  }
+  const auditFile = join(directory, 'npm-audit.json')
+  const claimsFile = join(directory, 'npm-certificate-claims.json')
+  const runClaims = async (certificate, succeeds = true) => {
+    await writeFile(auditFile, JSON.stringify({ invalid: [], missing: [], verified: [{ name: '@elsoul/erpc-sdk', version: '0.9.1', registry: 'https://registry.npmjs.org', attestationBundles: [{ predicateType: 'https://slsa.dev/provenance/v1', bundle: { verificationMaterial: { certificate: { rawBytes: certificate } } } }] }] }))
+    const result = execFileAsync(python, [pythonPath, auditFile, claimsFile], { env: { ...process.env, SOURCE_M: source } })
+    if (succeeds) await result
+    else await assert.rejects(result)
+  }
+  await runClaims(await makeCertificate())
+  await runClaims(await makeCertificate({ sourceClaim: 'c'.repeat(40) }), false)
+  await runClaims(await makeCertificate({ workflowClaim: expectedWorkflow.replace('release.yml', 'other.yml') }), false)
+  await runClaims(await makeCertificate({ invocation: 'https://github.com/elsoul/erpc-sdk/actions/runs/999/attempts/1' }), false)
+  await runClaims('not-a-certificate', false)
+
+  const archive = join(directory, 'npm.tgz')
+  const archiveBytes = Buffer.from('approved npm archive')
+  await writeFile(archive, archiveBytes)
+  const archiveSha512 = (await import('node:crypto')).createHash('sha512').update(archiveBytes).digest('hex')
+  const baseProvenance = {
+    predicateType: 'https://slsa.dev/provenance/v1',
+    subject: [{ name: 'pkg:npm/%40elsoul/erpc-sdk@0.9.1', digest: { sha512: archiveSha512 } }],
+    predicate: { buildDefinition: { externalParameters: { workflow: { repository: 'https://github.com/elsoul/erpc-sdk', path: '.github/workflows/release.yml', ref: 'refs/heads/main' } }, internalParameters: { github: { repository_id: '1429568627', event_name: 'workflow_dispatch' } }, resolvedDependencies: [{ digest: { gitCommit: source } }] }, runDetails: { metadata: { invocationId: 'https://github.com/elsoul/erpc-sdk/actions/runs/39871872971/attempts/1' } } },
+  }
+  const metadataFile = join(directory, 'npm-version.json')
+  await writeFile(metadataFile, JSON.stringify({ dist: { integrity: 'sha512-AAAA' } }))
+  await writeFile(claimsFile, JSON.stringify({ '1.3.6.1.4.1.57264.1.8': 'https://token.actions.githubusercontent.com' }))
+  const runProof = async (mutate, succeeds = true) => {
+    const provenance = mutate(structuredClone(baseProvenance))
+    const audit = { invalid: [], missing: [], verified: [{ name: '@elsoul/erpc-sdk', version: '0.9.1', registry: 'https://registry.npmjs.org', attestationBundles: [{ predicateType: 'https://slsa.dev/provenance/v1', bundle: { dsseEnvelope: { payload: Buffer.from(JSON.stringify(provenance)).toString('base64') } } }] }] }
+    await writeFile(auditFile, JSON.stringify(audit))
+    const result = execFileAsync(process.execPath, [proofPath, auditFile, join(directory, 'npm-proof.json')], { env: { ...process.env, RUNNER_TEMP: directory, NPM_FILE: archive, SOURCE_M: source, EXPECTED_REPOSITORY: 'elsoul/erpc-sdk', PLAN_SHA256: 'a'.repeat(64), PREPARED_RUN_ID: '39862319930', PREPARED_RUN_ATTEMPT: '1', PREPARED_ARTIFACT_ID: '12461868771', GITHUB_RUN_ID: '777', GITHUB_RUN_ATTEMPT: '1' } })
+    if (succeeds) await result
+    else await assert.rejects(result)
+  }
+  await runProof(value => value)
+  await runProof(value => { value.predicate.buildDefinition.resolvedDependencies[0].digest.gitCommit = 'c'.repeat(40); return value }, false)
+  await runProof(value => { value.predicate.buildDefinition.externalParameters.workflow.path = '.github/workflows/other.yml'; return value }, false)
+  await runProof(value => { value.subject[0].digest.sha512 = '0'.repeat(128); return value }, false)
+  await runProof(value => { value.predicate.runDetails.metadata.invocationId = 'https://github.com/elsoul/erpc-sdk/actions/runs/999/attempts/1'; return value }, false)
+})
+
+test('recovery PyPI provenance block executes its crypto verifier and rejects malformed evidence', async t => {
+  const workflow = await readFile(new URL('../.github/workflows/reconcile-foundation.yml', import.meta.url), 'utf8')
+  const code = extractWorkflowHeredoc(workflow, 'python - "$DOWNLOADS_FILE" "$RUNNER_TEMP" <<\'PY\'', 'PY')
+  const directory = await mkdtemp(join(tmpdir(), 'erpc-sdk-recovery-pypi-provenance-'))
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  const script = join(directory, 'pypi-check.py')
+  const downloads = join(directory, 'downloads.tsv')
+  const artifact = join(directory, 'erpc_sdk-0.9.1-py3-none-any.whl')
+  const provenance = `${artifact}.provenance.json`
+  await writeFile(script, code)
+  await writeFile(artifact, 'not-a-wheel')
+  await writeFile(provenance, '{}')
+  await writeFile(downloads, `${artifact.split('/').pop()}\thttps://files.pythonhosted.org/packages/example\t${'0'.repeat(64)}\n`)
+  let python = 'python3'
+  try { await execFileAsync(python, ['-c', 'import pypi_attestations']) } catch {
+    const venv = join(directory, 'venv')
+    await execFileAsync('python3', ['-m', 'venv', venv])
+    python = join(venv, 'bin', 'python')
+    await execFileAsync(python, ['-m', 'pip', 'install', '--quiet', '--disable-pip-version-check', 'pypi-attestations==0.0.30', 'cryptography==46.0.3'])
+  }
+  await assert.rejects(
+    execFileAsync(python, [script, downloads, directory], { env: { ...process.env, SOURCE_M: '4677d67d14c8fbb17ada3ba824d1623180c6b4d9' } }),
+  )
+})
+
+test('recovery aggregate metadata block rejects wrong run/head/observer and missing Ruby artifacts', async t => {
+  const workflow = await readFile(new URL('../.github/workflows/reconcile-foundation.yml', import.meta.url), 'utf8')
+  const code = extractWorkflowHeredoc(workflow, 'node --input-type=module - "$RUNNER_TEMP/current-artifacts.json" "$RUNNER_TEMP/proof-downloads" <<\'NODE\'', 'NODE')
+  const directory = await mkdtemp(join(tmpdir(), 'erpc-sdk-recovery-artifact-metadata-'))
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  const script = join(directory, 'metadata.mjs')
+  const artifactFile = join(directory, 'artifacts.json')
+  const proofRoot = join(directory, 'proof-downloads')
+  await writeFile(script, code)
+  const runId = '777'
+  const attempt = '1'
+  const shaValue = 'c'.repeat(40)
+  const names = [
+    `foundation-recovery-context-${runId}-${attempt}`,
+    `foundation-proof-npm-${runId}`,
+    `foundation-proof-pypi-${runId}`,
+    `foundation-proof-rubygems-${runId}`,
+    `foundation-proof-rust-${runId}`,
+    `foundation-proof-tags-${runId}`,
+    `foundation-proof-go-${runId}`,
+    `foundation-ruby-consumer-${runId}-3.1`,
+    `foundation-ruby-consumer-${runId}-3.4`,
+  ]
+  const artifacts = names.map((name, index) => ({ name, id: index + 1, expired: false, digest: `sha256:${String(index + 1).padStart(64, '0')}`, workflow_run: { id: Number(runId), head_sha: shaValue } }))
+  const writeProof = async (relative, content) => { const path = join(proofRoot, relative); await mkdir(join(path, '..'), { recursive: true }); await writeFile(path, content) }
+  await writeProof('ruby-3.1/ruby-consumer-3.1.json', JSON.stringify({ ruby: '3.1.6', sdk: '/tmp/gem-home-3.1/gems/erpc-sdk', base64: '/tmp/gem-home-3.1/gems/base64', digest_keccak: '/tmp/gem-home-3.1/gems/digest-keccak' }))
+  await writeProof('ruby-3.4/ruby-consumer-3.4.json', JSON.stringify({ ruby: '3.4.7', sdk: '/tmp/gem-home-3.4/gems/erpc-sdk', base64: '/tmp/gem-home-3.4/gems/base64', digest_keccak: '/tmp/gem-home-3.4/gems/digest-keccak' }))
+  for (const [kind, file] of [['npm', 'npm/npm-proof.json'], ['pypi', 'pypi/pypi-proof.json'], ['rubygems', 'rubygems/rubygems-proof.json'], ['rust', 'rust/rust-proof.json'], ['tags', 'tags/tag-proof.json'], ['go', 'go/go-proof.json']]) await writeProof(file, JSON.stringify({ kind, observerRunId: runId, observerAttempt: attempt }))
+  const context = join(directory, 'recovery-context')
+  await mkdir(context, { recursive: true })
+  await writeFile(join(context, 'recovery-context.json'), '{}')
+  await writeFile(artifactFile, JSON.stringify({ artifacts }))
+  const runMetadata = async (mutate = value => value, succeeds = true) => {
+    const fixture = mutate(JSON.parse(await readFile(artifactFile, 'utf8')))
+    await writeFile(artifactFile, JSON.stringify(fixture))
+    const result = execFileAsync(process.execPath, [script, artifactFile, proofRoot], { env: { ...process.env, GITHUB_RUN_ID: runId, GITHUB_RUN_ATTEMPT: attempt, GITHUB_SHA: shaValue } })
+    if (succeeds) await result
+    else await assert.rejects(result)
+    await writeFile(artifactFile, JSON.stringify({ artifacts }))
+  }
+  await runMetadata()
+  await runMetadata(value => ({ artifacts: value.artifacts.map(item => item.name.includes('ruby-consumer') ? { ...item, workflow_run: { ...item.workflow_run, head_sha: 'd'.repeat(40) } } : item) }), false)
+  await runMetadata(value => ({ artifacts: value.artifacts.map(item => item.name.includes('proof-npm') ? { ...item, digest: null } : item) }), false)
+  await writeProof('npm/npm-proof.json', JSON.stringify({ kind: 'npm', observerRunId: 'wrong', observerAttempt: attempt }))
+  await runMetadata(value => value, false)
+})
+
+test('recovery artifact ZIP binding compares consumed bytes and fails on changed members or digest', async t => {
+  const workflow = await readFile(new URL('../.github/workflows/reconcile-foundation.yml', import.meta.url), 'utf8')
+  const fragment = extractWorkflowFragment(workflow, 'Verify current receipt/context artifact metadata and both Ruby consumers', 'verified_root="$RUNNER_TEMP/verified-artifacts"', 'node --input-type=module - "$RUNNER_TEMP/current-artifacts.json"')
+  const directory = await mkdtemp(join(tmpdir(), 'erpc-sdk-recovery-artifact-zip-'))
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  const proofRoot = join(directory, 'proof-downloads')
+  const contextRoot = join(directory, 'recovery-context')
+  await mkdir(contextRoot, { recursive: true })
+  await writeFile(join(contextRoot, 'recovery-context.json'), 'context bytes')
+  const members = [
+    ['foundation-recovery-context-777-1', 'recovery-context.json', join(contextRoot, 'recovery-context.json')],
+    ['foundation-proof-npm-777', 'npm-proof.json', join(proofRoot, 'npm/npm-proof.json')],
+    ['foundation-proof-pypi-777', 'pypi-proof.json', join(proofRoot, 'pypi/pypi-proof.json')],
+    ['foundation-proof-rubygems-777', 'rubygems-proof.json', join(proofRoot, 'rubygems/rubygems-proof.json')],
+    ['foundation-proof-rust-777', 'rust-proof.json', join(proofRoot, 'rust/rust-proof.json')],
+    ['foundation-proof-tags-777', 'tag-proof.json', join(proofRoot, 'tags/tag-proof.json')],
+    ['foundation-proof-go-777', 'go-proof.json', join(proofRoot, 'go/go-proof.json')],
+    ['foundation-ruby-consumer-777-3.1', 'ruby-consumer-3.1.json', join(proofRoot, 'ruby-3.1/ruby-consumer-3.1.json')],
+    ['foundation-ruby-consumer-777-3.4', 'ruby-consumer-3.4.json', join(proofRoot, 'ruby-3.4/ruby-consumer-3.4.json')],
+  ]
+  for (const [, member, consumed] of members) { await mkdir(join(consumed, '..'), { recursive: true }); await writeFile(consumed, member) }
+  const zipRoot = join(directory, 'zips')
+  await mkdir(zipRoot)
+  const artifacts = []
+  for (const [name, member, consumed] of members) {
+    const zipPath = join(zipRoot, `${name}.zip`)
+    await execFileAsync('python3', ['-c', 'import sys, zipfile; z=zipfile.ZipFile(sys.argv[1], "w"); z.write(sys.argv[2], arcname=sys.argv[3]); z.close()', zipPath, consumed, member])
+    artifacts.push({ name, id: artifacts.length + 1, digest: `sha256:${sha256Hex(await readFile(zipPath))}`, expired: false, workflow_run: { id: 777, head_sha: 'c'.repeat(40) } })
+  }
+  const metadata = join(directory, 'current-artifacts.json')
+  await writeFile(metadata, JSON.stringify({ artifacts }))
+  const curl = join(directory, 'curl')
+  await writeFile(curl, '#!/usr/bin/env node\nconst fs=require("node:fs"); const a=process.argv.slice(2); const out=a[a.indexOf("--output")+1]; const id=Number(a.at(-1).split("/").at(-2)); fs.copyFileSync(process.env.ZIP_ROOT + "/" + process.env.ZIP_NAMES.split(",")[id-1] + ".zip", out)\n')
+  await chmod(curl, 0o755)
+  const gh = join(directory, 'gh')
+  await writeFile(gh, '#!/bin/sh\ncat "$CURRENT_ARTIFACTS_FILE"\n')
+  await chmod(gh, 0o755)
+  const run = async () => {
+    await rm(join(directory, 'verified-artifacts'), { recursive: true, force: true })
+    return execFileAsync('bash', ['-c', `set -euo pipefail\n${fragment}`], { cwd: new URL('../', import.meta.url).pathname, env: { ...process.env, PATH: `${directory}:${process.env.PATH ?? ''}`, RUNNER_TEMP: directory, CURRENT_ARTIFACTS_FILE: metadata, ZIP_ROOT: zipRoot, ZIP_NAMES: members.map(item => item[0]).join(','), EXPECTED_REPOSITORY: 'elsoul/erpc-sdk', GITHUB_RUN_ID: '777', GITHUB_RUN_ATTEMPT: '1', GITHUB_SHA: 'c'.repeat(40), GH_TOKEN: 'fixture', RELEASE_USER_AGENT } })
+  }
+  await run()
+  await writeFile(join(proofRoot, 'npm/npm-proof.json'), 'changed member')
+  await assert.rejects(run())
+  await writeFile(join(proofRoot, 'npm/npm-proof.json'), 'npm-proof.json')
+  artifacts[0].digest = 'sha256:bad'
+  await writeFile(metadata, JSON.stringify({ artifacts }))
+  await assert.rejects(run())
+})
+
+test('recovery Go proof block exercises transitive checksum preparation and hostile ZIP/inventory/origin fixtures', async t => {
+  const workflow = await readFile(new URL('../.github/workflows/reconcile-foundation.yml', import.meta.url), 'utf8')
+  const block = extractWorkflowRunBlock(workflow, 'Verify Go proxy, checksum, origin, and exact module members')
+  assert.match(block, /go mod download all/)
+  const pythonCode = extractWorkflowHeredoc(workflow, 'python - "$RUNNER_TEMP/go-download.json" "$RUNNER_TEMP/go-direct-download.json" "$SOURCE_M" <<\'PY\'', 'PY')
+  const directory = await mkdtemp(join(tmpdir(), 'erpc-sdk-recovery-go-proof-'))
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  const module = 'github.com/elsoul/erpc-sdk/packages/go'
+  const version = 'v0.9.1'
+  const commit = '4677d67d14c8fbb17ada3ba824d1623180c6b4d9'
+  const sourceFiles = { 'go.mod': `module ${module}\n\ngo 1.22\n`, LICENSE: 'MIT\n' }
+  const inventoryFiles = Object.entries(sourceFiles).map(([path, contents]) => ({ path, sha256: sha256Hex(contents) }))
+  const inventory = { files: inventoryFiles, inventorySha256: sha256Hex(canonicalJson(inventoryFiles)) }
+  const planDir = join(directory, 'sdk-foundation-bundle')
+  await mkdir(planDir)
+  await writeFile(join(planDir, 'foundation-plan.json'), JSON.stringify({ goInventory: inventory }))
+  const info = join(directory, 'module.info'); const gomod = join(directory, 'module.mod'); const moduleDir = join(directory, 'module-dir')
+  await mkdir(moduleDir); await writeFile(info, '{}'); await writeFile(gomod, sourceFiles['go.mod'])
+  const checksum = `h1:${Buffer.from('a'.repeat(32)).toString('base64')}`
+  const expectedOrigin = { VCS: 'git', URL: 'https://github.com/elsoul/erpc-sdk', Hash: commit, Ref: 'refs/tags/packages/go/v0.9.1', Subdir: 'packages/go' }
+  const makeZip = async (members, name) => {
+    const zipPath = join(directory, name)
+    const fixture = join(directory, `${name}.files`); await mkdir(fixture, { recursive: true })
+    for (const [member, contents] of members) { const file = join(fixture, member.replaceAll('/', '_')); await writeFile(file, contents) }
+    const jsonMembers = JSON.stringify(members)
+    await execFileAsync('python3', ['-c', 'import json,sys,zipfile; path,root,members=sys.argv[1:]; members=json.loads(members); z=zipfile.ZipFile(path,"w"); [z.writestr(name, contents) for name,contents in members]; z.close()', zipPath, fixture, jsonMembers])
+    return zipPath
+  }
+  const validMembers = Object.entries(sourceFiles).map(([path, contents]) => [`${module}@${version}/${path}`, contents])
+  const makeReceipt = (zip, origin = expectedOrigin) => ({ Path: module, Version: version, Info: info, GoMod: gomod, Zip: zip, Dir: moduleDir, Sum: checksum, GoModSum: checksum, Origin: origin, Reuse: false })
+  const runPython = async (result, direct = result, succeeds = true) => {
+    const resultFile = join(directory, 'go-download.json'); const directFile = join(directory, 'go-direct-download.json')
+    await writeFile(resultFile, JSON.stringify(result)); await writeFile(directFile, JSON.stringify(direct))
+    const script = join(directory, 'go-proof.py'); await writeFile(script, pythonCode)
+    const command = execFileAsync('python3', [script, resultFile, directFile, commit], { cwd: directory, env: { ...process.env, RUNNER_TEMP: directory, MODULE: module, VERSION: version, SOURCE_M: commit, EXPECTED_REPOSITORY: 'elsoul/erpc-sdk', PLAN_SHA256: 'a'.repeat(64), PREPARED_RUN_ID: '39862319930', PREPARED_RUN_ATTEMPT: '1', PREPARED_ARTIFACT_ID: '12461868771', GITHUB_RUN_ID: '777', GITHUB_RUN_ATTEMPT: '1' } })
+    if (succeeds) await command
+    else await assert.rejects(command)
+  }
+  const validZip = await makeZip(validMembers, 'valid.zip')
+  await runPython(makeReceipt(validZip))
+  const duplicateZip = await makeZip([...validMembers, validMembers[0]], 'duplicate.zip')
+  await runPython(makeReceipt(duplicateZip), makeReceipt(duplicateZip), false)
+  const unsafeZip = await makeZip([[`${module}@${version}/../escape`, 'bad'], ...validMembers], 'unsafe.zip')
+  await runPython(makeReceipt(unsafeZip), makeReceipt(unsafeZip), false)
+  const wrongInventory = await makeZip([[`${module}@${version}/go.mod`, 'wrong'], [`${module}@${version}/LICENSE`, 'MIT\n']], 'wrong-inventory.zip')
+  await runPython(makeReceipt(wrongInventory), makeReceipt(wrongInventory), false)
+  await runPython(makeReceipt(validZip, { ...expectedOrigin, Hash: 'c'.repeat(40) }), makeReceipt(validZip, { ...expectedOrigin, Hash: 'c'.repeat(40) }), false)
+})
+
+test('recovery Go disposable consumer reproduces the old failure and passes the extracted tidy/download-all recipe on a portable offline proxy', async t => {
+  const workflow = await readFile(new URL('../.github/workflows/reconcile-foundation.yml', import.meta.url), 'utf8')
+  const fragment = extractWorkflowFragment(workflow, 'Verify Go proxy, checksum, origin, and exact module members', 'cat > "$RUNNER_TEMP/go-consumer/main.go"')
+  assert.match(fragment, /go mod tidy/)
+  assert.match(fragment, /go mod download all/)
+  const directory = await mkdtemp(join(tmpdir(), 'erpc-sdk-recovery-go-consumer-'))
+  t.after(async () => { await execFileAsync('chmod', ['-R', 'u+rwX', directory]).catch(() => {}); await rm(directory, { recursive: true, force: true }) })
+  const proxy = join(directory, 'proxy')
+  const consumer = join(directory, 'go-consumer')
+  await mkdir(consumer, { recursive: true })
+  const module = 'github.com/elsoul/erpc-sdk/packages/go'
+  const version = 'v0.9.1'
+  const transitive = 'fixture.invalid/transitive'
+  const transitiveVersion = 'v0.1.0'
+  const moduleGoMod = `module ${module}\n\ngo 1.22\n\nrequire ${transitive} ${transitiveVersion}\n`
+  const moduleSource = `package erpc\nimport _ "${transitive}"\n`
+  const transitiveGoMod = `module ${transitive}\n\ngo 1.22\n`
+  const transitiveSource = 'package transitive\nvar Value = 1\n'
+  const moduleModFile = join(directory, 'module-mod'); const transitiveModFile = join(directory, 'transitive-mod')
+  await writeFile(moduleModFile, moduleGoMod); await writeFile(transitiveModFile, transitiveGoMod)
+  const writeProxyModuleWithMod = async (name, moduleVersion, modFile, sourceName, source) => {
+    const versionDirectory = join(proxy, name, '@v')
+    await mkdir(versionDirectory, { recursive: true })
+    await writeFile(join(versionDirectory, 'list'), `${moduleVersion}\n`)
+    await writeFile(join(versionDirectory, `${moduleVersion}.info`), JSON.stringify({ Version: moduleVersion, Time: '2026-01-01T00:00:00Z' }))
+    await writeFile(join(versionDirectory, `${moduleVersion}.mod`), await readFile(modFile))
+    const sourceFile = join(directory, `${sourceName}-${moduleVersion}.go`)
+    await writeFile(sourceFile, source)
+    await execFileAsync('python3', ['-c', 'import sys,zipfile; z=zipfile.ZipFile(sys.argv[1], "w"); z.write(sys.argv[2], sys.argv[3]); z.write(sys.argv[4], sys.argv[5]); z.close()', join(versionDirectory, `${moduleVersion}.zip`), modFile, `${name}@${moduleVersion}/go.mod`, sourceFile, `${name}@${moduleVersion}/${sourceName}`])
+  }
+  await writeProxyModuleWithMod(module, version, moduleModFile, 'erpc.go', moduleSource)
+  await writeProxyModuleWithMod(transitive, transitiveVersion, transitiveModFile, 'transitive.go', transitiveSource)
+  await writeFile(join(consumer, 'go.mod'), `module example.invalid/consumer\n\ngo 1.22\n\nrequire ${module} ${version}\n`)
+  await writeFile(join(consumer, 'main.go'), `package main\nimport _ "${module}"\nfunc main() {}\n`)
+  const consumerEnv = { ...process.env, RUNNER_TEMP: directory, MODULE: module, VERSION: version, GOMODCACHE: join(directory, 'modcache'), GOPROXY: `file://${proxy}`, GOSUMDB: 'off' }
+  await execFileAsync('go', ['mod', 'download', 'all'], { cwd: consumer, env: consumerEnv })
+  await assert.rejects(execFileAsync('go', ['run', '.'], { cwd: consumer, env: consumerEnv }), /go mod tidy|updates to go\.mod needed|missing go\.sum/i)
+  await execFileAsync('bash', ['-c', 'set -euo pipefail\n' + fragment], { cwd: new URL('../', import.meta.url).pathname, env: consumerEnv })
+  assert.ok((await readFile(join(consumer, 'go.sum'), 'utf8')).split(/\r?\n/).filter(Boolean).length > 2)
+})
+
+test('recovery tag and Release asset blocks fail closed before writes on conflicts', async t => {
+  const workflow = await readFile(new URL('../.github/workflows/reconcile-foundation.yml', import.meta.url), 'utf8')
+  const tagBlock = extractWorkflowRunBlock(workflow, 'Create or verify lightweight tags at immutable M')
+  const releaseAssetBlock = extractWorkflowRunBlock(workflow, 'Reconcile fifteen Release assets without overwrite')
+  const directory = await mkdtemp(join(tmpdir(), 'erpc-sdk-recovery-writes-'))
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  const tagBin = join(directory, 'tag-bin')
+  await mkdir(tagBin)
+  const tagLog = join(directory, 'tag-log')
+  await writeFile(tagLog, '')
+  const curl = join(tagBin, 'curl')
+  await writeFile(curl, '#!/usr/bin/env node\n' +
+    'const fs=require("node:fs"); const args=process.argv.slice(2); const out=args[args.indexOf("--output")+1]; const url=args.at(-1); const key=url.split("/").at(-1); const state=JSON.parse(fs.readFileSync(process.env.TAG_STATE)); const index=state.calls[key]||0; state.calls[key]=index+1; fs.writeFileSync(process.env.TAG_STATE,JSON.stringify(state)); if(process.env.TAG_CASE==="mismatch"){fs.writeFileSync(out,JSON.stringify({object:{sha:"d".repeat(40),type:"commit"}})); process.stdout.write("200"); process.exit(0)} if(index===0){fs.writeFileSync(out,"{}"); process.stdout.write("404")} else {fs.writeFileSync(out,JSON.stringify({object:{sha:process.env.SOURCE_M,type:"commit"}})); process.stdout.write("200")}\n')
+  await chmod(curl, 0o755)
+  const gh = join(tagBin, 'gh')
+  await writeFile(gh, '#!/bin/sh\nif [ "$1" = api ] && [ "$2" = --method ]; then printf \'POST\\n\' >> "$TAG_LOG"; exit 0; fi\nprintf \'{"object":{"sha":"%s","type":"commit"}}\n\' "$SOURCE_M"\n')
+  await chmod(gh, 0o755)
+  const tagState = join(directory, 'tag-state')
+  const tagEnv = { ...process.env, PATH: tagBin + ':' + (process.env.PATH ?? ''), RUNNER_TEMP: directory, SOURCE_M: '4677d67d14c8fbb17ada3ba824d1623180c6b4d9', EXPECTED_REPOSITORY: 'elsoul/erpc-sdk', FOUNDATION_TAG: 'non-rust-v0.9.1', FOUNDATION_GO_TAG: 'packages/go/v0.9.1', PLAN_SHA256: 'a'.repeat(64), PREPARED_RUN_ID: '39862319930', PREPARED_RUN_ATTEMPT: '1', PREPARED_ARTIFACT_ID: '12461868771', GITHUB_RUN_ID: '777', GITHUB_RUN_ATTEMPT: '1', RELEASE_USER_AGENT, GH_TOKEN: 'fixture', TAG_LOG: tagLog, TAG_STATE: tagState, TAG_CASE: 'success' }
+  await writeFile(tagState, JSON.stringify({ calls: {} }))
+  await execFileAsync('bash', ['-c', 'set -euo pipefail\n' + tagBlock], { cwd: new URL('../', import.meta.url).pathname, env: tagEnv })
+  assert.equal((await readFile(tagLog, 'utf8')).trim().split(/\r?\n/).filter(Boolean).length, 2)
+  await writeFile(tagLog, '')
+  await writeFile(tagState, JSON.stringify({ calls: {} }))
+  await assert.rejects(execFileAsync('bash', ['-c', 'set -euo pipefail\n' + tagBlock], { cwd: new URL('../', import.meta.url).pathname, env: { ...tagEnv, TAG_CASE: 'mismatch' } }))
+  assert.equal((await readFile(tagLog, 'utf8')).trim(), '')
+
+  const assetDirectory = join(directory, 'assets')
+  const remoteDirectory = join(directory, 'remote-assets')
+  const assetBin = join(directory, 'asset-bin')
+  const assetLog = join(directory, 'asset-log')
+  await Promise.all([mkdir(assetDirectory), mkdir(remoteDirectory), mkdir(assetBin)])
+  await writeFile(assetLog, '')
+  const assetNames = Array.from({ length: 15 }, (_, index) => 'asset-' + String(index + 1).padStart(2, '0') + '.txt')
+  for (const name of assetNames) {
+    await writeFile(join(assetDirectory, name), 'local-' + name)
+    if (name !== 'asset-15.txt') await writeFile(join(remoteDirectory, name), 'local-' + name)
+  }
+  const assetGh = join(assetBin, 'gh')
+  await writeFile(assetGh, '#!/usr/bin/env node\n' +
+    'const fs=require("node:fs"); const args=process.argv.slice(2); const log=process.env.ASSET_LOG; if(args[0]==="api"&&args.includes("--jq")){process.stdout.write("1");process.exit(0)} if(args[0]==="api"){process.stdout.write(process.env.GH_ASSETS_JSON);process.exit(0)} if(args[0]==="release"&&args[1]==="download"){const dir=args[args.indexOf("--dir")+1];const name=args[args.indexOf("--pattern")+1];fs.copyFileSync(process.env.REMOTE_ASSETS+"/"+name,dir+"/"+name);process.exit(0)} if(args[0]==="release"&&args[1]==="upload"){const file=args.at(-1);fs.appendFileSync(log,"upload "+file+"\\n");fs.copyFileSync(file,process.env.REMOTE_ASSETS+"/"+file.split("/").at(-1));process.exit(0)} process.exit(99)\n')
+  await chmod(assetGh, 0o755)
+  const assetNamesJson = JSON.stringify(assetNames.slice(0, 14).map(name => ({ name })))
+  const assetTemp = join(directory, 'asset-temp')
+  await mkdir(assetTemp)
+  const assetEnv = { ...process.env, PATH: assetBin + ':' + (process.env.PATH ?? ''), RUNNER_TEMP: assetTemp, ASSET_DIR: assetDirectory, REMOTE_ASSETS: remoteDirectory, ASSET_LOG: assetLog, GH_ASSETS_JSON: assetNamesJson, GH_TOKEN: 'fixture', REPOSITORY: 'elsoul/erpc-sdk', TAG: 'non-rust-v0.9.1', RELEASE_USER_AGENT, SOURCE_M: '4677d67d14c8fbb17ada3ba824d1623180c6b4d9', PLAN_SHA256: 'a'.repeat(64), PREPARED_RUN_ID: '39862319930', PREPARED_RUN_ATTEMPT: '1', PREPARED_ARTIFACT_ID: '12461868771' }
+  await execFileAsync('bash', ['-c', 'set -euo pipefail\n' + releaseAssetBlock], { cwd: new URL('../', import.meta.url).pathname, env: assetEnv })
+  assert.equal((await readFile(assetLog, 'utf8')).trim().split(/\r?\n/).filter(Boolean).length, 1)
+  await writeFile(assetLog, '')
+  await writeFile(join(remoteDirectory, 'asset-01.txt'), 'conflict')
+  await assert.rejects(execFileAsync('bash', ['-c', 'set -euo pipefail\n' + releaseAssetBlock], { cwd: new URL('../', import.meta.url).pathname, env: assetEnv }))
+  assert.equal((await readFile(assetLog, 'utf8')).trim(), '')
 })

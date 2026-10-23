@@ -103,6 +103,68 @@ This manual path is the current release process. A weekly release schedule is
 future work and is not enabled. Do not run the legacy `corepack pnpm release:check`
 or tag-driven aggregate publication while the package versions are split.
 
+## One-off recovery of the published 0.9.1 cohort
+
+The accepted uploads from publication run `39871872971` are reconciled by the
+manual `.github/workflows/reconcile-foundation.yml` workflow. This workflow is
+an observer and reconciliation controller; it has no registry authentication,
+OIDC permission, npm/PyPI/RubyGems upload command, package build, or scheduled
+trigger. A missing or ambiguous public version stops the run. Read-only
+propagation probes may retry exact HTTP 404 responses for at most ten minutes;
+HTTP errors, malformed metadata, hash mismatches, yanked files, and failed
+attestation checks stop the run.
+
+Keep the two commit identities separate throughout recovery:
+
+- **M**, `4677d67d14c8fbb17ada3ba824d1623180c6b4d9`, is the approved package
+  source, original publisher source, preparation/public provenance source,
+  Go inventory source, and target for both `non-rust-v0.9.1` and
+  `packages/go/v0.9.1`.
+- **C** is the exact reviewed `main` commit containing this recovery workflow
+  and the approved recovery tests/docs. Dispatch input
+  `expected_control_commit` must equal the event SHA, workflow SHA, clean
+  checkout, and `main` at every write boundary. The M-to-C tree delta contains
+  only the three approved paths; C is never substituted into package or
+  publisher provenance claims.
+
+The run first rechecks C CI and the original successful preparation
+`39862319930/1`, bundle `12461868771`, binding `12463070497`, and plan digest
+`779aa1c48dc9ba2178fcfe021e102a12df85e4098c66120b1a3d2e8d7ca1911c`. It also
+records publication run `39871872971/1` as its actual completed failure and
+retains its job outcomes. Each exact public npm, PyPI, and RubyGems archive is
+downloaded and matched to the approved digest. npm uses the canonical exact
+version metadata and, only after an exact-version 404, the matching
+`versions["0.9.1"]` entry from the canonical full packument. npm audit
+signatures and both PyPI attestations are cryptographically verified against
+M and the original `release.yml@refs/heads/main` publisher. The existing Rust
+0.10.0 receipt remains read-only.
+
+Ruby recovery uses the downloaded, hash-checked gem file with a fresh
+`GEM_HOME`, `GEM_PATH`, cache, and empty gem configuration. It allows only
+declared runtime dependencies from `https://rubygems.org/` and does not use a
+local-only install or dependency suppression. Ruby 3.1 and 3.4 consumers must
+load `erpc-sdk` 0.9.1, `base64` 0.2.0, and `digest-keccak` 0.0.7 from the
+fresh gem directory, require the SDK, and pass deterministic Base64/Keccak
+smoke checks. Credential variables and credential files must be absent; the
+receipt records `credentialObserved=false`.
+
+Only after all package and Rust receipts pass may the workflow create missing
+lightweight tags at M, or accept existing exact M tags. It then verifies the Go
+proxy/direct origins, checksums, and frozen M inventory. The final GitHub
+Release keeps the approved title/body and exactly fifteen public assets. An
+immutable recovery-context Actions artifact records C, the observer run, M,
+the original preparation/publication identities, and the plan digest outside
+that public asset set. Existing Release assets are downloaded and compared
+before any missing asset is uploaded; mismatches are hard failures and no
+overwrite or force update is allowed.
+
+This is a bounded reconciliation of the already approved exact 0.9.1
+publication. It does not rebuild packages, change versions or dependencies,
+publish a replacement, release the unreleased Rust candidate, or create a
+weekly release controller. Release, license, dependency, SBOM, security, and
+EU OSS applicability conclusions remain evidence packets for human review;
+they do not certify legal compliance, CE conformity, or regulatory authority.
+
 ## One-time bootstrap
 
 These settings are required only when a registry is introduced or its trusted
@@ -334,9 +396,13 @@ catalogs. The root tag must match the four versioned package manifests, the
 Go tag must point to the same commit, and the release commit must be on `main`.
 Invalid tags cannot reach a protected publish job.
 
-## Recovery
+## Legacy workflow recovery
 
-Registry versions and release tags are immutable. The workflow checks npm,
+For the exact published 0.9.1 cohort, use **One-off recovery of the published
+0.9.1 cohort** above. Do not rerun `.github/workflows/release.yml`, request a
+new registry credential, or upload a replacement archive for that recovery.
+
+For the historical aligned workflow, registry versions and release tags are immutable. That workflow checks npm,
 crates.io, PyPI, and RubyGems before publishing, so rerunning a partially
 successful workflow skips versions already present and completes missing
 publications or the GitHub Release:
