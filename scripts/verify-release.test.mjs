@@ -42,6 +42,7 @@ import {
   inspectReleaseSetRustArchiveBytes,
   observeNpmRelease,
   observePyPIRelease,
+  observeRubyGemsRelease,
   parseReleaseSetChecksums,
   releaseSetPlanDigest,
   sha256File,
@@ -1224,6 +1225,233 @@ test('B2 PyPI observer executes wheel/sdist byte, attestation, partial, and cons
   claims.claims['1.3.6.1.4.1.57264.1.23'] = 'npm'; await mkdir(join(directory, 'wrong-environment-work')); await assert.rejects(() => observePyPIRelease(makeInput('wrong-environment'), { request, run, now: (() => { let value = 0; return () => value += 1 })(), sleep: async () => {} }), /environment claim/)
 })
 
+test('B3 RubyGems observer binds exact bytes and isolated Ruby 3.1/3.4 consumers', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'erpc-sdk-b3-rubygems-'))
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  const ruby34 = (await execFileAsync('which', ['ruby'])).stdout.trim()
+  const version = '1.2.3'
+  const gemRoot = join(directory, 'gem-root')
+  await mkdir(join(gemRoot, 'lib'), { recursive: true })
+  await writeFile(join(gemRoot, 'lib', 'erpc_sdk.rb'), 'module ERPC; VERSION = "1.2.3"; end\n')
+  await writeFile(join(gemRoot, 'LICENSE'), 'MIT\n')
+  await writeFile(join(gemRoot, 'README.md'), '# SDK\n')
+  await writeFile(join(gemRoot, 'erpc-sdk.gemspec'), `Gem::Specification.new do |spec|
+  spec.name = 'erpc-sdk'
+  spec.version = '1.2.3'
+  spec.summary = 'B3 fixture'
+  spec.authors = ['fixture']
+  spec.files = %w[LICENSE README.md lib/erpc_sdk.rb]
+  spec.require_paths = ['lib']
+  spec.add_runtime_dependency 'base64', '0.2.0'
+  spec.add_runtime_dependency 'digest-keccak', '0.0.7'
+  spec.license = 'MIT'
+end
+`)
+  await execFileAsync(ruby34, ['-S', 'gem', 'build', 'erpc-sdk.gemspec'], { cwd: gemRoot })
+  const gemFile = join(directory, `erpc-sdk-${version}.gem`)
+  await cp(join(gemRoot, `erpc-sdk-${version}.gem`), gemFile)
+  const gemBytes = await readFile(gemFile)
+  const gemSha = sha256Hex(gemBytes)
+  const archiveFiles = (await inspectReleaseSetRubyGemBytes({ filePath: gemFile, name: 'erpc-sdk', version })).sort()
+  const descriptor = { kind: 'rubygems', filename: `erpc-sdk-${version}.gem`, name: 'erpc-sdk', version, sha256: gemSha, files: archiveFiles }
+  const sourceCommit = '4'.repeat(40)
+  const metadataUrl = `https://rubygems.org/api/v2/rubygems/erpc-sdk/versions/${version}.json`
+  const downloadUrl = `https://rubygems.org/downloads/erpc-sdk-${version}.gem`
+  const metadata = { name: 'erpc-sdk', version, platform: 'ruby', sha: gemSha, yanked: false }
+  const preparation = { sourceCommit, runId: '74153', runAttempt: '1', artifactId: '74171', bindingArtifactId: '74191', planSha256: 'a'.repeat(64) }
+  const observer = { runId: '89273', runAttempt: '1', workflowPath: '.github/workflows/release.yml', sourceCommit }
+  const ruby31Path = join(directory, 'ruby31-runtime')
+  const baseInput = name => ({ descriptor, planSha256: preparation.planSha256, preparation, observer, workDir: join(directory, `${name}-work`), outputFile: join(directory, `${name}.json`), toolPaths: { ruby31: ruby31Path, ruby34 } })
+  let metadataRequests = 0
+  let downloadRequests = 0
+  let sleepCount = 0
+  const requests = []
+  const request = async (url, options) => {
+    requests.push({ url, options })
+    assert.equal(options.headers['user-agent'], RELEASE_USER_AGENT)
+    if (url === metadataUrl) {
+      metadataRequests += 1
+      return { status: metadataRequests === 1 ? 404 : 200, headers: {}, body: Buffer.from(JSON.stringify(metadata)) }
+    }
+    if (url === downloadUrl) {
+      downloadRequests += 1
+      return { status: 200, headers: {}, body: gemBytes }
+    }
+    throw new Error(`unexpected URL ${url}`)
+  }
+  const runCalls = []
+  const run = async (command, args, options = {}) => {
+    runCalls.push({ command, args, options })
+    if (args[0] === '-e') return { exitCode: 0, stdout: command === ruby31Path ? '3.1.6' : '3.4.7', stderr: '' }
+    if (args[0] === '-S' && args[1] === 'gem') {
+      const gemHome = args[args.indexOf('--install-dir') + 1]
+      await Promise.all([
+        mkdir(join(gemHome, 'gems', `erpc-sdk-${version}`), { recursive: true }),
+        mkdir(join(gemHome, 'gems', 'base64-0.2.0'), { recursive: true }),
+        mkdir(join(gemHome, 'gems', 'digest-keccak-0.0.7'), { recursive: true }),
+        mkdir(join(gemHome, 'extensions', 'digest-keccak-0.0.7', 'digest'), { recursive: true }),
+      ])
+      return { exitCode: 0, stdout: '', stderr: '' }
+    }
+    if (args[0].endsWith('/consumer.rb')) {
+      const gemHome = args[1]
+      const origins = {
+        sdk: join(gemHome, 'gems', `erpc-sdk-${version}`),
+        base64: join(gemHome, 'gems', 'base64-0.2.0'),
+        digestKeccak: join(gemHome, 'gems', 'digest-keccak-0.0.7'),
+      }
+      const roots = { ...origins, digestKeccakExtension: join(gemHome, 'extensions', 'digest-keccak-0.0.7') }
+      const entrypoints = {
+        sdk: join(origins.sdk, 'lib', 'erpc_sdk.rb'),
+        base64: join(origins.base64, 'lib', 'base64.rb'),
+        digestKeccak: join(origins.digestKeccak, 'lib', 'digest', 'keccak.bundle'),
+      }
+      const nativeExtension = join(roots.digestKeccakExtension, 'digest', 'keccak.bundle')
+      await Promise.all([
+        ...Object.values(origins).map(path => mkdir(join(path, 'lib', 'digest'), { recursive: true })),
+        mkdir(roots.digestKeccakExtension, { recursive: true }),
+        mkdir(join(roots.digestKeccakExtension, 'digest'), { recursive: true }),
+      ])
+      await Promise.all([
+        writeFile(entrypoints.sdk, ''),
+        writeFile(entrypoints.base64, ''),
+        writeFile(entrypoints.digestKeccak, 'native fixture'),
+        writeFile(nativeExtension, 'native fixture'),
+      ])
+      const nativeSha256 = sha256Hex(Buffer.from('native fixture'))
+      return { exitCode: 0, stdout: `${JSON.stringify({ ruby: command === ruby31Path ? '3.1.6' : '3.4.7', sdk: origins.sdk, sdkVersion: version, base64: origins.base64, base64Version: '0.2.0', digestKeccak: origins.digestKeccak, digestKeccakVersion: '0.0.7', roots, entrypoints: { sdk: [entrypoints.sdk], base64: [entrypoints.base64], digestKeccak: [entrypoints.digestKeccak], digestKeccakNative: [entrypoints.digestKeccak] }, nativeExtensionFiles: [{ path: nativeExtension, sha256: nativeSha256 }] })}\n`, stderr: '' }
+    }
+    throw new Error(`unexpected Ruby command ${command} ${args.join(' ')}`)
+  }
+  await mkdir(join(directory, 'complete-work'))
+  const receipt = await observeRubyGemsRelease({ ...baseInput('complete'), workDir: join(directory, 'complete-work'), outputFile: join(directory, 'complete.json') }, { request, run, now: (() => { let value = 0; return () => value += 1 })(), sleep: async () => { sleepCount += 1 } })
+  assert.equal(receipt.state, 'observed')
+  assert.equal(receipt.download.sha256, gemSha)
+  assert.deepEqual(Object.keys(receipt.consumers).sort(), ['ruby31', 'ruby34'])
+  assert.equal(receipt.consumers.ruby31.ruby, '3.1.6')
+  assert.equal(receipt.consumers.ruby34.ruby, '3.4.7')
+  assert.equal(receipt.consumers.ruby31.base64Version, '0.2.0')
+  assert.equal(receipt.consumers.ruby34.digestKeccakVersion, '0.0.7')
+  assert.equal(metadataRequests, 2)
+  assert.equal(downloadRequests, 1)
+  assert.equal(sleepCount, 1)
+  const installCalls = runCalls.filter(call => call.args[0] === '-S' && call.args[1] === 'gem')
+  assert.equal(installCalls.length, 2)
+  for (const call of installCalls) {
+    assert.equal(call.args.includes('--clear-sources'), true)
+    assert.equal(call.args.includes('--norc'), true)
+    assert.equal(call.args.includes('--ignore-dependencies'), false)
+    assert.equal(call.args.includes('--local'), false)
+    assert.equal(call.args.includes('--force'), false)
+    assert.equal(call.args[call.args.indexOf('--source') + 1], 'https://rubygems.org/')
+    assert.equal(call.options.env.GEM_HOST_API_KEY, undefined)
+    assert.equal(call.options.env.BUNDLE_GEM__PUSH_KEY, undefined)
+    assert.equal(call.options.env.RUBYGEMS_API_KEY, undefined)
+    assert.equal(call.options.env.RUBYOPT, '')
+    assert.equal(call.options.env.RUBYLIB, '')
+  }
+  const systemGemrc = join(directory, 'system-gemrc-fixture')
+  const emptyGemrc = join(directory, 'empty-gemrc-fixture')
+  const parserArgs = join(directory, 'parser-args.json')
+  await writeFile(systemGemrc, '---\ninstall: --ignore-dependencies\n:ssl_verify_mode: 0\n')
+  await writeFile(emptyGemrc, '')
+  await writeFile(parserArgs, JSON.stringify(['install']))
+  const configProbe = String.raw`
+require 'json'
+require 'rubygems/config_file'
+system_fixture, empty_gemrc, args_file = ARGV
+ENV['GEMRC'] = empty_gemrc
+Gem::ConfigFile.send(:remove_const, :SYSTEM_WIDE_CONFIG_FILE)
+Gem::ConfigFile.const_set(:SYSTEM_WIDE_CONFIG_FILE, system_fixture)
+args = JSON.parse(File.read(args_file))
+with_system = Gem::ConfigFile.new(args)
+without_system = Gem::ConfigFile.new(args + ['--norc'])
+puts JSON.generate({ install: with_system['install'], ssl: with_system[:ssl_verify_mode], norc_install: without_system['install'], norc_ssl: without_system[:ssl_verify_mode] })
+`
+  const configResult = JSON.parse((await execFileAsync(ruby34, ['-e', configProbe, systemGemrc, emptyGemrc, parserArgs])).stdout)
+  assert.equal(configResult.install, '--ignore-dependencies')
+  assert.equal(configResult.ssl, 0)
+  assert.equal(configResult.norc_install, null)
+  assert.equal(configResult.norc_ssl, null)
+
+  const realConsumerScript = runCalls.find(call => call.command === ruby34 && call.args[0].endsWith('/consumer.rb'))?.args[0]
+  assert.ok(realConsumerScript)
+  const dependencyCaches = JSON.parse((await execFileAsync(ruby34, ['-e', "require 'json'; require 'rubygems'; puts JSON.generate(%w[base64 digest-keccak].map { |name| Gem::Specification.find_by_name(name).cache_file })"])).stdout)
+  const makeRealConsumerFixture = async (name, { foreignBase64 = false, includeNativeExtension = true } = {}) => {
+    const root = join(directory, name)
+    const gemHome = join(root, 'gem-home')
+    const foreignRoot = join(root, 'foreign')
+    const consumerDir = join(root, 'consumer')
+    const gemCache = join(root, 'gem-cache')
+    const bundleConfig = join(root, 'bundle-config')
+    const gemrc = join(root, 'empty-gemrc')
+    const env = { PATH: process.env.PATH ?? '', TMPDIR: root, LANG: 'C.UTF-8', LC_ALL: 'C.UTF-8', GEM_HOME: gemHome, GEM_PATH: gemHome, GEM_SPEC_CACHE: gemCache, GEMRC: gemrc, BUNDLE_USER_CONFIG: bundleConfig, BUNDLE_USER_CACHE: gemCache, BUNDLE_DISABLE_SHARED_GEMS: '1', BUNDLE_GEMFILE: '', BUNDLE_PATH: '', BUNDLE_WITH: '', BUNDLE_WITHOUT: '', RUBYOPT: '', RUBYLIB: '', RUBYGEMS_GEMDEPS: '' }
+    await Promise.all([mkdir(gemHome, { recursive: true }), mkdir(foreignRoot, { recursive: true }), mkdir(consumerDir, { recursive: true }), mkdir(gemCache, { recursive: true }), mkdir(bundleConfig, { recursive: true })])
+    await writeFile(gemrc, '')
+    let gemPath = gemFile
+    if (foreignBase64) {
+      const fixtureRoot = join(root, 'gem-root')
+      await mkdir(join(fixtureRoot, 'lib'), { recursive: true })
+      await writeFile(join(foreignRoot, 'base64.rb'), 'require "base64"\n')
+      await writeFile(join(fixtureRoot, 'lib', 'erpc_sdk.rb'), `module ERPC; VERSION = '${version}'; end\ngem 'base64', '0.2.0'\n$LOAD_PATH.unshift(${JSON.stringify(foreignRoot)})\nrequire 'base64'\n`)
+      await writeFile(join(fixtureRoot, 'LICENSE'), 'MIT\n')
+      await writeFile(join(fixtureRoot, 'README.md'), '# SDK\n')
+      await writeFile(join(fixtureRoot, 'erpc-sdk.gemspec'), `Gem::Specification.new do |spec|
+  spec.name = 'erpc-sdk'
+  spec.version = '${version}'
+  spec.summary = 'B3 entrypoint negative fixture'
+  spec.authors = ['fixture']
+  spec.files = %w[LICENSE README.md lib/erpc_sdk.rb]
+  spec.require_paths = ['lib']
+  spec.add_runtime_dependency 'base64', '0.2.0'
+  spec.add_runtime_dependency 'digest-keccak', '0.0.7'
+end
+`)
+      await execFileAsync(ruby34, ['-S', 'gem', 'build', 'erpc-sdk.gemspec'], { cwd: fixtureRoot, env, timeout: 30000 })
+      gemPath = join(fixtureRoot, `erpc-sdk-${version}.gem`)
+    }
+    const install = async path => execFileAsync(ruby34, ['-S', 'gem', 'install', '--norc', path, '--install-dir', gemHome, '--no-document'], { cwd: consumerDir, env, timeout: 120000 })
+    await install(dependencyCaches[0])
+    await install(dependencyCaches[1])
+    await execFileAsync(ruby34, ['-S', 'gem', 'install', '--norc', gemPath, '--install-dir', gemHome, '--clear-sources', '--source', 'https://rubygems.org/', '--no-document'], { cwd: consumerDir, env, timeout: 120000 })
+    if (!includeNativeExtension) {
+      const extensionRoot = (await execFileAsync(ruby34, ['-e', "puts Gem::Specification.find_by_name('digest-keccak', '0.0.7').extension_dir"], { cwd: consumerDir, env })).stdout.trim()
+      const nativeFiles = (await execFileAsync('find', [extensionRoot, '-type', 'f', '-name', 'keccak.*'], { cwd: consumerDir })).stdout.trim().split(/\r?\n/).filter(Boolean)
+      await Promise.all(nativeFiles.map(path => rm(path, { force: true })))
+    }
+    return { root, gemHome, consumerDir, env }
+  }
+  const foreignFixture = await makeRealConsumerFixture('foreign-entrypoint', { foreignBase64: true })
+  await assert.rejects(execFileAsync(ruby34, [realConsumerScript, foreignFixture.gemHome, version, '3.4'], { cwd: foreignFixture.consumerDir, env: foreignFixture.env }), /base64 entrypoint/)
+  const nativeFixture = await makeRealConsumerFixture('missing-native-entrypoint', { includeNativeExtension: false })
+  await assert.rejects(execFileAsync(ruby34, [realConsumerScript, nativeFixture.gemHome, version, '3.4'], { cwd: nativeFixture.consumerDir, env: nativeFixture.env }), /native extension evidence/)
+
+  const runObserver = async (name, input, requestAdapter = request, runAdapter = run) => {
+    await mkdir(input.workDir)
+    return observeRubyGemsRelease(input, { request: requestAdapter, run: runAdapter, now: (() => { let value = 0; return () => value += 1 })(), sleep: async () => {} })
+  }
+  const wrongHash = 'f'.repeat(64)
+  const wrongHashInput = { ...baseInput('wrong-hash'), descriptor: { ...descriptor, sha256: wrongHash } }
+  const wrongHashRequest = async url => ({ status: 200, headers: {}, body: Buffer.from(JSON.stringify(url === metadataUrl ? { ...metadata, sha: wrongHash } : gemBytes)) })
+  await assert.rejects(() => runObserver('wrong-hash', wrongHashInput, wrongHashRequest), /downloaded digest/)
+  await assert.rejects(() => readFile(wrongHashInput.outputFile), { code: 'ENOENT' })
+  const yankedInput = baseInput('yanked')
+  const yankedRequest = async url => ({ status: 200, headers: {}, body: Buffer.from(JSON.stringify(url === metadataUrl ? { ...metadata, yanked: true } : gemBytes)) })
+  await assert.rejects(() => runObserver('yanked', yankedInput, yankedRequest), /metadata-yanked-conflict/)
+  const corruptBytes = Buffer.from('not-a-gem')
+  const corruptSha = sha256Hex(corruptBytes)
+  const corruptInput = { ...baseInput('corrupt'), descriptor: { ...descriptor, sha256: corruptSha } }
+  const corruptRequest = async url => ({ status: 200, headers: {}, body: Buffer.from(JSON.stringify(url === metadataUrl ? { ...metadata, sha: corruptSha } : corruptBytes)) })
+  await assert.rejects(() => runObserver('corrupt', corruptInput, corruptRequest), /Archive|malformed|gem/i)
+  const wrongRuntimeInput = baseInput('wrong-runtime')
+  const wrongRuntimeRun = async (command, args, options) => {
+    if (args[0] === '-e' && command === ruby31Path) return { exitCode: 0, stdout: '3.2.0', stderr: '' }
+    return run(command, args, options)
+  }
+  await assert.rejects(() => runObserver('wrong-runtime', wrongRuntimeInput, request, wrongRuntimeRun), /interpreter-mismatch/)
+  await assert.rejects(() => readFile(wrongRuntimeInput.outputFile), { code: 'ENOENT' })
+})
+
 test('foundation proof aggregate binds observed receipts, auth paths, and attestation claims', async t => {
   const directory = await mkdtemp(join(tmpdir(), 'erpc-sdk-proof-set-'))
   t.after(() => rm(directory, { recursive: true, force: true }))
@@ -1437,6 +1665,8 @@ test('every internal verifier mode rejects extra, duplicate, and conflicting CLI
   await mkdir(npmModeEnvironment.RELEASE_SET_NPM_WORK_DIR, { recursive: true })
   const pypiModeEnvironment = { RELEASE_SET_PYPI_OUTPUT_FILE: '/tmp/erpc-sdk-pypi-mode-test.json', RELEASE_SET_PYPI_WORK_DIR: '/tmp/erpc-sdk-pypi-mode-test-work' }
   await mkdir(pypiModeEnvironment.RELEASE_SET_PYPI_WORK_DIR, { recursive: true })
+  const rubyGemsModeEnvironment = { RELEASE_SET_RUBYGEMS_OUTPUT_FILE: '/tmp/erpc-sdk-rubygems-mode-test.json', RELEASE_SET_RUBYGEMS_WORK_DIR: '/tmp/erpc-sdk-rubygems-mode-test-work' }
+  await mkdir(rubyGemsModeEnvironment.RELEASE_SET_RUBYGEMS_WORK_DIR, { recursive: true })
   const cases = [
     [['--workflow-guard', '--unknown'], workflowEnvironment],
     [['--workflow-guard', '--scope', 'all'], workflowEnvironment],
@@ -1461,6 +1691,8 @@ test('every internal verifier mode rejects extra, duplicate, and conflicting CLI
     [['--release-set-npm-observe', '--release-set-npm-observe'], npmModeEnvironment],
     [['--release-set-pypi-observe', '--unknown'], pypiModeEnvironment],
     [['--release-set-pypi-observe', '--release-set-pypi-observe'], pypiModeEnvironment],
+    [['--release-set-rubygems-observe', '--unknown'], rubyGemsModeEnvironment],
+    [['--release-set-rubygems-observe', '--release-set-rubygems-observe'], rubyGemsModeEnvironment],
   ]
   for (const [arguments_, environment] of cases) {
     await assert.rejects(

@@ -2647,6 +2647,365 @@ export async function observePyPIRelease(input, adapters = {}) {
   return receipt
 }
 
+const rubyGemsOrigin = 'https://rubygems.org'
+const rubyGemsMetadataUrl = version => `${rubyGemsOrigin}/api/v2/rubygems/erpc-sdk/versions/${version}.json`
+const rubyGemsDownloadUrl = version => `${rubyGemsOrigin}/downloads/erpc-sdk-${version}.gem`
+
+const rubyRequireRunSuccess = (result, stage) => {
+  if (!result || result.exitCode !== 0) fail(`rubygems-observe-${stage}-failed`)
+  return result
+}
+
+const rubyDeadlineRemaining = (now, deadline) => {
+  const remaining = deadline - now()
+  if (!(remaining > 0)) fail('rubygems-observe-deadline-exceeded')
+  return Math.max(1, Math.ceil(remaining))
+}
+
+const rubyCheckDeadline = (now, deadline) => {
+  if (now() >= deadline) fail('rubygems-observe-deadline-exceeded')
+}
+
+const rubyInvoke = async (run, command, arguments_, options, stage, deadlineControl) => {
+  const boundedOptions = deadlineControl === undefined
+    ? options
+    : {
+        ...options,
+        timeout: Math.min(options.timeout ?? Number.POSITIVE_INFINITY, rubyDeadlineRemaining(deadlineControl.now, deadlineControl.deadline)),
+        killSignal: 'SIGTERM',
+      }
+  let result
+  try {
+    result = await run(command, arguments_, boundedOptions)
+  } catch {
+    fail(`rubygems-observe-${stage}-failed`)
+  }
+  rubyRequireRunSuccess(result, stage)
+  if (deadlineControl !== undefined) rubyCheckDeadline(deadlineControl.now, deadlineControl.deadline)
+  return result
+}
+
+const rubyChildEnvironment = ({ workDir, gemHome, gemCache, gemrc, bundleConfig }) => ({
+  PATH: process.env.PATH ?? '',
+  TMPDIR: workDir,
+  LANG: 'C.UTF-8',
+  LC_ALL: 'C.UTF-8',
+  GEM_HOME: gemHome,
+  GEM_PATH: gemHome,
+  GEM_SPEC_CACHE: gemCache,
+  GEMRC: gemrc,
+  BUNDLE_USER_CONFIG: bundleConfig,
+  BUNDLE_USER_CACHE: gemCache,
+  BUNDLE_DISABLE_SHARED_GEMS: '1',
+  BUNDLE_GEMFILE: '',
+  BUNDLE_PATH: '',
+  BUNDLE_WITH: '',
+  BUNDLE_WITHOUT: '',
+  RUBYOPT: '',
+  RUBYLIB: '',
+  RUBYGEMS_GEMDEPS: '',
+})
+
+const rubyConsumerScript = String.raw`
+require 'json'
+require 'digest'
+
+gem_home, expected_version, expected_runtime = ARGV
+abort 'Ruby consumer arguments are incomplete' unless gem_home && expected_version && expected_runtime
+root = File.realpath(gem_home)
+under_root = lambda do |path|
+  real = File.realpath(path)
+  real == root || real.start_with?("#{root}#{File::SEPARATOR}")
+end
+canonical = lambda do |path, label|
+  abort "#{label} origin is missing" unless path && File.file?(path)
+  File.realpath(path)
+rescue StandardError
+  abort "#{label} origin is not readable"
+end
+canonical_root = lambda do |path, label|
+  abort "#{label} root is missing" unless path && File.directory?(path)
+  File.realpath(path)
+rescue StandardError
+  abort "#{label} root is not readable"
+end
+under = lambda do |path, allowed_root|
+  path == allowed_root || path.start_with?("#{allowed_root}#{File::SEPARATOR}")
+end
+abort 'Ruby interpreter mismatch' unless RUBY_VERSION.start_with?("#{expected_runtime}.")
+sdk = Gem::Specification.find_by_name('erpc-sdk', expected_version)
+base64 = Gem::Specification.find_by_name('base64', '0.2.0')
+keccak = Gem::Specification.find_by_name('digest-keccak', '0.0.7')
+sdk_root = canonical_root.call(sdk.full_gem_path, 'SDK')
+base64_root = canonical_root.call(base64.full_gem_path, 'base64')
+keccak_root = canonical_root.call(keccak.full_gem_path, 'digest-keccak')
+keccak_extension_root = canonical_root.call(keccak.extension_dir, 'digest-keccak extension')
+abort 'SDK was not loaded from fresh GEM_HOME' unless under_root.call(sdk_root)
+abort 'base64 did not resolve from fresh GEM_HOME' unless under_root.call(base64_root)
+abort 'digest-keccak did not resolve from fresh GEM_HOME' unless under_root.call(keccak_root)
+abort 'digest-keccak extension did not resolve from fresh GEM_HOME' unless under_root.call(keccak_extension_root)
+require 'erpc_sdk'
+require 'base64'
+require 'digest/keccak'
+loaded = Gem.loaded_specs.fetch('erpc-sdk')
+loaded_base64 = Gem.loaded_specs.fetch('base64')
+loaded_keccak = Gem.loaded_specs.fetch('digest-keccak')
+abort 'wrong SDK version' unless ERPC::VERSION == expected_version
+abort 'loaded SDK version/origin is invalid' unless loaded.version.to_s == expected_version && under_root.call(File.realpath(loaded.full_gem_path))
+abort 'loaded base64 version/origin is invalid' unless loaded_base64.version.to_s == '0.2.0' && under_root.call(File.realpath(loaded_base64.full_gem_path))
+abort 'loaded digest-keccak version/origin is invalid' unless loaded_keccak.version.to_s == '0.0.7' && under_root.call(File.realpath(loaded_keccak.full_gem_path))
+sdk_features = $LOADED_FEATURES.grep(/(?:^|\/)erpc_sdk\.rb\z/).map { |path| canonical.call(path, 'SDK entrypoint') }
+base64_features = $LOADED_FEATURES.grep(/(?:^|\/)base64\.rb\z/).map { |path| canonical.call(path, 'base64 entrypoint') }
+keccak_features = $LOADED_FEATURES.grep(/(?:^|\/)digest\/keccak(?:\/[^\/]+)?\.(?:rb|bundle|so|dylib|dll)\z/).map { |path| canonical.call(path, 'digest-keccak entrypoint') }
+keccak_native_features = keccak_features.select { |path| path.match?(/\.(?:bundle|so|dylib|dll)\z/) }
+abort 'SDK entrypoint evidence is missing or ambiguous' unless sdk_features.length == 1 && sdk_features.all? { |path| under.call(path, sdk_root) }
+abort 'base64 entrypoint evidence is missing or ambiguous' unless base64_features.length == 1 && base64_features.all? { |path| under.call(path, base64_root) }
+abort 'digest-keccak entrypoint evidence is missing or ambiguous' unless keccak_features.length >= 1 && keccak_native_features.length == 1 && keccak_features.all? { |path| under.call(path, keccak_root) || under.call(path, keccak_extension_root) }
+native_extension_files = Dir[File.join(keccak_extension_root, '**', 'keccak.{bundle,so,dylib,dll}')].map { |path| canonical.call(path, 'digest-keccak extension file') }.uniq
+abort 'digest-keccak native extension evidence is missing' if native_extension_files.empty?
+native_extension_digests = native_extension_files.map { |path| Digest::SHA256.file(path).hexdigest }
+keccak_native_digests = keccak_native_features.map { |path| Digest::SHA256.file(path).hexdigest }
+abort 'digest-keccak native entrypoint is not bound to the fresh extension' unless keccak_native_digests.all? { |digest| native_extension_digests.include?(digest) }
+encoded = Base64.strict_encode64('erpc-recovery')
+abort 'Base64 round trip failed' unless Base64.strict_decode64(encoded) == 'erpc-recovery'
+keccak_answer = '6d7b9c3dc6053e342867a5d1cde60ad102664b6ee3805ec3649292d2ae8f4d1edd523f4b88e729500a990f9cf43b455543f59f8f5eb00035a69b1da9c1d48ae2'
+abort 'Keccak smoke failed' unless Digest::Keccak.hexdigest('recovery') == keccak_answer
+puts JSON.generate({
+  ruby: RUBY_VERSION,
+  sdk: sdk_root,
+  sdkVersion: loaded.version.to_s,
+  base64: base64_root,
+  base64Version: loaded_base64.version.to_s,
+  digestKeccak: keccak_root,
+  digestKeccakVersion: loaded_keccak.version.to_s,
+  roots: { sdk: sdk_root, base64: base64_root, digestKeccak: keccak_root, digestKeccakExtension: keccak_extension_root },
+  entrypoints: { sdk: sdk_features, base64: base64_features, digestKeccak: keccak_features, digestKeccakNative: keccak_native_features },
+  nativeExtensionFiles: native_extension_files.map { |path| { path: path, sha256: Digest::SHA256.file(path).hexdigest } },
+})
+`
+
+const rubyPathWithin = async (path, root, label) => {
+  if (typeof path !== 'string' || path.length === 0) fail(`${label} origin is missing`)
+  let canonicalRoot
+  let canonicalPath
+  try {
+    canonicalRoot = await realpath(root)
+    canonicalPath = await realpath(path)
+  } catch {
+    fail(`${label} origin is not readable`)
+  }
+  if (canonicalPath !== canonicalRoot && !canonicalPath.startsWith(`${canonicalRoot}${sep}`)) fail(`${label} origin escaped isolated GEM_HOME`)
+  return canonicalPath
+}
+
+const rubyPathWithinAny = async (path, roots, label) => {
+  if (typeof path !== 'string' || path.length === 0) fail(`${label} origin is missing`)
+  let canonicalPath
+  try { canonicalPath = await realpath(path) } catch { fail(`${label} origin is not readable`) }
+  if (!roots.some(root => canonicalPath === root || canonicalPath.startsWith(`${root}${sep}`))) fail(`${label} origin escaped its package root`)
+  return canonicalPath
+}
+
+const rubyConsumerProof = async (result, runtime, version, gemHome) => {
+  rubyRequireRunSuccess(result, `${runtime}-consumer`)
+  let proof
+  try { proof = JSON.parse(String(result.stdout).trim()) } catch { fail(`rubygems-observe-${runtime}-consumer-json-invalid`) }
+  if (typeof proof?.ruby !== 'string' || !proof.ruby.startsWith(`${runtime}.`)) fail(`rubygems-observe-${runtime}-interpreter-mismatch`)
+  if (proof.sdkVersion !== version || proof.base64Version !== '0.2.0' || proof.digestKeccakVersion !== '0.0.7') fail(`rubygems-observe-${runtime}-dependency-version-mismatch`)
+  const roots = {
+    sdk: await rubyPathWithin(proof.roots?.sdk, gemHome, `${runtime} SDK root`),
+    base64: await rubyPathWithin(proof.roots?.base64, gemHome, `${runtime} base64 root`),
+    digestKeccak: await rubyPathWithin(proof.roots?.digestKeccak, gemHome, `${runtime} digest-keccak root`),
+    digestKeccakExtension: await rubyPathWithin(proof.roots?.digestKeccakExtension, gemHome, `${runtime} digest-keccak extension root`),
+  }
+  const origins = {
+    sdk: await rubyPathWithin(proof.sdk, roots.sdk, `${runtime} SDK`),
+    base64: await rubyPathWithin(proof.base64, roots.base64, `${runtime} base64`),
+    digestKeccak: await rubyPathWithin(proof.digestKeccak, roots.digestKeccak, `${runtime} digest-keccak`),
+  }
+  const entrypoints = {
+    sdk: await Promise.all((Array.isArray(proof.entrypoints?.sdk) ? proof.entrypoints.sdk : []).map(path => rubyPathWithin(path, roots.sdk, `${runtime} SDK entrypoint`))),
+    base64: await Promise.all((Array.isArray(proof.entrypoints?.base64) ? proof.entrypoints.base64 : []).map(path => rubyPathWithin(path, roots.base64, `${runtime} base64 entrypoint`))),
+    digestKeccak: await Promise.all((Array.isArray(proof.entrypoints?.digestKeccak) ? proof.entrypoints.digestKeccak : []).map(path => rubyPathWithinAny(path, [roots.digestKeccak, roots.digestKeccakExtension], `${runtime} digest-keccak entrypoint`))),
+    digestKeccakNative: await Promise.all((Array.isArray(proof.entrypoints?.digestKeccakNative) ? proof.entrypoints.digestKeccakNative : []).map(path => rubyPathWithinAny(path, [roots.digestKeccak, roots.digestKeccakExtension], `${runtime} digest-keccak native entrypoint`))),
+  }
+  if (entrypoints.sdk.length !== 1 || entrypoints.base64.length !== 1 || entrypoints.digestKeccak.length === 0 || entrypoints.digestKeccakNative.length !== 1) fail(`rubygems-observe-${runtime}-entrypoint-evidence-incomplete`)
+  const nativeExtensionFiles = Array.isArray(proof.nativeExtensionFiles) ? await Promise.all(proof.nativeExtensionFiles.map(async item => ({ path: await rubyPathWithin(item?.path, roots.digestKeccakExtension, `${runtime} digest-keccak extension file`), sha256: item?.sha256 }))) : []
+  if (nativeExtensionFiles.length === 0 || nativeExtensionFiles.some(item => typeof item.sha256 !== 'string' || !ARCHIVE_SHA256.test(item.sha256))) fail(`rubygems-observe-${runtime}-native-extension-evidence-incomplete`)
+  const nativeExtensionDigests = new Set(nativeExtensionFiles.map(item => item.sha256))
+  for (const path of entrypoints.digestKeccakNative) {
+    if (!nativeExtensionDigests.has(sha256Hex(await readFile(path)))) fail(`rubygems-observe-${runtime}-native-extension-binding-failed`)
+  }
+  return {
+    exitCode: result.exitCode,
+    ruby: proof.ruby,
+    sdk: origins.sdk,
+    sdkVersion: proof.sdkVersion,
+    base64: origins.base64,
+    base64Version: proof.base64Version,
+    digestKeccak: origins.digestKeccak,
+    digestKeccakVersion: proof.digestKeccakVersion,
+    roots,
+    entrypoints,
+    nativeExtensionFiles,
+  }
+}
+
+const rubyStrictInput = input => {
+  releaseSetKeys(input, ['descriptor', 'planSha256', 'preparation', 'observer', 'workDir', 'outputFile', 'toolPaths'], 'RubyGems observer input')
+  releaseSetKeys(input.descriptor, ['kind', 'filename', 'name', 'version', 'sha256', 'files'], 'RubyGems observer descriptor')
+  requireEqual(input.descriptor.kind, 'rubygems', 'RubyGems observer descriptor kind mismatch')
+  requireEqual(input.descriptor.name, 'erpc-sdk', 'RubyGems observer package identity mismatch')
+  releaseSetVersion(input.descriptor.version, 'RubyGems observer version')
+  requireEqual(input.descriptor.filename, releaseSetArtifactFilename('rubygems', input.descriptor.version), 'RubyGems observer archive filename mismatch')
+  requireArchiveSha(input.descriptor.sha256, 'RubyGems observer descriptor SHA-256')
+  requireArchiveSha(input.planSha256, 'RubyGems observer plan SHA-256')
+  releaseSetKeys(input.preparation, ['sourceCommit', 'runId', 'runAttempt', 'artifactId', 'bindingArtifactId', 'planSha256'], 'RubyGems observer preparation')
+  requireSha(input.preparation.sourceCommit, 'RubyGems observer preparation source')
+  requireArchiveSha(input.preparation.planSha256, 'RubyGems observer preparation plan SHA-256')
+  requireEqual(input.preparation.planSha256, input.planSha256, 'RubyGems observer preparation plan mismatch')
+  for (const [value, label] of [[input.preparation.runId, 'RubyGems observer preparation run ID'], [input.preparation.runAttempt, 'RubyGems observer preparation attempt'], [input.preparation.artifactId, 'RubyGems observer preparation artifact ID'], [input.preparation.bindingArtifactId, 'RubyGems observer preparation binding artifact ID']]) requireFuturePositiveId(value, label)
+  releaseSetKeys(input.observer, ['runId', 'runAttempt', 'workflowPath', 'sourceCommit'], 'RubyGems observer context')
+  requireFuturePositiveId(input.observer.runId, 'RubyGems observer run ID')
+  requireFuturePositiveId(input.observer.runAttempt, 'RubyGems observer attempt')
+  requireEqual(input.observer.workflowPath, RELEASE_SET_WORKFLOW, 'RubyGems observer workflow mismatch')
+  requireSha(input.observer.sourceCommit, 'RubyGems observer source')
+  requireEqual(input.observer.sourceCommit, input.preparation.sourceCommit, 'RubyGems observer source mismatch')
+  releaseSetKeys(input.toolPaths, ['ruby31', 'ruby34'], 'RubyGems observer tool paths')
+  for (const [name, value] of Object.entries(input.toolPaths)) npmSafePath(value, `RubyGems observer ${name} path`)
+  return input
+}
+
+const rubyValidateMetadata = (metadata, descriptor) => {
+  if (!metadata || metadata.name !== descriptor.name || metadata.version !== descriptor.version || metadata.platform !== 'ruby') fail('rubygems-observe-metadata-identity-failed')
+  if (metadata.sha !== descriptor.sha256) fail('rubygems-observe-metadata-digest-mismatch')
+  for (const key of ['yanked', 'conflict', 'conflicted', 'version_yanked']) {
+    if (metadata[key] !== undefined && metadata[key] !== false) fail(`rubygems-observe-metadata-${key}-conflict`)
+  }
+  return metadata
+}
+
+/** Execute exact RubyGems metadata, archive, and isolated Ruby 3.1/3.4 consumers. */
+export async function observeRubyGemsRelease(input, adapters = {}) {
+  const outputFile = await npmInvalidateOutput(input?.outputFile, input?.workDir, 'RubyGems observer output file', 'rubygems-public-observation')
+  rubyStrictInput(input)
+  const request = adapters.request ?? npmDefaultRequest
+  const run = adapters.run ?? npmDefaultRun
+  const now = adapters.now ?? (() => performance.now())
+  const sleep = adapters.sleep ?? (milliseconds => new Promise(resolve_ => setTimeout(resolve_, milliseconds)))
+  const workDir = npmSafePath(input.workDir, 'RubyGems observer work directory')
+  const workEntries = await readdir(workDir, { withFileTypes: true })
+  if (workEntries.length !== 0) fail('rubygems-observe-work-directory-not-fresh')
+  const started = now()
+  const deadline = started + 600_000
+  const deadlineControl = { now, deadline }
+  const headers = { 'user-agent': RELEASE_USER_AGENT, accept: 'application/json' }
+  const get = async (url, timeoutMs, accept = 'application/json') => {
+    const remaining = rubyDeadlineRemaining(now, deadline)
+    try {
+      const response = await request(url, { headers: { ...headers, accept }, timeoutMs: Math.min(timeoutMs, remaining), deadline })
+      rubyCheckDeadline(now, deadline)
+      return response
+    } catch (error) {
+      if (error?.message === 'rubygems-observe-deadline-exceeded') throw error
+      fail('rubygems-observe-http-failed')
+    }
+  }
+  const version = input.descriptor.version
+  const metadataUrl = rubyGemsMetadataUrl(version)
+  let metadataResponse
+  while (true) {
+    metadataResponse = await get(metadataUrl, 20_000)
+    if (metadataResponse.status === 200) break
+    if (metadataResponse.status !== 404) fail(`rubygems-observe-metadata-http-${metadataResponse.status}`)
+    await sleep(Math.min(30_000, rubyDeadlineRemaining(now, deadline)))
+    rubyCheckDeadline(now, deadline)
+  }
+  const metadataBody = npmResponseBody(metadataResponse)
+  let metadata
+  try { metadata = JSON.parse(metadataBody.toString('utf8')) } catch { fail('rubygems-observe-metadata-json-invalid') }
+  rubyValidateMetadata(metadata, input.descriptor)
+  const downloadUrl = rubyGemsDownloadUrl(version)
+  let downloadResponse
+  while (true) {
+    downloadResponse = await get(downloadUrl, 60_000, 'application/octet-stream')
+    if (downloadResponse.status === 200) break
+    if (downloadResponse.status !== 404) fail(`rubygems-observe-download-http-${downloadResponse.status}`)
+    await sleep(Math.min(30_000, rubyDeadlineRemaining(now, deadline)))
+    rubyCheckDeadline(now, deadline)
+  }
+  const gemBytes = npmResponseBody(downloadResponse)
+  const observedSha256 = sha256Hex(gemBytes)
+  requireEqual(observedSha256, metadata.sha, 'RubyGems downloaded digest does not match registry metadata')
+  requireEqual(observedSha256, input.descriptor.sha256, 'RubyGems downloaded digest does not match preparation')
+  const gemPath = join(workDir, input.descriptor.filename)
+  await writeFile(gemPath, gemBytes, { flag: 'wx' })
+  const runtimes = [
+    { key: 'ruby31', label: '3.1', command: input.toolPaths.ruby31 },
+    { key: 'ruby34', label: '3.4', command: input.toolPaths.ruby34 },
+  ]
+  const runtimeRoots = new Map()
+  for (const runtime of runtimes) {
+    const runtimeDir = join(workDir, `ruby-${runtime.label}`)
+    const gemHome = join(runtimeDir, 'gem-home')
+    const gemCache = join(runtimeDir, 'gem-cache')
+    const consumerDir = join(runtimeDir, 'consumer')
+    const bundleConfig = join(runtimeDir, 'bundle-config')
+    const gemrc = join(runtimeDir, 'empty-gemrc')
+    await mkdir(gemHome, { recursive: true })
+    await mkdir(gemCache, { recursive: true })
+    await mkdir(consumerDir, { recursive: true })
+    await mkdir(bundleConfig, { recursive: true })
+    await writeFile(gemrc, '')
+    runtimeRoots.set(runtime.key, { ...runtime, runtimeDir, gemHome, gemCache, consumerDir, bundleConfig, gemrc, env: rubyChildEnvironment({ workDir: runtimeDir, gemHome, gemCache, gemrc, bundleConfig }) })
+  }
+  const inspection = runtimeRoots.get('ruby34')
+  const archiveExecutor = async (command, arguments_, options = {}) => {
+    const timeout = Math.min(options.timeout ?? Number.POSITIVE_INFINITY, rubyDeadlineRemaining(now, deadline))
+    const result = await npmBoundedExecFile(command, arguments_, { ...options, cwd: options.cwd ?? inspection.runtimeDir, env: inspection.env, timeout, killSignal: 'SIGTERM' })
+    rubyCheckDeadline(now, deadline)
+    return result
+  }
+  const archiveEvidence = await inspectReleaseSetArtifactBytes(input.descriptor, gemPath, input.preparation.sourceCommit, { execFile: archiveExecutor, commandMap: { ruby: input.toolPaths.ruby34 } })
+  const consumers = {}
+  for (const runtime of runtimes) {
+    const isolated = runtimeRoots.get(runtime.key)
+    const versionResult = await rubyInvoke(run, runtime.command, ['-e', 'print RUBY_VERSION'], { cwd: isolated.consumerDir, env: isolated.env }, `${runtime.label}-version`, deadlineControl)
+    const actualRuntime = String(versionResult.stdout).trim()
+    if (!new RegExp(`^${runtime.label}\\.`).test(actualRuntime)) fail(`rubygems-observe-${runtime.label}-interpreter-mismatch`)
+    const consumerScript = join(isolated.runtimeDir, 'consumer.rb')
+    await writeFile(consumerScript, rubyConsumerScript, { flag: 'wx' })
+    const installResult = await rubyInvoke(run, runtime.command, ['-S', 'gem', 'install', '--norc', gemPath, '--install-dir', isolated.gemHome, '--both', '--clear-sources', '--source', `${rubyGemsOrigin}/`, '--no-document'], { cwd: isolated.consumerDir, env: isolated.env }, `${runtime.label}-install`, deadlineControl)
+    const consumerResult = await rubyInvoke(run, runtime.command, [consumerScript, isolated.gemHome, version, runtime.label], { cwd: isolated.consumerDir, env: isolated.env }, `${runtime.label}-consumer`, deadlineControl)
+    const proof = await rubyConsumerProof(consumerResult, runtime.label, version, isolated.gemHome)
+    consumers[runtime.key] = { ruby: actualRuntime, installExitCode: installResult.exitCode, ...proof }
+  }
+  rubyCheckDeadline(now, deadline)
+  const receipt = {
+    schemaVersion: 1,
+    kind: 'rubygems-public-observation',
+    state: 'observed',
+    complete: true,
+    repository: EXPECTED_REPOSITORY,
+    repositoryId: EXPECTED_REPOSITORY_ID,
+    planSha256: input.planSha256,
+    preparation: input.preparation,
+    observer: input.observer,
+    version,
+    metadata: { url: metadataUrl, status: metadataResponse.status, bodySha256: sha256Hex(metadataBody), name: metadata.name, version: metadata.version, platform: metadata.platform, registrySha256: metadata.sha, yanked: metadata.yanked },
+    download: { url: downloadUrl, status: downloadResponse.status, sha256: observedSha256, sizeInBytes: gemBytes.length },
+    archive: { filename: archiveEvidence.filename, sha256: archiveEvidence.sha256, members: archiveEvidence.members },
+    consumers,
+    auth: { requested: false, uploadAttempted: false },
+    observedAt: new Date().toISOString(),
+  }
+  const temporaryOutput = `${outputFile}.tmp-${process.pid}-${Math.random().toString(16).slice(2)}`
+  await writeFile(temporaryOutput, `${canonicalJson(receipt)}\n`, { flag: 'wx' })
+  await rename(temporaryOutput, outputFile)
+  try { rubyCheckDeadline(now, deadline) } catch (error) { await rm(outputFile, { force: true }); throw error }
+  return receipt
+}
+
 /** Authenticate Actions run/artifact metadata before any later bundle use. */
 export function validateReleaseSetPreparationMetadata({ plan, run, artifact, bindingArtifact, expected }) {
   const normalized = validateReleaseSetPlan(plan)
@@ -2858,6 +3217,24 @@ const run = async arguments_ => {
     const publishers = JSON.parse(await readFile(env('RELEASE_SET_PYPI_PUBLISHERS_FILE'), 'utf8'))
     const receipt = await observePyPIRelease({ descriptors: { 'pypi-wheel': plan.artifacts.find(artifact => artifact.kind === 'pypi-wheel'), 'pypi-sdist': plan.artifacts.find(artifact => artifact.kind === 'pypi-sdist') }, planSha256, preparation: { sourceCommit: preparation.context.sourceCommit, runId: binding.runId, runAttempt: binding.runAttempt, artifactId: binding.artifactId, bindingArtifactId: preparation.metadata.bindingArtifactId, planSha256: binding.planSha256 }, publishers, observer: { runId: env('RELEASE_SET_PYPI_OBSERVER_RUN_ID'), runAttempt: env('RELEASE_SET_PYPI_OBSERVER_ATTEMPT'), workflowPath: env('RELEASE_SET_PYPI_OBSERVER_WORKFLOW'), sourceCommit: observerSource }, workDir: env('RELEASE_SET_PYPI_WORK_DIR'), outputFile, toolPaths: { python: env('RELEASE_SET_PYPI_PYTHON') } })
     console.log(`pypi-public-observation=${sha256Hex(canonicalJson(receipt))}`)
+    return
+  }
+
+  if (arguments_[0] === '--release-set-rubygems-observe') {
+    const outputFile = await npmInvalidateOutput(process.env.RELEASE_SET_RUBYGEMS_OUTPUT_FILE, process.env.RELEASE_SET_RUBYGEMS_WORK_DIR, 'RubyGems observer output file', 'rubygems-public-observation')
+    requireExactInternalMode(arguments_, '--release-set-rubygems-observe')
+    const plan = validateReleaseSetPlan(JSON.parse(await readFile(env('RELEASE_SET_PLAN_FILE'), 'utf8')))
+    const planSha256 = env('RELEASE_SET_PLAN_SHA256')
+    requireEqual(releaseSetPlanDigest(plan), planSha256, 'RubyGems observer plan digest mismatch')
+    const context = { repository: env('REPOSITORY'), repositoryId: env('REPOSITORY_ID'), eventName: env('EVENT_NAME'), eventRef: env('EVENT_REF'), eventSha: env('EVENT_SHA'), expectedCommit: env('EXPECTED_COMMIT'), checkoutHead: env('CHECKOUT_HEAD'), checkoutStatus: env('CHECKOUT_STATUS'), workflowRef: env('WORKFLOW_REF'), workflowSha: env('WORKFLOW_SHA') }
+    validateReleaseSetContext(context, plan)
+    const preparedExpected = { runId: env('RELEASE_SET_PREPARED_RUN_ID'), runAttempt: env('RELEASE_SET_PREPARED_RUN_ATTEMPT'), artifactId: env('RELEASE_SET_PREPARED_ARTIFACT_ID'), bindingArtifactId: env('RELEASE_SET_PREPARED_BINDING_ARTIFACT_ID'), sourceCommit: plan.sourceCommit, bundleName: `release-set-bundle-${plan.sourceCommit}`, bindingName: `release-set-binding-${env('RELEASE_SET_PREPARED_RUN_ID')}-${env('RELEASE_SET_PREPARED_RUN_ATTEMPT')}` }
+    const binding = JSON.parse(await readFile(env('RELEASE_SET_BINDING_FILE'), 'utf8'))
+    const preparation = await verifyReleaseSetPreparation({ plan, context, run: JSON.parse(await readFile(env('RELEASE_SET_RUN_FILE'), 'utf8')), artifact: JSON.parse(await readFile(env('RELEASE_SET_ARTIFACT_METADATA_FILE'), 'utf8')), bindingArtifact: JSON.parse(await readFile(env('RELEASE_SET_BINDING_METADATA_FILE'), 'utf8')), binding, bundleZip: env('RELEASE_SET_BUNDLE_ZIP_FILE'), bindingZip: env('RELEASE_SET_BINDING_ZIP_FILE'), artifactDirectory: env('RELEASE_SET_ARTIFACT_DIR'), bindingDirectory: env('RELEASE_SET_BINDING_DIR'), expected: preparedExpected })
+    const observerSource = env('RELEASE_SET_RUBYGEMS_OBSERVER_SOURCE')
+    requireEqual(observerSource, context.eventSha, 'RubyGems observer source must bind to execution context')
+    const receipt = await observeRubyGemsRelease({ descriptor: plan.artifacts.find(artifact => artifact.kind === 'rubygems'), planSha256, preparation: { sourceCommit: preparation.context.sourceCommit, runId: binding.runId, runAttempt: binding.runAttempt, artifactId: binding.artifactId, bindingArtifactId: preparation.metadata.bindingArtifactId, planSha256: binding.planSha256 }, observer: { runId: env('RELEASE_SET_RUBYGEMS_OBSERVER_RUN_ID'), runAttempt: env('RELEASE_SET_RUBYGEMS_OBSERVER_ATTEMPT'), workflowPath: env('RELEASE_SET_RUBYGEMS_OBSERVER_WORKFLOW'), sourceCommit: observerSource }, workDir: env('RELEASE_SET_RUBYGEMS_WORK_DIR'), outputFile, toolPaths: { ruby31: env('RELEASE_SET_RUBYGEMS_RUBY31'), ruby34: env('RELEASE_SET_RUBYGEMS_RUBY34') } })
+    console.log(`rubygems-public-observation=${sha256Hex(canonicalJson(receipt))}`)
     return
   }
 
