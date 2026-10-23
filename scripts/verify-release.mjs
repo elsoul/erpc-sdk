@@ -48,6 +48,37 @@ export const FOUNDATION_PROOF_ASSETS = Object.freeze([
   'foundation-proof-manifest.json',
 ])
 
+// Future release-set preparation is intentionally separate from foundation v1.
+// A plan describes approved inputs and prepared bytes; it never stands in for
+// a public registry or GitHub observation.
+export const RELEASE_SET_SCHEMA_VERSION = 2
+export const RELEASE_SET_KIND = 'erpc-sdk-release-set-approval-plan'
+export const RELEASE_SET_BINDING_KIND = 'erpc-sdk-release-set-preparation-binding'
+export const RELEASE_SET_WORKFLOW = '.github/workflows/release.yml'
+export const RELEASE_SET_CI_WORKFLOW = '.github/workflows/ci.yml'
+export const RELEASE_SET_ARTIFACT_KINDS = Object.freeze([
+  'npm',
+  'pypi-wheel',
+  'pypi-sdist',
+  'rubygems',
+])
+export const RELEASE_SET_RUST_MODES = Object.freeze(['reuse', 'publish'])
+export const RELEASE_SET_PUBLIC_ASSET_ROLES = Object.freeze([
+  'npm',
+  'pypi-wheel',
+  'pypi-sdist',
+  'rubygems',
+  'go-proof',
+  'npm-proof',
+  'pypi-proof',
+  'rubygems-proof',
+  'rust-proof',
+  'tag-proof',
+  'release-set-proof-manifest',
+  'release-body',
+  'go-inventory',
+])
+
 const STABLE_VERSION = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/
 const COMMIT_SHA = /^[0-9a-f]{40}$/
 const ARCHIVE_SHA256 = /^[0-9a-f]{64}$/
@@ -1503,6 +1534,465 @@ export async function selectArchive(archiveDirectory, expectedVersion) {
   return existing[0]
 }
 
+const releaseSetObject = (value, label) => {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) fail(`${label} must be an object`)
+  return value
+}
+
+const releaseSetKeys = (value, keys, label) => {
+  releaseSetObject(value, label)
+  const allowed = new Set(keys)
+  for (const key of Object.keys(value)) if (!allowed.has(key)) fail(`${label} contains unknown field ${key}`)
+  return value
+}
+
+const releaseSetString = (value, label) => {
+  if (typeof value !== 'string' || value.length === 0) fail(`${label} is missing`)
+  return value
+}
+
+const releaseSetVersion = (value, label) => requireStableVersion(value, label)
+
+const releaseSetArtifactFilename = (kind, version) => ({
+  npm: `elsoul-erpc-sdk-${version}.tgz`,
+  'pypi-wheel': `erpc_sdk-${version}-py3-none-any.whl`,
+  'pypi-sdist': `erpc_sdk-${version}.tar.gz`,
+  rubygems: `erpc-sdk-${version}.gem`,
+}[kind])
+
+const releaseSetArtifactName = kind => kind === 'npm' ? '@elsoul/erpc-sdk' : 'erpc-sdk'
+
+const releaseSetAssetFilename = role => ({
+  'go-proof': 'go-proof.json',
+  'npm-proof': 'npm-proof.json',
+  'pypi-proof': 'pypi-proof.json',
+  'rubygems-proof': 'rubygems-proof.json',
+  'rust-proof': 'rust-proof.json',
+  'tag-proof': 'tag-proof.json',
+  'release-set-proof-manifest': 'release-set-proof-manifest.json',
+  'release-body': 'release-body.md',
+  'go-inventory': 'go-inventory.json',
+}[role])
+
+const releaseSetExpectedBundleFiles = plan => [
+  ...plan.artifacts.map(artifact => artifact.filename),
+  ...(plan.rust.mode === 'publish' ? [plan.rust.archive.filename] : []),
+  'release-set-plan.json',
+  'release-set-plan.sha256',
+  'release-body.md',
+  'go-inventory.json',
+  'checksums.txt',
+]
+
+const releaseSetNormalizeChecksumPath = value => {
+  if (typeof value !== 'string') fail('Release-set checksum filename is missing')
+  let normalized = value.trim()
+  if (normalized.startsWith('./')) normalized = normalized.slice(2)
+  safeRelativePath(normalized)
+  return normalized
+}
+
+export function parseReleaseSetChecksums(source) {
+  const records = String(source).split(/\r?\n/).filter(Boolean)
+  if (records.length === 0) fail('Release-set checksum manifest is empty')
+  const checksums = new Map()
+  for (const line of records) {
+    const match = line.match(/^([0-9a-f]{64})\s+(?:\*?)(.+)$/)
+    if (!match) fail('Release-set checksum manifest has a malformed line')
+    const filename = releaseSetNormalizeChecksumPath(match[2])
+    if (checksums.has(filename)) fail(`Release-set checksum manifest duplicates ${filename}`)
+    checksums.set(filename, match[1])
+  }
+  return checksums
+}
+
+const releaseSetValidateArtifact = (descriptor, expectedVersion) => {
+  releaseSetKeys(descriptor, ['kind', 'filename', 'name', 'version', 'sha256', 'files'], 'Release-set artifact')
+  if (!RELEASE_SET_ARTIFACT_KINDS.includes(descriptor.kind)) fail(`Unknown release-set artifact kind ${descriptor.kind}`)
+  releaseSetVersion(expectedVersion, 'Release-set non-Rust version')
+  requireEqual(descriptor.version, expectedVersion, `${descriptor.kind} release-set version mismatch`)
+  requireEqual(descriptor.filename, releaseSetArtifactFilename(descriptor.kind, expectedVersion), `${descriptor.kind} release-set filename mismatch`)
+  requireEqual(descriptor.name, releaseSetArtifactName(descriptor.kind), `${descriptor.kind} release-set identity mismatch`)
+  requireArchiveSha(descriptor.sha256, `${descriptor.kind} release-set archive SHA-256`)
+  if (!Array.isArray(descriptor.files) || descriptor.files.length === 0) fail(`${descriptor.kind} release-set member list is empty`)
+  const files = descriptor.files.map(member => safeRelativePath(member))
+  if (new Set(files).size !== files.length) fail(`${descriptor.kind} release-set member list contains duplicates`)
+  return { ...descriptor, files }
+}
+
+const releaseSetValidateRust = (rust, planSourceCommit) => {
+  releaseSetKeys(rust, ['mode', 'version', 'sourceCommit', 'sha256', 'archive', 'reuse', 'prepared'], 'Release-set Rust descriptor')
+  if (!RELEASE_SET_RUST_MODES.includes(rust.mode)) fail('Release-set Rust mode is invalid')
+  releaseSetVersion(rust.version, 'Release-set Rust version')
+  requireArchiveSha(rust.sha256, 'Release-set Rust archive SHA-256')
+  if (rust.mode === 'reuse') {
+    if (rust.prepared !== undefined || rust.archive !== undefined) fail('Rust reuse cannot include prepared archive fields')
+    requireSha(rust.sourceCommit, 'Rust reuse source commit')
+    requireEqual(rust.sourceCommit, rust.reuse?.sourceCommit, 'Rust reuse top-level/source intent mismatch')
+    requireEqual(rust.sha256, rust.reuse?.sha256, 'Rust reuse top-level/checksum intent mismatch')
+    releaseSetKeys(rust.reuse, ['registry', 'downloadUrl', 'sourceCommit', 'sha256', 'yanked'], 'Rust reuse intent')
+    requireEqual(rust.reuse.registry, 'crates.io', 'Rust reuse registry mismatch')
+    requireEqual(rust.reuse.downloadUrl, `https://crates.io/api/v1/crates/${CRATE_NAME}/${rust.version}/download`, 'Rust reuse download URL mismatch')
+    requireSha(rust.reuse.sourceCommit, 'Rust reuse source commit')
+    requireArchiveSha(rust.reuse.sha256, 'Rust reuse checksum')
+    requireEqual(rust.reuse.sha256, rust.sha256, 'Rust reuse checksum mismatch')
+    requireEqual(rust.reuse.yanked, false, 'Rust reuse must prove an unyanked intent')
+    if (rust.version === RUST_VERSION) {
+      requireEqual(rust.reuse.sourceCommit, FOUNDATION_RUST_SOURCE, 'Historical Rust reuse source mismatch')
+      requireEqual(rust.reuse.sha256, FOUNDATION_RUST_SHA256, 'Historical Rust reuse checksum mismatch')
+    }
+    return { ...rust }
+  }
+  if (rust.version === RUST_VERSION) fail('Rust 0.10 cannot be a future publish candidate')
+  if (rust.reuse !== undefined) fail('Rust publish cannot include a reuse intent')
+  requireEqual(rust.sourceCommit, planSourceCommit, 'Prepared Rust source must bind to the plan source')
+  releaseSetKeys(rust.archive, ['filename', 'sha256'], 'Prepared Rust archive')
+  requireEqual(rust.archive.filename, `${CRATE_NAME}-${rust.version}.crate`, 'Prepared Rust archive filename mismatch')
+  requireEqual(rust.archive.sha256, rust.sha256, 'Prepared Rust archive checksum mismatch')
+  releaseSetKeys(rust.prepared, ['runId', 'runAttempt', 'artifactId', 'bindingArtifactId', 'sourceCommit', 'archiveSha256', 'licenseProfile'], 'Prepared Rust binding')
+  requireEqual(rust.prepared.licenseProfile, 'MIT AND Apache-2.0', 'Prepared Rust license profile is not the approved named profile')
+  for (const [value, label] of [[rust.prepared.runId, 'Rust preparation run ID'], [rust.prepared.runAttempt, 'Rust preparation attempt'], [rust.prepared.artifactId, 'Rust preparation artifact ID'], [rust.prepared.bindingArtifactId, 'Rust preparation binding artifact ID']]) requirePositiveId(value, label)
+  requireEqual(rust.prepared.sourceCommit, rust.sourceCommit, 'Prepared Rust binding source mismatch')
+  requireEqual(rust.prepared.archiveSha256, rust.sha256, 'Prepared Rust binding checksum mismatch')
+  return { ...rust }
+}
+
+/** Validate only stable approved content. No public observation or mutation is performed here. */
+export function validateReleaseSetPlan(plan) {
+  releaseSetKeys(plan, [
+    'schemaVersion', 'kind', 'repository', 'repositoryId', 'workflowPath', 'ciWorkflowPath',
+    'sourceCommit', 'controlCommit', 'workflowRevision', 'event', 'checkoutHead', 'checkoutStatus',
+    'versions', 'artifacts', 'go', 'rust', 'ciProof', 'tags', 'githubRelease', 'approval',
+    'licenseProfile', 'toolchain',
+  ], 'Release-set plan')
+  requireEqual(plan.schemaVersion, RELEASE_SET_SCHEMA_VERSION, 'Unsupported release-set schema')
+  requireEqual(plan.kind, RELEASE_SET_KIND, 'Unexpected release-set kind')
+  requireEqual(plan.repository, EXPECTED_REPOSITORY, 'Release-set repository mismatch')
+  requireEqual(String(plan.repositoryId), EXPECTED_REPOSITORY_ID, 'Release-set repository ID mismatch')
+  requireEqual(plan.workflowPath, RELEASE_SET_WORKFLOW, 'Release-set workflow mismatch')
+  requireEqual(plan.ciWorkflowPath, RELEASE_SET_CI_WORKFLOW, 'Release-set CI workflow mismatch')
+  requireSha(plan.sourceCommit, 'Release-set source commit')
+  requireEqual(plan.controlCommit, plan.sourceCommit, 'Release-set control commit mismatch')
+  requireEqual(plan.workflowRevision, plan.sourceCommit, 'Release-set workflow revision mismatch')
+  requireEqual(plan.checkoutHead, plan.sourceCommit, 'Release-set checkout head mismatch')
+  requireEqual(plan.checkoutStatus, '', 'Release-set checkout must be clean')
+  releaseSetKeys(plan.event, ['name', 'ref', 'sha'], 'Release-set event')
+  requireEqual(plan.event.name, 'workflow_dispatch', 'Release-set event must be workflow_dispatch')
+  requireEqual(plan.event.ref, 'refs/heads/main', 'Release-set event must run on main')
+  requireEqual(plan.event.sha, plan.sourceCommit, 'Release-set event SHA mismatch')
+  releaseSetKeys(plan.versions, ['nonRustVersion', 'rustVersion'], 'Release-set versions')
+  releaseSetVersion(plan.versions.nonRustVersion, 'Release-set non-Rust version')
+  releaseSetVersion(plan.versions.rustVersion, 'Release-set Rust version')
+  if (plan.versions.nonRustVersion === FOUNDATION_VERSION) fail('Completed foundation non-Rust version cannot be a future target')
+  const artifactMap = new Map()
+  if (!Array.isArray(plan.artifacts) || plan.artifacts.length !== RELEASE_SET_ARTIFACT_KINDS.length) fail('Release-set artifact set is incomplete')
+  for (const descriptor of plan.artifacts) {
+    const normalized = releaseSetValidateArtifact(descriptor, plan.versions.nonRustVersion)
+    if (artifactMap.has(normalized.kind)) fail('Release-set artifact roles are duplicated')
+    artifactMap.set(normalized.kind, normalized)
+  }
+  if (artifactMap.size !== RELEASE_SET_ARTIFACT_KINDS.length || RELEASE_SET_ARTIFACT_KINDS.some(kind => !artifactMap.has(kind))) fail('Release-set artifact roles are incomplete')
+  releaseSetKeys(plan.go, ['module', 'version', 'tag', 'sourceCommit', 'inventory'], 'Release-set Go descriptor')
+  requireEqual(plan.go.module, 'github.com/elsoul/erpc-sdk/packages/go', 'Release-set Go module mismatch')
+  requireEqual(plan.go.version, `v${plan.versions.nonRustVersion}`, 'Release-set Go version mismatch')
+  requireEqual(plan.go.tag, `packages/go/v${plan.versions.nonRustVersion}`, 'Release-set Go tag mismatch')
+  requireEqual(plan.go.sourceCommit, plan.sourceCommit, 'Release-set Go source mismatch')
+  const goInventory = validateGoInventory(plan.go.inventory)
+  const rust = releaseSetValidateRust(plan.rust, plan.sourceCommit)
+  requireEqual(rust.version, plan.versions.rustVersion, 'Release-set Rust version mismatch')
+  releaseSetKeys(plan.ciProof, ['workflowPath', 'sourceCommit', 'runId', 'runAttempt', 'jobId', 'requiredJob', 'event', 'headBranch', 'status', 'conclusion'], 'Release-set CI proof')
+  requireEqual(plan.ciProof.workflowPath, RELEASE_SET_CI_WORKFLOW, 'Release-set CI proof workflow mismatch')
+  requireEqual(plan.ciProof.sourceCommit, plan.sourceCommit, 'Release-set CI proof source mismatch')
+  for (const [value, label] of [[plan.ciProof.runId, 'Release-set CI run ID'], [plan.ciProof.runAttempt, 'Release-set CI attempt'], [plan.ciProof.jobId, 'Release-set CI job ID']]) requirePositiveId(value, label)
+  requireEqual(plan.ciProof.requiredJob, FOUNDATION_CI_JOB, 'Release-set CI job mismatch')
+  requireEqual(plan.ciProof.event, 'push', 'Release-set CI event mismatch')
+  requireEqual(plan.ciProof.headBranch, 'main', 'Release-set CI branch mismatch')
+  requireEqual(plan.ciProof.status, 'completed', 'Release-set CI status mismatch')
+  requireEqual(plan.ciProof.conclusion, 'success', 'Release-set CI conclusion mismatch')
+  releaseSetKeys(plan.tags, ['release', 'go', 'commit'], 'Release-set tags')
+  requireEqual(plan.tags.release, `non-rust-v${plan.versions.nonRustVersion}`, 'Release-set release tag mismatch')
+  requireEqual(plan.tags.go, `packages/go/v${plan.versions.nonRustVersion}`, 'Release-set Go tag mismatch')
+  requireEqual(plan.tags.commit, plan.sourceCommit, 'Release-set tag source mismatch')
+  releaseSetKeys(plan.githubRelease, ['title', 'tag', 'body', 'bodySha256'], 'Release-set Release descriptor')
+  requireEqual(plan.githubRelease.title, `SDK release set: non-Rust ${plan.versions.nonRustVersion} / Rust ${plan.versions.rustVersion}`, 'Release-set Release title mismatch')
+  requireEqual(plan.githubRelease.tag, plan.tags.release, 'Release-set Release tag mismatch')
+  releaseSetString(plan.githubRelease.body, 'Release-set Release body')
+  requireEqual(plan.githubRelease.bodySha256, sha256Hex(plan.githubRelease.body), 'Release-set Release body hash mismatch')
+  releaseSetKeys(plan.licenseProfile, ['nonRust', 'rust'], 'Release-set license profile')
+  requireEqual(plan.licenseProfile.nonRust, 'MIT', 'Release-set non-Rust license mismatch')
+  releaseSetString(plan.licenseProfile.rust, 'Release-set Rust license profile')
+  requireEqual(plan.licenseProfile.rust, rust.mode === 'reuse' ? 'MIT' : 'MIT AND Apache-2.0', 'Release-set Rust license profile does not match mode')
+  releaseSetKeys(plan.toolchain, ['node', 'python', 'go', 'ruby', 'rust'], 'Release-set toolchain')
+  const requiredToolchain = { node: '24', python: '3.12', go: '1.22', ruby: '3.1', rust: '1.85.0' }
+  for (const [tool, value] of Object.entries(requiredToolchain)) requireEqual(plan.toolchain[tool], value, `Release-set ${tool} toolchain mismatch`)
+  releaseSetKeys(plan.approval, ['environments', 'effects', 'publicAssets', 'bundleFiles'], 'Release-set approval')
+  releaseSetKeys(plan.approval.environments, ['npm', 'pypi', 'rubygems', 'cratesIo'], 'Release-set environments')
+  const requiredEnvironments = { npm: 'npm', pypi: 'pypi', rubygems: 'rubygems', cratesIo: 'crates-io' }
+  for (const [name, environment] of Object.entries(requiredEnvironments)) {
+    releaseSetString(plan.approval.environments[name], `Release-set ${name} environment`)
+    requireEqual(plan.approval.environments[name], environment, `Release-set ${name} environment mismatch`)
+  }
+  const allowedEffects = new Set(['publish npm', 'publish PyPI', 'publish RubyGems', 'create tags', 'create GitHub Release'])
+  if (!Array.isArray(plan.approval.effects) || plan.approval.effects.length !== allowedEffects.size || plan.approval.effects.some(effect => !allowedEffects.has(effect)) || new Set(plan.approval.effects).size !== plan.approval.effects.length) fail('Release-set effects are not the approved closed set')
+  if (!Array.isArray(plan.approval.publicAssets) || plan.approval.publicAssets.length !== RELEASE_SET_PUBLIC_ASSET_ROLES.length + (rust.mode === 'publish' ? 1 : 0)) fail('Release-set public asset roles are incomplete')
+  const publicRoles = new Set()
+  for (const asset of plan.approval.publicAssets) {
+    releaseSetKeys(asset, ['role', 'filename'], 'Release-set public asset')
+    if (!RELEASE_SET_PUBLIC_ASSET_ROLES.includes(asset.role) && !(rust.mode === 'publish' && asset.role === 'rust-crate')) fail(`Unknown Release-set public asset role ${asset.role}`)
+    if (publicRoles.has(asset.role)) fail('Release-set public asset roles are duplicated')
+    publicRoles.add(asset.role)
+    const expectedFilename = RELEASE_SET_ARTIFACT_KINDS.includes(asset.role) ? artifactMap.get(asset.role).filename : asset.role === 'rust-crate' ? rust.archive.filename : releaseSetAssetFilename(asset.role)
+    requireEqual(asset.filename, expectedFilename, `Release-set public asset filename mismatch for ${asset.role}`)
+    safeRelativePath(asset.filename)
+  }
+  const expectedRoles = [...RELEASE_SET_PUBLIC_ASSET_ROLES, ...(rust.mode === 'publish' ? ['rust-crate'] : [])]
+  if (publicRoles.size !== expectedRoles.length || expectedRoles.some(role => !publicRoles.has(role))) fail('Release-set public asset roles are incomplete')
+  const expectedBundle = [
+    ...RELEASE_SET_ARTIFACT_KINDS.map(kind => artifactMap.get(kind).filename),
+    ...(rust.mode === 'publish' ? [rust.archive.filename] : []),
+    'release-set-plan.json', 'release-set-plan.sha256', 'release-body.md', 'go-inventory.json', 'checksums.txt',
+  ]
+  if (!Array.isArray(plan.approval.bundleFiles) || canonicalJson(plan.approval.bundleFiles) !== canonicalJson(expectedBundle)) fail('Release-set preparation bundle file set is not canonical')
+  return { ...plan, artifacts: [...artifactMap.values()], go: { ...plan.go, inventory: goInventory }, rust }
+}
+
+export function buildReleaseSetPlan(input) {
+  releaseSetObject(input, 'Release-set plan input')
+  return validateReleaseSetPlan({ ...input, schemaVersion: RELEASE_SET_SCHEMA_VERSION, kind: RELEASE_SET_KIND })
+}
+
+export const releaseSetPlanDigest = plan => sha256Hex(canonicalJson(validateReleaseSetPlan(plan)))
+
+/** Bind runtime event/checkout identity to an already validated stable plan. */
+export function validateReleaseSetContext(context, plan) {
+  const normalized = validateReleaseSetPlan(plan)
+  releaseSetKeys(context, ['repository', 'repositoryId', 'eventName', 'eventRef', 'eventSha', 'expectedCommit', 'checkoutHead', 'checkoutStatus', 'workflowRef', 'workflowSha'], 'Release-set execution context')
+  requireEqual(context.repository, EXPECTED_REPOSITORY, 'Release-set execution repository mismatch')
+  requireEqual(String(context.repositoryId), EXPECTED_REPOSITORY_ID, 'Release-set execution repository ID mismatch')
+  requireEqual(context.eventName, 'workflow_dispatch', 'Release-set execution must be manually dispatched')
+  requireEqual(context.eventRef, 'refs/heads/main', 'Release-set execution must run on main')
+  requireEqual(context.expectedCommit, normalized.sourceCommit, 'Release-set execution expected commit mismatch')
+  requireEqual(context.eventSha, normalized.sourceCommit, 'Release-set execution event SHA mismatch')
+  requireEqual(context.checkoutHead, normalized.sourceCommit, 'Release-set execution checkout mismatch')
+  requireEqual(context.checkoutStatus, '', 'Release-set execution checkout must be clean')
+  requireEqual(context.workflowRef, `${EXPECTED_REPOSITORY}/${RELEASE_SET_WORKFLOW}@refs/heads/main`, 'Release-set execution workflow ref mismatch')
+  requireEqual(context.workflowSha, normalized.sourceCommit, 'Release-set execution workflow SHA mismatch')
+  return { sourceCommit: normalized.sourceCommit }
+}
+
+export function validateReleaseSetPreparationBinding(binding, { plan, expected = {} }) {
+  const normalized = validateReleaseSetPlan(plan)
+  releaseSetKeys(binding, ['schemaVersion', 'kind', 'repository', 'repositoryId', 'workflowPath', 'sourceCommit', 'versions', 'runId', 'runAttempt', 'artifactId', 'bindingArtifactId', 'planSha256'], 'Release-set preparation binding')
+  requireEqual(binding.schemaVersion, RELEASE_SET_SCHEMA_VERSION, 'Release-set binding schema mismatch')
+  requireEqual(binding.kind, RELEASE_SET_BINDING_KIND, 'Release-set binding kind mismatch')
+  requireEqual(binding.repository, EXPECTED_REPOSITORY, 'Release-set binding repository mismatch')
+  requireEqual(String(binding.repositoryId), EXPECTED_REPOSITORY_ID, 'Release-set binding repository ID mismatch')
+  requireEqual(binding.workflowPath, RELEASE_SET_WORKFLOW, 'Release-set binding workflow mismatch')
+  requireEqual(binding.sourceCommit, normalized.sourceCommit, 'Release-set binding source mismatch')
+  releaseSetKeys(binding.versions, ['nonRustVersion', 'rustVersion'], 'Release-set binding versions')
+  requireEqual(binding.versions.nonRustVersion, normalized.versions.nonRustVersion, 'Release-set binding non-Rust version mismatch')
+  requireEqual(binding.versions.rustVersion, normalized.versions.rustVersion, 'Release-set binding Rust version mismatch')
+  for (const [value, label] of [[binding.runId, 'Release-set binding run ID'], [binding.runAttempt, 'Release-set binding attempt'], [binding.artifactId, 'Release-set binding artifact ID'], [binding.bindingArtifactId, 'Release-set binding artifact ID']]) requirePositiveId(value, label)
+  requireArchiveSha(binding.planSha256, 'Release-set binding plan hash')
+  requireEqual(binding.planSha256, releaseSetPlanDigest(normalized), 'Release-set binding plan hash mismatch')
+  for (const key of ['runId', 'runAttempt', 'artifactId', 'bindingArtifactId']) if (expected[key] !== undefined) requireEqual(String(binding[key]), String(expected[key]), `Release-set binding ${key} mismatch`)
+  return binding
+}
+
+const releaseSetMemberSet = (left, right, label) => {
+  if (canonicalJson([...left].sort()) !== canonicalJson([...right].sort())) fail(`${label} member set mismatch`)
+}
+
+const releaseSetReadMetadata = async (filePath, kind, version, name) => {
+  const members = await archiveEntries(filePath, kind === 'pypi-wheel' ? 'zip' : 'tar')
+  if (kind === 'npm') {
+    const metadataPath = 'package/package.json'
+    if (!members.includes(metadataPath)) fail('npm archive is missing package/package.json')
+    const metadata = JSON.parse(await archiveText(filePath, metadataPath))
+    if (metadata.name !== name || metadata.version !== version) fail('npm archive identity/version mismatch')
+    if (!members.includes('package/LICENSE') || !members.includes('package/README.md') || !members.some(member => member.startsWith('package/dist/'))) fail('npm archive is missing required package files')
+  } else if (kind === 'pypi-wheel' || kind === 'pypi-sdist') {
+    const metadataPath = members.find(member => kind === 'pypi-wheel' ? /\.dist-info\/METADATA$/.test(member) : /(?:^|\/)PKG-INFO$/.test(member))
+    if (!metadataPath) fail(`${kind} archive metadata is missing`)
+    const metadata = await archiveText(filePath, metadataPath, kind === 'pypi-wheel')
+    if (metadataValue(metadata, 'Name') !== name || metadataValue(metadata, 'Version') !== version) fail(`${kind} archive identity/version mismatch`)
+  } else if (kind === 'rubygems') {
+    const specification = JSON.parse(await commandText('ruby', ['-rrubygems/package', '-rjson', '-e', 'spec = Gem::Package.new(ARGV.fetch(0)).spec; puts JSON.generate({"name" => spec.name, "version" => spec.version.to_s, "platform" => spec.platform.to_s, "files" => spec.files})', filePath]))
+    if (specification.name !== name || specification.version !== version || specification.platform !== 'ruby') fail('Ruby gem identity/version/platform mismatch')
+    const outerMembers = new Set(members)
+    const expectedOuterMembers = new Set(['metadata.gz', 'data.tar.gz', 'checksums.yaml.gz'])
+    if (outerMembers.size !== expectedOuterMembers.size || [...expectedOuterMembers].some(member => !outerMembers.has(member))) fail('Ruby gem outer member set mismatch')
+    const temporaryDirectory = await mkdtemp(join(tmpdir(), 'erpc-sdk-release-set-gem-'))
+    try {
+      const dataTar = await execFile('tar', ['-xOf', filePath, 'data.tar.gz'], { encoding: 'buffer', maxBuffer: 16 * 1024 * 1024 })
+      const dataPath = join(temporaryDirectory, 'data.tar.gz')
+      await writeFile(dataPath, dataTar.stdout)
+      const dataMembers = await archiveEntries(dataPath, 'tar')
+      releaseSetMemberSet(dataMembers, specification.files, 'Ruby gem specification/data')
+      return dataMembers
+    } finally {
+      await rm(temporaryDirectory, { recursive: true, force: true })
+    }
+  }
+  return members
+}
+
+const releaseSetInspectRustArchive = async (filePath, version, expectedCommit) => {
+  const members = await archiveEntries(filePath, 'tar')
+  const root = `${CRATE_NAME}-${version}`
+  const roots = new Set(members.map(member => member.split('/')[0]))
+  if (roots.size !== 1 || !roots.has(root)) fail(`Rust archive must contain exactly one ${root} root`)
+  const required = [`${root}/Cargo.toml`, `${root}/LICENSE`, `${root}/README.md`, `${root}/.cargo_vcs_info.json`]
+  for (const member of required) if (!members.includes(member)) fail(`Rust archive is missing ${member}`)
+  const manifest = await archiveText(filePath, `${root}/Cargo.toml`)
+  const packageSections = manifest.match(/^\[package\]\s*$/gm) ?? []
+  if (packageSections.length !== 1) fail('Rust archive Cargo.toml must contain exactly one [package] table')
+  const packageBody = manifest.split(/^\[package\]\s*$/m)[1]?.split(/^\[[^\]]+\]\s*$/m)[0] ?? ''
+  if (packageBody.match(/^name\s*=\s*"([^"]+)"$/m)?.[1] !== CRATE_NAME || packageBody.match(/^version\s*=\s*"([^"]+)"$/m)?.[1] !== version) fail('Rust archive [package] identity/version mismatch')
+  let vcs
+  try { vcs = JSON.parse(await archiveText(filePath, `${root}/.cargo_vcs_info.json`)) } catch { fail('Rust archive VCS metadata is malformed') }
+  if ((vcs.git?.sha1 ?? vcs.git?.commit) !== expectedCommit || (vcs.git?.dirty !== undefined && vcs.git.dirty !== false) || vcs.path_in_vcs !== 'packages/rust') fail('Rust archive VCS provenance mismatch')
+  return members
+}
+
+export async function inspectReleaseSetRustArchiveBytes({ filePath, version, sourceCommit }) {
+  return releaseSetInspectRustArchive(filePath, version, sourceCommit)
+}
+
+export async function inspectReleaseSetRubyGemBytes({ filePath, name, version }) {
+  return releaseSetReadMetadata(filePath, 'rubygems', version, name)
+}
+
+/** Read and validate genuine prepared archive bytes; plaintext files fail closed. */
+export async function inspectReleaseSetArtifactBytes(descriptor, filePath, expectedSourceCommit) {
+  if (await sha256File(filePath) !== descriptor.sha256) fail(`Prepared artifact bytes do not match ${descriptor.filename}`)
+  const members = await releaseSetReadMetadata(filePath, descriptor.kind, descriptor.version, descriptor.name)
+  releaseSetMemberSet(members, descriptor.files, descriptor.kind)
+  return { filename: descriptor.filename, sha256: descriptor.sha256, members }
+}
+
+/** Verify the complete prepared bundle and return prepared-byte evidence only. */
+export async function ingestReleaseSetBundle({ plan, artifactDirectory }) {
+  const normalized = validateReleaseSetPlan(plan)
+  const expectedFiles = releaseSetExpectedBundleFiles(normalized)
+  const entries = await readdir(artifactDirectory, { withFileTypes: true })
+  if (entries.length !== expectedFiles.length || entries.some(entry => !entry.isFile() || !expectedFiles.includes(entry.name))) fail('Release-set bundle has missing, extra, or non-file members')
+  const planBytes = JSON.parse(await readFile(join(artifactDirectory, 'release-set-plan.json'), 'utf8'))
+  requireEqual(canonicalJson(planBytes), canonicalJson(normalized), 'Release-set plan sidecar mismatch')
+  requireEqual((await readFile(join(artifactDirectory, 'release-set-plan.sha256'), 'utf8')).trim(), releaseSetPlanDigest(normalized), 'Release-set plan digest sidecar mismatch')
+  requireEqual(await readFile(join(artifactDirectory, 'release-body.md'), 'utf8'), normalized.githubRelease.body, 'Release-set body sidecar mismatch')
+  requireEqual(canonicalJson(JSON.parse(await readFile(join(artifactDirectory, 'go-inventory.json'), 'utf8'))), canonicalJson(normalized.go.inventory), 'Release-set Go inventory sidecar mismatch')
+  const checksums = parseReleaseSetChecksums(await readFile(join(artifactDirectory, 'checksums.txt'), 'utf8'))
+  const checksumExpected = expectedFiles.filter(file => file !== 'checksums.txt')
+  if (checksums.size !== checksumExpected.length || checksumExpected.some(file => !checksums.has(file))) fail('Release-set checksum manifest file set mismatch')
+  for (const filename of checksumExpected) requireEqual(checksums.get(filename), await sha256File(join(artifactDirectory, filename)), `Release-set checksum mismatch for ${filename}`)
+  const prepared = []
+  for (const artifact of normalized.artifacts) prepared.push(await inspectReleaseSetArtifactBytes(artifact, join(artifactDirectory, artifact.filename), normalized.sourceCommit))
+  if (normalized.rust.mode === 'publish') {
+    const rustPath = join(artifactDirectory, normalized.rust.archive.filename)
+    requireEqual(await sha256File(rustPath), normalized.rust.sha256, 'Prepared Rust archive bytes do not match')
+    prepared.push({ filename: normalized.rust.archive.filename, sha256: normalized.rust.sha256, members: await releaseSetInspectRustArchive(rustPath, normalized.rust.version, normalized.rust.sourceCommit) })
+  }
+  return { plan: normalized, prepared }
+}
+
+const releaseSetZipFileMembers = async zipFile => {
+  await archiveEntries(zipFile, 'zip')
+  const names = (await commandText('unzip', ['-Z1', zipFile])).split(/\r?\n/).filter(Boolean)
+  const files = []
+  const seen = new Set()
+  for (const raw of names) {
+    const name = raw.endsWith('/') ? raw.slice(0, -1) : raw
+    safeRelativePath(name)
+    if (seen.has(name)) fail(`Release-set ZIP contains duplicate member ${name}`)
+    seen.add(name)
+    if (!raw.endsWith('/')) files.push(name)
+  }
+  return files
+}
+
+/** Bind an Actions artifact API record to the exact downloaded ZIP and consumed files. */
+export async function verifyReleaseSetArtifactZip({ zipFile, metadata, expectedId, consumedDirectory, expectedName }) {
+  const id = requirePositiveId(expectedId, 'Release-set ZIP artifact ID')
+  requireEqual(metadata?.id, Number(id), 'Release-set ZIP metadata ID mismatch')
+  if (expectedName !== undefined) requireEqual(metadata?.name, expectedName, 'Release-set ZIP metadata name mismatch')
+  requireEqual(metadata?.expired, false, 'Release-set ZIP artifact is expired')
+  const bytes = await readFile(zipFile)
+  requireEqual(metadata?.size_in_bytes, bytes.length, 'Release-set ZIP size mismatch')
+  requireEqual(metadata?.digest, `sha256:${sha256Hex(bytes)}`, 'Release-set ZIP API digest mismatch')
+  requireEqual(metadata?.archive_download_url, `https://api.github.com/repos/${EXPECTED_REPOSITORY}/actions/artifacts/${id}/zip`, 'Release-set ZIP URL mismatch')
+  const zipMembers = await releaseSetZipFileMembers(zipFile)
+  const consumedEntries = await readdir(consumedDirectory, { withFileTypes: true })
+  if (consumedEntries.some(entry => !entry.isFile())) fail('Release-set consumed artifact directory contains a non-file member')
+  const consumedNames = consumedEntries.map(entry => entry.name).sort()
+  if (canonicalJson(zipMembers.slice().sort()) !== canonicalJson(consumedNames)) fail('Release-set ZIP members do not equal consumed files')
+  for (const name of zipMembers) {
+    const extracted = await execFile('unzip', ['-p', zipFile, name], { encoding: 'buffer', maxBuffer: 64 * 1024 * 1024 })
+    const consumed = await readFile(join(consumedDirectory, name))
+    if (!Buffer.from(extracted.stdout).equals(consumed)) fail(`Release-set ZIP member bytes differ for ${name}`)
+  }
+  return { id: Number(id), name: metadata.name, sizeInBytes: bytes.length, digest: sha256Hex(bytes), members: zipMembers }
+}
+
+/** Full authenticated verification: context, API metadata, raw ZIPs, and consumed bytes are mandatory. */
+export async function verifyReleaseSetPreparation({ plan, context, run, artifact, bindingArtifact, binding, bundleZip, bindingZip, artifactDirectory, bindingDirectory, expected }) {
+  const normalized = validateReleaseSetPlan(plan)
+  validateReleaseSetContext(context, normalized)
+  const metadata = validateReleaseSetPreparationMetadata({ plan: normalized, run, artifact, bindingArtifact, expected })
+  validateReleaseSetPreparationBinding(binding, { plan: normalized, expected })
+  const bundleZipEvidence = await verifyReleaseSetArtifactZip({ zipFile: bundleZip, metadata: artifact, expectedId: expected.artifactId, consumedDirectory: artifactDirectory, expectedName: expected.bundleName })
+  const bindingZipEvidence = await verifyReleaseSetArtifactZip({ zipFile: bindingZip, metadata: bindingArtifact, expectedId: expected.bindingArtifactId, consumedDirectory: bindingDirectory, expectedName: expected.bindingName })
+  const bindingEntries = await readdir(bindingDirectory, { withFileTypes: true })
+  if (bindingEntries.length !== 1 || !bindingEntries[0].isFile() || bindingEntries[0].name !== 'release-set-binding.json') fail('Release-set binding directory must contain exactly release-set-binding.json')
+  requireEqual(canonicalJson(JSON.parse(await readFile(join(bindingDirectory, 'release-set-binding.json'), 'utf8'))), canonicalJson(binding), 'Release-set binding ZIP/consumed binding mismatch')
+  const prepared = await ingestReleaseSetBundle({ plan: normalized, artifactDirectory })
+  return { context: { sourceCommit: normalized.sourceCommit }, metadata, bundleZip: bundleZipEvidence, bindingZip: bindingZipEvidence, prepared }
+}
+
+/** Authenticate Actions run/artifact metadata before any later bundle use. */
+export function validateReleaseSetPreparationMetadata({ plan, run, artifact, bindingArtifact, expected }) {
+  const normalized = validateReleaseSetPlan(plan)
+  const runId = requirePositiveId(expected.runId, 'Release-set preparation run ID')
+  const runAttempt = requirePositiveId(expected.runAttempt, 'Release-set preparation attempt')
+  const artifactId = requirePositiveId(expected.artifactId, 'Release-set preparation artifact ID')
+  const bindingArtifactId = requirePositiveId(expected.bindingArtifactId, 'Release-set binding artifact ID')
+  requireSha(expected.sourceCommit, 'Release-set preparation source')
+  requireEqual(expected.sourceCommit, normalized.sourceCommit, 'Release-set preparation source does not match the plan')
+  requireEqual(run?.id, Number(runId), 'Release-set preparation run ID mismatch')
+  requireEqual(run?.run_attempt, Number(runAttempt), 'Release-set preparation attempt mismatch')
+  requireEqual(run?.status, 'completed', 'Release-set preparation run is not complete')
+  requireEqual(run?.conclusion, 'success', 'Release-set preparation run did not succeed')
+  requireEqual(run?.event, 'workflow_dispatch', 'Release-set preparation event mismatch')
+  requireEqual(run?.head_branch, 'main', 'Release-set preparation branch mismatch')
+  requireEqual(run?.head_sha, normalized.sourceCommit, 'Release-set preparation source mismatch')
+  requireEqual(run?.path, RELEASE_SET_WORKFLOW, 'Release-set preparation workflow mismatch')
+  requireEqual(run?.repository?.full_name, EXPECTED_REPOSITORY, 'Release-set preparation repository mismatch')
+  requireEqual(String(run?.repository?.id), EXPECTED_REPOSITORY_ID, 'Release-set preparation repository ID mismatch')
+  const checkArtifact = (record, id, label) => {
+    requireEqual(record?.id, Number(id), `${label} ID mismatch`)
+    requireEqual(record?.expired, false, `${label} is expired`)
+    if (!Number.isSafeInteger(record?.size_in_bytes) || record.size_in_bytes <= 0) fail(`${label} size is invalid`)
+    releaseSetString(record?.name, `${label} name`)
+    requireEqual(record?.workflow_run?.id, Number(runId), `${label} run binding mismatch`)
+    requireEqual(String(record?.workflow_run?.repository_id), EXPECTED_REPOSITORY_ID, `${label} repository binding mismatch`)
+    if (record?.workflow_run?.head_repository_id !== undefined) requireEqual(String(record.workflow_run.head_repository_id), EXPECTED_REPOSITORY_ID, `${label} source repository binding mismatch`)
+    requireEqual(record?.workflow_run?.head_sha, normalized.sourceCommit, `${label} source binding mismatch`)
+    requireEqual(record?.workflow_run?.head_branch, 'main', `${label} branch binding mismatch`)
+    if (record?.workflow_run?.run_attempt !== undefined) requireEqual(record.workflow_run.run_attempt, Number(runAttempt), `${label} attempt binding mismatch`)
+    if (record?.workflow_run?.path !== undefined) requireEqual(record.workflow_run.path, RELEASE_SET_WORKFLOW, `${label} workflow binding mismatch`)
+    if (record?.archive_download_url !== undefined) {
+      const expectedUrl = `https://api.github.com/repos/${EXPECTED_REPOSITORY}/actions/artifacts/${id}/zip`
+      requireEqual(record.archive_download_url, expectedUrl, `${label} archive URL is not canonical`)
+    }
+    if (typeof record?.digest !== 'string' || !/^sha256:[0-9a-f]{64}$/.test(record.digest)) fail(`${label} metadata digest is missing or malformed`)
+  }
+  if (expected.bundleName !== undefined) requireEqual(artifact.name, expected.bundleName, 'Release-set bundle artifact name mismatch')
+  if (expected.bindingName !== undefined) requireEqual(bindingArtifact.name, expected.bindingName, 'Release-set binding artifact name mismatch')
+  checkArtifact(artifact, artifactId, 'Release-set bundle artifact')
+  checkArtifact(bindingArtifact, bindingArtifactId, 'Release-set binding artifact')
+  return { runId: Number(runId), runAttempt: Number(runAttempt), artifactId: Number(artifactId), bindingArtifactId: Number(bindingArtifactId), sourceCommit: normalized.sourceCommit }
+}
+
 const env = name => {
   const value = process.env[name]
   if (value === undefined) fail(`Missing ${name}`)
@@ -1516,6 +2006,95 @@ const requireExactInternalMode = (arguments_, mode) => {
 }
 
 const run = async arguments_ => {
+  if (arguments_[0] === '--release-set-context') {
+    requireExactInternalMode(arguments_, '--release-set-context')
+    const plan = JSON.parse(await readFile(env('RELEASE_SET_PLAN_FILE'), 'utf8'))
+    validateReleaseSetContext({
+      repository: env('REPOSITORY'),
+      repositoryId: env('REPOSITORY_ID'),
+      eventName: env('EVENT_NAME'),
+      eventRef: env('EVENT_REF'),
+      eventSha: env('EVENT_SHA'),
+      expectedCommit: env('EXPECTED_COMMIT'),
+      checkoutHead: env('CHECKOUT_HEAD'),
+      checkoutStatus: env('CHECKOUT_STATUS'),
+      workflowRef: env('WORKFLOW_REF'),
+      workflowSha: env('WORKFLOW_SHA'),
+    }, plan)
+    console.log('release-set-context-passed')
+    return
+  }
+
+  if (arguments_[0] === '--release-set-validate') {
+    requireExactInternalMode(arguments_, '--release-set-validate')
+    const plan = JSON.parse(await readFile(env('RELEASE_SET_PLAN_FILE'), 'utf8'))
+    console.log(`release-set-plan=${releaseSetPlanDigest(plan)}`)
+    return
+  }
+
+  if (arguments_[0] === '--release-set-ingest') {
+    requireExactInternalMode(arguments_, '--release-set-ingest')
+    const plan = JSON.parse(await readFile(env('RELEASE_SET_PLAN_FILE'), 'utf8'))
+    const normalized = validateReleaseSetPlan(plan)
+    requireEqual(releaseSetPlanDigest(normalized), env('RELEASE_SET_PLAN_SHA256'), 'Release-set plan digest mismatch')
+    const binding = JSON.parse(await readFile(env('RELEASE_SET_BINDING_FILE'), 'utf8'))
+    validateReleaseSetPreparationBinding(binding, {
+      plan: normalized,
+      expected: {
+        runId: process.env.RELEASE_SET_PREPARED_RUN_ID,
+        runAttempt: process.env.RELEASE_SET_PREPARED_RUN_ATTEMPT,
+        artifactId: process.env.RELEASE_SET_PREPARED_ARTIFACT_ID,
+        bindingArtifactId: process.env.RELEASE_SET_PREPARED_BINDING_ARTIFACT_ID,
+      },
+    })
+    const result = await ingestReleaseSetBundle({ plan: normalized, artifactDirectory: env('RELEASE_SET_ARTIFACT_DIR') })
+    if (process.env.RELEASE_SET_PREPARED_EVIDENCE_FILE) await writeFile(process.env.RELEASE_SET_PREPARED_EVIDENCE_FILE, `${canonicalJson(result)}\n`)
+    console.log('release-set-prepared-bytes-verified')
+    return
+  }
+
+  if (arguments_[0] === '--release-set-verify') {
+    requireExactInternalMode(arguments_, '--release-set-verify')
+    const plan = JSON.parse(await readFile(env('RELEASE_SET_PLAN_FILE'), 'utf8'))
+    const normalized = validateReleaseSetPlan(plan)
+    const planDigest = releaseSetPlanDigest(normalized)
+    requireEqual(planDigest, env('RELEASE_SET_PLAN_SHA256'), 'Release-set plan digest mismatch')
+    const expected = {
+      runId: env('RELEASE_SET_PREPARED_RUN_ID'),
+      runAttempt: env('RELEASE_SET_PREPARED_RUN_ATTEMPT'),
+      artifactId: env('RELEASE_SET_PREPARED_ARTIFACT_ID'),
+      bindingArtifactId: env('RELEASE_SET_PREPARED_BINDING_ARTIFACT_ID'),
+      sourceCommit: normalized.sourceCommit,
+      bundleName: `release-set-bundle-${normalized.sourceCommit}`,
+      bindingName: `release-set-binding-${env('RELEASE_SET_PREPARED_RUN_ID')}-${env('RELEASE_SET_PREPARED_RUN_ATTEMPT')}`,
+    }
+    const result = await verifyReleaseSetPreparation({
+      plan: normalized,
+      context: {
+        repository: env('REPOSITORY'), repositoryId: env('REPOSITORY_ID'), eventName: env('EVENT_NAME'), eventRef: env('EVENT_REF'),
+        eventSha: env('EVENT_SHA'), expectedCommit: env('EXPECTED_COMMIT'), checkoutHead: env('CHECKOUT_HEAD'), checkoutStatus: env('CHECKOUT_STATUS'),
+        workflowRef: env('WORKFLOW_REF'), workflowSha: env('WORKFLOW_SHA'),
+      },
+      run: JSON.parse(await readFile(env('RELEASE_SET_RUN_FILE'), 'utf8')),
+      artifact: JSON.parse(await readFile(env('RELEASE_SET_ARTIFACT_METADATA_FILE'), 'utf8')),
+      bindingArtifact: JSON.parse(await readFile(env('RELEASE_SET_BINDING_METADATA_FILE'), 'utf8')),
+      binding: JSON.parse(await readFile(env('RELEASE_SET_BINDING_FILE'), 'utf8')),
+      bundleZip: env('RELEASE_SET_BUNDLE_ZIP_FILE'),
+      bindingZip: env('RELEASE_SET_BINDING_ZIP_FILE'),
+      artifactDirectory: env('RELEASE_SET_ARTIFACT_DIR'),
+      bindingDirectory: env('RELEASE_SET_BINDING_DIR'),
+      expected,
+    })
+    if (process.env.RELEASE_SET_PREPARED_EVIDENCE_FILE) await writeFile(process.env.RELEASE_SET_PREPARED_EVIDENCE_FILE, `${canonicalJson(result)}\n`)
+    console.log('release-set-authenticated-preparation-verified')
+    return
+  }
+
+  if (arguments_[0] === '--release-set-observe') {
+    requireExactInternalMode(arguments_, '--release-set-observe')
+    fail('Future public observation remains unavailable until checkpoint B')
+  }
+
   if (arguments_[0] === '--foundation-guard') {
     requireExactInternalMode(arguments_, '--foundation-guard')
     validateFoundationWorkflowContext({

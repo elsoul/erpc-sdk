@@ -14,6 +14,11 @@ import {
   FOUNDATION_RUST_SOURCE,
   FOUNDATION_TAG,
   FOUNDATION_VERSION,
+  RELEASE_SET_ARTIFACT_KINDS,
+  RELEASE_SET_KIND,
+  RELEASE_SET_PUBLIC_ASSET_ROLES,
+  RELEASE_SET_SCHEMA_VERSION,
+  buildReleaseSetPlan,
   buildFoundationPlan,
   buildGoInventory,
   classifyRegistryResponse,
@@ -30,6 +35,16 @@ import {
   validateFoundationPlan,
   validateFoundationArtifactDescriptor,
   validateFoundationPyPIResponse,
+  ingestReleaseSetBundle,
+  inspectReleaseSetArtifactBytes,
+  inspectReleaseSetRubyGemBytes,
+  inspectReleaseSetRustArchiveBytes,
+  parseReleaseSetChecksums,
+  releaseSetPlanDigest,
+  validateReleaseSetContext,
+  validateReleaseSetPlan,
+  validateReleaseSetPreparationBinding,
+  validateReleaseSetPreparationMetadata,
   selectFoundationCIRun,
   validateFoundationCIProof,
   validateWorkflowContext,
@@ -186,13 +201,15 @@ test('release argument parser rejects unknown, duplicate, and conflicting inputs
 
 test('current tree passes split cohorts while strict aggregate verification fails', async () => {
   const data = await readReleaseData(root.pathname)
-  assert.equal(validateReleaseData(data, { scope: 'rust', expectedVersion: '0.10.0' }).version, '0.10.0')
+  // The current Rust candidate deliberately remains release-invalid until P2b
+  // promotes its mixed-source licence/archive controls.
+  assert.throws(() => validateReleaseData(data, { scope: 'rust', expectedVersion: '0.10.0' }), /Unexpected Rust crate license/)
   const nonRustVersions = [data.packageJson.version, data.pythonVersion, data.pythonRuntimeVersion, data.rubyVersion, data.rubyLockVersion]
   if (new Set(nonRustVersions).size === 1) assert.equal(validateReleaseData(data, { scope: 'non-rust' }).version, data.packageJson.version)
   else assert.throws(() => validateReleaseData(data, { scope: 'non-rust' }), /Non-Rust package versions differ/)
   assert.throws(
     () => validateReleaseData(data, { scope: 'all' }),
-    /Package versions differ|Non-Rust package versions differ/,
+    /Package versions differ|Non-Rust package versions differ|Unexpected Rust crate license/,
   )
 })
 
@@ -203,12 +220,13 @@ test('Rust verification binds the unique source-free local lock entry and MSRV',
     () => findLocalCargoPackage('[[package]]\nname = "erpc-sdk"\nversion = "0.10.0"\n\n[[package]]\nname = "erpc-sdk"\nversion = "0.10.0"\n'),
     /exactly one source-free erpc-sdk/,
   )
+  const historicalLicenseData = { ...data, cargoManifest: data.cargoManifest.replace('license = "MIT AND Apache-2.0"', 'license = "MIT"') }
   assert.throws(
-    () => validateReleaseData({ ...data, cargoManifest: data.cargoManifest.replace('rust-version = "1.85"', 'rust-version = "1.86"') }, { scope: 'rust' }),
+    () => validateReleaseData({ ...historicalLicenseData, cargoManifest: historicalLicenseData.cargoManifest.replace('rust-version = "1.85"', 'rust-version = "1.86"') }, { scope: 'rust' }),
     /Unexpected Rust MSRV/,
   )
   assert.throws(
-    () => validateReleaseData({ ...data, cargoLockPackage: { version: '0.9.0' } }, { scope: 'rust' }),
+    () => validateReleaseData({ ...historicalLicenseData, cargoLockPackage: { version: '0.9.0' } }, { scope: 'rust' }),
     /Cargo\.lock local erpc-sdk version/,
   )
 })
@@ -390,6 +408,282 @@ test('foundation plan is content-addressed and states the mixed release boundary
   assert.deepEqual(validateFoundationPlan(plan).artifacts, foundationArtifacts)
   assert.throws(() => validateFoundationPlan({ ...plan, tags: { ...plan.tags, release: 'v0.9.1' } }), /release tag/)
   assert.throws(() => validateFoundationArtifactDescriptor({ ...foundationArtifacts[0], filename: 'elsoul-erpc-sdk-0.9.1.tgz$(touch pwned)' }), /basename is not canonical/)
+})
+
+test('checkpoint A ingests genuine future archives, binds context/API metadata, and rejects plan-only evidence', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'erpc-sdk-release-set-a-'))
+  const bundle = join(directory, 'bundle')
+  const sourceCommit = 'c'.repeat(40)
+  const version = '0.11.0'
+  await mkdir(bundle)
+  t.after(() => rm(directory, { recursive: true, force: true }))
+
+  const npmRoot = join(directory, 'npm-root')
+  await mkdir(join(npmRoot, 'package', 'dist'), { recursive: true })
+  await writeFile(join(npmRoot, 'package', 'package.json'), JSON.stringify({ name: '@elsoul/erpc-sdk', version }))
+  await writeFile(join(npmRoot, 'package', 'LICENSE'), 'MIT\n')
+  await writeFile(join(npmRoot, 'package', 'README.md'), '# SDK\n')
+  await writeFile(join(npmRoot, 'package', 'dist', 'index.js'), 'module.exports = {}\n')
+  const npmFile = join(bundle, `elsoul-erpc-sdk-${version}.tgz`)
+  await execFileAsync('tar', ['-czf', npmFile, '-C', npmRoot, 'package'], { env: { ...process.env, COPYFILE_DISABLE: '1' } })
+
+  const wheelFile = join(bundle, `erpc_sdk-${version}-py3-none-any.whl`)
+  await execFileAsync('python3', ['-c', 'import sys,zipfile; z=zipfile.ZipFile(sys.argv[1],"w"); z.writestr("erpc_sdk/__init__.py", "__version__ = \\\"0.11.0\\\"\\n"); z.writestr("erpc_sdk-0.11.0.dist-info/METADATA", "Name: erpc-sdk\\nVersion: 0.11.0\\n"); z.writestr("erpc_sdk-0.11.0.dist-info/LICENSE", "MIT\\n"); z.close()', wheelFile])
+
+  const sdistRoot = join(directory, 'sdist-root', `erpc_sdk-${version}`)
+  await mkdir(sdistRoot, { recursive: true })
+  await writeFile(join(sdistRoot, 'PKG-INFO'), `Name: erpc-sdk\nVersion: ${version}\n`)
+  await writeFile(join(sdistRoot, 'LICENSE'), 'MIT\n')
+  await writeFile(join(sdistRoot, 'erpc_sdk.py'), '__version__ = "0.11.0"\n')
+  const sdistFile = join(bundle, `erpc_sdk-${version}.tar.gz`)
+  await execFileAsync('tar', ['-czf', sdistFile, '-C', join(directory, 'sdist-root'), `erpc_sdk-${version}`], { env: { ...process.env, COPYFILE_DISABLE: '1' } })
+
+  const gemRoot = join(directory, 'gem-root')
+  await mkdir(join(gemRoot, 'lib', 'erpc_sdk'), { recursive: true })
+  await writeFile(join(gemRoot, 'lib', 'erpc_sdk.rb'), 'module ERPC; VERSION = "0.11.0"; end\n')
+  await writeFile(join(gemRoot, 'LICENSE'), 'MIT\n')
+  await writeFile(join(gemRoot, 'README.md'), '# SDK\n')
+  await writeFile(join(gemRoot, 'erpc-sdk.gemspec'), `Gem::Specification.new do |spec|
+  spec.name = 'erpc-sdk'
+  spec.version = '0.11.0'
+  spec.summary = 'checkpoint A fixture'
+  spec.authors = ['fixture']
+  spec.files = Dir['lib/**/*.rb'].sort + %w[LICENSE README.md]
+  spec.require_paths = ['lib']
+  spec.license = 'MIT'
+end
+`)
+  await execFileAsync('gem', ['build', 'erpc-sdk.gemspec'], { cwd: gemRoot })
+  const gemFile = join(bundle, `erpc-sdk-${version}.gem`)
+  await cp(join(gemRoot, `erpc-sdk-${version}.gem`), gemFile)
+
+  const crateRoot = join(directory, `erpc-sdk-${version}`)
+  await mkdir(crateRoot, { recursive: true })
+  await writeFile(join(crateRoot, 'Cargo.toml'), `[package]\nname = "erpc-sdk"\nversion = "${version}"\n`)
+  await writeFile(join(crateRoot, 'LICENSE'), 'MIT\n')
+  await writeFile(join(crateRoot, 'README.md'), '# SDK\n')
+  await writeFile(join(crateRoot, '.cargo_vcs_info.json'), JSON.stringify({ git: { sha1: sourceCommit, dirty: false }, path_in_vcs: 'packages/rust' }))
+  const crateFile = join(bundle, `erpc-sdk-${version}.crate`)
+  await execFileAsync('tar', ['-czf', crateFile, '-C', directory, `erpc-sdk-${version}`], { env: { ...process.env, COPYFILE_DISABLE: '1' } })
+
+  const digest = async file => sha256Hex(await readFile(file))
+  const artifacts = [
+    { kind: 'npm', filename: `elsoul-erpc-sdk-${version}.tgz`, name: '@elsoul/erpc-sdk', version, sha256: await digest(npmFile), files: ['package', 'package/dist', 'package/LICENSE', 'package/README.md', 'package/dist/index.js', 'package/package.json'] },
+    { kind: 'pypi-wheel', filename: `erpc_sdk-${version}-py3-none-any.whl`, name: 'erpc-sdk', version, sha256: await digest(wheelFile), files: ['erpc_sdk-0.11.0.dist-info/LICENSE', 'erpc_sdk-0.11.0.dist-info/METADATA', 'erpc_sdk/__init__.py'] },
+    { kind: 'pypi-sdist', filename: `erpc_sdk-${version}.tar.gz`, name: 'erpc-sdk', version, sha256: await digest(sdistFile), files: [`erpc_sdk-${version}`, `erpc_sdk-${version}/LICENSE`, `erpc_sdk-${version}/PKG-INFO`, `erpc_sdk-${version}/erpc_sdk.py`] },
+    { kind: 'rubygems', filename: `erpc-sdk-${version}.gem`, name: 'erpc-sdk', version, sha256: await digest(gemFile), files: ['LICENSE', 'README.md', 'lib/erpc_sdk.rb'] },
+  ]
+  const rustSha = await digest(crateFile)
+  const inventoryFiles = [{ path: 'LICENSE', sha256: '5'.repeat(64) }, { path: 'go.mod', sha256: '6'.repeat(64) }]
+  const inventory = { files: inventoryFiles, inventorySha256: sha256Hex(canonicalJson(inventoryFiles)) }
+  const publicAssets = [
+    ...RELEASE_SET_ARTIFACT_KINDS.map(role => ({ role, filename: artifacts.find(artifact => artifact.kind === role).filename })),
+    ...RELEASE_SET_PUBLIC_ASSET_ROLES.filter(role => !RELEASE_SET_ARTIFACT_KINDS.includes(role)).map(role => ({ role, filename: ({ 'rust-proof': 'rust-proof.json' })[role] ?? ({ 'go-proof': 'go-proof.json', 'npm-proof': 'npm-proof.json', 'pypi-proof': 'pypi-proof.json', 'rubygems-proof': 'rubygems-proof.json', 'tag-proof': 'tag-proof.json', 'release-set-proof-manifest': 'release-set-proof-manifest.json', 'release-body': 'release-body.md', 'go-inventory': 'go-inventory.json' })[role] })),
+    { role: 'rust-crate', filename: `erpc-sdk-${version}.crate` },
+  ]
+  const plan = buildReleaseSetPlan({
+    repository: 'elsoul/erpc-sdk', repositoryId: '1429568627', workflowPath: '.github/workflows/release.yml', ciWorkflowPath: '.github/workflows/ci.yml',
+    sourceCommit, controlCommit: sourceCommit, workflowRevision: sourceCommit,
+    event: { name: 'workflow_dispatch', ref: 'refs/heads/main', sha: sourceCommit }, checkoutHead: sourceCommit, checkoutStatus: '',
+    versions: { nonRustVersion: version, rustVersion: version }, artifacts,
+    go: { module: 'github.com/elsoul/erpc-sdk/packages/go', version: 'v0.11.0', tag: 'packages/go/v0.11.0', sourceCommit, inventory },
+    rust: { mode: 'publish', version, sourceCommit, sha256: rustSha, archive: { filename: `erpc-sdk-${version}.crate`, sha256: rustSha }, prepared: { runId: '51', runAttempt: '1', artifactId: '52', bindingArtifactId: '53', sourceCommit, archiveSha256: rustSha, licenseProfile: 'MIT AND Apache-2.0' } },
+    ciProof: { workflowPath: '.github/workflows/ci.yml', sourceCommit, runId: '61', runAttempt: '1', jobId: '62', requiredJob: 'required-ci', event: 'push', headBranch: 'main', status: 'completed', conclusion: 'success' },
+    tags: { release: 'non-rust-v0.11.0', go: 'packages/go/v0.11.0', commit: sourceCommit },
+    githubRelease: { title: 'SDK release set: non-Rust 0.11.0 / Rust 0.11.0', tag: 'non-rust-v0.11.0', body: '# Future release\n', bodySha256: sha256Hex('# Future release\n') },
+    approval: { environments: { npm: 'npm', pypi: 'pypi', rubygems: 'rubygems', cratesIo: 'crates-io' }, effects: ['publish npm', 'publish PyPI', 'publish RubyGems', 'create tags', 'create GitHub Release'], publicAssets, bundleFiles: [...artifacts.map(artifact => artifact.filename), `erpc-sdk-${version}.crate`, 'release-set-plan.json', 'release-set-plan.sha256', 'release-body.md', 'go-inventory.json', 'checksums.txt'] },
+    licenseProfile: { nonRust: 'MIT', rust: 'MIT AND Apache-2.0' }, toolchain: { node: '24', python: '3.12', go: '1.22', ruby: '3.1', rust: '1.85.0' },
+  })
+  const historicalReuse = structuredClone(plan)
+  historicalReuse.versions.rustVersion = '0.10.0'
+  historicalReuse.rust = { mode: 'reuse', version: '0.10.0', sourceCommit: FOUNDATION_RUST_SOURCE, sha256: FOUNDATION_RUST_SHA256, reuse: { registry: 'crates.io', downloadUrl: 'https://crates.io/api/v1/crates/erpc-sdk/0.10.0/download', sourceCommit: FOUNDATION_RUST_SOURCE, sha256: FOUNDATION_RUST_SHA256, yanked: false } }
+  historicalReuse.githubRelease.title = 'SDK release set: non-Rust 0.11.0 / Rust 0.10.0'
+  historicalReuse.githubRelease.bodySha256 = sha256Hex(historicalReuse.githubRelease.body)
+  historicalReuse.licenseProfile.rust = 'MIT'
+  historicalReuse.approval.publicAssets = historicalReuse.approval.publicAssets.filter(asset => asset.role !== 'rust-crate')
+  historicalReuse.approval.bundleFiles = historicalReuse.approval.bundleFiles.filter(file => file !== 'erpc-sdk-0.11.0.crate')
+  assert.equal(validateReleaseSetPlan(historicalReuse).rust.reuse.sourceCommit, FOUNDATION_RUST_SOURCE)
+  assert.throws(() => validateReleaseSetPlan({ ...historicalReuse, rust: { ...historicalReuse.rust, sourceCommit: 'not-a-source-sha' } }), /source commit/)
+  assert.throws(() => validateReleaseSetPlan({ ...plan, approval: { ...plan.approval, environments: {} } }), /environment/)
+  assert.throws(() => validateReleaseSetPlan({ ...plan, approval: { ...plan.approval, environments: { npm: 'unprotected-new', pypi: 'wrong', rubygems: 'wrong', cratesIo: 'wrong' } } }), /environment mismatch/)
+  assert.throws(() => validateReleaseSetPlan({ ...plan, rust: { ...plan.rust, reuse: { registry: 'crates.io' } } }), /cannot include a reuse/)
+  assert.throws(() => validateReleaseSetPlan({ ...plan, rust: { ...plan.rust, prepared: { ...plan.rust.prepared, licenseProfile: 'different arbitrary license' } } }), /approved named profile/)
+  await writeFile(join(bundle, 'release-set-plan.json'), `${canonicalJson(plan)}\n`)
+  await writeFile(join(bundle, 'release-set-plan.sha256'), `${releaseSetPlanDigest(plan)}\n`)
+  await writeFile(join(bundle, 'release-body.md'), plan.githubRelease.body)
+  await writeFile(join(bundle, 'go-inventory.json'), `${canonicalJson(plan.go.inventory)}\n`)
+  const checksumFiles = [...plan.approval.bundleFiles].filter(file => file !== 'checksums.txt')
+  await writeFile(join(bundle, 'checksums.txt'), `${(await Promise.all(checksumFiles.map(async file => `${await digest(join(bundle, file))}  ./${file}`))).join('\n')}\n`)
+  assert.deepEqual((await ingestReleaseSetBundle({ plan, artifactDirectory: bundle })).prepared.map(item => item.filename).sort(), plan.approval.bundleFiles.filter(file => !['release-set-plan.json', 'release-set-plan.sha256', 'release-body.md', 'go-inventory.json', 'checksums.txt'].includes(file)).sort())
+  const plain = join(directory, 'plain.tgz')
+  await writeFile(plain, 'This is not an archive\n')
+  const plainDigest = await digest(plain)
+  await assert.rejects(() => inspectReleaseSetArtifactBytes({ ...artifacts[0], filename: 'plain.tgz', sha256: plainDigest }, plain, sourceCommit), /Archive|failed|malformed/i)
+  assert.throws(() => parseReleaseSetChecksums(`${'a'.repeat(64)}  ./same\n${'b'.repeat(64)}  same\n`), /duplicates/)
+
+  const validContext = { repository: 'elsoul/erpc-sdk', repositoryId: '1429568627', eventName: 'workflow_dispatch', eventRef: 'refs/heads/main', eventSha: sourceCommit, expectedCommit: sourceCommit, checkoutHead: sourceCommit, checkoutStatus: '', workflowRef: 'elsoul/erpc-sdk/.github/workflows/release.yml@refs/heads/main', workflowSha: sourceCommit }
+  assert.equal(validateReleaseSetContext(validContext, plan).sourceCommit, sourceCommit)
+  assert.throws(() => validateReleaseSetContext({ ...validContext, eventSha: 'd'.repeat(40) }, plan), /event SHA mismatch/)
+  const binding = { schemaVersion: 2, kind: 'erpc-sdk-release-set-preparation-binding', repository: 'elsoul/erpc-sdk', repositoryId: '1429568627', workflowPath: '.github/workflows/release.yml', sourceCommit, versions: { nonRustVersion: version, rustVersion: version }, runId: '51', runAttempt: '1', artifactId: '52', bindingArtifactId: '53', planSha256: releaseSetPlanDigest(plan) }
+  validateReleaseSetPreparationBinding(binding, { plan, expected: { runId: '51', runAttempt: '1', artifactId: '52', bindingArtifactId: '53' } })
+  assert.throws(() => validateReleaseSetPreparationBinding({ ...binding, versions: { nonRustVersion: '9.9.9', rustVersion: version } }, { plan }), /version mismatch/)
+  const run = { id: 51, run_attempt: 1, status: 'completed', conclusion: 'success', event: 'workflow_dispatch', head_branch: 'main', head_sha: sourceCommit, path: '.github/workflows/release.yml', repository: { full_name: 'elsoul/erpc-sdk', id: 1429568627 } }
+  const metadata = { id: 52, name: `release-set-bundle-${sourceCommit}`, expired: false, size_in_bytes: 10, digest: `sha256:${'0'.repeat(64)}`, archive_download_url: 'https://api.github.com/repos/elsoul/erpc-sdk/actions/artifacts/52/zip', workflow_run: { id: 51, repository_id: 1429568627, head_repository_id: 1429568627, head_sha: sourceCommit, head_branch: 'main', run_attempt: 1, path: '.github/workflows/release.yml' } }
+  const bindingMetadata = { ...metadata, id: 53, name: 'release-set-binding-51-1', archive_download_url: 'https://api.github.com/repos/elsoul/erpc-sdk/actions/artifacts/53/zip' }
+  validateReleaseSetPreparationMetadata({ plan, run, artifact: metadata, bindingArtifact: bindingMetadata, expected: { runId: '51', runAttempt: '1', artifactId: '52', bindingArtifactId: '53', sourceCommit, bundleName: `release-set-bundle-${sourceCommit}`, bindingName: 'release-set-binding-51-1' } })
+  assert.throws(() => validateReleaseSetPreparationMetadata({ plan, run: { ...run, head_sha: 'd'.repeat(40) }, artifact: metadata, bindingArtifact: bindingMetadata, expected: { runId: '51', runAttempt: '1', artifactId: '52', bindingArtifactId: '53', sourceCommit } }), /source mismatch/)
+  const planFile = join(directory, 'plan.json')
+  const bindingFile = join(directory, 'binding.json')
+  const bindingDirectory = join(directory, 'binding-directory')
+  await mkdir(bindingDirectory)
+  await writeFile(join(bindingDirectory, 'release-set-binding.json'), JSON.stringify(binding))
+  await writeFile(planFile, `${canonicalJson(plan)}\n`)
+  await writeFile(bindingFile, JSON.stringify(binding))
+  await runVerifierCli(['--release-set-ingest'], { RELEASE_SET_PLAN_FILE: planFile, RELEASE_SET_PLAN_SHA256: releaseSetPlanDigest(plan), RELEASE_SET_BINDING_FILE: bindingFile, RELEASE_SET_ARTIFACT_DIR: bundle, RELEASE_SET_PREPARED_RUN_ID: '51', RELEASE_SET_PREPARED_RUN_ATTEMPT: '1', RELEASE_SET_PREPARED_ARTIFACT_ID: '52', RELEASE_SET_PREPARED_BINDING_ARTIFACT_ID: '53' })
+  const bundleZip = join(directory, 'bundle.zip')
+  const bindingZip = join(directory, 'binding.zip')
+  await execFileAsync('zip', ['-q', bundleZip, ...plan.approval.bundleFiles], { cwd: bundle })
+  await execFileAsync('zip', ['-q', bindingZip, 'release-set-binding.json'], { cwd: bindingDirectory })
+  const bundleZipBytes = await readFile(bundleZip)
+  const bindingZipBytes = await readFile(bindingZip)
+  const strictMetadata = { ...metadata, size_in_bytes: bundleZipBytes.length, digest: `sha256:${sha256Hex(bundleZipBytes)}` }
+  const strictBindingMetadata = { ...bindingMetadata, size_in_bytes: bindingZipBytes.length, digest: `sha256:${sha256Hex(bindingZipBytes)}` }
+  const runFile = join(directory, 'run.json')
+  const artifactMetadataFile = join(directory, 'artifact-metadata.json')
+  const bindingMetadataFile = join(directory, 'binding-metadata.json')
+  await writeFile(runFile, JSON.stringify(run))
+  await writeFile(artifactMetadataFile, JSON.stringify(strictMetadata))
+  await writeFile(bindingMetadataFile, JSON.stringify(strictBindingMetadata))
+  await runVerifierCli(['--release-set-verify'], {
+    RELEASE_SET_PLAN_FILE: planFile, RELEASE_SET_PLAN_SHA256: releaseSetPlanDigest(plan), RELEASE_SET_BINDING_FILE: bindingFile,
+    RELEASE_SET_ARTIFACT_DIR: bundle, RELEASE_SET_BINDING_DIR: bindingDirectory, RELEASE_SET_BUNDLE_ZIP_FILE: bundleZip, RELEASE_SET_BINDING_ZIP_FILE: bindingZip,
+    RELEASE_SET_RUN_FILE: runFile, RELEASE_SET_ARTIFACT_METADATA_FILE: artifactMetadataFile, RELEASE_SET_BINDING_METADATA_FILE: bindingMetadataFile,
+    RELEASE_SET_PREPARED_RUN_ID: '51', RELEASE_SET_PREPARED_RUN_ATTEMPT: '1', RELEASE_SET_PREPARED_ARTIFACT_ID: '52', RELEASE_SET_PREPARED_BINDING_ARTIFACT_ID: '53',
+    REPOSITORY: 'elsoul/erpc-sdk', REPOSITORY_ID: '1429568627', EVENT_NAME: 'workflow_dispatch', EVENT_REF: 'refs/heads/main', EVENT_SHA: sourceCommit,
+    EXPECTED_COMMIT: sourceCommit, CHECKOUT_HEAD: sourceCommit, CHECKOUT_STATUS: '', WORKFLOW_REF: 'elsoul/erpc-sdk/.github/workflows/release.yml@refs/heads/main', WORKFLOW_SHA: sourceCommit,
+  })
+  const strictEnv = {
+    RELEASE_SET_PLAN_FILE: planFile, RELEASE_SET_PLAN_SHA256: releaseSetPlanDigest(plan), RELEASE_SET_BINDING_FILE: bindingFile,
+    RELEASE_SET_ARTIFACT_DIR: bundle, RELEASE_SET_BINDING_DIR: bindingDirectory, RELEASE_SET_BUNDLE_ZIP_FILE: bundleZip, RELEASE_SET_BINDING_ZIP_FILE: bindingZip,
+    RELEASE_SET_RUN_FILE: runFile, RELEASE_SET_ARTIFACT_METADATA_FILE: artifactMetadataFile, RELEASE_SET_BINDING_METADATA_FILE: bindingMetadataFile,
+    RELEASE_SET_PREPARED_RUN_ID: '51', RELEASE_SET_PREPARED_RUN_ATTEMPT: '1', RELEASE_SET_PREPARED_ARTIFACT_ID: '52', RELEASE_SET_PREPARED_BINDING_ARTIFACT_ID: '53',
+    REPOSITORY: 'elsoul/erpc-sdk', REPOSITORY_ID: '1429568627', EVENT_NAME: 'workflow_dispatch', EVENT_REF: 'refs/heads/main', EVENT_SHA: sourceCommit,
+    EXPECTED_COMMIT: sourceCommit, CHECKOUT_HEAD: sourceCommit, CHECKOUT_STATUS: '', WORKFLOW_REF: 'elsoul/erpc-sdk/.github/workflows/release.yml@refs/heads/main', WORKFLOW_SHA: sourceCommit,
+  }
+  const differentBindingDirectory = join(directory, 'different-binding')
+  await mkdir(differentBindingDirectory)
+  const differentBinding = { ...binding, bindingArtifactId: '54' }
+  const differentBindingFile = join(directory, 'different-binding.json')
+  await writeFile(differentBindingFile, JSON.stringify(differentBinding))
+  await writeFile(join(differentBindingDirectory, 'release-set-binding.json'), JSON.stringify(differentBinding))
+  const differentBindingMetadataFile = join(directory, 'different-binding-metadata.json')
+  await writeFile(differentBindingMetadataFile, JSON.stringify({ ...strictBindingMetadata, id: 54, archive_download_url: 'https://api.github.com/repos/elsoul/erpc-sdk/actions/artifacts/54/zip' }))
+  await assert.rejects(runVerifierCli(['--release-set-verify'], { ...strictEnv, RELEASE_SET_BINDING_FILE: differentBindingFile, RELEASE_SET_BINDING_DIR: differentBindingDirectory, RELEASE_SET_BINDING_METADATA_FILE: differentBindingMetadataFile, RELEASE_SET_PREPARED_BINDING_ARTIFACT_ID: '54' }), /ZIP member bytes differ|binding ZIP\/consumed binding mismatch/)
+  await writeFile(join(bindingDirectory, 'unrelated.json'), 'unrelated')
+  await assert.rejects(runVerifierCli(['--release-set-verify'], strictEnv), /ZIP members do not equal consumed files|exactly release-set-binding/)
+  await rm(join(bindingDirectory, 'unrelated.json'))
+  await writeFile(join(bindingDirectory, 'release-set-binding.json'), JSON.stringify(binding))
+  const symlinkZip = join(directory, 'symlink-binding.zip')
+  await execFileAsync('python3', ['-c', 'import sys,zipfile; z=zipfile.ZipFile(sys.argv[1],"w"); i=zipfile.ZipInfo("link"); i.create_system=3; i.external_attr=(0o120777 << 16); z.writestr(i,"release-set-binding.json"); z.writestr("release-set-binding.json",open(sys.argv[2],"rb").read()); z.close()', symlinkZip, bindingFile])
+  const symlinkBytes = await readFile(symlinkZip)
+  const symlinkMetadataFile = join(directory, 'symlink-binding-metadata.json')
+  await writeFile(symlinkMetadataFile, JSON.stringify({ ...strictBindingMetadata, size_in_bytes: symlinkBytes.length, digest: `sha256:${sha256Hex(symlinkBytes)}` }))
+  await assert.rejects(runVerifierCli(['--release-set-verify'], { ...strictEnv, RELEASE_SET_BINDING_ZIP_FILE: symlinkZip, RELEASE_SET_BINDING_METADATA_FILE: symlinkMetadataFile }), /non-regular|symlink/)
+  await assert.rejects(runVerifierCli(['--release-set-verify'], {
+    RELEASE_SET_PLAN_FILE: planFile, RELEASE_SET_PLAN_SHA256: releaseSetPlanDigest(plan), RELEASE_SET_BINDING_FILE: bindingFile, RELEASE_SET_ARTIFACT_DIR: bundle,
+    RELEASE_SET_PREPARED_RUN_ID: '51', RELEASE_SET_PREPARED_RUN_ATTEMPT: '1', RELEASE_SET_PREPARED_ARTIFACT_ID: '52', RELEASE_SET_PREPARED_BINDING_ARTIFACT_ID: '53',
+    REPOSITORY: 'elsoul/erpc-sdk', REPOSITORY_ID: '1429568627', EVENT_NAME: 'workflow_dispatch', EVENT_REF: 'refs/heads/main', EVENT_SHA: sourceCommit,
+    EXPECTED_COMMIT: sourceCommit, CHECKOUT_HEAD: sourceCommit, CHECKOUT_STATUS: '', WORKFLOW_REF: 'elsoul/erpc-sdk/.github/workflows/release.yml@refs/heads/main', WORKFLOW_SHA: sourceCommit,
+  }), /Missing RELEASE_SET_RUN_FILE/)
+  await assert.rejects(runVerifierCli(['--release-set-verify'], {
+    RELEASE_SET_PLAN_FILE: planFile, RELEASE_SET_PLAN_SHA256: releaseSetPlanDigest(plan), RELEASE_SET_BINDING_FILE: bindingFile, RELEASE_SET_ARTIFACT_DIR: bundle,
+    RELEASE_SET_PREPARED_RUN_ID: '51', RELEASE_SET_PREPARED_RUN_ATTEMPT: '1', RELEASE_SET_PREPARED_ARTIFACT_ID: '52', RELEASE_SET_PREPARED_BINDING_ARTIFACT_ID: '53',
+    REPOSITORY: 'elsoul/erpc-sdk', REPOSITORY_ID: '1429568627', EVENT_NAME: 'workflow_dispatch', EVENT_REF: 'refs/heads/main', EVENT_SHA: 'd'.repeat(40), EXPECTED_COMMIT: sourceCommit, CHECKOUT_HEAD: sourceCommit, CHECKOUT_STATUS: '', WORKFLOW_REF: 'elsoul/erpc-sdk/.github/workflows/release.yml@refs/heads/main', WORKFLOW_SHA: sourceCommit,
+  }), /event SHA mismatch|Missing RELEASE_SET_RUN_FILE/)
+  await assert.rejects(runVerifierCli(['--release-set-observe'], { RELEASE_SET_PLAN_FILE: planFile, RELEASE_SET_PLAN_SHA256: releaseSetPlanDigest(plan), RELEASE_SET_PROOF_FILE: join(directory, 'missing-proof.json') }), /unavailable until checkpoint B/)
+})
+
+test('checkpoint A rejects malformed Rust roots/TOML/VCS and malformed Ruby containers/spec payloads', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'erpc-sdk-release-set-a-archives-'))
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  const rustScript = `import io, json, sys, tarfile
+out, mode = sys.argv[1:]
+root = 'erpc-sdk-0.11.0'
+manifest = '[package]\\nname = "erpc-sdk"\\nversion = "0.11.0"\\n' if mode != 'no-package' else '[dependencies.not_the_sdk]\\nname = "erpc-sdk"\\nversion = "0.11.0"\\n'
+vcs = {'git': {'sha1': '${'c'.repeat(40)}', 'dirty': False}, 'path_in_vcs': 'packages/rust'}
+if mode == 'dirty-string': vcs['git']['dirty'] = 'true'
+with tarfile.open(out, 'w:gz') as archive:
+    def add(name, data):
+        info = tarfile.TarInfo(name); info.size = len(data); archive.addfile(info, io.BytesIO(data))
+    add(root + '/Cargo.toml', manifest.encode())
+    add(root + '/LICENSE', b'MIT\\n')
+    add(root + '/README.md', b'# SDK\\n')
+    add(root + '/.cargo_vcs_info.json', json.dumps(vcs).encode())
+    if mode == 'duplicate': add(root + '/README.md', b'duplicate\\n')
+    if mode == 'extra-root': add('other-root/extra.txt', b'extra\\n')
+    if mode == 'symlink':
+        info = tarfile.TarInfo(root + '/link'); info.type = tarfile.SYMTYPE; info.linkname = 'README.md'; archive.addfile(info)
+`
+  const makeRust = async mode => {
+    const file = join(directory, `rust-${mode}.crate`)
+    await execFileAsync('python3', ['-c', rustScript, file, mode])
+    return file
+  }
+  const dirtyRust = await makeRust('dirty-string')
+  const noPackageRust = await makeRust('no-package')
+  const extraRootRust = await makeRust('extra-root')
+  const duplicateRust = await makeRust('duplicate')
+  const symlinkRust = await makeRust('symlink')
+  await assert.rejects(() => inspectReleaseSetRustArchiveBytes({ filePath: dirtyRust, version: '0.11.0', sourceCommit: 'c'.repeat(40) }), /VCS provenance/)
+  await assert.rejects(() => inspectReleaseSetRustArchiveBytes({ filePath: noPackageRust, version: '0.11.0', sourceCommit: 'c'.repeat(40) }), /package table|identity|Cargo\.toml/)
+  await assert.rejects(() => inspectReleaseSetRustArchiveBytes({ filePath: extraRootRust, version: '0.11.0', sourceCommit: 'c'.repeat(40) }), /exactly one/)
+  await assert.rejects(() => inspectReleaseSetRustArchiveBytes({ filePath: duplicateRust, version: '0.11.0', sourceCommit: 'c'.repeat(40) }), /duplicate member/)
+  await assert.rejects(() => inspectReleaseSetRustArchiveBytes({ filePath: symlinkRust, version: '0.11.0', sourceCommit: 'c'.repeat(40) }), /non-regular/)
+
+  const gemRoot = join(directory, 'gem-root')
+  await mkdir(join(gemRoot, 'lib'), { recursive: true })
+  await writeFile(join(gemRoot, 'lib', 'erpc_sdk.rb'), 'module ERPC; VERSION = "0.11.0"; end\n')
+  await writeFile(join(gemRoot, 'LICENSE'), 'MIT\n')
+  await writeFile(join(gemRoot, 'README.md'), '# SDK\n')
+  await writeFile(join(gemRoot, 'erpc-sdk.gemspec'), `Gem::Specification.new do |spec|
+  spec.name = 'erpc-sdk'
+  spec.version = '0.11.0'
+  spec.summary = 'checkpoint A fixture'
+  spec.authors = ['fixture']
+  spec.files = Dir['lib/**/*.rb'].sort + %w[LICENSE README.md]
+  spec.require_paths = ['lib']
+  spec.license = 'MIT'
+end
+`)
+  await execFileAsync('gem', ['build', 'erpc-sdk.gemspec'], { cwd: gemRoot })
+  const gem = join(directory, 'erpc-sdk-0.11.0.gem')
+  await cp(join(gemRoot, 'erpc-sdk-0.11.0.gem'), gem)
+  assert.deepEqual((await inspectReleaseSetRubyGemBytes({ filePath: gem, name: 'erpc-sdk', version: '0.11.0' })).sort(), ['LICENSE', 'README.md', 'lib/erpc_sdk.rb'].sort())
+  const mutateGemScript = `import io, sys, tarfile, gzip
+source, output, mode = sys.argv[1:]
+with tarfile.open(source, 'r:') as outer:
+    records = [(info, outer.extractfile(info).read() if info.isfile() else None) for info in outer.getmembers()]
+if mode == 'extra-outer':
+    info = tarfile.TarInfo('unexpected.bin'); info.size = 5; records.append((info, b'extra'))
+else:
+    data = next(data for info, data in records if info.name == 'data.tar.gz')
+    with tarfile.open(fileobj=io.BytesIO(gzip.decompress(data)), mode='r:') as data_tar:
+        members = [(info, data_tar.extractfile(info).read() if info.isfile() else None) for info in data_tar.getmembers()]
+    info = tarfile.TarInfo('extra.rb'); info.size = 8; members.append((info, b'extra.rb'))
+    data_buffer = io.BytesIO()
+    with tarfile.open(fileobj=data_buffer, mode='w:') as data_tar:
+        for info, body in members:
+            info = tarfile.TarInfo(info.name); info.size = len(body or b''); data_tar.addfile(info, io.BytesIO(body) if body is not None else None)
+    records = [(info, gzip.compress(data_buffer.getvalue()) if info.name == 'data.tar.gz' else body) for info, body in records]
+with tarfile.open(output, 'w:') as outer:
+    for info, body in records:
+        info = tarfile.TarInfo(info.name); info.size = len(body or b''); outer.addfile(info, io.BytesIO(body) if body is not None else None)
+`
+  for (const mode of ['extra-outer', 'spec-payload']) {
+    const mutated = join(directory, `gem-${mode}.gem`)
+    await execFileAsync('python3', ['-c', mutateGemScript, gem, mutated, mode])
+    await assert.rejects(() => inspectReleaseSetRubyGemBytes({ filePath: mutated, name: 'erpc-sdk', version: '0.11.0' }), /outer member|specification\/data|mismatch/)
+  }
 })
 
 test('foundation proof aggregate binds observed receipts, auth paths, and attestation claims', async t => {
@@ -1278,14 +1572,22 @@ test('CI invokes split release cohorts and runs release behavior tests', async (
   assert.match(ci, /node --test scripts\/verify-release\.test\.mjs/)
 })
 
+test('checkpoint A leaves future orchestration unavailable and preserves baseline action pins', async () => {
+  const workflow = await readFile(new URL('../.github/workflows/release.yml', import.meta.url), 'utf8')
+  const baseline = (await execFileAsync('git', ['show', 'b42b8b397354f940d2edbf52fd76f15519661c77:.github/workflows/release.yml'], { cwd: root.pathname })).stdout
+  assert.equal(workflow, baseline)
+  assert.doesNotMatch(workflow, /release-set-(?:prepare|publish|observe)/)
+  for (const match of workflow.matchAll(/uses:\s+[^@\s]+@([^\s]+)/g)) assert.match(match[1], /^[0-9a-f]{40}$/)
+})
+
 test('recovery workflow is manual, M-bound, read-only for registries, and keeps the fifteen-asset boundary', async () => {
   const workflow = await readFile(new URL('../.github/workflows/reconcile-foundation.yml', import.meta.url), 'utf8')
-  const originalWorkflow = await readFile(new URL('../.github/workflows/release.yml', import.meta.url), 'utf8')
-  const originalVerifier = await readFile(new URL('./verify-release.mjs', import.meta.url), 'utf8')
-  const expectedWorkflow = (await execFileAsync('git', ['show', 'HEAD:.github/workflows/release.yml'])).stdout
-  const expectedVerifier = (await execFileAsync('git', ['show', 'HEAD:scripts/verify-release.mjs'])).stdout
-  assert.equal(originalWorkflow, expectedWorkflow)
-  assert.equal(originalVerifier, expectedVerifier)
+  const expectedWorkflow = (await execFileAsync('git', ['cat-file', 'blob', 'd8e3b3ac1f3257123beca4462e9317f1f5fa9514'], { cwd: root.pathname })).stdout
+  const expectedVerifier = (await execFileAsync('git', ['cat-file', 'blob', '61641cd9a4ce597b8abc7278726a3ad219a670b4'], { cwd: root.pathname })).stdout
+  // Recovery remains bound to immutable M blobs while the normal verifier
+  // evolves through staged P1 checkpoints.
+  assert.match(expectedWorkflow, /workflow_dispatch:/)
+  assert.match(expectedVerifier, /validateFoundationPlan/)
   assert.match(workflow, /workflow_dispatch:/)
   assert.doesNotMatch(workflow, /^\s+(schedule|push|pull_request|pull_request_target|workflow_call|release):/m)
   assert.match(workflow, /expected_control_commit:/)
