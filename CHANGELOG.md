@@ -1,5 +1,7 @@
 # Changelog
 
+## Unreleased
+
 ## 0.11.0 — 2026-10-24 (public SDK release)
 
 - Publish the TypeScript, Python, Go, and Ruby packages at the reviewed
