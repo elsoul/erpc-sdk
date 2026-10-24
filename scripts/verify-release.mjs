@@ -4978,7 +4978,7 @@ export async function observeGoModule(input, adapters = {}) {
 }
 
 const githubApiOrigin = 'https://api.github.com'
-const githubAllowedRedirectHosts = new Set(['api.github.com', 'github.com', 'objects.githubusercontent.com'])
+const githubAllowedRedirectHosts = new Set(['api.github.com', 'github.com', 'objects.githubusercontent.com', 'release-assets.githubusercontent.com'])
 const githubDynamicProofRoles = new Set(['go-proof', 'npm-proof', 'pypi-proof', 'rubygems-proof', 'rust-proof', 'tag-proof', 'release-set-proof-manifest'])
 const githubRedirectHostAllowed = hostname => githubAllowedRedirectHosts.has(hostname) || (hostname.endsWith('.blob.core.windows.net') && hostname.length > '.blob.core.windows.net'.length)
 

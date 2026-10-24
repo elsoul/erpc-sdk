@@ -1,14 +1,25 @@
 # Changelog
 
-## Unreleased
+## 0.11.0 — 2026-10-24 (public SDK release)
 
-- Prepare a future non-Rust `0.11.0` cohort for 18 families and 20 network
-  pairs through named read facades for Bitcoin, new EVM families, NEAR, TRON,
-  and Sui, with direct-RPC configuration and bounded lossless-number
-  handling. Reuse the immutable Rust `0.11.0` release, then use short-lived
-  trusted publishing for the four package flows and aggregate a GitHub
-  Release only after every public proof succeeds. This cohort is not yet
-  published.
+- Publish the TypeScript, Python, Go, and Ruby packages at the reviewed
+  `0.11.0` boundary, alongside the already-published immutable Rust `0.11.0`
+  package, covering 18 chain families and 20 networks through
+  bounded read-only APIs. Public packages: [npm](https://www.npmjs.com/package/@elsoul/erpc-sdk/v/0.11.0),
+  [PyPI](https://pypi.org/project/erpc-sdk/0.11.0/),
+  [RubyGems](https://rubygems.org/gems/erpc-sdk/versions/0.11.0),
+  [Go](https://pkg.go.dev/github.com/elsoul/erpc-sdk/packages/go@v0.11.0),
+  and [crates.io](https://crates.io/crates/erpc-sdk/0.11.0).
+- Keep Rust `0.11.0` as the immutable reuse published on 2026-10-23; it was
+  not rebuilt or republished. The original Rust API, numeric, UTF-8, and
+  source exceptions remain explicit.
+- Preserve configured-RPC and local logic for swaps, routes, simulation, and
+  calldata construction. The 18-family/20-network surface does not promise
+  universal transaction, subscription, swap, or bridge parity, and no hosted
+  Jupiter or 0x dependency is introduced.
+- Publish the approved aggregate release at
+  [non-rust-v0.11.0](https://github.com/elsoul/erpc-sdk/releases/tag/non-rust-v0.11.0)
+  with the exact reviewed package files and Go verification records.
 
 ## 0.9.1 — 2026-10-23 (non-Rust)
 

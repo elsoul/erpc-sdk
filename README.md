@@ -17,54 +17,53 @@
   Built for Developers. Ready for AI Agents.</strong>
 </p>
 
-The current public non-Rust line is TypeScript, Python, Go, and Ruby `0.9.1`.
-Rust `0.11.0` is published as a separate Rust-only release. The `0.11.0`
-source candidate extends the bounded read-only chain namespace matrix to all
-five languages; the four non-Rust candidate packages are not yet published.
-Current public package versions remain the versions in the table below.
+All five language packages are publicly available at `0.11.0`. The TypeScript,
+Python, Go, and Ruby packages were published in the
+[`0.11.0` GitHub release](https://github.com/elsoul/erpc-sdk/releases/tag/non-rust-v0.11.0)
+on 2026-10-24. Rust `0.11.0` is the immutable package reused from 2026-10-23;
+it was not rebuilt or republished for this release.
 
 Across the published lines, the SDK provides eRPC-backed standard
 Solana, Ethereum, and Avalanche access, catalog and service APIs, and the
-language-specific direct-RPC controls described in the package guides. The Rust
-`0.11.0` crate adds bounded read-only clients for the later chain families and a
-limited Sui binary gRPC-Web surface. The source candidate carries corresponding
-bounded read facades for the four non-Rust languages, including named Bitcoin
-Core HTTP JSON-RPC reads. Rust retains its legacy generic raw/request/batch
-superset; the four new facades use sealed named reads. These statements
-preserve the separate configured-RPC/local swap behavior and bridge boundaries
-documented below.
+language-specific direct-RPC controls described in the package guides. The
+`0.11.0` release provides a bounded read-only matrix across 18 chain families
+and 20 canonical network rows for all five languages, including named Bitcoin
+Core HTTP JSON-RPC reads and a limited Sui binary gRPC-Web surface. Rust retains
+its legacy generic raw/request/batch superset; the four new facades use sealed
+named reads. These statements preserve the separate configured-RPC/local swap
+behavior and bridge boundaries documented below.
 
 ## Packages
 
 | Language | Package | Current public release | Status |
 | --- | --- | --- | --- |
-| TypeScript | [`@elsoul/erpc-sdk`](https://www.npmjs.com/package/@elsoul/erpc-sdk) | `0.9.1` | Published non-Rust line |
-| Rust | [`erpc-sdk`](https://crates.io/crates/erpc-sdk) | `0.11.0` | Published Rust-only release |
-| Python | [`erpc-sdk`](https://pypi.org/project/erpc-sdk/) | `0.9.1` | Published non-Rust line |
-| Go | [`github.com/elsoul/erpc-sdk/packages/go`](https://pkg.go.dev/github.com/elsoul/erpc-sdk/packages/go) | `v0.9.1` | Published non-Rust line |
-| Ruby | [`erpc-sdk`](https://rubygems.org/gems/erpc-sdk) | `0.9.1` | Published non-Rust line |
+| TypeScript | [`@elsoul/erpc-sdk`](https://www.npmjs.com/package/@elsoul/erpc-sdk) | `0.11.0` | Published |
+| Rust | [`erpc-sdk`](https://crates.io/crates/erpc-sdk) | `0.11.0` | Published; immutable reuse from 2026-10-23 |
+| Python | [`erpc-sdk`](https://pypi.org/project/erpc-sdk/) | `0.11.0` | Published |
+| Go | [`github.com/elsoul/erpc-sdk/packages/go`](https://pkg.go.dev/github.com/elsoul/erpc-sdk/packages/go) | `v0.11.0` | Published |
+| Ruby | [`erpc-sdk`](https://rubygems.org/gems/erpc-sdk) | `0.11.0` | Published |
 
 The package links and live badges point to registry or module status. The four
-non-Rust packages are published at `0.9.1`; the Rust package is published at
-`0.11.0` with a separate Rust-only API surface.
+non-Rust packages are published at `0.11.0`; the Rust package is also published
+at `0.11.0` with its separate Rust-specific API surface.
 
-### Source candidate read matrix
+### Published bounded read matrix
 
-The `0.11.0` source candidate defines one bounded read-only matrix across
+The `0.11.0` release defines one bounded read-only matrix across
 18 chain families and 20 canonical network rows. Solana includes mainnet,
 devnet, and testnet rows; devnet and testnet use caller-supplied direct test
 endpoints. Avalanche remains one C/P/X family. This table describes API scope;
-it does not change the public release status shown above.
+it does not imply full API, provider, signing, swap, or bridge parity.
 
-| Language | Source candidate version | Read coverage |
+| Language | Public version | Read coverage |
 | --- | --- | --- |
-| TypeScript | `0.11.0` source candidate | 18 families / 20 network rows |
-| Python | `0.11.0` source candidate | 18 families / 20 network rows |
-| Go | `0.11.0` source candidate | 18 families / 20 network rows |
-| Ruby | `0.11.0` source candidate | 18 families / 20 network rows |
-| Rust | `0.11.0` public release | 18 families / 20 network rows |
+| TypeScript | `0.11.0` public release | 18 families / 20 network rows |
+| Python | `0.11.0` public release | 18 families / 20 network rows |
+| Go | `0.11.0` public release | 18 families / 20 network rows |
+| Ruby | `0.11.0` public release | 18 families / 20 network rows |
+| Rust | `0.11.0` public release (immutable reuse) | 18 families / 20 network rows |
 
-The source candidate exposes read-only chain namespaces, configured direct RPC
+The published packages expose read-only chain namespaces, configured direct RPC
 where documented, and the bounded Sui gRPC-Web reads. It does not establish
 full API parity, live provider verification, signing, sending, swaps, or
 bridging. Rust retains its legacy Bitcoin decoder and generic raw/request/batch
@@ -82,9 +81,8 @@ npm install @elsoul/erpc-sdk
 ```
 
 The TypeScript package includes ESM, CommonJS, and TypeScript declarations. The
-`0.11.0` source candidate uses `@noble/curves`, `@noble/hashes`, and
-`lossless-json@4.3.3` for its bounded numeric JSON path; the currently public
-`0.9.1` package remains the published artifact shown in the table above.
+published `0.11.0` package uses `@noble/curves`, `@noble/hashes`, and
+`lossless-json@4.3.3` for its bounded numeric JSON path.
 
 Rust:
 
@@ -121,16 +119,16 @@ versions are Rust 1.85, Python 3.11, Go 1.22, and Ruby 3.1.
 ## Availability
 
 The matrix below combines the version history with concrete user-visible scope.
-Published non-Rust entries remain package-specific; the Rust column describes
+Published `0.11.0` entries remain package-specific; the Rust column describes
 the published `0.11.0` crate.
 
-| Capability/history | Published non-Rust `0.9.1` packages | Rust `0.11.0` published crate |
+| Capability/history | Published non-Rust `0.11.0` packages | Rust `0.11.0` published crate |
 | --- | --- | --- |
-| Offline token, DEX, pool, and ranking catalogs | Published `0.7.0` history; exact exports remain package-specific | Local catalog and ranking reads are included in the crate |
+| Offline token, DEX, pool, and ranking catalogs | Bounded catalogs are published; exact exports remain package-specific | Local catalog and ranking reads are included in the crate |
 | Reviewed EVM exact-input quotes | Published API history covers Ethereum Uniswap V2 and Avalanche LFJ legacy; confirm the exact package surface | Preserves the reviewed tuples with configured-RPC reads and local calculation |
 | Caller-owned direct RPC overrides | Introduced in `0.8.0`; exact field names and package availability vary by language | `RpcEndpointConfig` builders preserve the caller URL, scoped headers, and no-redirect behavior |
 | EVM exact-input preparation and simulation | Introduced in `0.8.0` for the reviewed tuples; confirm the exact package surface | Uses a fresh configured-RPC quote and local unsigned preparation/simulation |
-| Mayan Swift v2 bridge | Published `0.8.1` wording remains native EURC; source native-USDC and local-builder additions remain unreleased | The separate adapter/local construction keeps bridge provider boundaries; ordinary swaps remain configured-RPC and local |
+| Mayan Swift v2 bridge | Published `0.11.0` packages include the reviewed native EURC/native-USDC routes and local unsigned construction; provider boundaries remain explicit | The separate adapter/local construction keeps bridge provider boundaries; ordinary swaps remain configured-RPC and local |
 | Solana CLMM, multi-hop, signing, and sending | Future work | Future work |
 
 ## Rust chain coverage
@@ -214,9 +212,9 @@ language-specific examples.
 
 The direct RPC configuration introduced in `0.8.0` lets a caller route selected
 chain JSON-RPC traffic to a dedicated node without an eRPC API key. A package
-consumer needs a language-specific release that includes this API; confirm the
-exact version through its package registry. Source-checkout examples remain
-available for reviewed unreleased work.
+consumer needs a language-specific release that includes this API; the public
+`0.11.0` lines include the bounded APIs described here, with exact field names
+and method availability varying by language.
 
 ### TypeScript direct RPC configuration
 
@@ -230,7 +228,7 @@ for its complete endpoint mapping.
 | `solanaRpc` | `erpc.solana.rpc`, `erpc.solana.das`, `erpc.solana.history`, `erpc.solana.leaders`, `erpc.solana.analytics`, and `erpc.solana.subscriptions` |
 | `ethereumRpc` | `erpc.ethereum.rpc`, `erpc.ethereum.subscriptions`, and Ethereum EVM quote reads |
 | `avalancheCRpc` | `erpc.avalanche.rpc`, `erpc.avalanche.subscriptions`, and C-Chain EVM quote reads |
-| `baseRpc` | Source-checkout TypeScript `erpc.base` read-only JSON-RPC (`endpoint`, `eth_chainId`, `eth_getBalance`, and `eth_call`); unreleased |
+| `baseRpc` | Published TypeScript `0.11.0` `erpc.base` read-only JSON-RPC (`endpoint`, `eth_chainId`, `eth_getBalance`, and `eth_call`) |
 
 Extended Solana methods depend on the methods and limits supported by the
 chosen dedicated RPC provider.
@@ -346,15 +344,15 @@ and [the pinned transaction-builder authentication section](https://github.com/m
 | ERPC SDK local policy | Default `buildUnsigned` without `builderApiKey` fails locally; `allowUnauthenticatedBuild: true` permits a keyless HTTP attempt at the configured endpoint, including the default endpoint | Local default guard is separate from provider authorization |
 | Current hosted service check | Quotes remain keyless; provider build authorization is decided by Mayan | At `2026-09-17T11:27:34.223Z`, four EURC/USDC quotes returned HTTP 200, default builds made zero network requests, and explicit anonymous builds reached `/build` and returned HTTP 401 `UNAUTHORIZED`; no authenticated build or settlement evidence was captured |
 
-The published `0.8.1` bridge supports native EURC and includes the Workers fetch
-receiver fix. The reviewed native-USDC and local-builder additions remain
-unreleased. `builderApiKey` is a Mayan service key and
-is separate from wallet keys and the ERPC API key; it is sent only to Mayan
-`/build`.
+The published `0.11.0` packages retain the native EURC bridge behavior
+introduced in `0.8.1`, including the Workers fetch receiver fix, and include
+the reviewed native-USDC and local-builder additions described below.
+`builderApiKey` is a Mayan service key and is separate from wallet keys and the
+ERPC API key; it is sent only to Mayan `/build`.
 
 ## Offline token catalog
 
-The source checkout includes a bounded, source-backed token catalog across
+The published `0.11.0` packages include a bounded, source-backed token catalog across
 Ethereum, Solana, Avalanche C-Chain, and Base Mainnet. Catalog reads are local:
 they do not create a client, need an API key, or access a network.
 
@@ -403,9 +401,9 @@ All five SDKs expose the corresponding offline list/lookup APIs and catalog
 metadata; they do not call a runtime vendor service, RPC endpoint, or current
 clock for these reads.
 
-The existing catalog and quote exports are included in the published `0.7.0`
-package; the Base additions described here remain source-checkout work pending
-release.
+The existing catalog and quote exports were introduced in the published `0.7.0`
+package, and the Base additions described here are included in the published
+`0.11.0` packages.
 
 ## DEX catalog and RPC-only quotes
 
@@ -521,20 +519,20 @@ dependency are visible in returned data. This is the explicit bridge-only
 external-provider exception; normal SDK swaps remain configured RPC and local
 calculation.
 
-The source checkout now contains reviewed native-USDC directions with deployment
-IDs `deployment-0008` (Ethereum) and `deployment-0010` (Solana). They use a
-direct source route with nullable router fields and no Jupiter/source-swap
-dependency. The USDC and local-builder additions are unreleased; the currently
-published `0.8.1` package remains EURC-only. The runnable example below
-therefore uses the current EURC API.
+The published `0.11.0` packages include reviewed native-USDC directions with
+deployment IDs `deployment-0008` (Ethereum) and `deployment-0010` (Solana).
+They use a direct source route with nullable router fields and no
+Jupiter/source-swap dependency. The runnable example below uses the published
+EURC API.
 
-The source checkout also defines additive local unsigned construction for all
-four reviewed routes. `prepareSourceSwap` accepts a normalized quote, public
-source and destination addresses, and a caller-supplied 16-byte order nonce;
-`buildLocalUnsigned` then requires the matching explicitly configured source
-RPC. EURC source swaps use the bounded Mayan source route, while direct USDC
-uses no source-swap request. Local construction never falls back to hosted
-`/build`, reads provider keys, signs, approves, or broadcasts. See the
+The published `0.11.0` packages also provide additive local unsigned
+construction for all four reviewed routes. `prepareSourceSwap` accepts a
+normalized quote, public source and destination addresses, and a caller-supplied
+16-byte order nonce; `buildLocalUnsigned` then requires the matching explicitly
+configured source RPC. EURC source swaps use the bounded Mayan source route,
+while direct USDC uses no source-swap request. Local construction never falls
+back to hosted `/build`, reads provider keys, signs, approves, or broadcasts.
+See the
 [local construction contract](registry/bridge-local-spec.md), [local fixture](registry/fixtures/mayan-swift-v2-local-build-cases.json),
 and [reference evidence](registry/evidence/mayan-swift-v2-local-build-2026-09-17.json).
 
@@ -1056,7 +1054,7 @@ the adapted Sui projection carries
 and the provenance recorded in
 [`packages/rust/THIRD_PARTY_NOTICES.md`](packages/rust/THIRD_PARTY_NOTICES.md).
 
-The four `0.11.0` source-candidate packages use the aggregate expression
+The four published non-Rust `0.11.0` packages use the aggregate expression
 `MIT AND Apache-2.0 AND BSD-3-Clause` for the original SDK, the adapted
 Mysten Sui schema projection, and Google's Timestamp projection. Their
 component notices and exact license texts are included in:
@@ -1066,6 +1064,7 @@ component notices and exact license texts are included in:
 - [Go third-party notices](packages/go/THIRD_PARTY_NOTICES.md), [Apache-2.0 text](packages/go/LICENSES/Apache-2.0.txt), and [Google BSD-3-Clause text](packages/go/LICENSES/BSD-3-Clause-Google-Protobuf.txt)
 - [Ruby third-party notices](packages/ruby/THIRD_PARTY_NOTICES.md), [Apache-2.0 text](packages/ruby/LICENSES/Apache-2.0.txt), and [Google BSD-3-Clause text](packages/ruby/LICENSES/BSD-3-Clause-Google-Protobuf.txt)
 
-The current public non-Rust packages remain `0.9.1` until their reviewed
-`0.11.0` source candidate is released. These notices describe source and
-component provenance; they do not certify legal compliance or CE conformity.
+All five language artifacts are publicly available at `0.11.0`; the Rust
+artifact is the immutable package reused from 2026-10-23. These notices
+describe source and component provenance; they do not certify legal compliance
+or CE conformity.
