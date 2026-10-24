@@ -1982,7 +1982,7 @@ def test_private_projection_binds_public_python_facts() -> None:
     )
     assert (
         hashlib.sha256(generated_path.read_bytes()).hexdigest()
-        == "6ecff4d528c7e974943ebb7471d8a6869c44e6f6a02bcc10c125928132dd4aef"
+        == "fcaba9df6a1f4972d6f52647d0f4f0ee769b07b74def4bdab5fd3adb2b35ff08"
     )
 
 
