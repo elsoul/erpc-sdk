@@ -4,13 +4,20 @@ on:
   workflow_dispatch:
     inputs:
       recovery_mode:
-        description: Disabled for normal/schema2 release; use recover-0.11.0 only for the frozen publication recovery tuple
+        description: Disabled for normal/schema2 release; use the finite finish or verify route only for the frozen publication recovery tuple
         required: true
         default: disabled
         type: choice
         options:
           - disabled
           - recover-0.11.0
+          - finish-0.11.0
+          - verify-0.11.0
+      staged_checkpoint_artifact_id:
+        description: Immutable staging checkpoint artifact ID required for verify-0.11.0
+        required: false
+        default: ''
+        type: string
       mode:
         description: Prepare an approval bundle or publish an already approved bundle
         required: true
@@ -107,6 +114,18 @@ env:
   PUBLICATION_RECOVERY_ORIGINAL_NPM_JOB_ID: '120939149010'
   PUBLICATION_RECOVERY_ORIGINAL_PYPI_JOB_ID: '120939149000'
   PUBLICATION_RECOVERY_ORIGINAL_RUBYGEMS_JOB_ID: '120939148972'
+  PUBLICATION_FINISH_C1_SOURCE: bb0785ec3bbc4c66569a6955a3ffb5566eee5fd4
+  PUBLICATION_FINISH_C1_RUN_ID: '40125323722'
+  PUBLICATION_FINISH_C1_RUN_ATTEMPT: '1'
+  PUBLICATION_FINISH_C1_PYPI_JOB_ID: '120965821282'
+  PUBLICATION_FINISH_C1_CI_RUN_ID: '40124707275'
+  PUBLICATION_FINISH_C1_CI_RUN_ATTEMPT: '1'
+  PUBLICATION_FINISH_C1_CI_JOB_ID: '120964818966'
+  PUBLICATION_FINISH_C1_PYPI_ARTIFACT_ID: '12572796598'
+  PUBLICATION_FINISH_C1_PYPI_ARTIFACT_SHA256: 848ebb4e0993ff8e57a6d5a57e9db5c08aee5b0fa24691fe2d59bba9d63f46b2
+  PUBLICATION_FINISH_C1_CONTEXT_ARTIFACT_ID: '12572746281'
+  PUBLICATION_FINISH_C1_CONTEXT_ARTIFACT_SHA256: 4346e49dcc032d0b51b85d7c0790340442afcc0a844036a5e84eda147b74b06c
+  PUBLICATION_FINISH_DRAFT_RELEASE_ID: '422947688'
 
 jobs:
   prepare:
@@ -3906,7 +3925,7 @@ jobs:
   # every boundary and is never substituted into package/tag provenance.
   publication-recovery-control:
     name: Authenticate frozen M and recovery controller C
-    if: ${{ inputs.recovery_mode == 'recover-0.11.0' }}
+    if: ${{ inputs.recovery_mode == 'recover-0.11.0' || inputs.recovery_mode == 'finish-0.11.0' || inputs.recovery_mode == 'verify-0.11.0' }}
     runs-on: ubuntu-latest
     timeout-minutes: 35
     permissions:
@@ -3937,13 +3956,20 @@ jobs:
           FOUNDATION_MODE: ${{ inputs.mode }}
           RELEASE_SET_MODE: ${{ inputs.release_set_mode }}
           EXPECTED_VERSION: ${{ inputs.expected_version }}
+          CHECKPOINT_ID: ${{ inputs.staged_checkpoint_artifact_id }}
         run: |
           set -euo pipefail
           test "$REPOSITORY" = "$EXPECTED_REPOSITORY"
           test "$REPOSITORY_ID" = "$EXPECTED_REPOSITORY_ID"
           test "$EVENT_NAME" = workflow_dispatch
           test "$EVENT_REF" = refs/heads/main
-          test "$RECOVERY_MODE" = recover-0.11.0
+          test "$RECOVERY_MODE" = recover-0.11.0 || test "$RECOVERY_MODE" = finish-0.11.0 || test "$RECOVERY_MODE" = verify-0.11.0
+          CHECKPOINT_ID="${CHECKPOINT_ID:-}"
+          if [ "$RECOVERY_MODE" = verify-0.11.0 ]; then
+            if [[ ! "$CHECKPOINT_ID" =~ ^[1-9][0-9]*$ ]]; then echo 'verify-0.11.0 requires a numeric staged checkpoint artifact ID' >&2; exit 1; fi
+          else
+            test -z "$CHECKPOINT_ID"
+          fi
           test "$FOUNDATION_MODE" = publish
           test "$RELEASE_SET_MODE" = disabled
           test "$EXPECTED_VERSION" = 0.11.0
@@ -4021,6 +4047,42 @@ jobs:
           github-token: ${{ github.token }}
           repository: ${{ github.repository }}
           path: ${{ runner.temp }}/recovery-binding
+      - name: Authenticate frozen C1 PyPI proof and recovery history
+        if: ${{ inputs.recovery_mode == 'finish-0.11.0' || inputs.recovery_mode == 'verify-0.11.0' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          C1_RUN_ID: ${{ env.PUBLICATION_FINISH_C1_RUN_ID }}
+          C1_RUN_ATTEMPT: ${{ env.PUBLICATION_FINISH_C1_RUN_ATTEMPT }}
+          C1_PYPI_JOB_ID: ${{ env.PUBLICATION_FINISH_C1_PYPI_JOB_ID }}
+          C1_CI_RUN_ID: ${{ env.PUBLICATION_FINISH_C1_CI_RUN_ID }}
+          C1_CI_RUN_ATTEMPT: ${{ env.PUBLICATION_FINISH_C1_CI_RUN_ATTEMPT }}
+          C1_CI_JOB_ID: ${{ env.PUBLICATION_FINISH_C1_CI_JOB_ID }}
+          C1_PYPI_ARTIFACT_ID: ${{ env.PUBLICATION_FINISH_C1_PYPI_ARTIFACT_ID }}
+          C1_CONTEXT_ARTIFACT_ID: ${{ env.PUBLICATION_FINISH_C1_CONTEXT_ARTIFACT_ID }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/recovery-c1-context" "$RUNNER_TEMP/recovery-c1-pypi" "$RUNNER_TEMP/recovery-c1-meta"
+          gh api "/repos/$EXPECTED_REPOSITORY/actions/runs/$C1_RUN_ID" > "$RUNNER_TEMP/recovery-c1-run.json"
+          gh api "/repos/$EXPECTED_REPOSITORY/actions/jobs/$C1_PYPI_JOB_ID" > "$RUNNER_TEMP/recovery-c1-pypi-job.json"
+          gh api "/repos/$EXPECTED_REPOSITORY/actions/runs/$C1_CI_RUN_ID/attempts/$C1_CI_RUN_ATTEMPT" > "$RUNNER_TEMP/recovery-c1-ci-run.json"
+          gh api "/repos/$EXPECTED_REPOSITORY/actions/jobs/$C1_CI_JOB_ID" > "$RUNNER_TEMP/recovery-c1-ci-job.json"
+          gh api "/repos/$EXPECTED_REPOSITORY/actions/artifacts/$C1_PYPI_ARTIFACT_ID" > "$RUNNER_TEMP/recovery-c1-pypi-meta.json"
+          gh api "/repos/$EXPECTED_REPOSITORY/actions/artifacts/$C1_CONTEXT_ARTIFACT_ID" > "$RUNNER_TEMP/recovery-c1-context-meta.json"
+          curl --fail --silent --show-error --location --max-time 60 --retry 0 --header "Authorization: Bearer $GH_TOKEN" --header 'Accept: application/vnd.github+json' --user-agent "$RELEASE_USER_AGENT" --output "$RUNNER_TEMP/recovery-c1-pypi.zip" "https://api.github.com/repos/$EXPECTED_REPOSITORY/actions/artifacts/$C1_PYPI_ARTIFACT_ID/zip"
+          curl --fail --silent --show-error --location --max-time 60 --retry 0 --header "Authorization: Bearer $GH_TOKEN" --header 'Accept: application/vnd.github+json' --user-agent "$RELEASE_USER_AGENT" --output "$RUNNER_TEMP/recovery-c1-context.zip" "https://api.github.com/repos/$EXPECTED_REPOSITORY/actions/artifacts/$C1_CONTEXT_ARTIFACT_ID/zip"
+          test "$(sha256sum "$RUNNER_TEMP/recovery-c1-pypi.zip" | awk '{print $1}')" = "$PUBLICATION_FINISH_C1_PYPI_ARTIFACT_SHA256"
+          test "$(sha256sum "$RUNNER_TEMP/recovery-c1-context.zip" | awk '{print $1}')" = "$PUBLICATION_FINISH_C1_CONTEXT_ARTIFACT_SHA256"
+          unzip -q "$RUNNER_TEMP/recovery-c1-pypi.zip" -d "$RUNNER_TEMP/recovery-c1-pypi"
+          unzip -q "$RUNNER_TEMP/recovery-c1-context.zip" -d "$RUNNER_TEMP/recovery-c1-context"
+          node --input-type=module - "$RUNNER_TEMP/recovery-c1-run.json" "$RUNNER_TEMP/recovery-c1-pypi-job.json" "$RUNNER_TEMP/recovery-c1-ci-run.json" "$RUNNER_TEMP/recovery-c1-ci-job.json" "$RUNNER_TEMP/recovery-c1-pypi/pypi-proof.json" "$RUNNER_TEMP/recovery-c1-context/recovery-context.json" "$RUNNER_TEMP/recovery-c1-pypi-meta.json" "$RUNNER_TEMP/recovery-c1-context-meta.json" "$RUNNER_TEMP/recovery-c1-pypi.zip" "$RUNNER_TEMP/recovery-c1-context.zip" "$RUNNER_TEMP/recovery-c1-publisher.json" <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs'
+          import { validatePublicationFinishC1Evidence, verifyReleaseSetArtifactZip } from './scripts/verify-release.mjs'
+          const [run, pypiJob, ciRun, ciJob, proof, context, pypiMeta, contextMeta, pypiZip, contextZip, output] = process.argv.slice(2)
+          await verifyReleaseSetArtifactZip({ zipFile: pypiZip, metadata: JSON.parse(readFileSync(pypiMeta, 'utf8')), expectedId: process.env.PUBLICATION_FINISH_C1_PYPI_ARTIFACT_ID, consumedDirectory: process.env.RUNNER_TEMP + '/recovery-c1-pypi', expectedName: `release-set-pypi-proof-${process.env.PUBLICATION_FINISH_C1_RUN_ID}-${process.env.PUBLICATION_FINISH_C1_RUN_ATTEMPT}` })
+          await verifyReleaseSetArtifactZip({ zipFile: contextZip, metadata: JSON.parse(readFileSync(contextMeta, 'utf8')), expectedId: process.env.PUBLICATION_FINISH_C1_CONTEXT_ARTIFACT_ID, consumedDirectory: process.env.RUNNER_TEMP + '/recovery-c1-context', expectedName: `publication-recovery-context-${process.env.PUBLICATION_FINISH_C1_RUN_ID}-${process.env.PUBLICATION_FINISH_C1_RUN_ATTEMPT}` })
+          const result = validatePublicationFinishC1Evidence({ publicationRun: JSON.parse(readFileSync(run, 'utf8')), pypiJob: JSON.parse(readFileSync(pypiJob, 'utf8')), ciRun: JSON.parse(readFileSync(ciRun, 'utf8')), ciJob: JSON.parse(readFileSync(ciJob, 'utf8')), pypiProof: JSON.parse(readFileSync(proof, 'utf8')), c1Context: JSON.parse(readFileSync(context, 'utf8')), pypiArtifact: JSON.parse(readFileSync(pypiMeta, 'utf8')), contextArtifact: JSON.parse(readFileSync(contextMeta, 'utf8')), pypiZipSha256: (await import('node:crypto')).createHash('sha256').update(readFileSync(pypiZip)).digest('hex'), contextZipSha256: (await import('node:crypto')).createHash('sha256').update(readFileSync(contextZip)).digest('hex') })
+          writeFileSync(output, `${JSON.stringify(result)}\n`)
+          NODE
       - name: Reauthenticate original bundle ZIP bytes and consumed members
         env:
           GH_TOKEN: ${{ github.token }}
@@ -4051,6 +4113,9 @@ jobs:
           PUBLICATION_RECOVERY_SOURCE_CI_PROOF_FILE: ${{ runner.temp }}/recovery-source-ci-proof-flat.json
           PUBLICATION_RECOVERY_CONTEXT_OUTPUT_FILE: ${{ runner.temp }}/recovery-context.json
           PUBLICATION_RECOVERY_CONTEXT_FILE: ${{ runner.temp }}/recovery-context.json
+          PUBLICATION_RECOVERY_BASE_CONTEXT_FILE: ${{ runner.temp }}/recovery-c1-context/recovery-context.json
+          PUBLICATION_RECOVERY_C1_PUBLISHER_FILE: ${{ runner.temp }}/recovery-c1-publisher.json
+          PUBLICATION_RECOVERY_FINISH_MODE: ${{ (inputs.recovery_mode == 'finish-0.11.0' || inputs.recovery_mode == 'verify-0.11.0') && 'true' || 'false' }}
           PUBLICATION_RECOVERY_PLAN_FILE: ${{ runner.temp }}/recovery-bundle/release-set-plan.json
           PUBLICATION_RECOVERY_ARTIFACT_DIR: ${{ runner.temp }}/recovery-bundle
           PUBLICATION_RECOVERY_BINDING_FILE: ${{ runner.temp }}/recovery-binding/release-set-binding.json
@@ -4090,6 +4155,9 @@ jobs:
             ${{ runner.temp }}/recovery-preparation.json
             ${{ runner.temp }}/recovery-ci-evidence.json
             ${{ runner.temp }}/recovery-source-ci-evidence.json
+            ${{ runner.temp }}/recovery-c1-publisher.json
+            ${{ runner.temp }}/recovery-c1-pypi.zip
+            ${{ runner.temp }}/recovery-c1-context.zip
             ${{ runner.temp }}/recovery-bundle
             ${{ runner.temp }}/recovery-binding
           if-no-files-found: error
@@ -4299,15 +4367,18 @@ jobs:
           INPUT: ${{ runner.temp }}/recovery-pypi-preflight.json
           SOURCE_M: ${{ env.PUBLICATION_RECOVERY_SOURCE_M }}
           CONTROL_COMMIT: ${{ inputs.expected_commit }}
+          C1_SOURCE: ${{ env.PUBLICATION_FINISH_C1_SOURCE }}
+          FINISH_MODE: ${{ inputs.recovery_mode == 'finish-0.11.0' && 'true' || 'false' }}
+          VERIFY_MODE: ${{ inputs.recovery_mode == 'verify-0.11.0' && 'true' || 'false' }}
           VENV: ${{ runner.temp }}/recovery-preflight-venv
         run: |
           set -euo pipefail
           status="$(curl --silent --show-error --max-time 30 --retry 0 --user-agent "$RELEASE_USER_AGENT" --output "$RESPONSE" --write-out '%{http_code}' https://pypi.org/pypi/erpc-sdk/0.11.0/json)"
           if [ "$status" = 200 ]; then
-            "$VENV/bin/python" - "$RESPONSE" "$RUNNER_TEMP/pypi-existing-proof.json" "$SOURCE_M" "$CONTROL_COMMIT" <<'PY'
+            "$VENV/bin/python" - "$RESPONSE" "$RUNNER_TEMP/pypi-existing-proof.json" "$SOURCE_M" "$CONTROL_COMMIT" "$C1_SOURCE" <<'PY'
           import hashlib, json, re, sys, urllib.request
           from pypi_attestations import Distribution, GitHubPublisher, Provenance
-          response, output, source, control = sys.argv[1:]; payload = json.load(open(response, encoding='utf-8')); result = {}
+          response, output, source, control, c1 = sys.argv[1:]; payload = json.load(open(response, encoding='utf-8')); result = {}
           for item in payload.get('urls', []):
               if item.get('filename') not in {'erpc_sdk-0.11.0-py3-none-any.whl', 'erpc_sdk-0.11.0.tar.gz'}: continue
               filename = item['filename']; digest = item.get('digests', {}).get('sha256'); provenance_url = f"https://pypi.org/integrity/erpc-sdk/0.11.0/{filename}/provenance"
@@ -4320,7 +4391,7 @@ jobs:
                       statement = json.loads(attestation.envelope.statement.decode()); subject = next((s for s in statement.get('subject', []) if s.get('name') == filename and s.get('digest', {}).get('sha256') == digest), None)
                       if statement.get('predicateType') != 'https://docs.pypi.org/attestations/publish/v1' or subject is None: continue
                       attestation.verify(GitHubPublisher(repository='elsoul/erpc-sdk', workflow='release.yml', environment='pypi'), Distribution(name=filename, digest=digest)); claims = attestation.certificate_claims; claimed = claims.get('1.3.6.1.4.1.57264.1.13')
-                      if claimed not in {source, control}: raise SystemExit(f'PyPI preflight existing source mismatch for {filename}')
+                      if claimed not in {source, control, c1}: raise SystemExit(f'PyPI preflight existing source mismatch for {filename}')
                       invocation = claims.get('1.3.6.1.4.1.57264.1.21'); match = re.fullmatch(r'https://github\.com/elsoul/erpc-sdk/actions/runs/([1-9][0-9]*)/attempts/([1-9][0-9]*)', invocation or '')
                       if match is None: raise SystemExit(f'PyPI preflight existing invocation mismatch for {filename}')
                       matches.append({'repository':'elsoul/erpc-sdk','repositoryId':'1429568627','sourceCommit':claimed,'workflowPath':'.github/workflows/release.yml','ref':'refs/heads/main','event':'workflow_dispatch','environment':'pypi','publisherRunId':match.group(1),'publisherAttempt':match.group(2),'invocation':invocation})
@@ -4346,7 +4417,7 @@ jobs:
           retention-days: 365
 
   publication-recovery-pypi:
-    name: Publish or reuse only the missing PyPI recovery files
+    name: Verify already-public PyPI recovery files read-only
     needs:
       - publication-recovery-control
       - publication-recovery-readonly
@@ -4354,11 +4425,9 @@ jobs:
     if: ${{ needs.publication-recovery-control.result == 'success' && needs.publication-recovery-readonly.result == 'success' && needs.publication-recovery-pypi-preflight.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 35
-    environment: pypi
     permissions:
       contents: read
       actions: read
-      id-token: write
     outputs:
       pypi_receipt_artifact_id: ${{ steps.pypi_receipt.outputs.artifact-id }}
     steps:
@@ -4419,17 +4488,20 @@ jobs:
           RESPONSE: ${{ runner.temp }}/recovery-pypi.json
           PUBLICATION_RECOVERY_SOURCE_M: ${{ env.PUBLICATION_RECOVERY_SOURCE_M }}
           PUBLICATION_RECOVERY_CONTROL_COMMIT: ${{ inputs.expected_commit }}
+          PUBLICATION_FINISH_C1_SOURCE: ${{ env.PUBLICATION_FINISH_C1_SOURCE }}
+          FINISH_MODE: ${{ inputs.recovery_mode == 'finish-0.11.0' && 'true' || 'false' }}
+          VERIFY_MODE: ${{ inputs.recovery_mode == 'verify-0.11.0' && 'true' || 'false' }}
         run: |
           set -euo pipefail
           mkdir -p "$STAGE"
           version=0.11.0
           status="$(curl --silent --show-error --max-time 30 --retry 0 --user-agent "$RELEASE_USER_AGENT" --output "$RESPONSE" --write-out '%{http_code}' "https://pypi.org/pypi/erpc-sdk/$version/json")"
           if [ "$status" = 200 ]; then
-            "$RUNNER_TEMP/recovery-venv/bin/python" - "$RESPONSE" "$RUNNER_TEMP/pypi-existing-proof.json" "$PUBLICATION_RECOVERY_SOURCE_M" "$PUBLICATION_RECOVERY_CONTROL_COMMIT" <<'PY'
+            "$RUNNER_TEMP/recovery-venv/bin/python" - "$RESPONSE" "$RUNNER_TEMP/pypi-existing-proof.json" "$PUBLICATION_RECOVERY_SOURCE_M" "$PUBLICATION_RECOVERY_CONTROL_COMMIT" "$PUBLICATION_FINISH_C1_SOURCE" <<'PY'
           import json, re, sys, urllib.request
           from cryptography import x509
           from pypi_attestations import Distribution, GitHubPublisher, Provenance
-          response, output, source, control = sys.argv[1:]
+          response, output, source, control, c1 = sys.argv[1:]
           payload = json.load(open(response, encoding='utf-8'))
           expected = {item['filename']: item for item in payload['urls'] if item.get('filename') in {'erpc_sdk-0.11.0-py3-none-any.whl', 'erpc_sdk-0.11.0.tar.gz'}}
           result = {}
@@ -4449,7 +4521,7 @@ jobs:
                       attestation.verify(GitHubPublisher(repository='elsoul/erpc-sdk', workflow='release.yml', environment='pypi'), Distribution(name=filename, digest=digest))
                       claims = attestation.certificate_claims
                       claimed_source = claims.get('1.3.6.1.4.1.57264.1.13')
-                      if claimed_source not in {source, control}: raise SystemExit(f'PyPI existing publisher source mismatch for {filename}')
+                      if claimed_source not in {source, control, c1}: raise SystemExit(f'PyPI existing publisher source mismatch for {filename}')
                       matches.append(claims)
               if len(matches) != 1: raise SystemExit(f'PyPI existing attestation is not unique for {filename}')
               invocation = matches[0].get('1.3.6.1.4.1.57264.1.21')
@@ -4483,6 +4555,7 @@ jobs:
           } else if (status === '404') {
             missing.push(...Object.keys(expected))
           } else throw new Error(`PyPI preflight stopped in HTTP ${status}`)
+          if ((process.env.FINISH_MODE === 'true' || process.env.VERIFY_MODE === 'true') && missing.length > 0) throw new Error('recovery finish/verify requires both PyPI files to remain publicly present')
           for (const filename of missing) {
             copyFileSync(join(bundle, filename), join(stage, filename))
             const digest = createHash('sha256').update(readFileSync(join(stage, filename))).digest('hex')
@@ -4509,14 +4582,11 @@ jobs:
           set -euo pipefail
           test "$(gh api "/repos/$EXPECTED_REPOSITORY/git/ref/heads/main" --jq '.object.sha')" = "$(jq -r .controlCommit "$CONTEXT")"
           test "$(git rev-parse HEAD)" = "$(jq -r .controlCommit "$CONTEXT")"
-      - name: Upload missing PyPI bytes exactly once with Trusted Publishing
+      - name: Stop before effects if any PyPI byte is missing or conflicting
         if: steps.preflight.outputs.missing == 'true'
-        id: pypi_upload
-        continue-on-error: true
-        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
-        with:
-          packages-dir: ${{ runner.temp }}/recovery-pypi-stage
-          attestations: true
+        run: |
+          echo 'recovery requires both already-public PyPI files; no upload is permitted' >&2
+          exit 1
       - name: Observe PyPI bytes, attestations, and fresh consumers
         if: always() && (steps.preflight.outputs.state == 'absent' || steps.preflight.outputs.state == 'partial' || steps.preflight.outputs.state == 'match')
         env:
@@ -4526,7 +4596,6 @@ jobs:
           PUBLISHER_FILE: ${{ runner.temp }}/recovery-pypi-publishers.json
           OUTPUT: ${{ runner.temp }}/pypi-proof.json
           WORK: ${{ runner.temp }}/recovery-pypi-observer
-          PYPI_UPLOAD_OUTCOME: ${{ steps.pypi_upload.outcome }}
         run: |
           set -euo pipefail
           mkdir -p "$WORK"
@@ -4551,7 +4620,7 @@ jobs:
           node --input-type=module - "$OUTPUT" "$CONTEXT" <<'NODE'
           import { readFileSync, writeFileSync } from 'node:fs'
           const [output, contextFile] = process.argv.slice(2); const receipt = JSON.parse(readFileSync(output, 'utf8')); const context = JSON.parse(readFileSync(contextFile, 'utf8'))
-          const existing = process.env.PYPI_STATE === 'match'; receipt.auth = existing ? { requested: false, uploadAttempted: false, uploadOutcome: 'not-requested' } : { requested: process.env.PYPI_UPLOAD_OUTCOME !== 'skipped', uploadAttempted: process.env.PYPI_UPLOAD_OUTCOME !== 'skipped', uploadOutcome: process.env.PYPI_UPLOAD_OUTCOME ?? 'not-requested' }
+          receipt.auth = { requested: false, uploadAttempted: false, uploadOutcome: 'not-requested' }
           receipt.recoveryContextSha256 = context.contextSha256
           writeFileSync(output, `${JSON.stringify(receipt)}\n`)
           NODE
@@ -4566,12 +4635,12 @@ jobs:
           retention-days: 365
 
   publication-recovery-finalize:
-    name: Finalize M-targeted tags Go proof and exact public Release
+    name: Stage or verify the M-targeted exact public Release
     needs:
       - publication-recovery-control
       - publication-recovery-readonly
       - publication-recovery-pypi
-    if: ${{ needs.publication-recovery-control.result == 'success' && needs.publication-recovery-readonly.result == 'success' && needs.publication-recovery-pypi.result == 'success' }}
+    if: ${{ inputs.recovery_mode == 'finish-0.11.0' && needs.publication-recovery-control.result == 'success' && needs.publication-recovery-readonly.result == 'success' && needs.publication-recovery-pypi.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
@@ -4682,9 +4751,7 @@ jobs:
             local tag="$1" encoded="$2" body status
             body="$RUNNER_TEMP/tag-${tag//\//_}.json"
             status="$(curl --silent --show-error --max-time 30 --retry 0 --header "Authorization: Bearer $GH_TOKEN" --header 'Accept: application/vnd.github+json' --user-agent "$RELEASE_USER_AGENT" --output "$body" --write-out '%{http_code}' "https://api.github.com/repos/$EXPECTED_REPOSITORY/git/ref/tags/$encoded")"
-            if [ "$status" = 404 ]; then
-              gh api --method POST "/repos/$EXPECTED_REPOSITORY/git/refs" -f "ref=refs/tags/$tag" -f "sha=$SOURCE_M" > "$body"
-            elif [ "$status" != 200 ]; then
+            if [ "$status" != 200 ]; then
               echo "tag preflight stopped in HTTP $status" >&2
               exit 1
             fi
@@ -4716,6 +4783,7 @@ jobs:
           const [output, contextFile] = process.argv.slice(2); const receipt = JSON.parse(readFileSync(output, 'utf8')); const context = JSON.parse(readFileSync(contextFile, 'utf8')); receipt.recoveryContextSha256 = context.contextSha256; writeFileSync(output, `${JSON.stringify(receipt)}\n`)
           NODE
       - name: Build immutable tag proof and recovery manifest
+        if: ${{ inputs.recovery_mode == 'finish-0.11.0' }}
         env:
           CONTEXT: ${{ runner.temp }}/recovery/recovery-context.json
           PLAN: ${{ runner.temp }}/recovery/recovery-bundle/release-set-plan.json
@@ -4737,6 +4805,7 @@ jobs:
           NODE
           cp "$BUNDLE/release-body.md" "$OUT/release-body.md"; cp "$BUNDLE/go-inventory.json" "$OUT/go-inventory.json"
       - name: Recheck every receipt before Release effects
+        if: ${{ inputs.recovery_mode == 'finish-0.11.0' }}
         env:
           CONTEXT: ${{ runner.temp }}/recovery/recovery-context.json
           NPM: ${{ runner.temp }}/recovery-assets/npm-proof.json
@@ -4752,6 +4821,7 @@ jobs:
           const [contextFile, npmFile, rubyFile, rustFile, pypiFile, goFile, tagFile] = process.argv.slice(2); const context = JSON.parse(readFileSync(contextFile, 'utf8')); validatePublicationRecoveryContext(context, { requireCiProof: true }); validatePublicationRecoveryReceipt(JSON.parse(readFileSync(npmFile, 'utf8')), { kind: 'npm', context, expectedSha256: PUBLICATION_RECOVERY_NPM_SHA256 }); validatePublicationRecoveryReceipt(JSON.parse(readFileSync(rubyFile, 'utf8')), { kind: 'rubygems', context, expectedSha256: PUBLICATION_RECOVERY_RUBYGEMS_SHA256 }); validatePublicationRecoveryReceipt(JSON.parse(readFileSync(rustFile, 'utf8')), { kind: 'rust', context, expectedSha256: RUST_011_REUSE_SHA256 }); const pypiReceipt = JSON.parse(readFileSync(pypiFile, 'utf8')); const pypiSources = Object.fromEntries(Object.entries(pypiReceipt.publishers ?? {}).map(([filename, publisher]) => [filename, publisher.sourceCommit])); validatePublicationRecoveryReceipt(pypiReceipt, { kind: 'pypi', context, pypiPublisherSources: pypiSources }); validatePublicationRecoveryReceipt(JSON.parse(readFileSync(goFile, 'utf8')), { kind: 'go', context }); validatePublicationRecoveryReceipt(JSON.parse(readFileSync(tagFile, 'utf8')), { kind: 'tag', context });
           NODE
       - name: Upload authenticated Go receipt artifact
+        if: ${{ inputs.recovery_mode == 'finish-0.11.0' }}
         id: go_receipt
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
@@ -4759,7 +4829,9 @@ jobs:
           path: ${{ runner.temp }}/recovery-assets/go-proof.json
           if-no-files-found: error
           retention-days: 365
+
       - name: Upload authenticated tag receipt artifact
+        if: ${{ inputs.recovery_mode == 'finish-0.11.0' }}
         id: tag_receipt
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
@@ -4768,6 +4840,7 @@ jobs:
           if-no-files-found: error
           retention-days: 365
       - name: Download and preserve original Ruby receipt bytes
+        if: ${{ inputs.recovery_mode == 'finish-0.11.0' }}
         uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
         with:
           artifact-ids: ${{ env.PUBLICATION_RECOVERY_ORIGINAL_RUBYGEMS_RECEIPT_ARTIFACT_ID }}
@@ -4776,6 +4849,7 @@ jobs:
           repository: ${{ github.repository }}
           path: ${{ runner.temp }}/recovery-original-ruby
       - name: Prepare receipt-only snapshot input
+        if: ${{ inputs.recovery_mode == 'finish-0.11.0' }}
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/recovery-snapshot-input"
@@ -4786,6 +4860,7 @@ jobs:
           cp "$RUNNER_TEMP/recovery-assets/tag-proof.json" "$RUNNER_TEMP/recovery-snapshot-input/tag-proof.json"
           cp "$RUNNER_TEMP/recovery-assets/go-proof.json" "$RUNNER_TEMP/recovery-snapshot-input/go-proof.json"
       - name: Upload current receipt-only snapshot artifact
+        if: ${{ inputs.recovery_mode == 'finish-0.11.0' }}
         id: snapshot_receipt
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
@@ -4794,6 +4869,7 @@ jobs:
           if-no-files-found: error
           retention-days: 365
       - name: Authenticate receipt artifacts and snapshot with strict lineage verifier
+        if: ${{ inputs.recovery_mode == 'finish-0.11.0' }}
         env:
           GH_TOKEN: ${{ github.token }}
           CONTEXT: ${{ runner.temp }}/recovery/recovery-context.json
@@ -4830,26 +4906,37 @@ jobs:
           PLAN: ${{ runner.temp }}/recovery/recovery-bundle/release-set-plan.json
           BUNDLE: ${{ runner.temp }}/recovery/recovery-bundle
           ASSETS: ${{ runner.temp }}/recovery-assets
+          DRAFT_ID: ${{ env.PUBLICATION_FINISH_DRAFT_RELEASE_ID }}
+          RECOVERY_MODE: ${{ inputs.recovery_mode }}
+          VERIFY_ONLY: ${{ inputs.recovery_mode == 'verify-0.11.0' && 'true' || 'false' }}
         run: |
           set -euo pipefail
           test "$(gh api "/repos/$EXPECTED_REPOSITORY/git/ref/heads/main" --jq '.object.sha')" = "$(jq -r .controlCommit "$CONTEXT")"
           test "$(git rev-parse HEAD)" = "$(jq -r .controlCommit "$CONTEXT")"
           release_tag=non-rust-v0.11.0
           release_json="$RUNNER_TEMP/recovery-release.json"
-          status="$(curl --silent --show-error --max-time 30 --retry 0 --header "Authorization: Bearer $GH_TOKEN" --header 'Accept: application/vnd.github+json' --user-agent "$RELEASE_USER_AGENT" --output "$release_json" --write-out '%{http_code}' "https://api.github.com/repos/$EXPECTED_REPOSITORY/releases/tags/$release_tag")"
-          if [ "$status" = 404 ]; then
-            node --input-type=module - "$PLAN" "$RUNNER_TEMP/recovery-release-request.json" <<'NODE'
-            import { readFileSync, writeFileSync } from 'node:fs'; const plan = JSON.parse(readFileSync(process.argv[2], 'utf8')); writeFileSync(process.argv[3], `${JSON.stringify({ tag_name: plan.tags.release, target_commitish: process.env.PUBLICATION_RECOVERY_SOURCE_M, name: plan.githubRelease.title, body: plan.githubRelease.body, draft: true, prerelease: false, make_latest: plan.githubRelease.latest === true })}\n`)
-          NODE
-            gh api --method POST "/repos/$EXPECTED_REPOSITORY/releases" --input "$RUNNER_TEMP/recovery-release-request.json" > "$release_json"
-          elif [ "$status" != 200 ]; then
-            echo "Release lookup stopped in HTTP $status" >&2; exit 1
+          by_tag_json="$RUNNER_TEMP/recovery-release-by-tag.json"
+          by_tag_status="$(curl --silent --show-error --max-time 30 --retry 0 --header "Authorization: Bearer $GH_TOKEN" --header 'Accept: application/vnd.github+json' --user-agent "$RELEASE_USER_AGENT" --output "$by_tag_json" --write-out '%{http_code}' "https://api.github.com/repos/$EXPECTED_REPOSITORY/releases/tags/$release_tag")"
+          if [ "$VERIFY_ONLY" = true ]; then
+            test "$by_tag_status" = 200
+            jq -e --argjson id "$DRAFT_ID" '.id == $id' "$by_tag_json" >/dev/null
+          else
+            if [ "$by_tag_status" != 404 ]; then echo "staging requires the approved draft to remain hidden by tag (HTTP $by_tag_status)" >&2; exit 1; fi
           fi
+          gh api --paginate --slurp "/repos/$EXPECTED_REPOSITORY/releases?per_page=100" > "$RUNNER_TEMP/recovery-release-list.json"
+          node --input-type=module - "$RUNNER_TEMP/recovery-release-list.json" "$release_tag" "$DRAFT_ID" <<'NODE'
+          import { readFileSync } from 'node:fs'
+          const [listFile, tag, id] = process.argv.slice(2); const pages = JSON.parse(readFileSync(listFile, 'utf8')); const releases = Array.isArray(pages?.[0]) ? pages.flat() : pages; const matches = releases.filter(release => release?.tag_name === tag)
+          if (matches.length !== 1 || String(matches[0]?.id) !== String(id)) throw new Error('approved numeric draft is missing, ambiguous, or bound to another tag')
+          NODE
+          gh api "/repos/$EXPECTED_REPOSITORY/releases/$DRAFT_ID" > "$release_json"
           release_id="$(jq -er '.id' "$release_json")"
+          test "$release_id" = "$DRAFT_ID"
           upload_url="$(jq -er '.upload_url' "$release_json" | sed 's/{?name,label}//')"
           expected_upload="https://uploads.github.com/repos/$EXPECTED_REPOSITORY/releases/$release_id/assets"
           test "$upload_url" = "$expected_upload"
           jq -e --arg tag "$release_tag" --arg title 'SDK release set: non-Rust 0.11.0 / Rust 0.11.0' --arg source "$PUBLICATION_RECOVERY_SOURCE_M" --rawfile body "$BUNDLE/release-body.md" '.tag_name == $tag and .name == $title and .body == $body and .prerelease == false and .target_commitish == $source' "$release_json" >/dev/null
+          if [ "$VERIFY_ONLY" = true ]; then jq -e '.draft == false' "$release_json" >/dev/null; else jq -e '.draft == true' "$release_json" >/dev/null; fi
           jq -e --argjson id "$release_id" '.id == $id' "$release_json" >/dev/null
           cp "$BUNDLE/elsoul-erpc-sdk-0.11.0.tgz" "$ASSETS/elsoul-erpc-sdk-0.11.0.tgz"
           cp "$BUNDLE/erpc_sdk-0.11.0-py3-none-any.whl" "$ASSETS/erpc_sdk-0.11.0-py3-none-any.whl"
@@ -4872,51 +4959,203 @@ jobs:
           for file in $expected; do
             existing_id="$(jq -r --arg name "$file" '[.[] | select(.name == $name)] | if length == 1 then .[0].id else empty end' "$RUNNER_TEMP/recovery-assets-before.json")"
             if [ -z "$existing_id" ]; then
+              if [ "$VERIFY_ONLY" = true ]; then echo "verify-only run found a missing staged asset: $file" >&2; exit 1; fi
               encoded="$(python -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "$file")"
               curl --fail --silent --show-error --max-time 60 --retry 0 --header "Authorization: Bearer $GH_TOKEN" --header 'Accept: application/vnd.github+json' --header 'Content-Type: application/octet-stream' --user-agent "$RELEASE_USER_AGENT" --data-binary "@$ASSETS/$file" "$upload_url?name=$encoded" > "$RUNNER_TEMP/recovery-upload-$file.json"
             fi
           done
           curl --fail --silent --show-error --max-time 30 --retry 0 --header "Authorization: Bearer $GH_TOKEN" --header 'Accept: application/vnd.github+json' --user-agent "$RELEASE_USER_AGENT" "https://api.github.com/repos/$EXPECTED_REPOSITORY/releases/$release_id/assets?per_page=100" > "$RUNNER_TEMP/recovery-assets-after.json"
           jq -e 'length == 13' "$RUNNER_TEMP/recovery-assets-after.json" >/dev/null
-          gh api --method PATCH "/repos/$EXPECTED_REPOSITORY/releases/$release_id" -F draft=false -f make_latest=true > "$RUNNER_TEMP/recovery-release-published.json"
-          jq -e '.draft == false and .tag_name == "non-rust-v0.11.0"' "$RUNNER_TEMP/recovery-release-published.json" >/dev/null
           for file in $expected; do
             asset_id="$(jq -er --arg name "$file" '[.[] | select(.name == $name)] | if length == 1 then .[0].id else error("asset is missing or ambiguous") end' "$RUNNER_TEMP/recovery-assets-after.json")"
             curl --fail --silent --show-error --location --max-time 60 --retry 0 --header "Authorization: Bearer $GH_TOKEN" --header 'Accept: application/octet-stream' --user-agent "$RELEASE_USER_AGENT" --output "$RUNNER_TEMP/recovery-authenticated-$file" "https://api.github.com/repos/$EXPECTED_REPOSITORY/releases/assets/$asset_id"
             test "$(sha256sum "$RUNNER_TEMP/recovery-authenticated-$file" | awk '{print $1}')" = "$(sha256sum "$ASSETS/$file" | awk '{print $1}')"
-            curl --fail --silent --show-error --location --max-time 60 --retry 0 --header 'Accept: application/octet-stream' --user-agent "$RELEASE_USER_AGENT" --output "$RUNNER_TEMP/recovery-anonymous-$file" "https://api.github.com/repos/$EXPECTED_REPOSITORY/releases/assets/$asset_id"
-            test "$(sha256sum "$RUNNER_TEMP/recovery-anonymous-$file" | awk '{print $1}')" = "$(sha256sum "$ASSETS/$file" | awk '{print $1}')"
+            if [ "$VERIFY_ONLY" = true ]; then
+              curl --fail --silent --show-error --location --max-time 60 --retry 0 --header 'Accept: application/octet-stream' --user-agent "$RELEASE_USER_AGENT" --output "$RUNNER_TEMP/recovery-anonymous-$file" "https://api.github.com/repos/$EXPECTED_REPOSITORY/releases/assets/$asset_id"
+              test "$(sha256sum "$RUNNER_TEMP/recovery-anonymous-$file" | awk '{print $1}')" = "$(sha256sum "$ASSETS/$file" | awk '{print $1}')"
+            fi
           done
-          curl --fail --silent --show-error --max-time 30 --retry 0 --user-agent "$RELEASE_USER_AGENT" "https://api.github.com/repos/$EXPECTED_REPOSITORY/releases/$release_id" > "$RUNNER_TEMP/recovery-release-anonymous.json"
-          jq -e '.draft == false and .tag_name == "non-rust-v0.11.0"' "$RUNNER_TEMP/recovery-release-anonymous.json" >/dev/null
-          curl --fail --silent --show-error --max-time 30 --retry 0 --user-agent "$RELEASE_USER_AGENT" "https://api.github.com/repos/$EXPECTED_REPOSITORY/releases/latest" > "$RUNNER_TEMP/recovery-latest.json"
-          test "$(jq -r '.id' "$RUNNER_TEMP/recovery-latest.json")" = "$release_id"
-      - name: Run accepted authenticated and anonymous GitHub proof observer
+          if [ "$VERIFY_ONLY" = true ]; then
+            curl --fail --silent --show-error --max-time 30 --retry 0 --user-agent "$RELEASE_USER_AGENT" "https://api.github.com/repos/$EXPECTED_REPOSITORY/releases/$release_id" > "$RUNNER_TEMP/recovery-release-anonymous.json"
+            jq -e '.draft == false and .tag_name == "non-rust-v0.11.0"' "$RUNNER_TEMP/recovery-release-anonymous.json" >/dev/null
+            curl --fail --silent --show-error --max-time 30 --retry 0 --user-agent "$RELEASE_USER_AGENT" "https://api.github.com/repos/$EXPECTED_REPOSITORY/releases/latest" > "$RUNNER_TEMP/recovery-latest.json"
+            test "$(jq -r '.id' "$RUNNER_TEMP/recovery-latest.json")" = "$release_id"
+          fi
+      - name: Build immutable staged checkpoint awaiting operator publication
+        if: ${{ inputs.recovery_mode == 'finish-0.11.0' }}
         env:
-          GH_TOKEN: ${{ github.token }}
           CONTEXT: ${{ runner.temp }}/recovery/recovery-context.json
           PLAN: ${{ runner.temp }}/recovery/recovery-bundle/release-set-plan.json
+          BUNDLE: ${{ runner.temp }}/recovery/recovery-bundle
           ASSETS: ${{ runner.temp }}/recovery-assets
-          OUT: ${{ runner.temp }}/recovery-assets
+          RELEASE: ${{ runner.temp }}/recovery-release.json
+          ASSETS_AFTER: ${{ runner.temp }}/recovery-assets-after.json
+          SNAPSHOT: ${{ runner.temp }}/recovery-snapshot-binding.json
+          RECEIPT_ARTIFACTS: ${{ runner.temp }}/recovery-receipt-artifacts.json
+          OUT: ${{ runner.temp }}/recovery-stage-checkpoint
         run: |
           set -euo pipefail
-          node --input-type=module - "$PLAN" "$ASSETS" "$RUNNER_TEMP/recovery-release-published.json" "$RUNNER_TEMP/recovery-github-descriptor.json" <<'NODE'
-          import { createHash } from 'node:crypto'; import { readFileSync, writeFileSync, statSync } from 'node:fs'; import { join } from 'node:path'
-          const [planFile, assets, releaseFile, output] = process.argv.slice(2); const plan = JSON.parse(readFileSync(planFile, 'utf8')); const release = JSON.parse(readFileSync(releaseFile, 'utf8')); const descriptor = { repository: plan.repository, repositoryId: plan.repositoryId, releaseTag: plan.tags.release, title: plan.githubRelease.title, bodySha256: plan.githubRelease.bodySha256, sourceCommit: plan.sourceCommit, releaseId: release.id, requirePublic: true, prerelease: false, latest: plan.githubRelease.latest === true, assets: plan.approval.publicAssets.map(asset => { const bytes = readFileSync(join(assets, asset.filename)); return { role: asset.role, filename: asset.filename, sha256: createHash('sha256').update(bytes).digest('hex'), sizeInBytes: statSync(join(assets, asset.filename)).size } }) }; writeFileSync(output, `${JSON.stringify(descriptor)}\n`)
+          rm -rf "$OUT"
+          mkdir -p "$OUT/recovery-assets"
+          cp -R "$ASSETS/." "$OUT/recovery-assets/"
+          cp "$CONTEXT" "$OUT/recovery-context.json"
+          cp "$SNAPSHOT" "$OUT/recovery-snapshot-binding.json"
+          cp "$RECEIPT_ARTIFACTS" "$OUT/recovery-receipt-artifacts.json"
+          cp "$RUNNER_TEMP/recovery-publisher-sources.json" "$OUT/recovery-publisher-sources.json"
+          cp "$RUNNER_TEMP/recovery-observer-sources.json" "$OUT/recovery-observer-sources.json"
+          node --input-type=module - "$PLAN" "$BUNDLE" "$ASSETS" "$RELEASE" "$ASSETS_AFTER" "$SNAPSHOT" "$RECEIPT_ARTIFACTS" "$CONTEXT" "$OUT/recovery-github-descriptor.json" "$OUT/recovery-staging-checkpoint.json" <<'NODE'
+          import { createHash } from 'node:crypto'
+          import { readFileSync, writeFileSync, statSync } from 'node:fs'
+          import { join } from 'node:path'
+          import { validatePublicationRecoveryContext, validatePublicationRecoveryStagingCheckpoint, validateReleaseSetPlan } from './scripts/verify-release.mjs'
+          const [planFile, bundle, assetsDir, releaseFile, assetsFile, snapshotFile, receiptArtifactsFile, contextFile, descriptorFile, checkpointFile] = process.argv.slice(2)
+          const plan = validateReleaseSetPlan(JSON.parse(readFileSync(planFile, 'utf8')))
+          const context = JSON.parse(readFileSync(contextFile, 'utf8'))
+          validatePublicationRecoveryContext(context, { requireCiProof: true })
+          const release = JSON.parse(readFileSync(releaseFile, 'utf8'))
+          const records = JSON.parse(readFileSync(assetsFile, 'utf8'))
+          const byName = new Map(records.map(record => [record.name, record]))
+          const descriptor = { repository: plan.repository, repositoryId: plan.repositoryId, releaseTag: plan.tags.release, title: plan.githubRelease.title, bodySha256: plan.githubRelease.bodySha256, sourceCommit: plan.sourceCommit, releaseId: release.id, requirePublic: true, prerelease: false, latest: plan.githubRelease.latest === true, assets: plan.approval.publicAssets.map(asset => { const bytes = readFileSync(join(assetsDir, asset.filename)); return { role: asset.role, filename: asset.filename, sha256: createHash('sha256').update(bytes).digest('hex'), sizeInBytes: statSync(join(assetsDir, asset.filename)).size } }) }
+          writeFileSync(descriptorFile, JSON.stringify(descriptor) + '\n')
+          const assets = plan.approval.publicAssets.map(asset => {
+            const record = byName.get(asset.filename)
+            if (record === undefined) throw new Error('staged asset record is missing: ' + asset.filename)
+            const bytes = readFileSync(join(assetsDir, asset.filename))
+            return { role: asset.role, filename: asset.filename, id: record.id, sha256: createHash('sha256').update(bytes).digest('hex'), sizeInBytes: bytes.length, ...(record.digest === undefined ? {} : { apiDigest: record.digest }), ...(record.size === undefined ? {} : { apiSize: record.size }) }
+          })
+          const manifestBytes = readFileSync(join(assetsDir, 'release-set-proof-manifest.json'))
+          const manifest = JSON.parse(manifestBytes.toString('utf8'))
+          const checkpoint = { schemaVersion: 1, kind: 'erpc-sdk-publication-staging-checkpoint', state: 'awaiting-operator-publication', repository: plan.repository, repositoryId: plan.repositoryId, sourceCommit: context.controlCommit, planSha256: context.planSha256, contextSha256: context.contextSha256, stagingRunId: context.recoveryRun.runId, stagingRunAttempt: context.recoveryRun.runAttempt, release: { id: release.id, tag: release.tag_name, title: release.name, bodySha256: plan.githubRelease.bodySha256, targetCommitish: release.target_commitish, draft: release.draft, prerelease: release.prerelease, assetsUrl: release.assets_url }, assets, manifest, manifestSha256: createHash('sha256').update(manifestBytes).digest('hex'), snapshot: JSON.parse(readFileSync(snapshotFile, 'utf8')), receiptArtifacts: JSON.parse(readFileSync(receiptArtifactsFile, 'utf8')), descriptor }
+          validatePublicationRecoveryStagingCheckpoint(checkpoint, { plan, context })
+          writeFileSync(checkpointFile, JSON.stringify(checkpoint) + '\n')
+          writeFileSync(process.env.OUT + '/staged-release.json', JSON.stringify(release) + '\n')
+          writeFileSync(process.env.OUT + '/staged-assets.json', JSON.stringify(records) + '\n')
           NODE
-          exec {RECOVERY_READ_FD}<<<"$GH_TOKEN"
-          export PUBLICATION_RECOVERY_CONTEXT_FILE="$CONTEXT" PUBLICATION_RECOVERY_PLAN_FILE="$PLAN" PUBLICATION_RECOVERY_ARTIFACT_DIR="$RUNNER_TEMP/recovery/recovery-bundle" PUBLICATION_RECOVERY_GITHUB_DESCRIPTOR_FILE="$RUNNER_TEMP/recovery-github-descriptor.json" PUBLICATION_RECOVERY_SNAPSHOT_BINDING_FILE="$RUNNER_TEMP/recovery-snapshot-binding.json" PUBLICATION_RECOVERY_RECEIPT_ARTIFACTS_FILE="$RUNNER_TEMP/recovery-receipt-artifacts.json" PUBLICATION_RECOVERY_PUBLISHER_SOURCES_FILE="$RUNNER_TEMP/recovery-publisher-sources.json" PUBLICATION_RECOVERY_OBSERVER_SOURCES_FILE="$RUNNER_TEMP/recovery-observer-sources.json" PUBLICATION_RECOVERY_READ_TOKEN_FD="$RECOVERY_READ_FD" PUBLICATION_RECOVERY_GITHUB_WORK_DIR="$RUNNER_TEMP/recovery-github-work" PUBLICATION_RECOVERY_GITHUB_OUTPUT_FILE="$RUNNER_TEMP/recovery-github-proof.json" PUBLICATION_RECOVERY_OBSERVER_RUN_ID="$GITHUB_RUN_ID" PUBLICATION_RECOVERY_OBSERVER_ATTEMPT="$GITHUB_RUN_ATTEMPT"
-          mkdir -p "$PUBLICATION_RECOVERY_GITHUB_WORK_DIR"
-          node scripts/verify-release.mjs --publication-recovery-github-observe
-      - name: Upload final recovery proof packet
+          cp "$OUT/recovery-github-descriptor.json" "$RUNNER_TEMP/recovery-github-descriptor.json"
+          cp "$OUT/recovery-staging-checkpoint.json" "$RUNNER_TEMP/recovery-staging-checkpoint.json"
+      - name: Upload immutable awaiting-operator-publication checkpoint
+        if: ${{ inputs.recovery_mode == 'finish-0.11.0' }}
+        id: staged_checkpoint
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
-          name: publication-recovery-final-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            ${{ runner.temp }}/recovery-assets
-            ${{ runner.temp }}/recovery-release-published.json
-            ${{ runner.temp }}/recovery-release-anonymous.json
-            ${{ runner.temp }}/recovery-latest.json
-            ${{ runner.temp }}/recovery-github-proof.json
+          name: publication-recovery-staged-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/recovery-stage-checkpoint
+          if-no-files-found: error
+          retention-days: 365
+  publication-recovery-verify:
+    name: Verify the staged Release read-only after operator publication
+    needs:
+      - publication-recovery-control
+      - publication-recovery-readonly
+      - publication-recovery-pypi
+    if: ${{ inputs.recovery_mode == 'verify-0.11.0' && needs.publication-recovery-control.result == 'success' && needs.publication-recovery-readonly.result == 'success' && needs.publication-recovery-pypi.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Check out C without credentials
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 1
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Download current C2 context, package proofs, and prepared bundle
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          artifact-ids: ${{ needs.publication-recovery-control.outputs.context_artifact_id }}
+          path: ${{ runner.temp }}/recovery
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: publication-recovery-readonly-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/recovery-readonly
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: release-set-pypi-proof-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/recovery-pypi
+      - name: Download checkpoint and verify preserved public proof read-only
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CHECKPOINT_ID: ${{ inputs.staged_checkpoint_artifact_id }}
+          CONTEXT: ${{ runner.temp }}/recovery/recovery-context.json
+          PLAN: ${{ runner.temp }}/recovery/recovery-bundle/release-set-plan.json
+        run: |
+          set -euo pipefail
+          checkpoint_dir="$RUNNER_TEMP/recovery-staged-checkpoint"
+          mkdir -p "$checkpoint_dir"
+          gh api "/repos/$EXPECTED_REPOSITORY/actions/artifacts/$CHECKPOINT_ID" > "$RUNNER_TEMP/recovery-staged-checkpoint-meta.json"
+          curl --fail --silent --show-error --location --max-time 60 --retry 0 --header "Authorization: Bearer $GH_TOKEN" --header 'Accept: application/vnd.github+json' --user-agent "$RELEASE_USER_AGENT" --output "$RUNNER_TEMP/recovery-staged-checkpoint.zip" "https://api.github.com/repos/$EXPECTED_REPOSITORY/actions/artifacts/$CHECKPOINT_ID/zip"
+          unzip -q "$RUNNER_TEMP/recovery-staged-checkpoint.zip" -d "$checkpoint_dir"
+          checkpoint_file="$(find "$checkpoint_dir" -name recovery-staging-checkpoint.json -type f -print -quit)"
+          test -n "$checkpoint_file"
+          checkpoint_root="$(dirname "$checkpoint_file")"
+          node --input-type=module - "$checkpoint_root" "$RUNNER_TEMP/recovery-staged-checkpoint.zip" "$RUNNER_TEMP/recovery-staged-checkpoint-meta.json" <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs'
+          import { verifyReleaseSetArtifactZip } from './scripts/verify-release.mjs'
+          const [root, zipFile, metadataFile] = process.argv.slice(2)
+          const evidence = await verifyReleaseSetArtifactZip({ zipFile, metadata: JSON.parse(readFileSync(metadataFile, 'utf8')), expectedId: process.env.CHECKPOINT_ID, consumedDirectory: root })
+          writeFileSync(process.env.RUNNER_TEMP + '/recovery-staged-members.json', JSON.stringify(evidence) + '\n')
+          NODE
+          stage_run_id="$(jq -er .stagingRunId "$checkpoint_file")"
+          stage_attempt="$(jq -er .stagingRunAttempt "$checkpoint_file")"
+          gh api "/repos/$EXPECTED_REPOSITORY/actions/runs/$stage_run_id/attempts/$stage_attempt" > "$RUNNER_TEMP/recovery-staged-run.json"
+          gh api "/repos/$EXPECTED_REPOSITORY/actions/runs/$stage_run_id/attempts/$stage_attempt/jobs?per_page=100" > "$RUNNER_TEMP/recovery-staged-jobs.json"
+          node --input-type=module - "$checkpoint_root" "$checkpoint_file" "$CONTEXT" "$PLAN" "$RUNNER_TEMP/recovery-staged-checkpoint-meta.json" "$RUNNER_TEMP/recovery-staged-members.json" "$RUNNER_TEMP/recovery-staged-run.json" "$RUNNER_TEMP/recovery-staged-jobs.json" "$RUNNER_TEMP/recovery-readonly/npm-proof.json" "$RUNNER_TEMP/recovery-readonly/rubygems-proof.json" "$RUNNER_TEMP/recovery-readonly/rust-proof.json" "$RUNNER_TEMP/recovery-pypi/pypi-proof.json" <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs'
+          import { canonicalJson, validatePublicationRecoveryContext, validatePublicationRecoveryReceipt, validatePublicationRecoveryStagingCheckpoint, validateReleaseSetPlan, PUBLICATION_RECOVERY_NPM_SHA256, PUBLICATION_RECOVERY_RUBYGEMS_SHA256, RUST_011_REUSE_SHA256 } from './scripts/verify-release.mjs'
+          const [root, checkpointFile, currentContextFile, planFile, metadataFile, membersFile, stageRunFile, stageJobsFile, npmFile, rubyFile, rustFile, pypiFile] = process.argv.slice(2)
+          const checkpoint = JSON.parse(readFileSync(checkpointFile, 'utf8'))
+          const stagedContext = JSON.parse(readFileSync(root + '/recovery-context.json', 'utf8'))
+          const currentContext = JSON.parse(readFileSync(currentContextFile, 'utf8'))
+          const plan = validateReleaseSetPlan(JSON.parse(readFileSync(planFile, 'utf8')))
+          const artifactEvidence = JSON.parse(readFileSync(membersFile, 'utf8'))
+          const expectedMembers = ['recovery-staging-checkpoint.json', 'recovery-context.json', 'recovery-snapshot-binding.json', 'recovery-receipt-artifacts.json', 'recovery-publisher-sources.json', 'recovery-observer-sources.json', 'recovery-github-descriptor.json', 'staged-release.json', 'staged-assets.json', ...plan.approval.publicAssets.map(asset => 'recovery-assets/' + asset.filename)].sort()
+          if (canonicalJson(artifactEvidence.members.slice().sort()) !== canonicalJson(expectedMembers)) throw new Error('staged checkpoint artifact has an unexpected or incomplete closed member set')
+          validatePublicationRecoveryContext(currentContext, { requireCiProof: true })
+          const checked = validatePublicationRecoveryStagingCheckpoint(checkpoint, { plan, context: stagedContext })
+          validatePublicationRecoveryContext(stagedContext, { requireCiProof: true })
+          if (checked.sourceCommit !== currentContext.controlCommit || stagedContext.c1Publisher?.sourceCommit !== currentContext.c1Publisher?.sourceCommit) throw new Error('staged checkpoint is from another C2 source')
+          const metadata = JSON.parse(readFileSync(metadataFile, 'utf8'))
+          const stageRun = JSON.parse(readFileSync(stageRunFile, 'utf8'))
+          const stageJobs = JSON.parse(readFileSync(stageJobsFile, 'utf8')).jobs ?? []
+          if (String(metadata.id) !== String(process.env.CHECKPOINT_ID) || metadata.name !== 'publication-recovery-staged-' + checked.stagingRunId + '-' + checked.stagingRunAttempt || metadata.expired !== false || metadata.workflow_run?.id !== Number(checked.stagingRunId) || metadata.workflow_run?.head_sha !== currentContext.controlCommit) throw new Error('staged checkpoint artifact metadata is not bound to C2')
+          if (stageRun.id !== Number(checked.stagingRunId) || stageRun.run_attempt !== Number(checked.stagingRunAttempt) || stageRun.status !== 'completed' || stageRun.conclusion !== 'success' || stageRun.head_sha !== currentContext.controlCommit || stageRun.event !== 'workflow_dispatch' || stageRun.path !== '.github/workflows/release.yml') throw new Error('staging producer run is not an authenticated successful C2 run')
+          const stageJobsMatching = stageJobs.filter(job => job?.name === 'Stage or verify the M-targeted exact public Release' && job?.id > 0 && job.run_id === Number(checked.stagingRunId) && job.run_attempt === Number(checked.stagingRunAttempt) && job.status === 'completed' && job.conclusion === 'success')
+          if (stageJobsMatching.length !== 1) throw new Error('staging producer job is missing, ambiguous, or unsuccessful')
+          validatePublicationRecoveryReceipt(JSON.parse(readFileSync(npmFile, 'utf8')), { kind: 'npm', context: currentContext, expectedSha256: PUBLICATION_RECOVERY_NPM_SHA256 })
+          validatePublicationRecoveryReceipt(JSON.parse(readFileSync(rubyFile, 'utf8')), { kind: 'rubygems', context: currentContext, expectedSha256: PUBLICATION_RECOVERY_RUBYGEMS_SHA256 })
+          validatePublicationRecoveryReceipt(JSON.parse(readFileSync(rustFile, 'utf8')), { kind: 'rust', context: currentContext, expectedSha256: RUST_011_REUSE_SHA256 })
+          const pypi = JSON.parse(readFileSync(pypiFile, 'utf8')); validatePublicationRecoveryReceipt(pypi, { kind: 'pypi', context: currentContext, pypiPublisherSources: Object.fromEntries(Object.entries(pypi.publishers ?? {}).map(([filename, publisher]) => [filename, publisher.sourceCommit])) })
+          writeFileSync(process.env.RUNNER_TEMP + '/recovery-verify-root', root + '\n')
+          NODE
+          test "$(gh api "/repos/$EXPECTED_REPOSITORY/git/ref/heads/main" --jq '.object.sha')" = "$(jq -r .controlCommit "$CONTEXT")"
+          test "$(git rev-parse HEAD)" = "$(jq -r .controlCommit "$CONTEXT")"
+          exec {RECOVERY_READ_FD}<<<"$GH_TOKEN"
+          export PUBLICATION_RECOVERY_CONTEXT_FILE="$checkpoint_root/recovery-context.json" PUBLICATION_RECOVERY_PLAN_FILE="$PLAN" PUBLICATION_RECOVERY_ARTIFACT_DIR="$RUNNER_TEMP/recovery/recovery-bundle" PUBLICATION_RECOVERY_GITHUB_DESCRIPTOR_FILE="$checkpoint_root/recovery-github-descriptor.json" PUBLICATION_RECOVERY_SNAPSHOT_MODE=preserved-manifest PUBLICATION_RECOVERY_PUBLISHER_SOURCES_FILE="$checkpoint_root/recovery-publisher-sources.json" PUBLICATION_RECOVERY_OBSERVER_SOURCES_FILE="$checkpoint_root/recovery-observer-sources.json" PUBLICATION_RECOVERY_READ_TOKEN_FD="$RECOVERY_READ_FD" PUBLICATION_RECOVERY_GITHUB_WORK_DIR="$RUNNER_TEMP/recovery-github-work" PUBLICATION_RECOVERY_GITHUB_OUTPUT_FILE="$RUNNER_TEMP/recovery-github-proof.json" PUBLICATION_RECOVERY_OBSERVER_RUN_ID="$GITHUB_RUN_ID" PUBLICATION_RECOVERY_OBSERVER_ATTEMPT="$GITHUB_RUN_ATTEMPT"
+          mkdir -p "$PUBLICATION_RECOVERY_GITHUB_WORK_DIR"
+          node scripts/verify-release.mjs --publication-recovery-github-observe
+          node --input-type=module - "$RUNNER_TEMP/recovery-github-proof.json" "$checkpoint_file" <<'NODE'
+          import { readFileSync } from 'node:fs'
+          const [observationFile, checkpointFile] = process.argv.slice(2)
+          const observation = JSON.parse(readFileSync(observationFile, 'utf8'))
+          const checkpoint = JSON.parse(readFileSync(checkpointFile, 'utf8'))
+          const expected = new Map(checkpoint.assets.map(asset => [asset.filename, asset]))
+          if (!Array.isArray(observation.assets) || observation.assets.length !== expected.size) throw new Error('public asset observation is incomplete')
+          const seen = new Set()
+          for (const asset of observation.assets) {
+            if (seen.has(asset.filename) || !expected.has(asset.filename)) throw new Error('public asset observation has an unexpected or duplicate filename')
+            const approved = expected.get(asset.filename)
+            if (String(asset.id) !== String(approved.id) || asset.sha256 !== approved.sha256 || asset.sizeInBytes !== approved.sizeInBytes) throw new Error('public asset observation changed the staged asset identity or bytes: ' + asset.filename)
+            seen.add(asset.filename)
+          }
+          if (seen.size !== expected.size) throw new Error('public asset observation omitted a staged asset')
+          NODE
+          test -s "$RUNNER_TEMP/recovery-github-proof.json"
+      - name: Upload read-only final verification evidence
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: publication-recovery-verified-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/recovery-github-proof.json
           if-no-files-found: error
           retention-days: 365

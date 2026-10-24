@@ -18,6 +18,7 @@ import {
   CURRENT_RUST_VERSION,
   PUBLICATION_RECOVERY_MODE,
   PUBLICATION_RECOVERY_SOURCE_M,
+  PUBLICATION_FINISH_C1_SOURCE,
   PUBLICATION_RECOVERY_PLAN_SHA256,
   PUBLICATION_RECOVERY_PREPARED_RUN_ID,
   PUBLICATION_RECOVERY_PREPARED_RUN_ATTEMPT,
@@ -84,8 +85,10 @@ import {
   validateReleaseSetPreparationBinding,
   validateReleaseSetPreparationMetadata,
   buildPublicationRecoveryContext,
+  buildPublicationFinishContext,
   validatePublicationRecoveryRuntimeContext,
   validatePublicationRecoveryContext,
+  validatePublicationRecoveryStagingCheckpoint,
   validatePublicationRecoveryOriginalPublication,
   classifyPublicationRecoveryPreflight,
   validatePublicationRecoveryReceipt,
@@ -474,6 +477,24 @@ test('publication recovery authenticates C separately from frozen M and rejects 
   assert.throws(() => validatePublicationRecoveryContext({ ...context, contextSha256: '0'.repeat(64) }), /context hash mismatch/)
 })
 
+test('the authenticated C1 descriptor binds directly to the finish-context schema', () => {
+  const baseContext = publicationRecoveryContextFixture()
+  const c1Publisher = { sourceCommit: PUBLICATION_FINISH_C1_SOURCE, runId: '40125323722', runAttempt: '1', jobId: '120965821282', ciRunId: '40124707275', ciRunAttempt: '1', ciJobId: '120964818966', pypiArtifactId: '12572796598', contextArtifactId: '12572746281' }
+  const finished = buildPublicationFinishContext({ baseContext, runtime: publicationRecoveryRuntimeFixture(), recoveryRun: { runId: '90002', runAttempt: '1' }, ciProof: baseContext.ciProof, sourceCiProof: baseContext.sourceCiProof, c1Publisher })
+  assert.equal(validatePublicationRecoveryContext(finished, { requireCiProof: true }).c1Publisher.jobId, '120965821282')
+  assert.throws(() => validatePublicationRecoveryContext({ ...finished, c1Publisher: { ...finished.c1Publisher, pypiJobId: finished.c1Publisher.jobId } }, { requireCiProof: true }), /unknown field|C1 publisher descriptor/)
+})
+
+test('finish PyPI receipts reject a current-C2 publisher substitution', () => {
+  const baseContext = publicationRecoveryContextFixture()
+  const c1Publisher = { sourceCommit: PUBLICATION_FINISH_C1_SOURCE, runId: '40125323722', runAttempt: '1', jobId: '120965821282', ciRunId: '40124707275', ciRunAttempt: '1', ciJobId: '120964818966', pypiArtifactId: '12572796598', contextArtifactId: '12572746281' }
+  const context = buildPublicationFinishContext({ baseContext, runtime: publicationRecoveryRuntimeFixture(), recoveryRun: { runId: '90003', runAttempt: '1' }, ciProof: baseContext.ciProof, sourceCiProof: baseContext.sourceCiProof, c1Publisher })
+  const publisher = { sourceCommit: PUBLICATION_FINISH_C1_SOURCE, publisherRunId: c1Publisher.runId, publisherAttempt: c1Publisher.runAttempt, invocation: 'https://github.com/elsoul/erpc-sdk/actions/runs/40125323722/attempts/1' }
+  const receipt = { repository: 'elsoul/erpc-sdk', repositoryId: '1429568627', planSha256: PUBLICATION_RECOVERY_PLAN_SHA256, preparation: context.preparation, observer: { sourceCommit: context.controlCommit }, recoveryContextSha256: context.contextSha256, auth: { requested: false, uploadAttempted: false }, publishers: { 'erpc_sdk-0.11.0-py3-none-any.whl': publisher } }
+  assert.equal(validatePublicationRecoveryReceipt(receipt, { kind: 'pypi', context, pypiPublisherSources: { 'erpc_sdk-0.11.0-py3-none-any.whl': PUBLICATION_FINISH_C1_SOURCE } }), receipt)
+  assert.throws(() => validatePublicationRecoveryReceipt({ ...receipt, publishers: { 'erpc_sdk-0.11.0-py3-none-any.whl': { ...publisher, sourceCommit: context.controlCommit, publisherRunId: context.recoveryRun.runId, publisherAttempt: context.recoveryRun.runAttempt, invocation: `https://github.com/elsoul/erpc-sdk/actions/runs/${context.recoveryRun.runId}/attempts/${context.recoveryRun.runAttempt}` } } }, { kind: 'pypi', context, pypiPublisherSources: { 'erpc_sdk-0.11.0-py3-none-any.whl': context.controlCommit } }), /C1|outside M\/C1|publisher run|publisher source/)
+})
+
 test('recovery YAML control guard executes the actual C/M boundary with no remote effects', async t => {
   const workflow = await readFile(new URL('../.github/workflows/release.yml', import.meta.url), 'utf8')
   const block = extractWorkflowRunBlock(workflow, 'Guard C, main, M ancestry, and the four-file delta')
@@ -540,11 +561,12 @@ test('publication recovery extracted effect boundaries include every pre-tag pro
   assert.match(snapshot, /writeFileSync\(process\.argv\[3\]/)
   assert.match(snapshot, /writeFileSync\(process\.argv\[4\]/)
   const reconcile = extractWorkflowRunBlock(workflow, 'Reconcile numeric Release and exact thirteen approved assets')
-  assert.match(reconcile, /recovery-release-request\.json/)
-  assert.match(reconcile, /gh api --method POST[^\n]+--input "\$RUNNER_TEMP\/recovery-release-request\.json"/)
-  assert.doesNotMatch(reconcile, /--raw-field body=/)
-  const github = extractWorkflowRunBlock(workflow, 'Run accepted authenticated and anonymous GitHub proof observer')
-  assert.match(github, /PUBLICATION_RECOVERY_GITHUB_OUTPUT_FILE=/)
+  assert.match(reconcile, /DRAFT_ID/)
+  assert.match(reconcile, /gh api --paginate --slurp[^\n]+releases\?per_page=100/)
+  assert.match(reconcile, /gh api "\/repos\/\$EXPECTED_REPOSITORY\/releases\/\$DRAFT_ID"/)
+  assert.doesNotMatch(reconcile, /gh api --method POST "\/repos\/\$EXPECTED_REPOSITORY\/releases"/)
+  const github = extractWorkflowRunBlock(workflow, 'Download checkpoint and verify preserved public proof read-only')
+  assert.match(github, /PUBLICATION_RECOVERY_GITHUB_WORK_DIR=/)
 })
 
 test('recovery PyPI existing-attestation regex accepts the canonical invocation and rejects a tampered host', async () => {
@@ -586,6 +608,54 @@ test('recovery Release assets validate every existing byte before any upload', a
   assert.ok(existingCheck >= 0 && upload > existingCheck)
   assert.match(block, /existing_count=.*recovery-assets-before\.json/)
   assert.match(block, /if \[ -z "\$existing_id" \]; then[\s\S]*--data-binary "@\$ASSETS\/\$file"/)
+})
+
+test('finish recovery is C1-bound, package read-only, and numeric-draft-only', async () => {
+  const workflow = await readFile(new URL('../.github/workflows/release.yml', import.meta.url), 'utf8')
+  assert.match(workflow, /finish-0\.11\.0/)
+  assert.match(workflow, /PUBLICATION_FINISH_C1_SOURCE: bb0785ec3bbc4c66569a6955a3ffb5566eee5fd4/)
+  assert.match(workflow, /PUBLICATION_FINISH_C1_PYPI_JOB_ID: '120965821282'/)
+  assert.match(workflow, /PUBLICATION_FINISH_DRAFT_RELEASE_ID: '422947688'/)
+  const pypiJobStart = workflow.indexOf('  publication-recovery-pypi:')
+  const pypiJobEnd = workflow.indexOf('\n  publication-recovery-finalize:', pypiJobStart)
+  const pypiJob = workflow.slice(pypiJobStart, pypiJobEnd)
+  assert.doesNotMatch(pypiJob, /id-token:\s*write/)
+  assert.doesNotMatch(pypiJob, /pypa\/gh-action-pypi-publish/)
+  const reconcile = extractWorkflowRunBlock(workflow, 'Reconcile numeric Release and exact thirteen approved assets')
+  assert.match(reconcile, /DRAFT_ID/)
+  assert.match(reconcile, /gh api --paginate --slurp[^\n]+releases\?per_page=100/)
+  assert.match(reconcile, /gh api "\/repos\/\$EXPECTED_REPOSITORY\/releases\/\$DRAFT_ID"/)
+  assert.doesNotMatch(reconcile, /gh api --method POST "\/repos\/\$EXPECTED_REPOSITORY\/releases"/)
+})
+
+test('C2 staging and verify-only routes preserve the operator publication boundary', async () => {
+  const workflow = await readFile(new URL('../.github/workflows/release.yml', import.meta.url), 'utf8')
+  assert.match(workflow, /- verify-0\.11\.0/)
+  assert.match(workflow, /staged_checkpoint_artifact_id:/)
+  assert.match(workflow, /state: 'awaiting-operator-publication'/)
+  assert.match(workflow, /publication-recovery-staged-\$\{\{ github\.run_id \}\}-\$\{\{ github\.run_attempt \}\}/)
+  assert.match(workflow, /PUBLICATION_RECOVERY_SNAPSHOT_MODE=preserved-manifest/)
+  const reconcile = extractWorkflowRunBlock(workflow, 'Reconcile numeric Release and exact thirteen approved assets')
+  assert.doesNotMatch(reconcile, /gh api --method PATCH/)
+  assert.doesNotMatch(reconcile, /gh api --method POST/)
+  assert.match(reconcile, /VERIFY_ONLY/)
+  const staged = extractWorkflowRunBlock(workflow, 'Build immutable staged checkpoint awaiting operator publication')
+  assert.match(staged, /validatePublicationRecoveryStagingCheckpoint/)
+  assert.match(staged, /recovery-staging-checkpoint\.json/)
+  assert.match(staged, /writeFileSync\(process\.env\.OUT \+ '\/staged-release\.json'/)
+  assert.match(staged, /writeFileSync\(process\.env\.OUT \+ '\/staged-assets\.json'/)
+  assert.doesNotMatch(staged, /writeFileSync\(OUT \+/)
+  const verify = extractWorkflowRunBlock(workflow, 'Download checkpoint and verify preserved public proof read-only')
+  assert.match(verify, /preserved-manifest/)
+  assert.match(verify, /recovery-staged-checkpoint.zip/)
+  assert.match(verify, /verifyReleaseSetArtifactZip/)
+  assert.match(verify, /recovery-staged-members\.json/)
+  assert.match(verify, /stageJobsMatching/)
+  assert.match(verify, /asset\.id.*approved\.id/)
+  assert.match(verify, /asset\.sizeInBytes.*approved\.sizeInBytes/)
+  assert.match(workflow, /publication-recovery-verify:[\s\S]*contents: read/)
+  const finalUpload = workflow.slice(workflow.indexOf('- name: Upload read-only final verification evidence'))
+  assert.match(finalUpload, /recovery-github-proof\.json/)
 })
 
 test('preparation metadata requires a successful exact workflow run and both owned artifacts', () => {
@@ -1857,6 +1927,14 @@ test('B1 carries A3 recomputed ZIP/API binding, member-set, and symlink regressi
   const metadataFor = async zip => ({ id: 53, name: 'release-set-binding-51-1', expired: false, size_in_bytes: (await stat(zip)).size, digest: `sha256:${await sha256File(zip)}`, archive_download_url: 'https://api.github.com/repos/elsoul/erpc-sdk/actions/artifacts/53/zip' })
   const expected = { zipFile: validZip, metadata: await metadataFor(validZip), expectedId: '53', consumedDirectory: consumed, expectedName: 'release-set-binding-51-1' }
   assert.equal((await verifyReleaseSetArtifactZip(expected)).members[0], 'release-set-binding.json')
+
+  const nestedConsumed = join(directory, 'nested-consumed')
+  await mkdir(join(nestedConsumed, 'recovery-bundle'), { recursive: true })
+  await writeFile(join(nestedConsumed, 'recovery-bundle', 'release-set-plan.json'), Buffer.from('{"source":"M"}\n'))
+  const nestedZip = join(directory, 'nested.zip')
+  await execFileAsync('python3', ['-c', 'import sys,zipfile; z=zipfile.ZipFile(sys.argv[1],"w"); z.write(sys.argv[2],"recovery-bundle/release-set-plan.json"); z.close()', nestedZip, join(nestedConsumed, 'recovery-bundle', 'release-set-plan.json')])
+  const nestedMetadata = { id: 53, name: 'release-set-binding-51-1', expired: false, size_in_bytes: (await stat(nestedZip)).size, digest: `sha256:${await sha256File(nestedZip)}`, archive_download_url: 'https://api.github.com/repos/elsoul/erpc-sdk/actions/artifacts/53/zip' }
+  assert.deepEqual((await verifyReleaseSetArtifactZip({ zipFile: nestedZip, metadata: nestedMetadata, expectedId: '53', consumedDirectory: nestedConsumed, expectedName: 'release-set-binding-51-1' })).members, ['recovery-bundle/release-set-plan.json'])
 
   const changedZip = await makeZip('changed.zip', 'import sys,zipfile; z=zipfile.ZipFile(sys.argv[1],"w"); z.writestr("release-set-binding.json",b"{\\"kind\\":\\"different\\"}\\n"); z.close()')
   const changedMetadata = await metadataFor(changedZip)

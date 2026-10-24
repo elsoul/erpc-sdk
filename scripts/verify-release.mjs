@@ -260,6 +260,19 @@ export const PUBLICATION_RECOVERY_ORIGINAL_PUBLICATION_RUN_ATTEMPT = '1'
 export const PUBLICATION_RECOVERY_ORIGINAL_NPM_JOB_ID = '120939149010'
 export const PUBLICATION_RECOVERY_ORIGINAL_PYPI_JOB_ID = '120939149000'
 export const PUBLICATION_RECOVERY_ORIGINAL_RUBYGEMS_JOB_ID = '120939148972'
+export const PUBLICATION_FINISH_MODE = 'finish-0.11.0'
+export const PUBLICATION_FINISH_C1_SOURCE = 'bb0785ec3bbc4c66569a6955a3ffb5566eee5fd4'
+export const PUBLICATION_FINISH_C1_RUN_ID = '40125323722'
+export const PUBLICATION_FINISH_C1_RUN_ATTEMPT = '1'
+export const PUBLICATION_FINISH_C1_PYPI_JOB_ID = '120965821282'
+export const PUBLICATION_FINISH_C1_CI_RUN_ID = '40124707275'
+export const PUBLICATION_FINISH_C1_CI_RUN_ATTEMPT = '1'
+export const PUBLICATION_FINISH_C1_CI_JOB_ID = '120964818966'
+export const PUBLICATION_FINISH_C1_PYPI_ARTIFACT_ID = '12572796598'
+export const PUBLICATION_FINISH_C1_PYPI_ARTIFACT_SHA256 = '848ebb4e0993ff8e57a6d5a57e9db5c08aee5b0fa24691fe2d59bba9d63f46b2'
+export const PUBLICATION_FINISH_C1_CONTEXT_ARTIFACT_ID = '12572746281'
+export const PUBLICATION_FINISH_C1_CONTEXT_ARTIFACT_SHA256 = '4346e49dcc032d0b51b85d7c0790340442afcc0a844036a5e84eda147b74b06c'
+export const PUBLICATION_FINISH_DRAFT_RELEASE_ID = '422947688'
 export const PUBLICATION_RECOVERY_NPM_SHA256 = '50c6ad17e24050eb6e5a5752b6cfc9d4e5c85d1c3e01e7db03bd2aa45754325a'
 export const PUBLICATION_RECOVERY_RUBYGEMS_SHA256 = '957aab0bb58254b1cdd8d53d7540216f8d3eea2d30ce058b089c0f3d0eed02ef'
 export const PUBLICATION_RECOVERY_PYPI_WHEEL_SHA256 = 'aa60375f9e37dabb1aa798c4da59c1f5ce558125f952bf52b43f2ab460f7c02e'
@@ -2285,7 +2298,7 @@ export function validatePublicationRecoveryRuntimeContext(context) {
 }
 
 /** Build the immutable recovery context recorded outside the public asset set. */
-export function buildPublicationRecoveryContext({ runtime, preparation, originalPublication, recoveryRun, ciProof, sourceCiProof }) {
+export function buildPublicationRecoveryContext({ runtime, preparation, originalPublication, recoveryRun, ciProof, sourceCiProof, c1Publisher }) {
   const checkedRuntime = validatePublicationRecoveryRuntimeContext(runtime)
   const checkedPreparation = publicationRecoveryRunTuple(preparation, 'Publication recovery preparation')
   requireEqual(preparation.sourceCommit, PUBLICATION_RECOVERY_SOURCE_M, 'Publication recovery preparation source mismatch')
@@ -2331,8 +2344,34 @@ export function buildPublicationRecoveryContext({ runtime, preparation, original
     recoveryRun: checkedRecovery,
     ciProof,
     sourceCiProof,
-    registryWrites: { npm: false, pypi: true, rubygems: false, rust: false },
+    ...(c1Publisher === undefined ? {} : { c1Publisher }),
+    registryWrites: { npm: false, pypi: c1Publisher === undefined, rubygems: false, rust: false },
   }
+  return { ...payload, contextSha256: sha256Hex(canonicalJson(payload)) }
+}
+
+export function buildPublicationFinishContext({ baseContext, runtime, recoveryRun, ciProof, sourceCiProof, c1Publisher }) {
+  validatePublicationRecoveryContext(baseContext, { requireCiProof: true })
+  const checkedRuntime = validatePublicationRecoveryRuntimeContext(runtime)
+  requireEqual(c1Publisher?.sourceCommit, PUBLICATION_FINISH_C1_SOURCE, 'Publication finish C1 source mismatch')
+  const { contextSha256: _baseContextSha256, ...basePayload } = baseContext
+  const payload = {
+    ...basePayload,
+    mode: PUBLICATION_RECOVERY_MODE,
+    controlCommit: checkedRuntime.controlCommit,
+    event: { name: runtime.eventName, ref: runtime.eventRef, sha: runtime.eventSha },
+    checkout: { head: runtime.checkoutHead, status: runtime.checkoutStatus },
+    controlWorkflowRef: runtime.workflowRef,
+    deltaPaths: [...runtime.deltaPaths].sort(),
+    recoveryRun: publicationRecoveryRunTuple(recoveryRun, 'Publication finish run'),
+    ciProof,
+    sourceCiProof,
+    c1Publisher,
+    registryWrites: { npm: false, pypi: false, rubygems: false, rust: false },
+  }
+  releaseSetObject(ciProof, 'Publication finish C2 CI proof')
+  requireEqual(ciProof.sourceCommit, checkedRuntime.controlCommit, 'Publication finish C2 CI source mismatch')
+  requireEqual(ciProof.conclusion, 'success', 'Publication finish C2 CI did not succeed')
   return { ...payload, contextSha256: sha256Hex(canonicalJson(payload)) }
 }
 
@@ -2346,7 +2385,7 @@ export function validatePublicationRecoveryContext(context, { requireCiProof = f
     'schemaVersion', 'kind', 'mode', 'repository', 'repositoryId', 'sourceM',
     'controlCommit', 'controlWorkflow', 'controlWorkflowRef', 'event', 'checkout',
     'deltaPaths', 'planSha256', 'preparation', 'originalPublication', 'recoveryRun',
-    'ciProof', 'sourceCiProof', 'registryWrites', 'contextSha256',
+    'ciProof', 'sourceCiProof', 'c1Publisher', 'registryWrites', 'contextSha256',
   ], 'Publication recovery context')
   requireEqual(context.schemaVersion, 1, 'Publication recovery context schema mismatch')
   requireEqual(context.kind, 'erpc-sdk-publication-recovery-context', 'Publication recovery context kind mismatch')
@@ -2405,11 +2444,23 @@ export function validatePublicationRecoveryContext(context, { requireCiProof = f
     requireEqual(context.sourceCiProof.sourceCommit, PUBLICATION_RECOVERY_SOURCE_M, 'Publication recovery context M CI source mismatch')
     requireEqual(context.sourceCiProof.conclusion, 'success', 'Publication recovery context M CI outcome mismatch')
   }
+  if (context.c1Publisher !== undefined) {
+    releaseSetKeys(context.c1Publisher, ['sourceCommit', 'runId', 'runAttempt', 'jobId', 'ciRunId', 'ciRunAttempt', 'ciJobId', 'pypiArtifactId', 'contextArtifactId'], 'Publication recovery C1 publisher descriptor')
+    requireEqual(context.c1Publisher.sourceCommit, PUBLICATION_FINISH_C1_SOURCE, 'Publication recovery C1 publisher source mismatch')
+    requireEqual(context.c1Publisher.runId, PUBLICATION_FINISH_C1_RUN_ID, 'Publication recovery C1 publisher run mismatch')
+    requireEqual(context.c1Publisher.runAttempt, PUBLICATION_FINISH_C1_RUN_ATTEMPT, 'Publication recovery C1 publisher attempt mismatch')
+    requireEqual(context.c1Publisher.jobId, PUBLICATION_FINISH_C1_PYPI_JOB_ID, 'Publication recovery C1 publisher job mismatch')
+    requireEqual(context.c1Publisher.ciRunId, PUBLICATION_FINISH_C1_CI_RUN_ID, 'Publication recovery C1 CI run mismatch')
+    requireEqual(context.c1Publisher.ciRunAttempt, PUBLICATION_FINISH_C1_CI_RUN_ATTEMPT, 'Publication recovery C1 CI attempt mismatch')
+    requireEqual(context.c1Publisher.ciJobId, PUBLICATION_FINISH_C1_CI_JOB_ID, 'Publication recovery C1 CI job mismatch')
+    requireEqual(context.c1Publisher.pypiArtifactId, PUBLICATION_FINISH_C1_PYPI_ARTIFACT_ID, 'Publication recovery C1 proof artifact mismatch')
+    requireEqual(context.c1Publisher.contextArtifactId, PUBLICATION_FINISH_C1_CONTEXT_ARTIFACT_ID, 'Publication recovery C1 context artifact mismatch')
+  }
   releaseSetKeys(context.registryWrites, ['npm', 'pypi', 'rubygems', 'rust'], 'Publication recovery registry-write capability')
   requireEqual(context.registryWrites.npm, false, 'Publication recovery unexpectedly grants npm write capability')
   requireEqual(context.registryWrites.rubygems, false, 'Publication recovery unexpectedly grants RubyGems write capability')
   requireEqual(context.registryWrites.rust, false, 'Publication recovery unexpectedly grants Rust write capability')
-  requireEqual(context.registryWrites.pypi, true, 'Publication recovery PyPI write capability is missing')
+  requireEqual(context.registryWrites.pypi, context.c1Publisher === undefined, 'Publication recovery PyPI write capability mismatch')
   requireArchiveSha(context.contextSha256, 'Publication recovery context hash')
   requireEqual(context.contextSha256, sha256Hex(canonicalJson(publicationRecoveryContextPayload(context))), 'Publication recovery context hash mismatch')
   return { ...context, preparation, originalPublication: original, recoveryRun: recovery }
@@ -2473,6 +2524,86 @@ export function validatePublicationRecoveryOriginalPublication({ run, jobs, outc
   return { runId: PUBLICATION_RECOVERY_ORIGINAL_PUBLICATION_RUN_ID, runAttempt: PUBLICATION_RECOVERY_ORIGINAL_PUBLICATION_RUN_ATTEMPT, jobs: jobs.length, outcomes }
 }
 
+/** Authenticate the one approved C1 PyPI publication for the finish-only route. */
+export function validatePublicationFinishC1Evidence({ publicationRun, pypiJob, ciRun, ciJob, pypiProof, c1Context, pypiArtifact, contextArtifact, pypiZipSha256, contextZipSha256 }) {
+  releaseSetObject(publicationRun, 'C1 publication run')
+  requireEqual(publicationRun.id, Number(PUBLICATION_FINISH_C1_RUN_ID), 'C1 publication run ID mismatch')
+  requireEqual(publicationRun.run_attempt, Number(PUBLICATION_FINISH_C1_RUN_ATTEMPT), 'C1 publication attempt mismatch')
+  requireEqual(publicationRun.repository?.full_name, EXPECTED_REPOSITORY, 'C1 publication repository mismatch')
+  requireEqual(String(publicationRun.repository?.id), EXPECTED_REPOSITORY_ID, 'C1 publication repository ID mismatch')
+  requireEqual(publicationRun.path, RELEASE_SET_WORKFLOW, 'C1 publication workflow mismatch')
+  requireEqual(publicationRun.head_branch, 'main', 'C1 publication branch mismatch')
+  requireEqual(publicationRun.head_sha, PUBLICATION_FINISH_C1_SOURCE, 'C1 publication source mismatch')
+  requireEqual(publicationRun.event, 'workflow_dispatch', 'C1 publication event mismatch')
+  requireEqual(publicationRun.status, 'completed', 'C1 publication is not terminal')
+  requireEqual(publicationRun.conclusion, 'failure', 'C1 publication parent outcome mismatch')
+  releaseSetObject(pypiJob, 'C1 PyPI job')
+  requireEqual(pypiJob.id, Number(PUBLICATION_FINISH_C1_PYPI_JOB_ID), 'C1 PyPI job ID mismatch')
+  requireEqual(pypiJob.run_id, Number(PUBLICATION_FINISH_C1_RUN_ID), 'C1 PyPI job run mismatch')
+  requireEqual(pypiJob.run_attempt, Number(PUBLICATION_FINISH_C1_RUN_ATTEMPT), 'C1 PyPI job attempt mismatch')
+  requireEqual(pypiJob.name, 'Publish or reuse only the missing PyPI recovery files', 'C1 PyPI job name mismatch')
+  requireEqual(pypiJob.status, 'completed', 'C1 PyPI job is not terminal')
+  requireEqual(pypiJob.conclusion, 'success', 'C1 PyPI job did not succeed')
+  requireEqual(pypiJob.head_sha, PUBLICATION_FINISH_C1_SOURCE, 'C1 PyPI job source mismatch')
+  const c1Step = needle => {
+    const matches = (pypiJob.steps ?? []).filter(step => `${step?.name ?? ''}`.toLowerCase() === needle)
+    if (matches.length !== 1) fail(`C1 PyPI step evidence is missing or ambiguous: ${needle}`)
+    return matches[0].conclusion
+  }
+  requireEqual(c1Step('upload missing pypi bytes exactly once with trusted publishing'), 'success', 'C1 PyPI upload outcome mismatch')
+  requireEqual(c1Step('observe pypi bytes, attestations, and fresh consumers'), 'success', 'C1 PyPI observer outcome mismatch')
+  releaseSetObject(ciRun, 'C1 CI run')
+  requireEqual(ciRun.id, Number(PUBLICATION_FINISH_C1_CI_RUN_ID), 'C1 CI run ID mismatch')
+  requireEqual(ciRun.run_attempt, Number(PUBLICATION_FINISH_C1_CI_RUN_ATTEMPT), 'C1 CI attempt mismatch')
+  requireEqual(ciRun.path, RELEASE_SET_CI_WORKFLOW, 'C1 CI workflow mismatch')
+  requireEqual(ciRun.head_branch, 'main', 'C1 CI branch mismatch')
+  requireEqual(ciRun.head_sha, PUBLICATION_FINISH_C1_SOURCE, 'C1 CI source mismatch')
+  requireEqual(ciRun.event, 'push', 'C1 CI event mismatch')
+  requireEqual(ciRun.status, 'completed', 'C1 CI is not terminal')
+  requireEqual(ciRun.conclusion, 'success', 'C1 CI did not succeed')
+  requireEqual(ciRun.repository?.full_name, EXPECTED_REPOSITORY, 'C1 CI repository mismatch')
+  releaseSetObject(ciJob, 'C1 CI job')
+  requireEqual(ciJob.id, Number(PUBLICATION_FINISH_C1_CI_JOB_ID), 'C1 CI job ID mismatch')
+  requireEqual(ciJob.run_id, Number(PUBLICATION_FINISH_C1_CI_RUN_ID), 'C1 CI job run mismatch')
+  requireEqual(ciJob.run_attempt, Number(PUBLICATION_FINISH_C1_CI_RUN_ATTEMPT), 'C1 CI job attempt mismatch')
+  requireEqual(ciJob.name, FOUNDATION_CI_JOB, 'C1 CI required job mismatch')
+  requireEqual(ciJob.status, 'completed', 'C1 CI job is not terminal')
+  requireEqual(ciJob.conclusion, 'success', 'C1 CI job did not succeed')
+  requireEqual(ciJob.head_sha, PUBLICATION_FINISH_C1_SOURCE, 'C1 CI job source mismatch')
+  validatePublicationRecoveryContext(c1Context, { requireCiProof: true })
+  const pypiSources = Object.fromEntries(Object.entries(pypiProof.publishers ?? {}).map(([filename, publisher]) => [filename, publisher.sourceCommit]))
+  validatePublicationRecoveryReceipt(pypiProof, { kind: 'pypi', context: c1Context, pypiPublisherSources: pypiSources })
+  requireEqual(pypiProof.observer.sourceCommit, PUBLICATION_FINISH_C1_SOURCE, 'C1 PyPI proof observer source mismatch')
+  for (const file of pypiProof.files ?? []) {
+    const expected = file.filename === 'erpc_sdk-0.11.0-py3-none-any.whl' ? PUBLICATION_RECOVERY_PYPI_WHEEL_SHA256 : file.filename === 'erpc_sdk-0.11.0.tar.gz' ? PUBLICATION_RECOVERY_PYPI_SDIST_SHA256 : undefined
+    if (expected === undefined) fail(`C1 PyPI proof contains an unknown file: ${file.filename}`)
+    requireEqual(file.sha256, expected, `C1 PyPI proof ${file.filename} digest mismatch`)
+    requireEqual(file.certificateClaims?.['1.3.6.1.4.1.57264.1.13'], PUBLICATION_FINISH_C1_SOURCE, `C1 PyPI proof ${file.filename} certificate source mismatch`)
+    const invocation = `https://github.com/${EXPECTED_REPOSITORY}/actions/runs/${PUBLICATION_FINISH_C1_RUN_ID}/attempts/${PUBLICATION_FINISH_C1_RUN_ATTEMPT}`
+    requireEqual(file.certificateClaims?.['1.3.6.1.4.1.57264.1.20'], 'workflow_dispatch', `C1 PyPI proof ${file.filename} certificate event mismatch`)
+    requireEqual(file.certificateClaims?.['1.3.6.1.4.1.57264.1.21'], invocation, `C1 PyPI proof ${file.filename} certificate invocation mismatch`)
+    requireEqual(file.publisher?.sourceCommit, PUBLICATION_FINISH_C1_SOURCE, `C1 PyPI proof ${file.filename} publisher source mismatch`)
+    requireEqual(file.publisher?.publisherRunId, PUBLICATION_FINISH_C1_RUN_ID, `C1 PyPI proof ${file.filename} publisher run mismatch`)
+    requireEqual(file.publisher?.publisherAttempt, PUBLICATION_FINISH_C1_RUN_ATTEMPT, `C1 PyPI proof ${file.filename} publisher attempt mismatch`)
+    requireEqual(file.publisher?.invocation, invocation, `C1 PyPI proof ${file.filename} publisher invocation mismatch`)
+  }
+  requireEqual(pypiArtifact?.id, Number(PUBLICATION_FINISH_C1_PYPI_ARTIFACT_ID), 'C1 PyPI proof artifact ID mismatch')
+  requireEqual(pypiArtifact?.name, `release-set-pypi-proof-${PUBLICATION_FINISH_C1_RUN_ID}-${PUBLICATION_FINISH_C1_RUN_ATTEMPT}`, 'C1 PyPI proof artifact name mismatch')
+  requireEqual(pypiArtifact?.expired, false, 'C1 PyPI proof artifact is expired')
+  requireEqual(pypiArtifact?.digest, `sha256:${PUBLICATION_FINISH_C1_PYPI_ARTIFACT_SHA256}`, 'C1 PyPI proof artifact digest mismatch')
+  requireEqual(pypiArtifact?.workflow_run?.id, Number(PUBLICATION_FINISH_C1_RUN_ID), 'C1 PyPI proof artifact producer mismatch')
+  requireEqual(pypiArtifact?.workflow_run?.head_sha, PUBLICATION_FINISH_C1_SOURCE, 'C1 PyPI proof artifact source mismatch')
+  requireEqual(contextArtifact?.id, Number(PUBLICATION_FINISH_C1_CONTEXT_ARTIFACT_ID), 'C1 context artifact ID mismatch')
+  requireEqual(contextArtifact?.name, `publication-recovery-context-${PUBLICATION_FINISH_C1_RUN_ID}-${PUBLICATION_FINISH_C1_RUN_ATTEMPT}`, 'C1 context artifact name mismatch')
+  requireEqual(contextArtifact?.expired, false, 'C1 context artifact is expired')
+  requireEqual(contextArtifact?.digest, `sha256:${PUBLICATION_FINISH_C1_CONTEXT_ARTIFACT_SHA256}`, 'C1 context artifact digest mismatch')
+  requireEqual(contextArtifact?.workflow_run?.id, Number(PUBLICATION_FINISH_C1_RUN_ID), 'C1 context artifact producer mismatch')
+  requireEqual(contextArtifact?.workflow_run?.head_sha, PUBLICATION_FINISH_C1_SOURCE, 'C1 context artifact source mismatch')
+  requireEqual(pypiZipSha256, PUBLICATION_FINISH_C1_PYPI_ARTIFACT_SHA256, 'C1 PyPI proof ZIP bytes mismatch')
+  requireEqual(contextZipSha256, PUBLICATION_FINISH_C1_CONTEXT_ARTIFACT_SHA256, 'C1 context ZIP bytes mismatch')
+  return { sourceCommit: PUBLICATION_FINISH_C1_SOURCE, runId: PUBLICATION_FINISH_C1_RUN_ID, runAttempt: PUBLICATION_FINISH_C1_RUN_ATTEMPT, jobId: PUBLICATION_FINISH_C1_PYPI_JOB_ID, ciRunId: PUBLICATION_FINISH_C1_CI_RUN_ID, ciRunAttempt: PUBLICATION_FINISH_C1_CI_RUN_ATTEMPT, ciJobId: PUBLICATION_FINISH_C1_CI_JOB_ID, pypiArtifactId: PUBLICATION_FINISH_C1_PYPI_ARTIFACT_ID, contextArtifactId: PUBLICATION_FINISH_C1_CONTEXT_ARTIFACT_ID }
+}
+
 /**
  * Verify the frozen plan/bundle directory before any recovery registry
  * credential is requested.  This calls the ordinary byte/profile verifier;
@@ -2520,7 +2651,7 @@ const publicationRecoveryReadOnlyState = (record, kind, expectedSha256, { proven
 }
 
 /** Classify the finite recovery preflight before the PyPI protected job. */
-export function classifyPublicationRecoveryPreflight({ npm, rubygems, rust, pypi, controlCommit = undefined }) {
+export function classifyPublicationRecoveryPreflight({ npm, rubygems, rust, pypi, controlCommit = undefined, approvedPublisherSource = undefined }) {
   const npmProof = publicationRecoveryReadOnlyState(npm, 'npm', PUBLICATION_RECOVERY_NPM_SHA256)
   const rubyProof = publicationRecoveryReadOnlyState(rubygems, 'RubyGems', PUBLICATION_RECOVERY_RUBYGEMS_SHA256)
   const rustProof = publicationRecoveryReadOnlyState(rust, 'Rust', RUST_011_REUSE_SHA256, { provenanceSource: RUST_011_REUSE_SOURCE })
@@ -2539,7 +2670,7 @@ export function classifyPublicationRecoveryPreflight({ npm, rubygems, rust, pypi
     requireEqual(file.sha256, expected, `Publication recovery PyPI existing ${file.filename} digest mismatch`)
     requireEqual(file.yanked, false, `Publication recovery PyPI existing ${file.filename} is yanked`)
     requireEqual(file.attestationVerified, true, `Publication recovery PyPI existing ${file.filename} attestation is not verified`)
-    requireEqual(file.publisherSourceCommit === PUBLICATION_RECOVERY_SOURCE_M || (controlCommit !== undefined && file.publisherSourceCommit === controlCommit), true, `Publication recovery PyPI existing ${file.filename} provenance source mismatch`)
+    requireEqual(file.publisherSourceCommit === PUBLICATION_RECOVERY_SOURCE_M || (controlCommit !== undefined && file.publisherSourceCommit === controlCommit) || (approvedPublisherSource !== undefined && file.publisherSourceCommit === approvedPublisherSource), true, `Publication recovery PyPI existing ${file.filename} provenance source mismatch`)
     if (file.publisher !== undefined) {
       requireEqual(file.publisher.sourceCommit, file.publisherSourceCommit, `Publication recovery PyPI existing ${file.filename} publisher source mismatch`)
       publicationRecoveryId(file.publisher.publisherRunId, `Publication recovery PyPI existing ${file.filename} publisher run ID`)
@@ -2581,14 +2712,21 @@ export function validatePublicationRecoveryReceipt(receipt, { kind, context, exp
   }
   if (kind === 'pypi') {
     if (pypiPublisherSource === undefined && pypiPublisherSources === undefined) fail('Publication recovery PyPI publisher source is missing')
-    if (pypiPublisherSource !== undefined) requireEqual(pypiPublisherSource === context.controlCommit || pypiPublisherSource === PUBLICATION_RECOVERY_SOURCE_M, true, 'Publication recovery PyPI publisher source is outside M/C')
+    if (pypiPublisherSource !== undefined) requireEqual(pypiPublisherSource === context.controlCommit || pypiPublisherSource === PUBLICATION_RECOVERY_SOURCE_M || pypiPublisherSource === context.c1Publisher?.sourceCommit, true, 'Publication recovery PyPI publisher source is outside M/C1')
     const publishers = receipt.publishers ?? {}
     for (const [filename, publisher] of Object.entries(publishers)) {
       const expectedSource = pypiPublisherSources?.[filename] ?? pypiPublisherSource
-      requireEqual(expectedSource === context.controlCommit || expectedSource === PUBLICATION_RECOVERY_SOURCE_M, true, 'Publication recovery PyPI publisher source is outside M/C')
+      requireEqual(expectedSource === context.controlCommit || expectedSource === PUBLICATION_RECOVERY_SOURCE_M || expectedSource === context.c1Publisher?.sourceCommit, true, 'Publication recovery PyPI publisher source is outside M/C1')
       requireEqual(publisher.sourceCommit, expectedSource, 'Publication recovery PyPI publisher source is not the authenticated M/C identity')
       publicationRecoveryId(publisher.publisherRunId, `Publication recovery PyPI ${filename} publisher run ID`)
       publicationRecoveryId(publisher.publisherAttempt, `Publication recovery PyPI ${filename} publisher attempt`)
+      if (context.c1Publisher !== undefined) {
+        requireEqual(publisher.sourceCommit, context.c1Publisher.sourceCommit, `Publication recovery PyPI ${filename} publisher must remain C1`)
+        requireEqual(String(publisher.publisherRunId), context.c1Publisher.runId, `Publication recovery PyPI ${filename} publisher run must remain C1`)
+        requireEqual(String(publisher.publisherAttempt), context.c1Publisher.runAttempt, `Publication recovery PyPI ${filename} publisher attempt must remain C1`)
+        const invocation = `https://github.com/${EXPECTED_REPOSITORY}/actions/runs/${context.c1Publisher.runId}/attempts/${context.c1Publisher.runAttempt}`
+        requireEqual(publisher.invocation, invocation, `Publication recovery PyPI ${filename} publisher invocation must remain C1`)
+      }
     }
   } else {
     const provenanceSource = receipt.publisher?.sourceCommit ?? receipt.provenance?.certificateClaims?.['1.3.6.1.4.1.57264.1.13'] ?? receipt.originalProvenance?.sourceCommit ?? receipt.archive?.sourceCommit ?? receipt.preparation?.sourceCommit
@@ -3275,9 +3413,18 @@ export async function verifyReleaseSetArtifactZip({ zipFile, metadata, expectedI
   requireEqual(metadata?.digest, `sha256:${sha256Hex(bytes)}`, 'Release-set ZIP API digest mismatch')
   requireEqual(metadata?.archive_download_url, `https://api.github.com/repos/${EXPECTED_REPOSITORY}/actions/artifacts/${id}/zip`, 'Release-set ZIP URL mismatch')
   const zipMembers = await releaseSetZipFileMembers(zipFile)
-  const consumedEntries = await readdir(consumedDirectory, { withFileTypes: true })
-  if (consumedEntries.some(entry => !entry.isFile())) fail('Release-set consumed artifact directory contains a non-file member')
-  const consumedNames = consumedEntries.map(entry => entry.name).sort()
+  const collectConsumedFiles = async (root, current = root) => {
+    const entries = await readdir(current, { withFileTypes: true })
+    const names = []
+    for (const entry of entries) {
+      const absolute = join(current, entry.name)
+      if (entry.isDirectory()) names.push(...await collectConsumedFiles(root, absolute))
+      else if (entry.isFile()) names.push(safeRelativePath(absolute.slice(root.length + 1)))
+      else fail(`Release-set consumed artifact directory contains a non-regular member ${entry.name}`)
+    }
+    return names
+  }
+  const consumedNames = (await collectConsumedFiles(consumedDirectory)).sort()
   if (canonicalJson(zipMembers.slice().sort()) !== canonicalJson(consumedNames)) fail('Release-set ZIP members do not equal consumed files')
   for (const name of zipMembers) {
     const extracted = await execFile('unzip', ['-p', zipFile, name], { encoding: 'buffer', maxBuffer: 64 * 1024 * 1024 })
@@ -3849,6 +3996,7 @@ const pypiStrictInput = input => {
   if (input.publisherSources !== undefined) releaseSetObject(input.publisherSources, 'PyPI observer publisher source map')
   if (input.publisherSources !== undefined && Object.keys(input.publisherSources).some(filename => !publisherKeys.includes(filename))) fail('PyPI observer publisher source map contains an unknown file')
   const publisherSource = input.recoveryContext === undefined ? input.preparation.sourceCommit : recoveryControlSource
+  const recoveryPublisherSources = new Set([input.preparation.sourceCommit, recoveryControlSource, input.recoveryContext?.c1Publisher?.sourceCommit].filter(Boolean))
   if (input.recoveryContext !== undefined) requireEqual(input.recoveryContext.sourceM, input.preparation.sourceCommit, 'PyPI observer recovery source/preparation mismatch')
   if (Object.keys(input.publishers).some(filename => !publisherKeys.includes(filename))) fail('PyPI observer publishers contain an unknown file')
   for (const [filename, publisher] of Object.entries(input.publishers)) {
@@ -3856,7 +4004,7 @@ const pypiStrictInput = input => {
     requireEqual(publisher.repository, EXPECTED_REPOSITORY, `PyPI observer publisher ${filename} repository mismatch`)
     requireEqual(String(publisher.repositoryId), EXPECTED_REPOSITORY_ID, `PyPI observer publisher ${filename} repository ID mismatch`)
     const expectedPublisherSource = input.publisherSources?.[filename] ?? publisherSource
-    requireEqual(expectedPublisherSource === input.preparation.sourceCommit || expectedPublisherSource === recoveryControlSource, true, `PyPI observer publisher ${filename} source is outside M/C`)
+    requireEqual(recoveryPublisherSources.has(expectedPublisherSource), true, `PyPI observer publisher ${filename} source is outside M/C1`)
     requireEqual(publisher.sourceCommit, expectedPublisherSource, `PyPI observer publisher ${filename} source mismatch`)
     requireEqual(publisher.workflowPath, RELEASE_SET_WORKFLOW, `PyPI observer publisher ${filename} workflow mismatch`)
     requireEqual(publisher.ref, 'refs/heads/main', `PyPI observer publisher ${filename} ref mismatch`)
@@ -5056,7 +5204,8 @@ const validateReleaseSetRecoveryOptions = (options = {}) => {
   for (const [label, sources] of [['observer', options.observerSources], ['publisher', options.publisherSources]]) {
     if (sources === undefined) continue
     releaseSetObject(sources, `Release-set recovery ${label} source map`)
-    for (const source of Object.values(sources)) requireEqual(source === context.controlCommit || source === context.sourceM, true, `Release-set recovery ${label} source is outside the authenticated M/C cohort`)
+    const approved = new Set([context.controlCommit, context.sourceM, context.c1Publisher?.sourceCommit].filter(Boolean))
+    for (const source of Object.values(sources)) requireEqual(approved.has(source), true, `Release-set recovery ${label} source is outside the authenticated M/C1 cohort`)
   }
   return { ...options, context: suppliedContext, contextSha256: context.contextSha256, observerSourceCommit: context.controlCommit }
 }
@@ -5145,10 +5294,19 @@ const releaseSetValidateReceipt = (receipt, filename, { plan, preparation, recov
       if (recoveryOptions.recovery) {
         const expectedPublisher = recoveryOptions.publisherSources?.[file.filename]
         if (expectedPublisher !== undefined) requireEqual(file.publisher.sourceCommit, expectedPublisher, `PyPI receipt ${file.filename} publisher source mismatch`)
-        else requireEqual(file.publisher.sourceCommit === plan.sourceCommit || file.publisher.sourceCommit === recoveryOptions.observerSourceCommit, true, `PyPI receipt ${file.filename} publisher source is outside M/C`)
+        else requireEqual(file.publisher.sourceCommit === plan.sourceCommit || file.publisher.sourceCommit === recoveryOptions.observerSourceCommit || file.publisher.sourceCommit === recoveryOptions.context?.c1Publisher?.sourceCommit, true, `PyPI receipt ${file.filename} publisher source is outside M/C1`)
         requireFuturePositiveId(file.publisher.publisherRunId, `PyPI receipt ${file.filename} publisher run ID`)
         requireFuturePositiveId(file.publisher.publisherAttempt, `PyPI receipt ${file.filename} publisher attempt`)
         requireEqual(file.certificateClaims?.['1.3.6.1.4.1.57264.1.13'], file.publisher.sourceCommit, `PyPI receipt ${file.filename} certificate source mismatch`)
+        if (recoveryOptions.context?.c1Publisher !== undefined) {
+          const c1 = recoveryOptions.context.c1Publisher
+          requireEqual(file.publisher.sourceCommit, c1.sourceCommit, `PyPI receipt ${file.filename} publisher must remain C1`)
+          requireEqual(String(file.publisher.publisherRunId), c1.runId, `PyPI receipt ${file.filename} publisher run must remain C1`)
+          requireEqual(String(file.publisher.publisherAttempt), c1.runAttempt, `PyPI receipt ${file.filename} publisher attempt must remain C1`)
+          const invocation = `https://github.com/${EXPECTED_REPOSITORY}/actions/runs/${c1.runId}/attempts/${c1.runAttempt}`
+          requireEqual(file.publisher.invocation, invocation, `PyPI receipt ${file.filename} publisher invocation must remain C1`)
+          requireEqual(file.certificateClaims?.['1.3.6.1.4.1.57264.1.21'], invocation, `PyPI receipt ${file.filename} certificate invocation must remain C1`)
+        }
       }
     }
     if (seen.size !== expectedFiles.size || receipt.consumers?.wheel?.exitCode !== 0 || receipt.consumers?.sdist?.exitCode !== 0) fail('PyPI receipt consumer proof is incomplete')
@@ -5261,6 +5419,92 @@ export function validateReleaseSetProofManifest(manifest, { plan, preparation } 
     receiptArtifacts[filename] = binding
   }
   return { ...manifest, repositoryId: EXPECTED_REPOSITORY_ID, preparation: checkedPreparation, snapshot, receipts: Object.fromEntries(Object.entries(receiptDigests).sort()), receiptArtifacts: Object.fromEntries(Object.entries(receiptArtifacts).sort()) }
+}
+
+/** Validate the finite C2 staging checkpoint that is carried into the operator and verify-only phases. */
+export function validatePublicationRecoveryStagingCheckpoint(checkpoint, { plan, context } = {}) {
+  releaseSetKeys(checkpoint, ['schemaVersion', 'kind', 'state', 'repository', 'repositoryId', 'sourceCommit', 'planSha256', 'contextSha256', 'stagingRunId', 'stagingRunAttempt', 'release', 'assets', 'manifest', 'manifestSha256', 'snapshot', 'receiptArtifacts', 'descriptor'], 'Publication recovery staging checkpoint')
+  requireEqual(checkpoint.schemaVersion, 1, 'Publication recovery staging checkpoint schema mismatch')
+  requireEqual(checkpoint.kind, 'erpc-sdk-publication-staging-checkpoint', 'Publication recovery staging checkpoint kind mismatch')
+  requireEqual(checkpoint.state, 'awaiting-operator-publication', 'Publication recovery staging checkpoint state mismatch')
+  requireEqual(checkpoint.repository, EXPECTED_REPOSITORY, 'Publication recovery staging checkpoint repository mismatch')
+  requireEqual(String(checkpoint.repositoryId), EXPECTED_REPOSITORY_ID, 'Publication recovery staging checkpoint repository ID mismatch')
+  requireSha(checkpoint.sourceCommit, 'Publication recovery staging checkpoint source')
+  requireEqual(checkpoint.planSha256, PUBLICATION_RECOVERY_PLAN_SHA256, 'Publication recovery staging checkpoint plan mismatch')
+  requireArchiveSha(checkpoint.contextSha256, 'Publication recovery staging checkpoint context hash')
+  const stagingRunId = requireFuturePositiveId(checkpoint.stagingRunId, 'Publication recovery staging checkpoint run ID')
+  const stagingRunAttempt = requireFuturePositiveId(checkpoint.stagingRunAttempt, 'Publication recovery staging checkpoint attempt')
+  if (context !== undefined) {
+    validatePublicationRecoveryContext(context, { requireCiProof: true })
+    requireEqual(checkpoint.sourceCommit, context.controlCommit, 'Publication recovery staging checkpoint source/context mismatch')
+    requireEqual(checkpoint.planSha256, context.planSha256, 'Publication recovery staging checkpoint plan/context mismatch')
+    requireEqual(checkpoint.contextSha256, context.contextSha256, 'Publication recovery staging checkpoint context hash mismatch')
+    requireEqual(stagingRunId, context.recoveryRun.runId, 'Publication recovery staging checkpoint run/context mismatch')
+    requireEqual(stagingRunAttempt, context.recoveryRun.runAttempt, 'Publication recovery staging checkpoint attempt/context mismatch')
+  }
+  const normalized = validateReleaseSetPlan(plan)
+  requireEqual(checkpoint.planSha256, releaseSetPlanDigest(normalized), 'Publication recovery staging checkpoint plan digest mismatch')
+  const release = releaseSetObject(checkpoint.release, 'Publication recovery staging checkpoint release')
+  releaseSetKeys(release, ['id', 'tag', 'title', 'bodySha256', 'targetCommitish', 'draft', 'prerelease', 'assetsUrl'], 'Publication recovery staging checkpoint release')
+  requireEqual(String(release.id), PUBLICATION_FINISH_DRAFT_RELEASE_ID, 'Publication recovery staging checkpoint Release ID mismatch')
+  requireEqual(release.tag, normalized.tags.release, 'Publication recovery staging checkpoint Release tag mismatch')
+  requireEqual(release.title, normalized.githubRelease.title, 'Publication recovery staging checkpoint Release title mismatch')
+  requireEqual(release.bodySha256, normalized.githubRelease.bodySha256, 'Publication recovery staging checkpoint Release body mismatch')
+  requireEqual(release.targetCommitish, normalized.sourceCommit, 'Publication recovery staging checkpoint Release target mismatch')
+  requireEqual(release.draft, true, 'Publication recovery staging checkpoint Release must remain a draft')
+  requireEqual(release.prerelease, false, 'Publication recovery staging checkpoint Release prerelease mismatch')
+  if (typeof release.assetsUrl !== 'string' || !release.assetsUrl.startsWith(`${githubApiOrigin}/repos/${EXPECTED_REPOSITORY}/releases/${PUBLICATION_FINISH_DRAFT_RELEASE_ID}/assets`)) fail('Publication recovery staging checkpoint Release assets URL is invalid')
+  const checkedManifest = validateReleaseSetProofManifest(checkpoint.manifest, { plan: normalized, preparation: context?.preparation })
+  const manifestSha256 = sha256Hex(Buffer.from(`${canonicalJson(checkedManifest)}\n`))
+  requireEqual(checkpoint.manifestSha256, manifestSha256, 'Publication recovery staging checkpoint manifest digest mismatch')
+  requireArchiveSha(checkpoint.manifestSha256, 'Publication recovery staging checkpoint manifest SHA-256')
+  const checkedSnapshot = releaseSetArtifactBinding(checkpoint.snapshot, 'Publication recovery staging checkpoint snapshot')
+  requireEqual(canonicalJson(checkedSnapshot), canonicalJson(checkedManifest.snapshot), 'Publication recovery staging checkpoint snapshot mismatch')
+  requireEqual(checkedSnapshot.producer.sourceCommit, checkpoint.sourceCommit, 'Publication recovery staging checkpoint snapshot producer source mismatch')
+  requireEqual(checkedSnapshot.producer.runId, stagingRunId, 'Publication recovery staging checkpoint snapshot producer run mismatch')
+  requireEqual(checkedSnapshot.producer.runAttempt, stagingRunAttempt, 'Publication recovery staging checkpoint snapshot producer attempt mismatch')
+  releaseSetKeys(checkpoint.receiptArtifacts, RELEASE_SET_RECEIPT_FILENAMES, 'Publication recovery staging checkpoint receipt artifacts')
+  const checkedReceiptArtifacts = Object.fromEntries(RELEASE_SET_RECEIPT_FILENAMES.map(filename => [filename, releaseSetArtifactBinding(checkpoint.receiptArtifacts[filename], `Publication recovery staging checkpoint ${filename} artifact`)]))
+  requireEqual(canonicalJson(checkedReceiptArtifacts), canonicalJson(checkedManifest.receiptArtifacts), 'Publication recovery staging checkpoint receipt artifacts mismatch')
+  for (const filename of RELEASE_SET_RECEIPT_FILENAMES) {
+    const producer = checkedReceiptArtifacts[filename].producer
+    if (filename === 'rubygems-proof.json') {
+      requireEqual(producer.sourceCommit, PUBLICATION_RECOVERY_SOURCE_M, `Publication recovery staging checkpoint ${filename} producer source mismatch`)
+      requireEqual(producer.runId, PUBLICATION_RECOVERY_ORIGINAL_PUBLICATION_RUN_ID, `Publication recovery staging checkpoint ${filename} producer run mismatch`)
+      requireEqual(producer.runAttempt, PUBLICATION_RECOVERY_ORIGINAL_PUBLICATION_RUN_ATTEMPT, `Publication recovery staging checkpoint ${filename} producer attempt mismatch`)
+    } else {
+      requireEqual(producer.sourceCommit, checkpoint.sourceCommit, `Publication recovery staging checkpoint ${filename} producer source mismatch`)
+      requireEqual(producer.runId, stagingRunId, `Publication recovery staging checkpoint ${filename} producer run mismatch`)
+      requireEqual(producer.runAttempt, stagingRunAttempt, `Publication recovery staging checkpoint ${filename} producer attempt mismatch`)
+    }
+  }
+  const expectedAssets = new Map(normalized.approval.publicAssets.map(asset => [asset.role, asset.filename]))
+  if (!Array.isArray(checkpoint.assets) || checkpoint.assets.length !== expectedAssets.size) fail('Publication recovery staging checkpoint asset set is incomplete')
+  const seenAssets = new Set()
+  const staticHashes = new Map(normalized.artifacts.map(artifact => [artifact.filename, artifact.sha256]))
+  staticHashes.set('release-body.md', sha256Hex(normalized.githubRelease.body))
+  staticHashes.set('go-inventory.json', sha256Hex(`${canonicalJson(normalized.go.inventory)}\n`))
+  for (const asset of checkpoint.assets) {
+    releaseSetKeys(asset, ['role', 'filename', 'id', 'sha256', 'sizeInBytes', 'apiDigest', 'apiSize'], 'Publication recovery staging checkpoint asset')
+    if (seenAssets.has(asset.filename) || expectedAssets.get(asset.role) !== asset.filename) fail('Publication recovery staging checkpoint asset inventory mismatch')
+    seenAssets.add(asset.filename)
+    requireFuturePositiveId(asset.id, `Publication recovery staging checkpoint ${asset.filename} asset ID`)
+    requireArchiveSha(asset.sha256, `Publication recovery staging checkpoint ${asset.filename} SHA-256`)
+    if (!Number.isSafeInteger(asset.sizeInBytes) || asset.sizeInBytes <= 0) fail(`Publication recovery staging checkpoint ${asset.filename} size is invalid`)
+    if (asset.apiDigest !== undefined) requireEqual(asset.apiDigest, `sha256:${asset.sha256}`, `Publication recovery staging checkpoint ${asset.filename} API digest mismatch`)
+    if (asset.apiSize !== undefined) requireEqual(asset.apiSize, asset.sizeInBytes, `Publication recovery staging checkpoint ${asset.filename} API size mismatch`)
+    const staticSha = staticHashes.get(asset.filename)
+    if (staticSha !== undefined) requireEqual(asset.sha256, staticSha, `Publication recovery staging checkpoint ${asset.filename} prepared bytes mismatch`)
+    const receiptSha = checkedManifest.receipts[asset.filename]
+    if (receiptSha !== undefined) requireEqual(asset.sha256, receiptSha, `Publication recovery staging checkpoint ${asset.filename} manifest bytes mismatch`)
+    if (asset.filename === 'release-set-proof-manifest.json') requireEqual(asset.sha256, manifestSha256, 'Publication recovery staging checkpoint public manifest bytes mismatch')
+  }
+  if (seenAssets.size !== expectedAssets.size) fail('Publication recovery staging checkpoint asset inventory is incomplete')
+  const descriptor = githubObserverDescriptor(checkpoint.descriptor)
+  requireEqual(descriptor.releaseId, Number(PUBLICATION_FINISH_DRAFT_RELEASE_ID), 'Publication recovery staging checkpoint descriptor Release ID mismatch')
+  requireEqual(descriptor.releaseTag, normalized.tags.release, 'Publication recovery staging checkpoint descriptor tag mismatch')
+  requireEqual(descriptor.sourceCommit, normalized.sourceCommit, 'Publication recovery staging checkpoint descriptor source mismatch')
+  return { ...checkpoint, repositoryId: EXPECTED_REPOSITORY_ID, stagingRunId, stagingRunAttempt, release, manifest: checkedManifest, manifestSha256, snapshot: checkedSnapshot, receiptArtifacts: checkedReceiptArtifacts, assets: checkpoint.assets, descriptor }
 }
 
 export function buildReleaseSetProofManifest({ plan, preparation, snapshot, receipts, receiptBytes, receiptArtifacts, recoveryOptions = {} }) {
@@ -6042,14 +6286,23 @@ const run = async arguments_ => {
     const sourceCiProof = process.env.PUBLICATION_RECOVERY_SOURCE_CI_PROOF_FILE === undefined
       ? undefined
       : JSON.parse(await readFile(process.env.PUBLICATION_RECOVERY_SOURCE_CI_PROOF_FILE, 'utf8'))
-    const context = buildPublicationRecoveryContext({
-      runtime,
-      preparation,
-      originalPublication: { runId: String(originalRun.id), runAttempt: String(originalRun.run_attempt), sourceCommit: originalRun.head_sha, workflowPath: originalRun.path, status: originalRun.status, conclusion: originalRun.conclusion, jobOutcomes: jobs, outcomes },
-      recoveryRun: { runId: env('GITHUB_RUN_ID'), runAttempt: env('GITHUB_RUN_ATTEMPT') },
-      ciProof,
-      sourceCiProof,
-    })
+    const context = process.env.PUBLICATION_RECOVERY_FINISH_MODE !== 'true' || process.env.PUBLICATION_RECOVERY_BASE_CONTEXT_FILE === undefined || process.env.PUBLICATION_RECOVERY_BASE_CONTEXT_FILE === ''
+      ? buildPublicationRecoveryContext({
+        runtime,
+        preparation,
+        originalPublication: { runId: String(originalRun.id), runAttempt: String(originalRun.run_attempt), sourceCommit: originalRun.head_sha, workflowPath: originalRun.path, status: originalRun.status, conclusion: originalRun.conclusion, jobOutcomes: jobs, outcomes },
+        recoveryRun: { runId: env('GITHUB_RUN_ID'), runAttempt: env('GITHUB_RUN_ATTEMPT') },
+        ciProof,
+        sourceCiProof,
+      })
+      : buildPublicationFinishContext({
+        baseContext: JSON.parse(await readFile(process.env.PUBLICATION_RECOVERY_BASE_CONTEXT_FILE, 'utf8')),
+        runtime,
+        recoveryRun: { runId: env('GITHUB_RUN_ID'), runAttempt: env('GITHUB_RUN_ATTEMPT') },
+        ciProof,
+        sourceCiProof,
+        c1Publisher: JSON.parse(await readFile(env('PUBLICATION_RECOVERY_C1_PUBLISHER_FILE'), 'utf8')),
+      })
     validatePublicationRecoveryContext(context, { requireCiProof: ciProof !== undefined })
     await writeFile(env('PUBLICATION_RECOVERY_CONTEXT_OUTPUT_FILE'), `${canonicalJson(context)}\n`)
     console.log(`publication-recovery-context=${context.contextSha256}`)
@@ -6082,7 +6335,7 @@ const run = async arguments_ => {
     requireExactInternalMode(arguments_, '--publication-recovery-preflight')
     const context = JSON.parse(await readFile(env('PUBLICATION_RECOVERY_CONTEXT_FILE'), 'utf8'))
     validatePublicationRecoveryContext(context, { requireCiProof: true })
-    const result = classifyPublicationRecoveryPreflight({ ...JSON.parse(await readFile(env('PUBLICATION_RECOVERY_PREFLIGHT_INPUT_FILE'), 'utf8')), controlCommit: context.controlCommit })
+    const result = classifyPublicationRecoveryPreflight({ ...JSON.parse(await readFile(env('PUBLICATION_RECOVERY_PREFLIGHT_INPUT_FILE'), 'utf8')), controlCommit: context.controlCommit, approvedPublisherSource: context.c1Publisher?.sourceCommit })
     await writeFile(env('PUBLICATION_RECOVERY_PREFLIGHT_OUTPUT_FILE'), `${canonicalJson(result)}\n`)
     console.log(`publication-recovery-preflight=${canonicalJson({ state: result.state, missing: result.missing })}`)
     return
@@ -6261,12 +6514,12 @@ const run = async arguments_ => {
     const plan = validateReleaseSetPlan(JSON.parse(await readFile(env('PUBLICATION_RECOVERY_PLAN_FILE'), 'utf8')))
     const descriptor = JSON.parse(await readFile(env('PUBLICATION_RECOVERY_GITHUB_DESCRIPTOR_FILE'), 'utf8'))
     await validateGitHubReleaseDescriptor({ plan, descriptor, artifactDirectory: env('PUBLICATION_RECOVERY_ARTIFACT_DIR') })
-    const snapshot = JSON.parse(await readFile(env('PUBLICATION_RECOVERY_SNAPSHOT_BINDING_FILE'), 'utf8'))
-    const receiptArtifacts = JSON.parse(await readFile(env('PUBLICATION_RECOVERY_RECEIPT_ARTIFACTS_FILE'), 'utf8'))
+    const preserved = process.env.PUBLICATION_RECOVERY_SNAPSHOT_MODE === 'preserved-manifest'
+    const snapshot = preserved ? { mode: 'preserved-manifest' } : { mode: 'current', snapshot: JSON.parse(await readFile(env('PUBLICATION_RECOVERY_SNAPSHOT_BINDING_FILE'), 'utf8')), receiptArtifacts: JSON.parse(await readFile(env('PUBLICATION_RECOVERY_RECEIPT_ARTIFACTS_FILE'), 'utf8')) }
     const publisherSources = process.env.PUBLICATION_RECOVERY_PUBLISHER_SOURCES_FILE === undefined ? undefined : JSON.parse(await readFile(process.env.PUBLICATION_RECOVERY_PUBLISHER_SOURCES_FILE, 'utf8'))
     const observerSources = process.env.PUBLICATION_RECOVERY_OBSERVER_SOURCES_FILE === undefined ? undefined : JSON.parse(await readFile(process.env.PUBLICATION_RECOVERY_OBSERVER_SOURCES_FILE, 'utf8'))
     const token = await readReleaseSetGithubReadTokenFd(process.env.PUBLICATION_RECOVERY_READ_TOKEN_FD)
-    const receipt = await observeGitHubRelease({ plan, descriptor, planSha256: PUBLICATION_RECOVERY_PLAN_SHA256, preparation: context.preparation, observer: { runId: env('PUBLICATION_RECOVERY_OBSERVER_RUN_ID'), runAttempt: env('PUBLICATION_RECOVERY_OBSERVER_ATTEMPT'), workflowPath: RELEASE_SET_WORKFLOW, sourceCommit: context.controlCommit }, workDir: env('PUBLICATION_RECOVERY_GITHUB_WORK_DIR'), outputFile: env('PUBLICATION_RECOVERY_GITHUB_OUTPUT_FILE'), snapshot: { mode: 'current', snapshot, receiptArtifacts }, requireSnapshot: true, recoveryOptions: { recovery: true, context, contextSha256: context.contextSha256, observerSourceCommit: context.controlCommit, observerSources, publisherSources, historicalReceiptFiles: ['rubygems-proof.json'] } }, { githubReadToken: token, anonymousRequest: githubAnonymousDefaultRequest })
+    const receipt = await observeGitHubRelease({ plan, descriptor, planSha256: PUBLICATION_RECOVERY_PLAN_SHA256, preparation: context.preparation, observer: { runId: env('PUBLICATION_RECOVERY_OBSERVER_RUN_ID'), runAttempt: env('PUBLICATION_RECOVERY_OBSERVER_ATTEMPT'), workflowPath: RELEASE_SET_WORKFLOW, sourceCommit: context.controlCommit }, workDir: env('PUBLICATION_RECOVERY_GITHUB_WORK_DIR'), outputFile: env('PUBLICATION_RECOVERY_GITHUB_OUTPUT_FILE'), snapshot, requireSnapshot: true, recoveryOptions: { recovery: true, context, contextSha256: context.contextSha256, observerSourceCommit: context.controlCommit, observerSources, publisherSources, historicalReceiptFiles: ['rubygems-proof.json'] } }, { githubReadToken: token, anonymousRequest: githubAnonymousDefaultRequest })
     if (receipt.complete !== true || receipt.state !== 'matching-public' || receipt.publicRead?.complete !== true) fail('publication-recovery-github-observation-incomplete')
     await writeFile(env('PUBLICATION_RECOVERY_GITHUB_OUTPUT_FILE'), `${canonicalJson(receipt)}\n`)
     console.log(`publication-recovery-github=${sha256Hex(canonicalJson(receipt))}`)

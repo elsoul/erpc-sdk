@@ -259,6 +259,30 @@ or system site packages and exact pins `build==1.6.0`,
 imports, and the absence of `OpenSSL`/pyOpenSSL. This is release evidence and
 tooling provenance; it is not a legal or regulatory certification.
 
+### Stage and verify the existing 0.11.0 draft
+
+Use `recovery_mode=finish-0.11.0` with `mode=publish`,
+`release_set_mode=disabled`, `expected_version=0.11.0`, and the reviewed C2
+`expected_commit`. This finisher authenticates the frozen C1 PyPI publication
+(`40125323722/1`, PyPI job `120965821282`, source
+`bb0785ec3bbc4c66569a6955a3ffb5566eee5fd4`) and observes all package bytes
+read-only. It selects numeric draft Release `422947688` from the authenticated
+release listing, accepts a by-tag 404, never creates a Release, and stages the
+exact thirteen assets without changing Release metadata. The run emits an
+immutable `awaiting-operator-publication` checkpoint artifact.
+
+After the staged checkpoint passes its independent gate, the authorized
+operator may issue only this numeric Release update:
+
+```json
+{"draft":false,"prerelease":false,"make_latest":"true"}
+```
+
+To verify the operator result, rerun with `recovery_mode=verify-0.11.0` and
+the staged checkpoint's `staged_checkpoint_artifact_id`. This route performs
+read-only authenticated and anonymous checks, reuses the checkpoint's exact
+snapshot, manifest, receipts, and asset bytes, and proves effective Latest.
+
 ## One-off recovery of the published 0.9.1 cohort
 
 The accepted uploads from publication run `39871872971` are reconciled by the
