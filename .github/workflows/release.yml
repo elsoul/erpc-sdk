@@ -3,6 +3,14 @@ name: Release SDK foundation
 on:
   workflow_dispatch:
     inputs:
+      recovery_mode:
+        description: Disabled for normal/schema2 release; use recover-0.11.0 only for the frozen publication recovery tuple
+        required: true
+        default: disabled
+        type: choice
+        options:
+          - disabled
+          - recover-0.11.0
       mode:
         description: Prepare an approval bundle or publish an already approved bundle
         required: true
@@ -87,11 +95,23 @@ env:
   RELEASE_USER_AGENT: erpc-sdk-release-verification (https://github.com/elsoul/erpc-sdk)
   EXPECTED_REPOSITORY: elsoul/erpc-sdk
   EXPECTED_REPOSITORY_ID: '1429568627'
+  PUBLICATION_RECOVERY_SOURCE_M: 00343b27668122cffd6d5b2b7517eda96f109d5f
+  PUBLICATION_RECOVERY_PLAN_SHA256: b8775c0335289ffaf21eb272e3464cbfcbafb737994d805ca46f8c9652b52cd8
+  PUBLICATION_RECOVERY_PREPARED_RUN_ID: '40116157011'
+  PUBLICATION_RECOVERY_PREPARED_RUN_ATTEMPT: '1'
+  PUBLICATION_RECOVERY_BUNDLE_ARTIFACT_ID: '12567863653'
+  PUBLICATION_RECOVERY_BINDING_ARTIFACT_ID: '12568401850'
+  PUBLICATION_RECOVERY_ORIGINAL_RUBYGEMS_RECEIPT_ARTIFACT_ID: '12569655440'
+  PUBLICATION_RECOVERY_ORIGINAL_PUBLICATION_RUN_ID: '40116597887'
+  PUBLICATION_RECOVERY_ORIGINAL_PUBLICATION_RUN_ATTEMPT: '1'
+  PUBLICATION_RECOVERY_ORIGINAL_NPM_JOB_ID: '120939149010'
+  PUBLICATION_RECOVERY_ORIGINAL_PYPI_JOB_ID: '120939149000'
+  PUBLICATION_RECOVERY_ORIGINAL_RUBYGEMS_JOB_ID: '120939148972'
 
 jobs:
   prepare:
     name: Prepare immutable approval bundle
-    if: ${{ inputs.mode == 'prepare' && inputs.release_set_mode == 'disabled' }}
+    if: ${{ inputs.recovery_mode == 'disabled' && inputs.mode == 'prepare' && inputs.release_set_mode == 'disabled' }}
     runs-on: ubuntu-latest
     timeout-minutes: 35
     permissions:
@@ -139,7 +159,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install pinned attestation verifier for release controls
-        run: python -m pip install --disable-pip-version-check pypi-attestations==0.0.30
+        run: python -m pip install --disable-pip-version-check pypi-attestations==0.0.30 sigstore==4.5.1 cryptography==50.0.2
       - name: Install pinned Go tooling
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
@@ -372,7 +392,7 @@ jobs:
 
   publication-validation:
     name: Validate approved publication bundle
-    if: ${{ inputs.mode == 'publish' && inputs.release_set_mode == 'disabled' }}
+    if: ${{ inputs.recovery_mode == 'disabled' && inputs.mode == 'publish' && inputs.release_set_mode == 'disabled' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -481,7 +501,7 @@ jobs:
   npm:
     name: Publish exact npm archive
     needs: publication-validation
-    if: ${{ inputs.mode == 'publish' && inputs.release_set_mode == 'disabled' && needs.publication-validation.result == 'success' }}
+    if: ${{ inputs.recovery_mode == 'disabled' && inputs.mode == 'publish' && inputs.release_set_mode == 'disabled' && needs.publication-validation.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment: npm
@@ -531,7 +551,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install pinned certificate inspection support
-        run: python -m pip install --disable-pip-version-check pypi-attestations==0.0.30
+        run: python -m pip install --disable-pip-version-check pypi-attestations==0.0.30 sigstore==4.5.1 cryptography==50.0.2
       - name: Install npm Trusted Publishing CLI and locate archive
         id: locate
         env:
@@ -747,7 +767,7 @@ jobs:
   pypi:
     name: Publish exact PyPI distributions
     needs: publication-validation
-    if: ${{ inputs.mode == 'publish' && inputs.release_set_mode == 'disabled' && needs.publication-validation.result == 'success' }}
+    if: ${{ inputs.recovery_mode == 'disabled' && inputs.mode == 'publish' && inputs.release_set_mode == 'disabled' && needs.publication-validation.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment: pypi
@@ -793,7 +813,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install pinned PyPI attestation verifier
-        run: python -m pip install --disable-pip-version-check pypi-attestations==0.0.30
+        run: python -m pip install --disable-pip-version-check pypi-attestations==0.0.30 sigstore==4.5.1 cryptography==50.0.2
       - name: Locate approved Python files
         id: locate
         env:
@@ -972,7 +992,7 @@ jobs:
   rubygems:
     name: Publish exact Ruby gem
     needs: publication-validation
-    if: ${{ inputs.mode == 'publish' && inputs.release_set_mode == 'disabled' && needs.publication-validation.result == 'success' }}
+    if: ${{ inputs.recovery_mode == 'disabled' && inputs.mode == 'publish' && inputs.release_set_mode == 'disabled' && needs.publication-validation.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment: rubygems
@@ -1136,7 +1156,7 @@ jobs:
   rust-reuse:
     name: Verify existing Rust receipt read-only
     needs: publication-validation
-    if: ${{ inputs.mode == 'publish' && inputs.release_set_mode == 'disabled' && needs.publication-validation.result == 'success' }}
+    if: ${{ inputs.recovery_mode == 'disabled' && inputs.mode == 'publish' && inputs.release_set_mode == 'disabled' && needs.publication-validation.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -1195,7 +1215,7 @@ jobs:
       - pypi
       - rubygems
       - rust-reuse
-    if: ${{ inputs.mode == 'publish' && inputs.release_set_mode == 'disabled' && needs.publication-validation.result == 'success' && needs.npm.result == 'success' && needs.pypi.result == 'success' && needs.rubygems.result == 'success' && needs.rust-reuse.result == 'success' }}
+    if: ${{ inputs.recovery_mode == 'disabled' && inputs.mode == 'publish' && inputs.release_set_mode == 'disabled' && needs.publication-validation.result == 'success' && needs.npm.result == 'success' && needs.pypi.result == 'success' && needs.rubygems.result == 'success' && needs.rust-reuse.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -1294,7 +1314,7 @@ jobs:
   go-proof:
     name: Verify public Go module and inventory
     needs: tags
-    if: ${{ inputs.mode == 'publish' && inputs.release_set_mode == 'disabled' && needs.tags.result == 'success' }}
+    if: ${{ inputs.recovery_mode == 'disabled' && inputs.mode == 'publish' && inputs.release_set_mode == 'disabled' && needs.tags.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -1453,7 +1473,7 @@ jobs:
       - rust-reuse
       - tags
       - go-proof
-    if: ${{ inputs.mode == 'publish' && inputs.release_set_mode == 'disabled' && needs.publication-validation.result == 'success' && needs.npm.result == 'success' && needs.pypi.result == 'success' && needs.rubygems.result == 'success' && needs.rust-reuse.result == 'success' && needs.tags.result == 'success' && needs.go-proof.result == 'success' }}
+    if: ${{ inputs.recovery_mode == 'disabled' && inputs.mode == 'publish' && inputs.release_set_mode == 'disabled' && needs.publication-validation.result == 'success' && needs.npm.result == 'success' && needs.pypi.result == 'success' && needs.rubygems.result == 'success' && needs.rust-reuse.result == 'success' && needs.tags.result == 'success' && needs.go-proof.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -1551,7 +1571,7 @@ jobs:
       - pypi
       - rubygems
       - rust-reuse
-    if: ${{ inputs.mode == 'publish' && inputs.release_set_mode == 'disabled' && needs.publication-validation.result == 'success' && needs.tags.result == 'success' && needs.go-proof.result == 'success' && needs.proof-aggregate.result == 'success' && needs.npm.result == 'success' && needs.pypi.result == 'success' && needs.rubygems.result == 'success' && needs.rust-reuse.result == 'success' }}
+    if: ${{ inputs.recovery_mode == 'disabled' && inputs.mode == 'publish' && inputs.release_set_mode == 'disabled' && needs.publication-validation.result == 'success' && needs.tags.result == 'success' && needs.go-proof.result == 'success' && needs.proof-aggregate.result == 'success' && needs.npm.result == 'success' && needs.pypi.result == 'success' && needs.rubygems.result == 'success' && needs.rust-reuse.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -1797,7 +1817,7 @@ jobs:
   # artifacts.
   release-set-prepare:
     name: Prepare schema2 release set
-    if: ${{ inputs.release_set_mode == 'prepare' }}
+    if: ${{ inputs.recovery_mode == 'disabled' && inputs.release_set_mode == 'prepare' }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
     permissions:
@@ -2013,7 +2033,7 @@ jobs:
 
   release-set-publish:
     name: Validate schema2 publish handoff
-    if: ${{ inputs.release_set_mode == 'publish' }}
+    if: ${{ inputs.recovery_mode == 'disabled' && inputs.release_set_mode == 'publish' }}
     outputs:
       verified_artifact_id: ${{ steps.verified_handoff.outputs.artifact-id }}
     runs-on: ubuntu-latest
@@ -2038,7 +2058,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install pinned existing-target proof tooling
-        run: python -m pip install --disable-pip-version-check build==1.6.0 pypi-attestations==0.0.30
+        run: python -m pip install --disable-pip-version-check build==1.6.0 pypi-attestations==0.0.30 sigstore==4.5.1 cryptography==50.0.2
       - name: Install and verify pinned npm client for existing-target proof
         run: npm install --global npm@11.19.1 && test "$(npm --version)" = 11.19.1
       - name: Install Ruby 3.1 for existing-target proof
@@ -2300,7 +2320,7 @@ jobs:
       - release-set-publish-npm
       - release-set-publish-pypi
       - release-set-publish-rubygems
-    if: ${{ inputs.release_set_mode == 'publish' && needs.release-set-publish.result == 'success' && needs.release-set-publish-npm.result == 'success' && needs.release-set-publish-pypi.result == 'success' && needs.release-set-publish-rubygems.result == 'success' }}
+    if: ${{ inputs.recovery_mode == 'disabled' && inputs.release_set_mode == 'publish' && needs.release-set-publish.result == 'success' && needs.release-set-publish-npm.result == 'success' && needs.release-set-publish-pypi.result == 'success' && needs.release-set-publish-rubygems.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -3101,7 +3121,7 @@ jobs:
 
   release-set-observe:
     name: Observe schema2 package, tag, Go, and receipt proofs
-    if: ${{ inputs.release_set_mode == 'observe' }}
+    if: ${{ inputs.recovery_mode == 'disabled' && inputs.release_set_mode == 'observe' }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
@@ -3145,7 +3165,7 @@ jobs:
 
   release-set-finalize:
     name: Finalize schema2 GitHub Release
-    if: ${{ inputs.release_set_mode == 'finalize' }}
+    if: ${{ inputs.recovery_mode == 'disabled' && inputs.release_set_mode == 'finalize' }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
@@ -3178,7 +3198,7 @@ jobs:
   release-set-publish-npm:
     name: Publish or reuse schema2 npm artifact
     needs: release-set-publish
-    if: ${{ inputs.release_set_mode == 'publish' && needs.release-set-publish.result == 'success' }}
+    if: ${{ inputs.recovery_mode == 'disabled' && inputs.release_set_mode == 'publish' && needs.release-set-publish.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -3203,7 +3223,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install pinned npm observer Python tooling
-        run: python -m pip install --disable-pip-version-check pypi-attestations==0.0.30
+        run: python -m pip install --disable-pip-version-check pypi-attestations==0.0.30 sigstore==4.5.1 cryptography==50.0.2
       - name: Install and verify pinned npm client
         run: npm install --global npm@11.19.1 && test "$(npm --version)" = 11.19.1
       - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
@@ -3413,7 +3433,7 @@ jobs:
   release-set-publish-pypi:
     name: Publish or reuse schema2 PyPI artifacts
     needs: release-set-publish
-    if: ${{ inputs.release_set_mode == 'publish' && needs.release-set-publish.result == 'success' }}
+    if: ${{ inputs.recovery_mode == 'disabled' && inputs.release_set_mode == 'publish' && needs.release-set-publish.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -3435,7 +3455,7 @@ jobs:
           name: release-set-verified-preparation-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/release-set-verified
       - name: Install pinned PyPI observer tooling
-        run: python -m pip install --disable-pip-version-check build==1.6.0 pypi-attestations==0.0.30
+        run: python -m pip install --disable-pip-version-check build==1.6.0 pypi-attestations==0.0.30 sigstore==4.5.1 cryptography==50.0.2
       - name: Recheck PyPI files and stage only verified missing bytes
         id: preflight
         env:
@@ -3704,7 +3724,7 @@ jobs:
   release-set-publish-rubygems:
     name: Publish or reuse schema2 RubyGems artifact
     needs: release-set-publish
-    if: ${{ inputs.release_set_mode == 'publish' && needs.release-set-publish.result == 'success' }}
+    if: ${{ inputs.recovery_mode == 'disabled' && inputs.release_set_mode == 'publish' && needs.release-set-publish.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -3879,3 +3899,1024 @@ jobs:
       - name: Retain RubyGems receipt artifact allocation
         if: always()
         run: printf 'release_set_rubygems_receipt_artifact_id=%s\n' '${{ steps.rubygems_receipt_artifact.outputs.artifact-id }}' >> "$GITHUB_STEP_SUMMARY"
+
+  # Finite one-cohort recovery.  This lane is structurally isolated from both
+  # the historical foundation path and schema2 normal publish.  M is the
+  # immutable package/preparation source; the live controller C is checked at
+  # every boundary and is never substituted into package/tag provenance.
+  publication-recovery-control:
+    name: Authenticate frozen M and recovery controller C
+    if: ${{ inputs.recovery_mode == 'recover-0.11.0' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      context_artifact_id: ${{ steps.context_upload.outputs.artifact-id }}
+    steps:
+      - name: Check out the live controller C without credentials
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Guard C, main, M ancestry, and the four-file delta
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CONTROL_COMMIT: ${{ inputs.expected_commit }}
+          EVENT_SHA: ${{ github.sha }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_REF: ${{ github.ref }}
+          REPOSITORY: ${{ github.repository }}
+          REPOSITORY_ID: ${{ github.repository_id }}
+          SOURCE_M: ${{ env.PUBLICATION_RECOVERY_SOURCE_M }}
+          RECOVERY_MODE: ${{ inputs.recovery_mode }}
+          FOUNDATION_MODE: ${{ inputs.mode }}
+          RELEASE_SET_MODE: ${{ inputs.release_set_mode }}
+          EXPECTED_VERSION: ${{ inputs.expected_version }}
+        run: |
+          set -euo pipefail
+          test "$REPOSITORY" = "$EXPECTED_REPOSITORY"
+          test "$REPOSITORY_ID" = "$EXPECTED_REPOSITORY_ID"
+          test "$EVENT_NAME" = workflow_dispatch
+          test "$EVENT_REF" = refs/heads/main
+          test "$RECOVERY_MODE" = recover-0.11.0
+          test "$FOUNDATION_MODE" = publish
+          test "$RELEASE_SET_MODE" = disabled
+          test "$EXPECTED_VERSION" = 0.11.0
+          test "$CONTROL_COMMIT" = "$EVENT_SHA"
+          test "$CONTROL_COMMIT" = "$WORKFLOW_SHA"
+          test "$(git rev-parse HEAD)" = "$CONTROL_COMMIT"
+          test -z "$(git status --porcelain)"
+          git cat-file -e "$SOURCE_M^{commit}"
+          git merge-base --is-ancestor "$SOURCE_M" "$CONTROL_COMMIT"
+          test "$(gh api "/repos/$EXPECTED_REPOSITORY/git/ref/heads/main" --jq '.object.sha')" = "$CONTROL_COMMIT"
+          expected=$'.github/workflows/release.yml\ndocs/RELEASING.md\nscripts/verify-release.mjs\nscripts/verify-release.test.mjs'
+          actual="$(git diff --name-only "$SOURCE_M" "$CONTROL_COMMIT" | sort)"
+          test "$actual" = "$(printf '%s\n' "$expected" | sort)"
+          cat > "$RUNNER_TEMP/recovery-runtime.json" <<JSON
+          {"mode":"recover-0.11.0","repository":"$REPOSITORY","repositoryId":"$REPOSITORY_ID","eventName":"$EVENT_NAME","eventRef":"$EVENT_REF","eventSha":"$EVENT_SHA","expectedControlCommit":"$CONTROL_COMMIT","checkoutHead":"$(git rev-parse HEAD)","checkoutStatus":"","workflowRef":"$WORKFLOW_REF","workflowSha":"$WORKFLOW_SHA","mainSha":"$CONTROL_COMMIT","sourceM":"$SOURCE_M","sourceMAncestor":true,"deltaPaths":[".github/workflows/release.yml","docs/RELEASING.md","scripts/verify-release.mjs","scripts/verify-release.test.mjs"]}
+          JSON
+      - name: Fetch actual C CI proof and original run metadata
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_M: ${{ env.PUBLICATION_RECOVERY_SOURCE_M }}
+          PLAN: ${{ runner.temp }}/recovery/recovery-bundle/release-set-plan.json
+          CONTROL_COMMIT: ${{ inputs.expected_commit }}
+        run: |
+          set -euo pipefail
+          gh api "/repos/$EXPECTED_REPOSITORY/actions/workflows/ci.yml" > "$RUNNER_TEMP/recovery-ci-workflow.json"
+          ci_workflow_id="$(jq -r '.id' "$RUNNER_TEMP/recovery-ci-workflow.json")"
+          gh api "/repos/$EXPECTED_REPOSITORY/actions/workflows/$ci_workflow_id/runs?branch=main&head_sha=$CONTROL_COMMIT&per_page=100" > "$RUNNER_TEMP/recovery-ci-runs.json"
+          RELEASE_SET_CI_WORKFLOW_FILE="$RUNNER_TEMP/recovery-ci-workflow.json" RELEASE_SET_CI_RUNS_FILE="$RUNNER_TEMP/recovery-ci-runs.json" RELEASE_SET_CI_SELECTION_FILE="$RUNNER_TEMP/recovery-ci-selection.json" EXPECTED_COMMIT="$CONTROL_COMMIT" node scripts/verify-release.mjs --release-set-ci-select
+          ci_run_id="$(jq -r '.id' "$RUNNER_TEMP/recovery-ci-selection.json")"
+          ci_attempt="$(jq -r '.runAttempt' "$RUNNER_TEMP/recovery-ci-selection.json")"
+          gh api "/repos/$EXPECTED_REPOSITORY/actions/runs/$ci_run_id/attempts/$ci_attempt" > "$RUNNER_TEMP/recovery-ci-recheck.json"
+          gh api "/repos/$EXPECTED_REPOSITORY/actions/runs/$ci_run_id/attempts/$ci_attempt/jobs?per_page=100" > "$RUNNER_TEMP/recovery-ci-jobs.json"
+          RELEASE_SET_CI_WORKFLOW_FILE="$RUNNER_TEMP/recovery-ci-workflow.json" RELEASE_SET_CI_RUNS_FILE="$RUNNER_TEMP/recovery-ci-runs.json" RELEASE_SET_CI_SELECTION_FILE="$RUNNER_TEMP/recovery-ci-selection.json" RELEASE_SET_CI_RECHECK_FILE="$RUNNER_TEMP/recovery-ci-recheck.json" RELEASE_SET_CI_JOBS_FILE="$RUNNER_TEMP/recovery-ci-jobs.json" RELEASE_SET_CI_EVIDENCE_FILE="$RUNNER_TEMP/recovery-ci-evidence.json" EXPECTED_COMMIT="$CONTROL_COMMIT" node scripts/verify-release.mjs --release-set-ci-proof
+          gh api "/repos/$EXPECTED_REPOSITORY/actions/workflows/ci.yml/runs?branch=main&head_sha=$SOURCE_M&per_page=100" > "$RUNNER_TEMP/recovery-source-ci-runs.json"
+          RELEASE_SET_CI_WORKFLOW_FILE="$RUNNER_TEMP/recovery-ci-workflow.json" RELEASE_SET_CI_RUNS_FILE="$RUNNER_TEMP/recovery-source-ci-runs.json" RELEASE_SET_CI_SELECTION_FILE="$RUNNER_TEMP/recovery-source-ci-selection.json" EXPECTED_COMMIT="$SOURCE_M" node scripts/verify-release.mjs --release-set-ci-select
+          source_ci_run_id="$(jq -r '.id' "$RUNNER_TEMP/recovery-source-ci-selection.json")"
+          source_ci_attempt="$(jq -r '.runAttempt' "$RUNNER_TEMP/recovery-source-ci-selection.json")"
+          gh api "/repos/$EXPECTED_REPOSITORY/actions/runs/$source_ci_run_id/attempts/$source_ci_attempt" > "$RUNNER_TEMP/recovery-source-ci-recheck.json"
+          gh api "/repos/$EXPECTED_REPOSITORY/actions/runs/$source_ci_run_id/attempts/$source_ci_attempt/jobs?per_page=100" > "$RUNNER_TEMP/recovery-source-ci-jobs.json"
+          RELEASE_SET_CI_WORKFLOW_FILE="$RUNNER_TEMP/recovery-ci-workflow.json" RELEASE_SET_CI_RUNS_FILE="$RUNNER_TEMP/recovery-source-ci-runs.json" RELEASE_SET_CI_SELECTION_FILE="$RUNNER_TEMP/recovery-source-ci-selection.json" RELEASE_SET_CI_RECHECK_FILE="$RUNNER_TEMP/recovery-source-ci-recheck.json" RELEASE_SET_CI_JOBS_FILE="$RUNNER_TEMP/recovery-source-ci-jobs.json" RELEASE_SET_CI_EVIDENCE_FILE="$RUNNER_TEMP/recovery-source-ci-evidence.json" EXPECTED_COMMIT="$SOURCE_M" node scripts/verify-release.mjs --release-set-ci-proof
+          gh api "/repos/$EXPECTED_REPOSITORY/actions/runs/$PUBLICATION_RECOVERY_ORIGINAL_PUBLICATION_RUN_ID" > "$RUNNER_TEMP/recovery-publication-run.json"
+          gh api "/repos/$EXPECTED_REPOSITORY/actions/runs/$PUBLICATION_RECOVERY_ORIGINAL_PUBLICATION_RUN_ID/attempts/$PUBLICATION_RECOVERY_ORIGINAL_PUBLICATION_RUN_ATTEMPT/jobs?per_page=100" > "$RUNNER_TEMP/recovery-publication-jobs.json"
+          gh api "/repos/$EXPECTED_REPOSITORY/actions/jobs/$PUBLICATION_RECOVERY_ORIGINAL_NPM_JOB_ID" > "$RUNNER_TEMP/recovery-original-npm-job.json"
+          gh api "/repos/$EXPECTED_REPOSITORY/actions/jobs/$PUBLICATION_RECOVERY_ORIGINAL_PYPI_JOB_ID" > "$RUNNER_TEMP/recovery-original-pypi-job.json"
+          gh api "/repos/$EXPECTED_REPOSITORY/actions/jobs/$PUBLICATION_RECOVERY_ORIGINAL_RUBYGEMS_JOB_ID" > "$RUNNER_TEMP/recovery-original-rubygems-job.json"
+          gh api "/repos/$EXPECTED_REPOSITORY/actions/runs/$PUBLICATION_RECOVERY_PREPARED_RUN_ID" > "$RUNNER_TEMP/recovery-preparation-run.json"
+          gh api "/repos/$EXPECTED_REPOSITORY/actions/artifacts/$PUBLICATION_RECOVERY_BUNDLE_ARTIFACT_ID" > "$RUNNER_TEMP/recovery-bundle-metadata.json"
+          gh api "/repos/$EXPECTED_REPOSITORY/actions/artifacts/$PUBLICATION_RECOVERY_BINDING_ARTIFACT_ID" > "$RUNNER_TEMP/recovery-binding-metadata.json"
+          node --input-type=module - "$RUNNER_TEMP/recovery-publication-jobs.json" "$RUNNER_TEMP/recovery-original-npm-job.json" "$RUNNER_TEMP/recovery-original-pypi-job.json" "$RUNNER_TEMP/recovery-original-rubygems-job.json" "$RUNNER_TEMP/recovery-publication-outcomes.json" "$RUNNER_TEMP/recovery-publication-jobs.json" <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs'
+          const jobs = JSON.parse(readFileSync(process.argv[2], 'utf8')).jobs ?? []; const npm = JSON.parse(readFileSync(process.argv[3], 'utf8')); const pypi = JSON.parse(readFileSync(process.argv[4], 'utf8')); const ruby = JSON.parse(readFileSync(process.argv[5], 'utf8'))
+          const authoritative = [npm, pypi, ruby]; const byId = new Map(jobs.map(job => [String(job.id), job])); for (const job of authoritative) byId.set(String(job.id), job)
+          const jobOutcomes = [...byId.values()]
+          const step = (value, needle) => value?.steps?.filter(item => `${item.name ?? ''}`.toLowerCase().includes(needle))?.map(item => item.conclusion)
+          if (!Array.isArray(npm.steps) || !Array.isArray(pypi.steps) || !Array.isArray(ruby.steps)) throw new Error('original publication individual job step evidence is missing')
+          const npmUpload = step(npm, 'publish exact npm archive once'); const npmObserver = step(npm, 'observe npm public bytes')
+          const rubyUpload = step(ruby, 'publish the exact reviewed gem once'); const pypiUpload = step(pypi, 'publish exact missing pypi files'); const pypiObserver = step(pypi, 'observe pypi files')
+          if (npmUpload.length !== 1 || npmObserver.length !== 1 || rubyUpload.length !== 1 || pypiUpload.length !== 1 || pypiObserver.length !== 1) throw new Error('original publication step evidence is missing or ambiguous')
+          const outcomes = { npmPublished: npmUpload[0] === 'success', rubygemsPublished: rubyUpload[0] === 'success', pypiUploadAttempted: pypiUpload[0] !== 'skipped', pypiBeforeUploadFailure: pypiUpload[0] === 'skipped' && pypiObserver[0] === 'failure', npmObserverFailure: npmObserver[0] === 'failure', npmJobConclusion: npm?.conclusion, npmUploadStepConclusion: npmUpload[0], npmObserverStepConclusion: npmObserver[0], rubygemsJobConclusion: ruby?.conclusion, rubygemsUploadStepConclusion: rubyUpload[0], pypiJobConclusion: pypi?.conclusion, pypiUploadStepConclusion: pypiUpload[0], pypiObserverStepConclusion: pypiObserver[0] }
+          writeFileSync(process.argv[6], `${JSON.stringify(outcomes)}\n`)
+          writeFileSync(process.argv[7], `${JSON.stringify(jobOutcomes)}\n`)
+          NODE
+      - name: Download the exact original preparation bundle and binding
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          artifact-ids: ${{ env.PUBLICATION_RECOVERY_BUNDLE_ARTIFACT_ID }}
+          run-id: ${{ env.PUBLICATION_RECOVERY_PREPARED_RUN_ID }}
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          path: ${{ runner.temp }}/recovery-bundle
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          artifact-ids: ${{ env.PUBLICATION_RECOVERY_BINDING_ARTIFACT_ID }}
+          run-id: ${{ env.PUBLICATION_RECOVERY_PREPARED_RUN_ID }}
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          path: ${{ runner.temp }}/recovery-binding
+      - name: Reauthenticate original bundle ZIP bytes and consumed members
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUNDLE: ${{ runner.temp }}/recovery-bundle
+          BINDING: ${{ runner.temp }}/recovery-binding
+          BUNDLE_META: ${{ runner.temp }}/recovery-bundle-metadata.json
+          BINDING_META: ${{ runner.temp }}/recovery-binding-metadata.json
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location --max-time 60 --retry 0 --header "Authorization: Bearer $GH_TOKEN" --header 'Accept: application/vnd.github+json' --user-agent "$RELEASE_USER_AGENT" --output "$RUNNER_TEMP/recovery-bundle.zip" "https://api.github.com/repos/$EXPECTED_REPOSITORY/actions/artifacts/$PUBLICATION_RECOVERY_BUNDLE_ARTIFACT_ID/zip"
+          curl --fail --silent --show-error --location --max-time 60 --retry 0 --header "Authorization: Bearer $GH_TOKEN" --header 'Accept: application/vnd.github+json' --user-agent "$RELEASE_USER_AGENT" --output "$RUNNER_TEMP/recovery-binding.zip" "https://api.github.com/repos/$EXPECTED_REPOSITORY/actions/artifacts/$PUBLICATION_RECOVERY_BINDING_ARTIFACT_ID/zip"
+          test "$(sha256sum "$RUNNER_TEMP/recovery-bundle.zip" | awk '{print $1}')" = 01ba51df046f11323197d013ae79f28b7eaa3949287c356036e0243eca38e0bb
+          test "$(sha256sum "$RUNNER_TEMP/recovery-binding.zip" | awk '{print $1}')" = 4ea1f1b78ac8f7df2711953ac7c2415155affc8c1cd9b864554b4bb11a2566b9
+          node --input-type=module - "$RUNNER_TEMP/recovery-bundle.zip" "$BUNDLE_META" "$BUNDLE" "$RUNNER_TEMP/recovery-binding.zip" "$BINDING_META" "$BINDING" <<'NODE'
+          import { readFileSync } from 'node:fs'; import { verifyReleaseSetArtifactZip } from './scripts/verify-release.mjs'
+          const [bundleZip, bundleMeta, bundleDir, bindingZip, bindingMeta, bindingDir] = process.argv.slice(2)
+          await verifyReleaseSetArtifactZip({ zipFile: bundleZip, metadata: JSON.parse(readFileSync(bundleMeta, 'utf8')), expectedId: process.env.PUBLICATION_RECOVERY_BUNDLE_ARTIFACT_ID, consumedDirectory: bundleDir, expectedName: `release-set-bundle-${process.env.PUBLICATION_RECOVERY_SOURCE_M}` })
+          await verifyReleaseSetArtifactZip({ zipFile: bindingZip, metadata: JSON.parse(readFileSync(bindingMeta, 'utf8')), expectedId: process.env.PUBLICATION_RECOVERY_BINDING_ARTIFACT_ID, consumedDirectory: bindingDir, expectedName: `release-set-binding-${process.env.PUBLICATION_RECOVERY_PREPARED_RUN_ID}-${process.env.PUBLICATION_RECOVERY_PREPARED_RUN_ATTEMPT}` })
+          NODE
+      - name: Authenticate the original preparation and bind immutable context
+        env:
+          PUBLICATION_RECOVERY_RUNTIME_FILE: ${{ runner.temp }}/recovery-runtime.json
+          PUBLICATION_RECOVERY_PREPARATION_FILE: ${{ runner.temp }}/recovery-preparation.json
+          PUBLICATION_RECOVERY_PUBLICATION_RUN_FILE: ${{ runner.temp }}/recovery-publication-run.json
+          PUBLICATION_RECOVERY_PUBLICATION_JOBS_FILE: ${{ runner.temp }}/recovery-publication-jobs.json
+          PUBLICATION_RECOVERY_PUBLICATION_OUTCOMES_FILE: ${{ runner.temp }}/recovery-publication-outcomes.json
+          PUBLICATION_RECOVERY_CI_PROOF_FILE: ${{ runner.temp }}/recovery-ci-proof-flat.json
+          PUBLICATION_RECOVERY_SOURCE_CI_PROOF_FILE: ${{ runner.temp }}/recovery-source-ci-proof-flat.json
+          PUBLICATION_RECOVERY_CONTEXT_OUTPUT_FILE: ${{ runner.temp }}/recovery-context.json
+          PUBLICATION_RECOVERY_CONTEXT_FILE: ${{ runner.temp }}/recovery-context.json
+          PUBLICATION_RECOVERY_PLAN_FILE: ${{ runner.temp }}/recovery-bundle/release-set-plan.json
+          PUBLICATION_RECOVERY_ARTIFACT_DIR: ${{ runner.temp }}/recovery-bundle
+          PUBLICATION_RECOVERY_BINDING_FILE: ${{ runner.temp }}/recovery-binding/release-set-binding.json
+          PUBLICATION_RECOVERY_BINDING_DIR: ${{ runner.temp }}/recovery-binding
+          PUBLICATION_RECOVERY_BUNDLE_ZIP_FILE: ${{ runner.temp }}/recovery-bundle.zip
+          PUBLICATION_RECOVERY_BINDING_ZIP_FILE: ${{ runner.temp }}/recovery-binding.zip
+          PUBLICATION_RECOVERY_BUNDLE_METADATA_FILE: ${{ runner.temp }}/recovery-bundle-metadata.json
+          PUBLICATION_RECOVERY_BINDING_METADATA_FILE: ${{ runner.temp }}/recovery-binding-metadata.json
+          PUBLICATION_RECOVERY_BINDING_ARTIFACT_ID: ${{ env.PUBLICATION_RECOVERY_BINDING_ARTIFACT_ID }}
+        run: |
+          set -euo pipefail
+          node --input-type=module - "$RUNNER_TEMP/recovery-preparation-run.json" "$RUNNER_TEMP/recovery-bundle-metadata.json" "$RUNNER_TEMP/recovery-binding-metadata.json" "$RUNNER_TEMP/recovery-bundle/release-set-plan.json" "$RUNNER_TEMP/recovery-binding/release-set-binding.json" "$RUNNER_TEMP/recovery-preparation.json" "$RUNNER_TEMP/recovery-source-ci-evidence.json" "$RUNNER_TEMP/recovery-ci-evidence.json" "$RUNNER_TEMP/recovery-source-ci-proof-flat.json" "$RUNNER_TEMP/recovery-ci-proof-flat.json" <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs'
+          import { validateReleaseSetPlan, validateReleaseSetCIEvidence, validateReleaseSetPreparationMetadata, validateReleaseSetPreparationBinding, PUBLICATION_RECOVERY_SOURCE_M, PUBLICATION_RECOVERY_PLAN_SHA256, PUBLICATION_RECOVERY_PREPARED_RUN_ID, PUBLICATION_RECOVERY_PREPARED_RUN_ATTEMPT, PUBLICATION_RECOVERY_BUNDLE_ARTIFACT_ID, PUBLICATION_RECOVERY_BINDING_ARTIFACT_ID } from './scripts/verify-release.mjs'
+          const [runFile, artifactFile, bindingArtifactFile, planFile, bindingFile, outputFile, sourceCiFile, ciRawFile, sourceCiFlatFile, ciFlatFile] = process.argv.slice(2)
+          const plan = validateReleaseSetPlan(JSON.parse(readFileSync(planFile, 'utf8')))
+          if (plan.sourceCommit !== PUBLICATION_RECOVERY_SOURCE_M || JSON.stringify(plan) === '{}') throw new Error('recovery plan source is not M')
+          const sourceCi = validateReleaseSetCIEvidence(JSON.parse(readFileSync(sourceCiFile, 'utf8')), PUBLICATION_RECOVERY_SOURCE_M)
+          const controlCi = validateReleaseSetCIEvidence(JSON.parse(readFileSync(ciRawFile, 'utf8')), process.env.GITHUB_SHA)
+          if (plan.ciProof.runId !== sourceCi.runId || plan.ciProof.runAttempt !== sourceCi.runAttempt || plan.ciProof.jobId !== sourceCi.jobId) throw new Error('recovery plan/source-CI proof mismatch')
+          writeFileSync(sourceCiFlatFile, `${JSON.stringify(sourceCi)}\n`)
+          writeFileSync(ciFlatFile, `${JSON.stringify(controlCi)}\n`)
+          validateReleaseSetPreparationMetadata({ plan, run: JSON.parse(readFileSync(runFile, 'utf8')), artifact: JSON.parse(readFileSync(artifactFile, 'utf8')), bindingArtifact: JSON.parse(readFileSync(bindingArtifactFile, 'utf8')), expected: { runId: PUBLICATION_RECOVERY_PREPARED_RUN_ID, runAttempt: PUBLICATION_RECOVERY_PREPARED_RUN_ATTEMPT, artifactId: PUBLICATION_RECOVERY_BUNDLE_ARTIFACT_ID, bindingArtifactId: PUBLICATION_RECOVERY_BINDING_ARTIFACT_ID, sourceCommit: PUBLICATION_RECOVERY_SOURCE_M } })
+          validateReleaseSetPreparationBinding(JSON.parse(readFileSync(bindingFile, 'utf8')), { plan, expected: { runId: PUBLICATION_RECOVERY_PREPARED_RUN_ID, runAttempt: PUBLICATION_RECOVERY_PREPARED_RUN_ATTEMPT, artifactId: PUBLICATION_RECOVERY_BUNDLE_ARTIFACT_ID } })
+          writeFileSync(outputFile, `${JSON.stringify({ sourceCommit: PUBLICATION_RECOVERY_SOURCE_M, runId: PUBLICATION_RECOVERY_PREPARED_RUN_ID, runAttempt: PUBLICATION_RECOVERY_PREPARED_RUN_ATTEMPT, artifactId: PUBLICATION_RECOVERY_BUNDLE_ARTIFACT_ID, bindingArtifactId: PUBLICATION_RECOVERY_BINDING_ARTIFACT_ID, planSha256: PUBLICATION_RECOVERY_PLAN_SHA256 })}\n`)
+          NODE
+          node scripts/verify-release.mjs --publication-recovery-context
+          node scripts/verify-release.mjs --publication-recovery-context-verify
+          node scripts/verify-release.mjs --publication-recovery-bundle
+      - name: Upload immutable recovery context and original bundle evidence
+        id: context_upload
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: publication-recovery-context-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/recovery-context.json
+            ${{ runner.temp }}/recovery-preparation.json
+            ${{ runner.temp }}/recovery-ci-evidence.json
+            ${{ runner.temp }}/recovery-source-ci-evidence.json
+            ${{ runner.temp }}/recovery-bundle
+            ${{ runner.temp }}/recovery-binding
+          if-no-files-found: error
+          retention-days: 365
+
+  publication-recovery-readonly:
+    name: Prove npm RubyGems and Rust read-only against M
+    needs: publication-recovery-control
+    if: ${{ needs.publication-recovery-control.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      npm_receipt_artifact_id: ${{ steps.npm_receipt.outputs.artifact-id }}
+      rubygems_receipt_artifact_id: ${{ steps.rubygems_receipt.outputs.artifact-id }}
+      rust_receipt_artifact_id: ${{ steps.rust_receipt.outputs.artifact-id }}
+    steps:
+      - name: Check out C without credentials
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 1
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Download immutable recovery context
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          artifact-ids: ${{ needs.publication-recovery-control.outputs.context_artifact_id }}
+          path: ${{ runner.temp }}/recovery
+      - name: Install isolated patched recovery tooling
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12.15'
+      - name: Resolve exact isolated Python verifier and retain evidence
+        env:
+          VENV: ${{ runner.temp }}/recovery-venv
+          PROOF: ${{ runner.temp }}/recovery-tooling-proof.json
+        run: |
+          set -euo pipefail
+          python -m venv --clear "$VENV"
+          "$VENV/bin/python" -m pip install --disable-pip-version-check --no-input build==1.6.0 pypi-attestations==0.0.30 sigstore==4.5.1 cryptography==50.0.2
+          "$VENV/bin/python" -m pip check
+          "$VENV/bin/python" - <<'PY' > "$PROOF"
+          import importlib.metadata, importlib.util, json, pathlib, site, sys
+          from cryptography import x509
+          from pypi_attestations import Distribution, GitHubPublisher, Provenance
+          import sigstore
+          assert pathlib.Path(sys.prefix).resolve() != pathlib.Path(sys.base_prefix).resolve()
+          assert site.ENABLE_USER_SITE is False
+          assert all(pathlib.Path(path).resolve().is_relative_to(pathlib.Path(sys.prefix).resolve()) for path in site.getsitepackages())
+          assert importlib.util.find_spec('OpenSSL') is None
+          assert importlib.util.find_spec('pyOpenSSL') is None
+          try: importlib.metadata.version('pyOpenSSL'); raise AssertionError('pyOpenSSL distribution is installed')
+          except importlib.metadata.PackageNotFoundError: pass
+          values = {name: importlib.metadata.version(name) for name in ('build', 'pypi-attestations', 'sigstore', 'cryptography')}
+          values.update({"python": sys.version.split()[0], "prefix": sys.prefix, "base_prefix": sys.base_prefix, "origins": {name: str(pathlib.Path(importlib.import_module(name.replace('-', '_')).__file__).resolve()) for name in ('sigstore', 'pypi_attestations', 'cryptography')}})
+          print(json.dumps(values, sort_keys=True))
+          PY
+          test "$(jq -r .python "$PROOF")" = 3.12.15
+          test "$(jq -r .build "$PROOF")" = 1.6.0
+          test "$(jq -r '.["pypi-attestations"]' "$PROOF")" = 0.0.30
+          test "$(jq -r .sigstore "$PROOF")" = 4.5.1
+          test "$(jq -r .cryptography "$PROOF")" = 50.0.2
+      - name: Install pinned Node and npm observer tooling
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Install and verify exact npm observer client
+        run: npm install --global npm@11.19.1 && test "$(npm --version)" = 11.19.1
+      - name: Install Ruby observer runtimes
+        uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b # v1
+        with:
+          ruby-version: '3.1'
+          bundler-cache: false
+      - name: Capture Ruby 3.1 observer path
+        run: echo "RECOVERY_RUBY31=$(command -v ruby)" >> "$GITHUB_ENV"
+      - name: Install Ruby 3.4 observer runtime
+        uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b # v1
+        with:
+          ruby-version: '3.4'
+          bundler-cache: false
+      - name: Capture Ruby 3.4 observer path
+        run: echo "RECOVERY_RUBY34=$(command -v ruby)" >> "$GITHUB_ENV"
+      - name: Prove npm and RubyGems public bytes without credentials
+        env:
+          CONTEXT: ${{ runner.temp }}/recovery/recovery-context.json
+          PLAN: ${{ runner.temp }}/recovery/recovery-bundle/release-set-plan.json
+          PREP: ${{ runner.temp }}/recovery/recovery-preparation.json
+          VENV: ${{ runner.temp }}/recovery-venv
+          SOURCE_M: ${{ env.PUBLICATION_RECOVERY_SOURCE_M }}
+          PUBLISH_RUN: ${{ env.PUBLICATION_RECOVERY_ORIGINAL_PUBLICATION_RUN_ID }}
+          PUBLISH_ATTEMPT: ${{ env.PUBLICATION_RECOVERY_ORIGINAL_PUBLICATION_RUN_ATTEMPT }}
+        run: |
+          set -euo pipefail
+          unset NPM_TOKEN NODE_AUTH_TOKEN NPM_CONFIG_USERCONFIG NPM_CONFIG_GLOBALCONFIG GEM_HOST_API_KEY RUBYGEMS_API_KEY PYPI_TOKEN TWINE_PASSWORD TWINE_USERNAME || true
+          : > "$RUNNER_TEMP/empty-npmrc"
+          : > "$RUNNER_TEMP/empty-global-npmrc"
+          mkdir -p "$RUNNER_TEMP/recovery-npm" "$RUNNER_TEMP/recovery-rubygems" "$RUNNER_TEMP/recovery-rust"
+          printf '%s\n' '{"repository":"elsoul/erpc-sdk","repositoryId":"1429568627","sourceCommit":"'"$SOURCE_M"'","workflowPath":".github/workflows/release.yml","ref":"refs/heads/main","event":"workflow_dispatch","environment":"npm","publisherRunId":"'"$PUBLISH_RUN"'","publisherAttempt":"'"$PUBLISH_ATTEMPT"'"}' > "$RUNNER_TEMP/recovery-npm-publisher.json"
+          recovery_node="$(command -v node)"; recovery_npm="$(command -v npm)"
+          export PUBLICATION_RECOVERY_CONTEXT_FILE="$CONTEXT" PUBLICATION_RECOVERY_PLAN_FILE="$PLAN" PUBLICATION_RECOVERY_PUBLISHER_FILE="$RUNNER_TEMP/recovery-npm-publisher.json" PUBLICATION_RECOVERY_OBSERVER_RUN_ID="$GITHUB_RUN_ID" PUBLICATION_RECOVERY_OBSERVER_ATTEMPT="$GITHUB_RUN_ATTEMPT" PUBLICATION_RECOVERY_WORK_DIR="$RUNNER_TEMP/recovery-npm" PUBLICATION_RECOVERY_OUTPUT_FILE="$RUNNER_TEMP/npm-proof.json" PUBLICATION_RECOVERY_NODE="$recovery_node" PUBLICATION_RECOVERY_NPM_CLI="$recovery_npm" PUBLICATION_RECOVERY_PYTHON="$VENV/bin/python"
+          node scripts/verify-release.mjs --publication-recovery-npm-observe
+          export PUBLICATION_RECOVERY_WORK_DIR="$RUNNER_TEMP/recovery-rubygems" PUBLICATION_RECOVERY_OUTPUT_FILE="$RUNNER_TEMP/rubygems-proof.json" PUBLICATION_RECOVERY_RUBY31="$RECOVERY_RUBY31" PUBLICATION_RECOVERY_RUBY34="$RECOVERY_RUBY34"
+          node scripts/verify-release.mjs --publication-recovery-rubygems-observe
+          export PUBLICATION_RECOVERY_WORK_DIR="$RUNNER_TEMP/recovery-rust" PUBLICATION_RECOVERY_OUTPUT_FILE="$RUNNER_TEMP/rust-proof.json"
+          node scripts/verify-release.mjs --publication-recovery-rust-observe
+          node --input-type=module - "$CONTEXT" "$RUNNER_TEMP/npm-proof.json" "$RUNNER_TEMP/rubygems-proof.json" "$RUNNER_TEMP/rust-proof.json" <<'NODE'
+          import { readFileSync } from 'node:fs'
+          import { validatePublicationRecoveryContext, validatePublicationRecoveryReceipt, PUBLICATION_RECOVERY_NPM_SHA256, PUBLICATION_RECOVERY_RUBYGEMS_SHA256, RUST_011_REUSE_SHA256 } from './scripts/verify-release.mjs'
+          const [contextFile, npmFile, rubyFile, rustFile] = process.argv.slice(2); const context = JSON.parse(readFileSync(contextFile, 'utf8'))
+          validatePublicationRecoveryContext(context, { requireCiProof: true })
+          validatePublicationRecoveryReceipt(JSON.parse(readFileSync(npmFile, 'utf8')), { kind: 'npm', context, expectedSha256: PUBLICATION_RECOVERY_NPM_SHA256 })
+          validatePublicationRecoveryReceipt(JSON.parse(readFileSync(rubyFile, 'utf8')), { kind: 'rubygems', context, expectedSha256: PUBLICATION_RECOVERY_RUBYGEMS_SHA256 })
+          validatePublicationRecoveryReceipt(JSON.parse(readFileSync(rustFile, 'utf8')), { kind: 'rust', context, expectedSha256: RUST_011_REUSE_SHA256 })
+          NODE
+      - name: Upload read-only recovery proofs
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: publication-recovery-readonly-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/npm-proof.json
+            ${{ runner.temp }}/rubygems-proof.json
+            ${{ runner.temp }}/rust-proof.json
+            ${{ runner.temp }}/recovery-tooling-proof.json
+          if-no-files-found: error
+          retention-days: 365
+      - name: Upload authenticated npm receipt artifact
+        id: npm_receipt
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: release-set-npm-proof-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/npm-proof.json
+          if-no-files-found: error
+          retention-days: 365
+      - name: Upload authenticated RubyGems receipt artifact
+        id: rubygems_receipt
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: release-set-rubygems-proof-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/rubygems-proof.json
+          if-no-files-found: error
+          retention-days: 365
+      - name: Upload authenticated Rust receipt artifact
+        id: rust_receipt
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: release-set-rust-proof-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/rust-proof.json
+          if-no-files-found: error
+          retention-days: 365
+
+  publication-recovery-pypi-preflight:
+    name: Credential-free PyPI recovery preflight
+    needs:
+      - publication-recovery-control
+      - publication-recovery-readonly
+    if: ${{ needs.publication-recovery-control.result == 'success' && needs.publication-recovery-readonly.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Check out C without credentials
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 1
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Download recovery context and read-only proofs
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          artifact-ids: ${{ needs.publication-recovery-control.outputs.context_artifact_id }}
+          path: ${{ runner.temp }}/recovery
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: publication-recovery-readonly-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/recovery-readonly
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12.15'
+      - name: Install credential-free preflight verifier
+        env:
+          VENV: ${{ runner.temp }}/recovery-preflight-venv
+        run: |
+          set -euo pipefail
+          python -m venv --clear "$VENV"
+          "$VENV/bin/python" -m pip install --disable-pip-version-check --no-input pypi-attestations==0.0.30 sigstore==4.5.1 cryptography==50.0.2
+          "$VENV/bin/python" -m pip check
+          "$VENV/bin/python" - <<'PY'
+          import importlib.metadata, importlib.util, pathlib, site, sys
+          from cryptography import x509
+          from pypi_attestations import Distribution, GitHubPublisher, Provenance
+          assert pathlib.Path(sys.prefix).resolve() != pathlib.Path(sys.base_prefix).resolve()
+          assert site.ENABLE_USER_SITE is False
+          assert all(pathlib.Path(path).resolve().is_relative_to(pathlib.Path(sys.prefix).resolve()) for path in site.getsitepackages())
+          assert importlib.util.find_spec('OpenSSL') is None
+          try: importlib.metadata.version('pyOpenSSL'); raise AssertionError('pyOpenSSL distribution is installed')
+          except importlib.metadata.PackageNotFoundError: pass
+          PY
+      - name: Fetch PyPI metadata before entering the protected environment
+        env:
+          CONTEXT: ${{ runner.temp }}/recovery/recovery-context.json
+          RESPONSE: ${{ runner.temp }}/recovery-pypi-preflight-response.json
+          INPUT: ${{ runner.temp }}/recovery-pypi-preflight.json
+          SOURCE_M: ${{ env.PUBLICATION_RECOVERY_SOURCE_M }}
+          CONTROL_COMMIT: ${{ inputs.expected_commit }}
+          VENV: ${{ runner.temp }}/recovery-preflight-venv
+        run: |
+          set -euo pipefail
+          status="$(curl --silent --show-error --max-time 30 --retry 0 --user-agent "$RELEASE_USER_AGENT" --output "$RESPONSE" --write-out '%{http_code}' https://pypi.org/pypi/erpc-sdk/0.11.0/json)"
+          if [ "$status" = 200 ]; then
+            "$VENV/bin/python" - "$RESPONSE" "$RUNNER_TEMP/pypi-existing-proof.json" "$SOURCE_M" "$CONTROL_COMMIT" <<'PY'
+          import hashlib, json, re, sys, urllib.request
+          from pypi_attestations import Distribution, GitHubPublisher, Provenance
+          response, output, source, control = sys.argv[1:]; payload = json.load(open(response, encoding='utf-8')); result = {}
+          for item in payload.get('urls', []):
+              if item.get('filename') not in {'erpc_sdk-0.11.0-py3-none-any.whl', 'erpc_sdk-0.11.0.tar.gz'}: continue
+              filename = item['filename']; digest = item.get('digests', {}).get('sha256'); provenance_url = f"https://pypi.org/integrity/erpc-sdk/0.11.0/{filename}/provenance"
+              with urllib.request.urlopen(item['url'], timeout=30) as handle: archive = handle.read()
+              with urllib.request.urlopen(provenance_url, timeout=30) as handle: provenance = handle.read()
+              if hashlib.sha256(archive).hexdigest() != digest: raise SystemExit(f'PyPI preflight existing bytes mismatch for {filename}')
+              document = Provenance.model_validate_json(provenance); matches = []
+              for bundle in document.attestation_bundles:
+                  for attestation in bundle.attestations:
+                      statement = json.loads(attestation.envelope.statement.decode()); subject = next((s for s in statement.get('subject', []) if s.get('name') == filename and s.get('digest', {}).get('sha256') == digest), None)
+                      if statement.get('predicateType') != 'https://docs.pypi.org/attestations/publish/v1' or subject is None: continue
+                      attestation.verify(GitHubPublisher(repository='elsoul/erpc-sdk', workflow='release.yml', environment='pypi'), Distribution(name=filename, digest=digest)); claims = attestation.certificate_claims; claimed = claims.get('1.3.6.1.4.1.57264.1.13')
+                      if claimed not in {source, control}: raise SystemExit(f'PyPI preflight existing source mismatch for {filename}')
+                      invocation = claims.get('1.3.6.1.4.1.57264.1.21'); match = re.fullmatch(r'https://github\.com/elsoul/erpc-sdk/actions/runs/([1-9][0-9]*)/attempts/([1-9][0-9]*)', invocation or '')
+                      if match is None: raise SystemExit(f'PyPI preflight existing invocation mismatch for {filename}')
+                      matches.append({'repository':'elsoul/erpc-sdk','repositoryId':'1429568627','sourceCommit':claimed,'workflowPath':'.github/workflows/release.yml','ref':'refs/heads/main','event':'workflow_dispatch','environment':'pypi','publisherRunId':match.group(1),'publisherAttempt':match.group(2),'invocation':invocation})
+              if len(matches) != 1: raise SystemExit(f'PyPI preflight existing attestation is not unique for {filename}')
+              result[filename] = {'filename':filename,'sha256':digest,'yanked':item.get('yanked'),'attestationVerified':True,'publisherSourceCommit':matches[0]['sourceCommit'],'publisher':matches[0]}
+          json.dump(result, open(output,'w')); open(output,'a').write('\n')
+          PY
+          else
+            printf '{}\n' > "$RUNNER_TEMP/pypi-existing-proof.json"
+          fi
+          node --input-type=module - "$status" "$RESPONSE" "$RUNNER_TEMP/recovery-readonly/npm-proof.json" "$RUNNER_TEMP/recovery-readonly/rubygems-proof.json" "$RUNNER_TEMP/recovery-readonly/rust-proof.json" "$INPUT" <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs'
+          const [status, responseFile, npmFile, rubyFile, rustFile, output] = process.argv.slice(2); const state = status === '404' ? 'absent' : status === '200' ? 'match' : 'unknown'; const payload = status === '200' ? JSON.parse(readFileSync(responseFile, 'utf8')) : {}; const verified = status === '200' ? JSON.parse(readFileSync(process.env.RUNNER_TEMP + '/pypi-existing-proof.json', 'utf8')) : {}; const expected = new Set(['erpc_sdk-0.11.0-py3-none-any.whl', 'erpc_sdk-0.11.0.tar.gz']); const visible = new Set((payload.urls ?? []).map(item => item.filename)); const missing = [...expected].filter(name => !visible.has(name)); const existing = (payload.urls ?? []).filter(item => expected.has(item.filename)).map(item => { const proof = verified[item.filename]; if (proof === undefined) throw new Error(`PyPI preflight existing proof is missing for ${item.filename}`); return proof }); if (status !== '404' && status !== '200') throw new Error(`PyPI preflight HTTP ${status}`); if (status === '200' && (payload.info?.name !== 'erpc-sdk' || payload.info?.version !== '0.11.0')) throw new Error('PyPI preflight identity conflict'); writeFileSync(output, `${JSON.stringify({ npm: JSON.parse(readFileSync(npmFile, 'utf8')), rubygems: JSON.parse(readFileSync(rubyFile, 'utf8')), rust: JSON.parse(readFileSync(rustFile, 'utf8')), pypi: { state: missing.length === 2 ? 'absent' : missing.length === 0 ? 'match' : 'partial', status: Number(status), absenceGate: status === '404', missing, existing } })}\n`)
+          NODE
+          export PUBLICATION_RECOVERY_CONTEXT_FILE="$CONTEXT" PUBLICATION_RECOVERY_PREFLIGHT_INPUT_FILE="$INPUT" PUBLICATION_RECOVERY_PREFLIGHT_OUTPUT_FILE="$RUNNER_TEMP/recovery-pypi-preflight-checked.json"
+          node scripts/verify-release.mjs --publication-recovery-preflight
+      - name: Upload credential-free preflight evidence
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: publication-recovery-pypi-preflight-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/recovery-pypi-preflight-checked.json
+          if-no-files-found: error
+          retention-days: 365
+
+  publication-recovery-pypi:
+    name: Publish or reuse only the missing PyPI recovery files
+    needs:
+      - publication-recovery-control
+      - publication-recovery-readonly
+      - publication-recovery-pypi-preflight
+    if: ${{ needs.publication-recovery-control.result == 'success' && needs.publication-recovery-readonly.result == 'success' && needs.publication-recovery-pypi-preflight.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    environment: pypi
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    outputs:
+      pypi_receipt_artifact_id: ${{ steps.pypi_receipt.outputs.artifact-id }}
+    steps:
+      - name: Check out C without credentials
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 1
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Download recovery context and read-only proofs
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          artifact-ids: ${{ needs.publication-recovery-control.outputs.context_artifact_id }}
+          path: ${{ runner.temp }}/recovery
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: publication-recovery-readonly-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/recovery-readonly
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: publication-recovery-pypi-preflight-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/recovery-preflight
+      - name: Resolve patched isolated Python runtime before credentials
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12.15'
+      - name: Install and prove exact PyPI verifier runtime
+        env:
+          VENV: ${{ runner.temp }}/recovery-venv
+        run: |
+          set -euo pipefail
+          python -m venv --clear "$VENV"
+          "$VENV/bin/python" -m pip install --disable-pip-version-check --no-input build==1.6.0 pypi-attestations==0.0.30 sigstore==4.5.1 cryptography==50.0.2
+          "$VENV/bin/python" -m pip check
+          "$VENV/bin/python" - <<'PY'
+          from cryptography import x509
+          from pypi_attestations import Distribution, GitHubPublisher, Provenance
+          import importlib.metadata, importlib.util, pathlib, site, sys
+          assert sys.version.startswith('3.12.15')
+          assert importlib.metadata.version('build') == '1.6.0'
+          assert importlib.metadata.version('pypi-attestations') == '0.0.30'
+          assert importlib.metadata.version('sigstore') == '4.5.1'
+          assert importlib.metadata.version('cryptography') == '50.0.2'
+          assert pathlib.Path(sys.prefix).resolve() != pathlib.Path(sys.base_prefix).resolve()
+          assert site.ENABLE_USER_SITE is False
+          assert all(pathlib.Path(path).resolve().is_relative_to(pathlib.Path(sys.prefix).resolve()) for path in site.getsitepackages())
+          assert importlib.util.find_spec('OpenSSL') is None
+          try: importlib.metadata.version('pyOpenSSL'); raise AssertionError('pyOpenSSL distribution is installed')
+          except importlib.metadata.PackageNotFoundError: pass
+          PY
+      - name: Preflight PyPI and stage only exact missing original bytes
+        id: preflight
+        env:
+          PLAN: ${{ runner.temp }}/recovery/recovery-bundle/release-set-plan.json
+          BUNDLE: ${{ runner.temp }}/recovery/recovery-bundle
+          STAGE: ${{ runner.temp }}/recovery-pypi-stage
+          INPUT: ${{ runner.temp }}/recovery-pypi-input.json
+          RESPONSE: ${{ runner.temp }}/recovery-pypi.json
+          PUBLICATION_RECOVERY_SOURCE_M: ${{ env.PUBLICATION_RECOVERY_SOURCE_M }}
+          PUBLICATION_RECOVERY_CONTROL_COMMIT: ${{ inputs.expected_commit }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$STAGE"
+          version=0.11.0
+          status="$(curl --silent --show-error --max-time 30 --retry 0 --user-agent "$RELEASE_USER_AGENT" --output "$RESPONSE" --write-out '%{http_code}' "https://pypi.org/pypi/erpc-sdk/$version/json")"
+          if [ "$status" = 200 ]; then
+            "$RUNNER_TEMP/recovery-venv/bin/python" - "$RESPONSE" "$RUNNER_TEMP/pypi-existing-proof.json" "$PUBLICATION_RECOVERY_SOURCE_M" "$PUBLICATION_RECOVERY_CONTROL_COMMIT" <<'PY'
+          import json, re, sys, urllib.request
+          from cryptography import x509
+          from pypi_attestations import Distribution, GitHubPublisher, Provenance
+          response, output, source, control = sys.argv[1:]
+          payload = json.load(open(response, encoding='utf-8'))
+          expected = {item['filename']: item for item in payload['urls'] if item.get('filename') in {'erpc_sdk-0.11.0-py3-none-any.whl', 'erpc_sdk-0.11.0.tar.gz'}}
+          result = {}
+          for filename, item in expected.items():
+              digest = item.get('digests', {}).get('sha256')
+              provenance_url = f"https://pypi.org/integrity/erpc-sdk/0.11.0/{filename}/provenance"
+              with urllib.request.urlopen(item['url'], timeout=30) as handle: archive = handle.read()
+              with urllib.request.urlopen(provenance_url, timeout=30) as handle: provenance = handle.read()
+              if __import__('hashlib').sha256(archive).hexdigest() != digest: raise SystemExit(f'PyPI existing bytes mismatch for {filename}')
+              document = Provenance.model_validate_json(provenance)
+              matches = []
+              for bundle in document.attestation_bundles:
+                  for attestation in bundle.attestations:
+                      statement = json.loads(attestation.envelope.statement.decode())
+                      subject = next((s for s in statement.get('subject', []) if s.get('name') == filename and s.get('digest', {}).get('sha256') == digest), None)
+                      if statement.get('predicateType') != 'https://docs.pypi.org/attestations/publish/v1' or subject is None: continue
+                      attestation.verify(GitHubPublisher(repository='elsoul/erpc-sdk', workflow='release.yml', environment='pypi'), Distribution(name=filename, digest=digest))
+                      claims = attestation.certificate_claims
+                      claimed_source = claims.get('1.3.6.1.4.1.57264.1.13')
+                      if claimed_source not in {source, control}: raise SystemExit(f'PyPI existing publisher source mismatch for {filename}')
+                      matches.append(claims)
+              if len(matches) != 1: raise SystemExit(f'PyPI existing attestation is not unique for {filename}')
+              invocation = matches[0].get('1.3.6.1.4.1.57264.1.21')
+              match = re.fullmatch(r'https://github\.com/elsoul/erpc-sdk/actions/runs/([1-9][0-9]*)/attempts/([1-9][0-9]*)', invocation or '')
+              if match is None: raise SystemExit(f'PyPI existing publisher invocation is invalid for {filename}')
+              publisher_source = matches[0].get('1.3.6.1.4.1.57264.1.13')
+              result[filename] = {'filename': filename, 'sha256': digest, 'yanked': item.get('yanked'), 'attestationVerified': True, 'publisherSourceCommit': publisher_source, 'publisher': {'repository': 'elsoul/erpc-sdk', 'repositoryId': '1429568627', 'sourceCommit': publisher_source, 'workflowPath': '.github/workflows/release.yml', 'ref': 'refs/heads/main', 'event': 'workflow_dispatch', 'environment': 'pypi', 'publisherRunId': match.group(1), 'publisherAttempt': match.group(2), 'invocation': invocation}}
+          json.dump(result, open(output, 'w', encoding='utf-8')); open(output, 'a', encoding='utf-8').write('\n')
+          PY
+          fi
+          node --input-type=module - "$status" "$RESPONSE" "$PLAN" "$BUNDLE" "$STAGE" "$INPUT" <<'NODE'
+          import { copyFileSync, readFileSync, writeFileSync } from 'node:fs'
+          import { join } from 'node:path'
+          import { createHash } from 'node:crypto'
+          const [status, responseFile, planFile, bundle, stage, output] = process.argv.slice(2)
+          const plan = JSON.parse(readFileSync(planFile, 'utf8'))
+          const expected = Object.fromEntries(plan.artifacts.filter(item => item.kind.startsWith('pypi')).map(item => [item.filename, item.sha256]))
+          const missing = []; const existing = []; const verifiedExisting = status === '200' ? JSON.parse(readFileSync(process.env.RUNNER_TEMP + '/pypi-existing-proof.json', 'utf8')) : {}
+          let payload = {}
+          if (status === '200') {
+            payload = JSON.parse(readFileSync(responseFile, 'utf8'))
+            if (payload.info?.name !== 'erpc-sdk' || payload.info?.version !== '0.11.0' || !Array.isArray(payload.urls)) throw new Error('PyPI metadata identity conflict')
+            for (const [filename, digest] of Object.entries(expected)) {
+              const item = payload.urls.find(candidate => candidate.filename === filename)
+              if (item === undefined) { missing.push(filename); continue }
+              if (item.yanked !== false || item.digests?.sha256 !== digest || typeof item.url !== 'string' || !item.url.startsWith('https://files.pythonhosted.org/')) throw new Error(`PyPI conflict for ${filename}`)
+              const verified = verifiedExisting[filename]
+              if (verified === undefined) throw new Error(`PyPI existing proof is missing for ${filename}`)
+              existing.push(verified)
+            }
+          } else if (status === '404') {
+            missing.push(...Object.keys(expected))
+          } else throw new Error(`PyPI preflight stopped in HTTP ${status}`)
+          for (const filename of missing) {
+            copyFileSync(join(bundle, filename), join(stage, filename))
+            const digest = createHash('sha256').update(readFileSync(join(stage, filename))).digest('hex')
+            if (digest !== expected[filename]) throw new Error(`staged PyPI digest mismatch for ${filename}`)
+          }
+          const state = status === '404' ? 'absent' : missing.length === 0 ? 'match' : 'partial'
+          const readonly = name => JSON.parse(readFileSync(join(process.env.RUNNER_TEMP, `recovery-readonly/${name}`), 'utf8'))
+          writeFileSync(output, `${JSON.stringify({ npm: readonly('npm-proof.json'), rubygems: readonly('rubygems-proof.json'), rust: readonly('rust-proof.json'), pypi: { state, status: Number(status), absenceGate: status === '404', missing, existing } })}\n`)
+          console.log(`state=${state}`)
+          console.log(`missing=${missing.length > 0}`)
+          NODE
+          state="$(jq -r .pypi.state "$INPUT")"
+          missing="$(jq -r '.pypi.missing | length' "$INPUT")"
+          export PUBLICATION_RECOVERY_CONTEXT_FILE="$RUNNER_TEMP/recovery/recovery-context.json" PUBLICATION_RECOVERY_PREFLIGHT_INPUT_FILE="$INPUT" PUBLICATION_RECOVERY_PREFLIGHT_OUTPUT_FILE="$RUNNER_TEMP/recovery-pypi-preflight-checked.json"
+          node scripts/verify-release.mjs --publication-recovery-preflight
+          echo "state=$state" >> "$GITHUB_OUTPUT"
+          echo "missing=$([ "$missing" -gt 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+      - name: Recheck live main C immediately before any PyPI credential request
+        if: steps.preflight.outputs.missing == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CONTEXT: ${{ runner.temp }}/recovery/recovery-context.json
+        run: |
+          set -euo pipefail
+          test "$(gh api "/repos/$EXPECTED_REPOSITORY/git/ref/heads/main" --jq '.object.sha')" = "$(jq -r .controlCommit "$CONTEXT")"
+          test "$(git rev-parse HEAD)" = "$(jq -r .controlCommit "$CONTEXT")"
+      - name: Upload missing PyPI bytes exactly once with Trusted Publishing
+        if: steps.preflight.outputs.missing == 'true'
+        id: pypi_upload
+        continue-on-error: true
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
+        with:
+          packages-dir: ${{ runner.temp }}/recovery-pypi-stage
+          attestations: true
+      - name: Observe PyPI bytes, attestations, and fresh consumers
+        if: always() && (steps.preflight.outputs.state == 'absent' || steps.preflight.outputs.state == 'partial' || steps.preflight.outputs.state == 'match')
+        env:
+          CONTEXT: ${{ runner.temp }}/recovery/recovery-context.json
+          PLAN: ${{ runner.temp }}/recovery/recovery-bundle/release-set-plan.json
+          VENV: ${{ runner.temp }}/recovery-venv
+          PUBLISHER_FILE: ${{ runner.temp }}/recovery-pypi-publishers.json
+          OUTPUT: ${{ runner.temp }}/pypi-proof.json
+          WORK: ${{ runner.temp }}/recovery-pypi-observer
+          PYPI_UPLOAD_OUTCOME: ${{ steps.pypi_upload.outcome }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$WORK"
+          pypi_state="$(jq -r .pypi.state "$RUNNER_TEMP/recovery-pypi-input.json")"
+          export PYPI_STATE="$pypi_state"
+          node --input-type=module - "$PUBLISHER_FILE" "$RUNNER_TEMP/recovery-pypi-publisher-sources.json" <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs'
+          const context = JSON.parse(readFileSync(process.env.CONTEXT, 'utf8'))
+          const plan = JSON.parse(readFileSync(process.env.PLAN, 'utf8'))
+          const preflight = JSON.parse(readFileSync(process.env.RUNNER_TEMP + '/recovery-pypi-input.json', 'utf8')); const existing = Object.fromEntries((preflight.pypi.existing ?? []).map(item => [item.filename, item]))
+          const current = { repository: 'elsoul/erpc-sdk', repositoryId: '1429568627', sourceCommit: context.controlCommit, workflowPath: '.github/workflows/release.yml', ref: 'refs/heads/main', event: 'workflow_dispatch', environment: 'pypi', publisherRunId: process.env.GITHUB_RUN_ID, publisherAttempt: process.env.GITHUB_RUN_ATTEMPT }
+          const result = {}; const sources = {}; const projectPublisher = publisher => Object.fromEntries(['repository', 'repositoryId', 'sourceCommit', 'workflowPath', 'ref', 'event', 'environment', 'publisherRunId', 'publisherAttempt'].map(key => [key, publisher[key]]))
+          for (const item of plan.artifacts.filter(item => item.kind.startsWith('pypi'))) { result[item.filename] = existing[item.filename]?.publisher === undefined ? current : projectPublisher(existing[item.filename].publisher); sources[item.filename] = result[item.filename].sourceCommit }
+          writeFileSync(process.argv[2], `${JSON.stringify(result)}\n`); writeFileSync(process.argv[3], `${JSON.stringify(sources)}\n`)
+          NODE
+          export PUBLICATION_RECOVERY_CONTEXT_FILE="$CONTEXT" PUBLICATION_RECOVERY_PLAN_FILE="$PLAN" PUBLICATION_RECOVERY_PUBLISHERS_FILE="$PUBLISHER_FILE" PUBLICATION_RECOVERY_PUBLISHER_SOURCES_FILE="$RUNNER_TEMP/recovery-pypi-publisher-sources.json" PUBLICATION_RECOVERY_OBSERVER_RUN_ID="$GITHUB_RUN_ID" PUBLICATION_RECOVERY_OBSERVER_ATTEMPT="$GITHUB_RUN_ATTEMPT" PUBLICATION_RECOVERY_WORK_DIR="$WORK" PUBLICATION_RECOVERY_OUTPUT_FILE="$OUTPUT" PUBLICATION_RECOVERY_PYTHON="$VENV/bin/python"
+          if [ "$PYPI_STATE" = match ]; then
+            node scripts/verify-release.mjs --publication-recovery-pypi-existing-observe
+          else
+            node scripts/verify-release.mjs --publication-recovery-pypi-observe
+          fi
+          node --input-type=module - "$OUTPUT" "$CONTEXT" <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs'
+          const [output, contextFile] = process.argv.slice(2); const receipt = JSON.parse(readFileSync(output, 'utf8')); const context = JSON.parse(readFileSync(contextFile, 'utf8'))
+          const existing = process.env.PYPI_STATE === 'match'; receipt.auth = existing ? { requested: false, uploadAttempted: false, uploadOutcome: 'not-requested' } : { requested: process.env.PYPI_UPLOAD_OUTCOME !== 'skipped', uploadAttempted: process.env.PYPI_UPLOAD_OUTCOME !== 'skipped', uploadOutcome: process.env.PYPI_UPLOAD_OUTCOME ?? 'not-requested' }
+          receipt.recoveryContextSha256 = context.contextSha256
+          writeFileSync(output, `${JSON.stringify(receipt)}\n`)
+          NODE
+      - name: Upload PyPI recovery proof and publication outcome
+        if: always()
+        id: pypi_receipt
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: release-set-pypi-proof-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/pypi-proof.json
+          if-no-files-found: error
+          retention-days: 365
+
+  publication-recovery-finalize:
+    name: Finalize M-targeted tags Go proof and exact public Release
+    needs:
+      - publication-recovery-control
+      - publication-recovery-readonly
+      - publication-recovery-pypi
+    if: ${{ needs.publication-recovery-control.result == 'success' && needs.publication-recovery-readonly.result == 'success' && needs.publication-recovery-pypi.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - name: Check out C without credentials
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 1
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Download immutable recovery context and package proofs
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          artifact-ids: ${{ needs.publication-recovery-control.outputs.context_artifact_id }}
+          path: ${{ runner.temp }}/recovery
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: publication-recovery-readonly-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/recovery-readonly
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: release-set-pypi-proof-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/recovery-pypi
+      - name: Authenticate package proofs before any GitHub ref or Release write
+        env:
+          CONTEXT: ${{ runner.temp }}/recovery/recovery-context.json
+          NPM: ${{ runner.temp }}/recovery-readonly/npm-proof.json
+          RUBY: ${{ runner.temp }}/recovery-readonly/rubygems-proof.json
+          RUST: ${{ runner.temp }}/recovery-readonly/rust-proof.json
+          PYPI: ${{ runner.temp }}/recovery-pypi/pypi-proof.json
+        run: |
+          set -euo pipefail
+          node --input-type=module - "$CONTEXT" "$NPM" "$RUBY" "$RUST" "$PYPI" <<'NODE'
+          import { readFileSync } from 'node:fs'
+          import { validatePublicationRecoveryContext, validatePublicationRecoveryReceipt, PUBLICATION_RECOVERY_NPM_SHA256, PUBLICATION_RECOVERY_RUBYGEMS_SHA256, RUST_011_REUSE_SHA256 } from './scripts/verify-release.mjs'
+          const [contextFile, npmFile, rubyFile, rustFile, pypiFile] = process.argv.slice(2); const context = JSON.parse(readFileSync(contextFile, 'utf8'))
+          validatePublicationRecoveryContext(context, { requireCiProof: true })
+          validatePublicationRecoveryReceipt(JSON.parse(readFileSync(npmFile, 'utf8')), { kind: 'npm', context, expectedSha256: PUBLICATION_RECOVERY_NPM_SHA256 })
+          validatePublicationRecoveryReceipt(JSON.parse(readFileSync(rubyFile, 'utf8')), { kind: 'rubygems', context, expectedSha256: PUBLICATION_RECOVERY_RUBYGEMS_SHA256 })
+          validatePublicationRecoveryReceipt(JSON.parse(readFileSync(rustFile, 'utf8')), { kind: 'rust', context, expectedSha256: RUST_011_REUSE_SHA256 })
+          const pypiReceipt = JSON.parse(readFileSync(pypiFile, 'utf8')); const pypiSources = Object.fromEntries(Object.entries(pypiReceipt.publishers ?? {}).map(([filename, publisher]) => [filename, publisher.sourceCommit])); validatePublicationRecoveryReceipt(pypiReceipt, { kind: 'pypi', context, pypiPublisherSources: pypiSources })
+          NODE
+      - name: Install Go and patched isolated Python runtime for final public proof
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: '1.22.x'
+          cache: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12.15'
+      - name: Resolve final proof runtime
+        env:
+          VENV: ${{ runner.temp }}/recovery-venv
+        run: |
+          set -euo pipefail
+          python -m venv --clear "$VENV"
+          "$VENV/bin/python" -m pip install --disable-pip-version-check --no-input build==1.6.0 pypi-attestations==0.0.30 sigstore==4.5.1 cryptography==50.0.2
+          "$VENV/bin/python" -m pip check
+          "$VENV/bin/python" - <<'PY'
+          import importlib.metadata, importlib.util, pathlib, site, sys
+          from cryptography import x509
+          from pypi_attestations import Distribution, GitHubPublisher, Provenance
+          assert pathlib.Path(sys.prefix).resolve() != pathlib.Path(sys.base_prefix).resolve()
+          assert site.ENABLE_USER_SITE is False
+          assert all(pathlib.Path(path).resolve().is_relative_to(pathlib.Path(sys.prefix).resolve()) for path in site.getsitepackages())
+          assert importlib.util.find_spec('OpenSSL') is None
+          try: importlib.metadata.version('pyOpenSSL'); raise AssertionError('pyOpenSSL distribution is installed')
+          except importlib.metadata.PackageNotFoundError: pass
+          PY
+      - name: Recheck live main C immediately before tag writes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CONTEXT: ${{ runner.temp }}/recovery/recovery-context.json
+        run: |
+          set -euo pipefail
+          test "$(gh api "/repos/$EXPECTED_REPOSITORY/git/ref/heads/main" --jq '.object.sha')" = "$(jq -r .controlCommit "$CONTEXT")"
+          test "$(git rev-parse HEAD)" = "$(jq -r .controlCommit "$CONTEXT")"
+      - name: Authenticate package receipt artifacts before any tag write
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CONTEXT: ${{ runner.temp }}/recovery/recovery-context.json
+          PLAN: ${{ runner.temp }}/recovery/recovery-bundle/release-set-plan.json
+          PYPI_PROOF: ${{ runner.temp }}/recovery-pypi/pypi-proof.json
+          NPM_ID: ${{ needs.publication-recovery-readonly.outputs.npm_receipt_artifact_id }}
+          PYPI_ID: ${{ needs.publication-recovery-pypi.outputs.pypi_receipt_artifact_id }}
+          RUBY_ID: ${{ env.PUBLICATION_RECOVERY_ORIGINAL_RUBYGEMS_RECEIPT_ARTIFACT_ID }}
+          RUST_ID: ${{ needs.publication-recovery-readonly.outputs.rust_receipt_artifact_id }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/recovery-pretag-meta" "$RUNNER_TEMP/recovery-pretag-work"
+          for pair in npm:$NPM_ID pypi:$PYPI_ID rubygems:$RUBY_ID rust:$RUST_ID; do name="${pair%%:*}"; id="${pair#*:}"; test -n "$id"; gh api "/repos/$EXPECTED_REPOSITORY/actions/artifacts/$id" > "$RUNNER_TEMP/recovery-pretag-meta/$name.json"; done
+          node --input-type=module - "$RUNNER_TEMP/recovery-pretag-meta" "$RUNNER_TEMP/recovery-pretag-receipts.json" "$RUNNER_TEMP/recovery-pretag-publishers.json" "$RUNNER_TEMP/recovery-observer-sources.json" <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs'; const [directory, output, publisherOutput, observerOutput] = process.argv.slice(2); const source = process.env.PUBLICATION_RECOVERY_SOURCE_M; const control = process.env.GITHUB_SHA; const producer = { repository: 'elsoul/erpc-sdk', repositoryId: '1429568627', workflowPath: '.github/workflows/release.yml', sourceCommit: control, runId: process.env.GITHUB_RUN_ID, runAttempt: process.env.GITHUB_RUN_ATTEMPT, ref: 'refs/heads/main', event: 'workflow_dispatch' }; const original = { repository: 'elsoul/erpc-sdk', repositoryId: '1429568627', workflowPath: '.github/workflows/release.yml', sourceCommit: source, runId: process.env.PUBLICATION_RECOVERY_ORIGINAL_PUBLICATION_RUN_ID, runAttempt: process.env.PUBLICATION_RECOVERY_ORIGINAL_PUBLICATION_RUN_ATTEMPT, ref: 'refs/heads/main', event: 'workflow_dispatch' }; const names = { npm: 'npm-proof.json', pypi: 'pypi-proof.json', rubygems: 'rubygems-proof.json', rust: 'rust-proof.json' }; const result = {}; for (const [key, filename] of Object.entries(names)) { const metadata = JSON.parse(readFileSync(`${directory}/${key}.json`, 'utf8')); result[filename] = { artifactId: String(metadata.id), artifactName: metadata.name, sha256: metadata.digest.slice('sha256:'.length), sizeInBytes: metadata.size_in_bytes, producer: key === 'rubygems' ? original : producer } } const pypi = JSON.parse(readFileSync(process.env.PYPI_PROOF, 'utf8')); const sources = Object.fromEntries(Object.entries(pypi.publishers ?? {}).map(([filename, publisher]) => [filename, publisher.sourceCommit])); writeFileSync(output, `${JSON.stringify(result)}\n`); writeFileSync(publisherOutput, `${JSON.stringify(sources)}\n`); writeFileSync(observerOutput, `${JSON.stringify({'rubygems-proof.json': source})}\n`)
+          NODE
+          exec {RECOVERY_READ_FD}<<<"$GH_TOKEN"
+          export PUBLICATION_RECOVERY_CONTEXT_FILE="$CONTEXT" PUBLICATION_RECOVERY_PLAN_FILE="$PLAN" PUBLICATION_RECOVERY_RECEIPT_ARTIFACTS_FILE="$RUNNER_TEMP/recovery-pretag-receipts.json" PUBLICATION_RECOVERY_RECEIPT_FILENAMES='npm-proof.json,pypi-proof.json,rubygems-proof.json,rust-proof.json' PUBLICATION_RECOVERY_PUBLISHER_SOURCES_FILE="$RUNNER_TEMP/recovery-pretag-publishers.json" PUBLICATION_RECOVERY_OBSERVER_SOURCES_FILE="$RUNNER_TEMP/recovery-observer-sources.json" PUBLICATION_RECOVERY_READ_TOKEN_FD="$RECOVERY_READ_FD" PUBLICATION_RECOVERY_RECEIPT_WORK_DIR="$RUNNER_TEMP/recovery-pretag-work" PUBLICATION_RECOVERY_RECEIPT_OBSERVATION_FILE="$RUNNER_TEMP/recovery-pretag-observation.json" PUBLICATION_RECOVERY_OBSERVER_RUN_ID="$GITHUB_RUN_ID" PUBLICATION_RECOVERY_OBSERVER_ATTEMPT="$GITHUB_RUN_ATTEMPT"
+          node scripts/verify-release.mjs --publication-recovery-receipts
+      - name: Create or accept exact M-targeted tags after all package proofs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_M: ${{ env.PUBLICATION_RECOVERY_SOURCE_M }}
+          PLAN: ${{ runner.temp }}/recovery/recovery-bundle/release-set-plan.json
+        run: |
+          set -euo pipefail
+          ensure_tag() {
+            local tag="$1" encoded="$2" body status
+            body="$RUNNER_TEMP/tag-${tag//\//_}.json"
+            status="$(curl --silent --show-error --max-time 30 --retry 0 --header "Authorization: Bearer $GH_TOKEN" --header 'Accept: application/vnd.github+json' --user-agent "$RELEASE_USER_AGENT" --output "$body" --write-out '%{http_code}' "https://api.github.com/repos/$EXPECTED_REPOSITORY/git/ref/tags/$encoded")"
+            if [ "$status" = 404 ]; then
+              gh api --method POST "/repos/$EXPECTED_REPOSITORY/git/refs" -f "ref=refs/tags/$tag" -f "sha=$SOURCE_M" > "$body"
+            elif [ "$status" != 200 ]; then
+              echo "tag preflight stopped in HTTP $status" >&2
+              exit 1
+            fi
+            jq -e --arg sha "$SOURCE_M" '.ref == ("refs/tags/" + $tag) and .object.type == "commit" and .object.sha == $sha' --arg tag "$tag" "$body" >/dev/null
+            curl --fail --silent --show-error --max-time 30 --retry 0 --header "Authorization: Bearer $GH_TOKEN" --header 'Accept: application/vnd.github+json' --user-agent "$RELEASE_USER_AGENT" "https://api.github.com/repos/$EXPECTED_REPOSITORY/git/ref/tags/$encoded" > "$body.recheck"
+            jq -e --arg sha "$SOURCE_M" '.object.type == "commit" and .object.sha == $sha' "$body.recheck" >/dev/null
+          }
+          ensure_tag non-rust-v0.11.0 non-rust-v0.11.0
+          ensure_tag packages/go/v0.11.0 packages/go/v0.11.0
+          node --input-type=module - "$PLAN" "$RUNNER_TEMP/tag-names.json" <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs'; import { validatePublicationRecoveryTagTargets } from './scripts/verify-release.mjs'
+          const plan = JSON.parse(readFileSync(process.argv[2], 'utf8')); const checked = validatePublicationRecoveryTagTargets({ plan, releaseTag: 'non-rust-v0.11.0', goTag: 'packages/go/v0.11.0', releaseCommit: process.env.SOURCE_M, goCommit: process.env.SOURCE_M }); writeFileSync(process.argv[3], `${JSON.stringify(checked)}\n`)
+          NODE
+      - name: Observe Go proxy/direct bytes and consumers against M
+        env:
+          CONTEXT: ${{ runner.temp }}/recovery/recovery-context.json
+          PLAN: ${{ runner.temp }}/recovery/recovery-bundle/release-set-plan.json
+          VENV: ${{ runner.temp }}/recovery-venv
+          WORK: ${{ runner.temp }}/recovery-go
+          OUTPUT: ${{ runner.temp }}/go-proof.json
+        run: |
+          set -euo pipefail
+          mkdir -p "$WORK"
+          recovery_go="$(command -v go)"; recovery_git="$(command -v git)"
+          export PUBLICATION_RECOVERY_CONTEXT_FILE="$CONTEXT" PUBLICATION_RECOVERY_PLAN_FILE="$PLAN" PUBLICATION_RECOVERY_OBSERVER_RUN_ID="$GITHUB_RUN_ID" PUBLICATION_RECOVERY_OBSERVER_ATTEMPT="$GITHUB_RUN_ATTEMPT" PUBLICATION_RECOVERY_WORK_DIR="$WORK" PUBLICATION_RECOVERY_OUTPUT_FILE="$OUTPUT" PUBLICATION_RECOVERY_GO="$recovery_go" PUBLICATION_RECOVERY_GIT="$recovery_git" PUBLICATION_RECOVERY_PYTHON="$VENV/bin/python"
+          node scripts/verify-release.mjs --publication-recovery-go-observe
+          node --input-type=module - "$OUTPUT" "$CONTEXT" <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs'
+          const [output, contextFile] = process.argv.slice(2); const receipt = JSON.parse(readFileSync(output, 'utf8')); const context = JSON.parse(readFileSync(contextFile, 'utf8')); receipt.recoveryContextSha256 = context.contextSha256; writeFileSync(output, `${JSON.stringify(receipt)}\n`)
+          NODE
+      - name: Build immutable tag proof and recovery manifest
+        env:
+          CONTEXT: ${{ runner.temp }}/recovery/recovery-context.json
+          PLAN: ${{ runner.temp }}/recovery/recovery-bundle/release-set-plan.json
+          BUNDLE: ${{ runner.temp }}/recovery/recovery-bundle
+          NPM: ${{ runner.temp }}/recovery-readonly/npm-proof.json
+          RUBY: ${{ runner.temp }}/recovery-readonly/rubygems-proof.json
+          RUST: ${{ runner.temp }}/recovery-readonly/rust-proof.json
+          PYPI: ${{ runner.temp }}/recovery-pypi/pypi-proof.json
+          GO: ${{ runner.temp }}/go-proof.json
+          OUT: ${{ runner.temp }}/recovery-assets
+        run: |
+          set -euo pipefail
+          mkdir -p "$OUT"
+          cp "$NPM" "$OUT/npm-proof.json"; cp "$RUBY" "$OUT/rubygems-proof.json"; cp "$RUST" "$OUT/rust-proof.json"; cp "$PYPI" "$OUT/pypi-proof.json"; cp "$GO" "$OUT/go-proof.json"
+          node --input-type=module - "$CONTEXT" "$OUT/tag-proof.json" <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs'
+          const [contextFile, output] = process.argv.slice(2); const context = JSON.parse(readFileSync(contextFile, 'utf8')); const source = context.sourceM
+          writeFileSync(output, `${JSON.stringify({ schemaVersion: 1, kind: 'tag-public-observation', state: 'observed', complete: true, repository: 'elsoul/erpc-sdk', repositoryId: '1429568627', planSha256: context.planSha256, preparation: context.preparation, observer: { runId: process.env.GITHUB_RUN_ID, runAttempt: process.env.GITHUB_RUN_ATTEMPT, workflowPath: '.github/workflows/release.yml', sourceCommit: context.controlCommit }, tags: { release: { ref: 'refs/tags/non-rust-v0.11.0', type: 'commit', sha: source, recheck: { ref: 'refs/tags/non-rust-v0.11.0', type: 'commit', sha: source } }, go: { ref: 'refs/tags/packages/go/v0.11.0', type: 'commit', sha: source, recheck: { ref: 'refs/tags/packages/go/v0.11.0', type: 'commit', sha: source } } }, auth: { requested: false, uploadAttempted: false }, recoveryContextSha256: context.contextSha256, observedAt: new Date().toISOString() })}\n`)
+          NODE
+          cp "$BUNDLE/release-body.md" "$OUT/release-body.md"; cp "$BUNDLE/go-inventory.json" "$OUT/go-inventory.json"
+      - name: Recheck every receipt before Release effects
+        env:
+          CONTEXT: ${{ runner.temp }}/recovery/recovery-context.json
+          NPM: ${{ runner.temp }}/recovery-assets/npm-proof.json
+          RUBY: ${{ runner.temp }}/recovery-assets/rubygems-proof.json
+          RUST: ${{ runner.temp }}/recovery-assets/rust-proof.json
+          PYPI: ${{ runner.temp }}/recovery-assets/pypi-proof.json
+          GO: ${{ runner.temp }}/recovery-assets/go-proof.json
+          TAG: ${{ runner.temp }}/recovery-assets/tag-proof.json
+        run: |
+          set -euo pipefail
+          node --input-type=module - "$CONTEXT" "$NPM" "$RUBY" "$RUST" "$PYPI" "$GO" "$TAG" <<'NODE'
+          import { readFileSync } from 'node:fs'; import { validatePublicationRecoveryContext, validatePublicationRecoveryReceipt, PUBLICATION_RECOVERY_NPM_SHA256, PUBLICATION_RECOVERY_RUBYGEMS_SHA256, RUST_011_REUSE_SHA256 } from './scripts/verify-release.mjs'
+          const [contextFile, npmFile, rubyFile, rustFile, pypiFile, goFile, tagFile] = process.argv.slice(2); const context = JSON.parse(readFileSync(contextFile, 'utf8')); validatePublicationRecoveryContext(context, { requireCiProof: true }); validatePublicationRecoveryReceipt(JSON.parse(readFileSync(npmFile, 'utf8')), { kind: 'npm', context, expectedSha256: PUBLICATION_RECOVERY_NPM_SHA256 }); validatePublicationRecoveryReceipt(JSON.parse(readFileSync(rubyFile, 'utf8')), { kind: 'rubygems', context, expectedSha256: PUBLICATION_RECOVERY_RUBYGEMS_SHA256 }); validatePublicationRecoveryReceipt(JSON.parse(readFileSync(rustFile, 'utf8')), { kind: 'rust', context, expectedSha256: RUST_011_REUSE_SHA256 }); const pypiReceipt = JSON.parse(readFileSync(pypiFile, 'utf8')); const pypiSources = Object.fromEntries(Object.entries(pypiReceipt.publishers ?? {}).map(([filename, publisher]) => [filename, publisher.sourceCommit])); validatePublicationRecoveryReceipt(pypiReceipt, { kind: 'pypi', context, pypiPublisherSources: pypiSources }); validatePublicationRecoveryReceipt(JSON.parse(readFileSync(goFile, 'utf8')), { kind: 'go', context }); validatePublicationRecoveryReceipt(JSON.parse(readFileSync(tagFile, 'utf8')), { kind: 'tag', context });
+          NODE
+      - name: Upload authenticated Go receipt artifact
+        id: go_receipt
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: release-set-go-proof-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/recovery-assets/go-proof.json
+          if-no-files-found: error
+          retention-days: 365
+      - name: Upload authenticated tag receipt artifact
+        id: tag_receipt
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: release-set-tag-proof-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/recovery-assets/tag-proof.json
+          if-no-files-found: error
+          retention-days: 365
+      - name: Download and preserve original Ruby receipt bytes
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          artifact-ids: ${{ env.PUBLICATION_RECOVERY_ORIGINAL_RUBYGEMS_RECEIPT_ARTIFACT_ID }}
+          run-id: ${{ env.PUBLICATION_RECOVERY_ORIGINAL_PUBLICATION_RUN_ID }}
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          path: ${{ runner.temp }}/recovery-original-ruby
+      - name: Prepare receipt-only snapshot input
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/recovery-snapshot-input"
+          cp "$RUNNER_TEMP/recovery-assets/npm-proof.json" "$RUNNER_TEMP/recovery-snapshot-input/npm-proof.json"
+          cp "$RUNNER_TEMP/recovery-assets/pypi-proof.json" "$RUNNER_TEMP/recovery-snapshot-input/pypi-proof.json"
+          cp "$RUNNER_TEMP/recovery-original-ruby/rubygems-proof.json" "$RUNNER_TEMP/recovery-snapshot-input/rubygems-proof.json"
+          cp "$RUNNER_TEMP/recovery-assets/rust-proof.json" "$RUNNER_TEMP/recovery-snapshot-input/rust-proof.json"
+          cp "$RUNNER_TEMP/recovery-assets/tag-proof.json" "$RUNNER_TEMP/recovery-snapshot-input/tag-proof.json"
+          cp "$RUNNER_TEMP/recovery-assets/go-proof.json" "$RUNNER_TEMP/recovery-snapshot-input/go-proof.json"
+      - name: Upload current receipt-only snapshot artifact
+        id: snapshot_receipt
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: release-set-proof-receipts-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/recovery-snapshot-input
+          if-no-files-found: error
+          retention-days: 365
+      - name: Authenticate receipt artifacts and snapshot with strict lineage verifier
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CONTEXT: ${{ runner.temp }}/recovery/recovery-context.json
+          PLAN: ${{ runner.temp }}/recovery/recovery-bundle/release-set-plan.json
+          OUT: ${{ runner.temp }}/recovery-assets
+          NPM_ID: ${{ needs.publication-recovery-readonly.outputs.npm_receipt_artifact_id }}
+          PYPI_ID: ${{ needs.publication-recovery-pypi.outputs.pypi_receipt_artifact_id }}
+          RUBY_ID: ${{ env.PUBLICATION_RECOVERY_ORIGINAL_RUBYGEMS_RECEIPT_ARTIFACT_ID }}
+          RUST_ID: ${{ needs.publication-recovery-readonly.outputs.rust_receipt_artifact_id }}
+          TAG_ID: ${{ steps.tag_receipt.outputs.artifact-id }}
+          GO_ID: ${{ steps.go_receipt.outputs.artifact-id }}
+          SNAPSHOT_ID: ${{ steps.snapshot_receipt.outputs.artifact-id }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/recovery-artifact-meta" "$RUNNER_TEMP/recovery-receipt-output" "$RUNNER_TEMP/recovery-snapshot-work"
+          for pair in npm:$NPM_ID pypi:$PYPI_ID rubygems:$RUBY_ID rust:$RUST_ID tag:$TAG_ID go:$GO_ID snapshot:$SNAPSHOT_ID; do
+            name="${pair%%:*}"; id="${pair#*:}"; test -n "$id"; gh api "/repos/$EXPECTED_REPOSITORY/actions/artifacts/$id" > "$RUNNER_TEMP/recovery-artifact-meta/$name.json"
+          done
+          node --input-type=module - "$RUNNER_TEMP/recovery-artifact-meta" "$RUNNER_TEMP/recovery-receipt-artifacts.json" "$RUNNER_TEMP/recovery-snapshot-binding.json" <<'NODE'
+          import { readdirSync, readFileSync, writeFileSync } from 'node:fs'
+          const [directory, output, snapshotOutput] = process.argv.slice(2); const source = process.env.PUBLICATION_RECOVERY_SOURCE_M; const control = process.env.GITHUB_SHA; const producer = { repository: 'elsoul/erpc-sdk', repositoryId: '1429568627', workflowPath: '.github/workflows/release.yml', sourceCommit: control, runId: process.env.GITHUB_RUN_ID, runAttempt: process.env.GITHUB_RUN_ATTEMPT, ref: 'refs/heads/main', event: 'workflow_dispatch' }; const original = { repository: 'elsoul/erpc-sdk', repositoryId: '1429568627', workflowPath: '.github/workflows/release.yml', sourceCommit: source, runId: process.env.PUBLICATION_RECOVERY_ORIGINAL_PUBLICATION_RUN_ID, runAttempt: process.env.PUBLICATION_RECOVERY_ORIGINAL_PUBLICATION_RUN_ATTEMPT, ref: 'refs/heads/main', event: 'workflow_dispatch' }; const names = { npm: 'npm-proof.json', pypi: 'pypi-proof.json', rubygems: 'rubygems-proof.json', rust: 'rust-proof.json', tag: 'tag-proof.json', go: 'go-proof.json' }; const bindings = {}; for (const [key, filename] of Object.entries(names)) { const metadata = JSON.parse(readFileSync(`${directory}/${key}.json`, 'utf8')); bindings[filename] = { artifactId: String(metadata.id), artifactName: metadata.name, sha256: metadata.digest.slice('sha256:'.length), sizeInBytes: metadata.size_in_bytes, producer: key === 'rubygems' ? original : producer } } const snapshot = JSON.parse(readFileSync(`${directory}/snapshot.json`, 'utf8')); const snapshotBinding = { artifactId: String(snapshot.id), artifactName: snapshot.name, sha256: snapshot.digest.slice('sha256:'.length), sizeInBytes: snapshot.size_in_bytes, producer }; writeFileSync(output, `${JSON.stringify(bindings)}\n`); writeFileSync(snapshotOutput, `${JSON.stringify(snapshotBinding)}\n`)
+          NODE
+          node --input-type=module - "$RUNNER_TEMP/recovery-receipt-artifacts.json" "$RUNNER_TEMP/recovery-publisher-sources.json" "$RUNNER_TEMP/recovery-observer-sources.json" <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs'; const receipts = JSON.parse(readFileSync(process.env.OUT + '/pypi-proof.json', 'utf8')); const sources = Object.fromEntries(Object.entries(receipts.publishers ?? {}).map(([filename, publisher]) => [filename, publisher.sourceCommit])); writeFileSync(process.argv[3], `${JSON.stringify(sources)}\n`); writeFileSync(process.argv[4], `${JSON.stringify({ 'rubygems-proof.json': process.env.PUBLICATION_RECOVERY_SOURCE_M })}\n`)
+          NODE
+          exec {RECOVERY_READ_FD}<<<"$GH_TOKEN"
+          export PUBLICATION_RECOVERY_CONTEXT_FILE="$CONTEXT" PUBLICATION_RECOVERY_PLAN_FILE="$PLAN" PUBLICATION_RECOVERY_RECEIPT_ARTIFACTS_FILE="$RUNNER_TEMP/recovery-receipt-artifacts.json" PUBLICATION_RECOVERY_SNAPSHOT_BINDING_FILE="$RUNNER_TEMP/recovery-snapshot-binding.json" PUBLICATION_RECOVERY_SNAPSHOT_WORK_DIR="$RUNNER_TEMP/recovery-snapshot-work" PUBLICATION_RECOVERY_RECEIPT_OUTPUT_DIR="$RUNNER_TEMP/recovery-receipt-output" PUBLICATION_RECOVERY_MANIFEST_OUTPUT_FILE="$OUT/release-set-proof-manifest.json" PUBLICATION_RECOVERY_READ_TOKEN_FD="$RECOVERY_READ_FD" PUBLICATION_RECOVERY_OBSERVER_RUN_ID="$GITHUB_RUN_ID" PUBLICATION_RECOVERY_OBSERVER_ATTEMPT="$GITHUB_RUN_ATTEMPT" PUBLICATION_RECOVERY_PUBLISHER_SOURCES_FILE="$RUNNER_TEMP/recovery-publisher-sources.json" PUBLICATION_RECOVERY_OBSERVER_SOURCES_FILE="$RUNNER_TEMP/recovery-observer-sources.json"
+          node scripts/verify-release.mjs --publication-recovery-snapshot
+          cp "$RUNNER_TEMP/recovery-receipt-output"/*.json "$OUT/"
+      - name: Reconcile numeric Release and exact thirteen approved assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CONTEXT: ${{ runner.temp }}/recovery/recovery-context.json
+          PLAN: ${{ runner.temp }}/recovery/recovery-bundle/release-set-plan.json
+          BUNDLE: ${{ runner.temp }}/recovery/recovery-bundle
+          ASSETS: ${{ runner.temp }}/recovery-assets
+        run: |
+          set -euo pipefail
+          test "$(gh api "/repos/$EXPECTED_REPOSITORY/git/ref/heads/main" --jq '.object.sha')" = "$(jq -r .controlCommit "$CONTEXT")"
+          test "$(git rev-parse HEAD)" = "$(jq -r .controlCommit "$CONTEXT")"
+          release_tag=non-rust-v0.11.0
+          release_json="$RUNNER_TEMP/recovery-release.json"
+          status="$(curl --silent --show-error --max-time 30 --retry 0 --header "Authorization: Bearer $GH_TOKEN" --header 'Accept: application/vnd.github+json' --user-agent "$RELEASE_USER_AGENT" --output "$release_json" --write-out '%{http_code}' "https://api.github.com/repos/$EXPECTED_REPOSITORY/releases/tags/$release_tag")"
+          if [ "$status" = 404 ]; then
+            node --input-type=module - "$PLAN" "$RUNNER_TEMP/recovery-release-request.json" <<'NODE'
+            import { readFileSync, writeFileSync } from 'node:fs'; const plan = JSON.parse(readFileSync(process.argv[2], 'utf8')); writeFileSync(process.argv[3], `${JSON.stringify({ tag_name: plan.tags.release, target_commitish: process.env.PUBLICATION_RECOVERY_SOURCE_M, name: plan.githubRelease.title, body: plan.githubRelease.body, draft: true, prerelease: false, make_latest: plan.githubRelease.latest === true })}\n`)
+          NODE
+            gh api --method POST "/repos/$EXPECTED_REPOSITORY/releases" --input "$RUNNER_TEMP/recovery-release-request.json" > "$release_json"
+          elif [ "$status" != 200 ]; then
+            echo "Release lookup stopped in HTTP $status" >&2; exit 1
+          fi
+          release_id="$(jq -er '.id' "$release_json")"
+          upload_url="$(jq -er '.upload_url' "$release_json" | sed 's/{?name,label}//')"
+          expected_upload="https://uploads.github.com/repos/$EXPECTED_REPOSITORY/releases/$release_id/assets"
+          test "$upload_url" = "$expected_upload"
+          jq -e --arg tag "$release_tag" --arg title 'SDK release set: non-Rust 0.11.0 / Rust 0.11.0' --arg source "$PUBLICATION_RECOVERY_SOURCE_M" --rawfile body "$BUNDLE/release-body.md" '.tag_name == $tag and .name == $title and .body == $body and .prerelease == false and .target_commitish == $source' "$release_json" >/dev/null
+          jq -e --argjson id "$release_id" '.id == $id' "$release_json" >/dev/null
+          cp "$BUNDLE/elsoul-erpc-sdk-0.11.0.tgz" "$ASSETS/elsoul-erpc-sdk-0.11.0.tgz"
+          cp "$BUNDLE/erpc_sdk-0.11.0-py3-none-any.whl" "$ASSETS/erpc_sdk-0.11.0-py3-none-any.whl"
+          cp "$BUNDLE/erpc_sdk-0.11.0.tar.gz" "$ASSETS/erpc_sdk-0.11.0.tar.gz"
+          cp "$BUNDLE/erpc-sdk-0.11.0.gem" "$ASSETS/erpc-sdk-0.11.0.gem"
+          curl --fail --silent --show-error --max-time 30 --retry 0 --header "Authorization: Bearer $GH_TOKEN" --header 'Accept: application/vnd.github+json' --user-agent "$RELEASE_USER_AGENT" "https://api.github.com/repos/$EXPECTED_REPOSITORY/releases/$release_id/assets?per_page=100" > "$RUNNER_TEMP/recovery-assets-before.json"
+          expected='elsoul-erpc-sdk-0.11.0.tgz erpc_sdk-0.11.0-py3-none-any.whl erpc_sdk-0.11.0.tar.gz erpc-sdk-0.11.0.gem go-proof.json npm-proof.json pypi-proof.json rubygems-proof.json rust-proof.json tag-proof.json release-set-proof-manifest.json release-body.md go-inventory.json'
+          while IFS= read -r existing_name; do
+            case " $expected " in *" $existing_name "*) ;; *) echo "unexpected pre-existing Release asset $existing_name" >&2; exit 1 ;; esac
+          done < <(jq -r '.[].name' "$RUNNER_TEMP/recovery-assets-before.json")
+          for file in $expected; do
+            existing_count="$(jq -r --arg name "$file" '[.[] | select(.name == $name)] | length' "$RUNNER_TEMP/recovery-assets-before.json")"
+            test "$existing_count" -le 1
+            existing_id="$(jq -r --arg name "$file" '[.[] | select(.name == $name)] | if length == 1 then .[0].id else empty end' "$RUNNER_TEMP/recovery-assets-before.json")"
+            if [ -n "$existing_id" ]; then
+              curl --fail --silent --show-error --location --max-time 60 --retry 0 --header "Authorization: Bearer $GH_TOKEN" --header 'Accept: application/octet-stream' --user-agent "$RELEASE_USER_AGENT" --output "$RUNNER_TEMP/recovery-existing-$file" "https://api.github.com/repos/$EXPECTED_REPOSITORY/releases/assets/$existing_id"
+              test "$(sha256sum "$RUNNER_TEMP/recovery-existing-$file" | awk '{print $1}')" = "$(sha256sum "$ASSETS/$file" | awk '{print $1}')"
+            fi
+          done
+          for file in $expected; do
+            existing_id="$(jq -r --arg name "$file" '[.[] | select(.name == $name)] | if length == 1 then .[0].id else empty end' "$RUNNER_TEMP/recovery-assets-before.json")"
+            if [ -z "$existing_id" ]; then
+              encoded="$(python -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "$file")"
+              curl --fail --silent --show-error --max-time 60 --retry 0 --header "Authorization: Bearer $GH_TOKEN" --header 'Accept: application/vnd.github+json' --header 'Content-Type: application/octet-stream' --user-agent "$RELEASE_USER_AGENT" --data-binary "@$ASSETS/$file" "$upload_url?name=$encoded" > "$RUNNER_TEMP/recovery-upload-$file.json"
+            fi
+          done
+          curl --fail --silent --show-error --max-time 30 --retry 0 --header "Authorization: Bearer $GH_TOKEN" --header 'Accept: application/vnd.github+json' --user-agent "$RELEASE_USER_AGENT" "https://api.github.com/repos/$EXPECTED_REPOSITORY/releases/$release_id/assets?per_page=100" > "$RUNNER_TEMP/recovery-assets-after.json"
+          jq -e 'length == 13' "$RUNNER_TEMP/recovery-assets-after.json" >/dev/null
+          gh api --method PATCH "/repos/$EXPECTED_REPOSITORY/releases/$release_id" -F draft=false -f make_latest=true > "$RUNNER_TEMP/recovery-release-published.json"
+          jq -e '.draft == false and .tag_name == "non-rust-v0.11.0"' "$RUNNER_TEMP/recovery-release-published.json" >/dev/null
+          for file in $expected; do
+            asset_id="$(jq -er --arg name "$file" '[.[] | select(.name == $name)] | if length == 1 then .[0].id else error("asset is missing or ambiguous") end' "$RUNNER_TEMP/recovery-assets-after.json")"
+            curl --fail --silent --show-error --location --max-time 60 --retry 0 --header "Authorization: Bearer $GH_TOKEN" --header 'Accept: application/octet-stream' --user-agent "$RELEASE_USER_AGENT" --output "$RUNNER_TEMP/recovery-authenticated-$file" "https://api.github.com/repos/$EXPECTED_REPOSITORY/releases/assets/$asset_id"
+            test "$(sha256sum "$RUNNER_TEMP/recovery-authenticated-$file" | awk '{print $1}')" = "$(sha256sum "$ASSETS/$file" | awk '{print $1}')"
+            curl --fail --silent --show-error --location --max-time 60 --retry 0 --header 'Accept: application/octet-stream' --user-agent "$RELEASE_USER_AGENT" --output "$RUNNER_TEMP/recovery-anonymous-$file" "https://api.github.com/repos/$EXPECTED_REPOSITORY/releases/assets/$asset_id"
+            test "$(sha256sum "$RUNNER_TEMP/recovery-anonymous-$file" | awk '{print $1}')" = "$(sha256sum "$ASSETS/$file" | awk '{print $1}')"
+          done
+          curl --fail --silent --show-error --max-time 30 --retry 0 --user-agent "$RELEASE_USER_AGENT" "https://api.github.com/repos/$EXPECTED_REPOSITORY/releases/$release_id" > "$RUNNER_TEMP/recovery-release-anonymous.json"
+          jq -e '.draft == false and .tag_name == "non-rust-v0.11.0"' "$RUNNER_TEMP/recovery-release-anonymous.json" >/dev/null
+          curl --fail --silent --show-error --max-time 30 --retry 0 --user-agent "$RELEASE_USER_AGENT" "https://api.github.com/repos/$EXPECTED_REPOSITORY/releases/latest" > "$RUNNER_TEMP/recovery-latest.json"
+          test "$(jq -r '.id' "$RUNNER_TEMP/recovery-latest.json")" = "$release_id"
+      - name: Run accepted authenticated and anonymous GitHub proof observer
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CONTEXT: ${{ runner.temp }}/recovery/recovery-context.json
+          PLAN: ${{ runner.temp }}/recovery/recovery-bundle/release-set-plan.json
+          ASSETS: ${{ runner.temp }}/recovery-assets
+          OUT: ${{ runner.temp }}/recovery-assets
+        run: |
+          set -euo pipefail
+          node --input-type=module - "$PLAN" "$ASSETS" "$RUNNER_TEMP/recovery-release-published.json" "$RUNNER_TEMP/recovery-github-descriptor.json" <<'NODE'
+          import { createHash } from 'node:crypto'; import { readFileSync, writeFileSync, statSync } from 'node:fs'; import { join } from 'node:path'
+          const [planFile, assets, releaseFile, output] = process.argv.slice(2); const plan = JSON.parse(readFileSync(planFile, 'utf8')); const release = JSON.parse(readFileSync(releaseFile, 'utf8')); const descriptor = { repository: plan.repository, repositoryId: plan.repositoryId, releaseTag: plan.tags.release, title: plan.githubRelease.title, bodySha256: plan.githubRelease.bodySha256, sourceCommit: plan.sourceCommit, releaseId: release.id, requirePublic: true, prerelease: false, latest: plan.githubRelease.latest === true, assets: plan.approval.publicAssets.map(asset => { const bytes = readFileSync(join(assets, asset.filename)); return { role: asset.role, filename: asset.filename, sha256: createHash('sha256').update(bytes).digest('hex'), sizeInBytes: statSync(join(assets, asset.filename)).size } }) }; writeFileSync(output, `${JSON.stringify(descriptor)}\n`)
+          NODE
+          exec {RECOVERY_READ_FD}<<<"$GH_TOKEN"
+          export PUBLICATION_RECOVERY_CONTEXT_FILE="$CONTEXT" PUBLICATION_RECOVERY_PLAN_FILE="$PLAN" PUBLICATION_RECOVERY_ARTIFACT_DIR="$RUNNER_TEMP/recovery/recovery-bundle" PUBLICATION_RECOVERY_GITHUB_DESCRIPTOR_FILE="$RUNNER_TEMP/recovery-github-descriptor.json" PUBLICATION_RECOVERY_SNAPSHOT_BINDING_FILE="$RUNNER_TEMP/recovery-snapshot-binding.json" PUBLICATION_RECOVERY_RECEIPT_ARTIFACTS_FILE="$RUNNER_TEMP/recovery-receipt-artifacts.json" PUBLICATION_RECOVERY_PUBLISHER_SOURCES_FILE="$RUNNER_TEMP/recovery-publisher-sources.json" PUBLICATION_RECOVERY_OBSERVER_SOURCES_FILE="$RUNNER_TEMP/recovery-observer-sources.json" PUBLICATION_RECOVERY_READ_TOKEN_FD="$RECOVERY_READ_FD" PUBLICATION_RECOVERY_GITHUB_WORK_DIR="$RUNNER_TEMP/recovery-github-work" PUBLICATION_RECOVERY_GITHUB_OUTPUT_FILE="$RUNNER_TEMP/recovery-github-proof.json" PUBLICATION_RECOVERY_OBSERVER_RUN_ID="$GITHUB_RUN_ID" PUBLICATION_RECOVERY_OBSERVER_ATTEMPT="$GITHUB_RUN_ATTEMPT"
+          mkdir -p "$PUBLICATION_RECOVERY_GITHUB_WORK_DIR"
+          node scripts/verify-release.mjs --publication-recovery-github-observe
+      - name: Upload final recovery proof packet
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: publication-recovery-final-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/recovery-assets
+            ${{ runner.temp }}/recovery-release-published.json
+            ${{ runner.temp }}/recovery-release-anonymous.json
+            ${{ runner.temp }}/recovery-latest.json
+            ${{ runner.temp }}/recovery-github-proof.json
+          if-no-files-found: error
+          retention-days: 365

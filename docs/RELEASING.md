@@ -208,6 +208,57 @@ This manual path is the current release process. A weekly release schedule is
 future work and is not enabled. Do not run the legacy `corepack pnpm release:check`
 or tag-driven aggregate publication while the package versions are split.
 
+## One-cohort recovery of the 0.11.0 publication
+
+The manual `release.yml` input `recovery_mode=recover-0.11.0` is a finite
+recovery route for the reviewed non-Rust 0.11.0 bundle. It is disabled for the
+historical foundation and schema2 modes. Dispatch it only from `main` with
+`expected_commit` equal to the live recovery controller C. The route requires
+the exact package/preparation source M
+`00343b27668122cffd6d5b2b7517eda96f109d5f`, plan
+`b8775c0335289ffaf21eb272e3464cbfcbafb737994d805ca46f8c9652b52cd8`,
+preparation run `40116157011/1`, bundle `12567863653`, binding `12568401850`,
+and original failed publication `40116597887/1`.
+The original Ruby observer receipt artifact `12569655440` remains the
+canonical Ruby receipt producer; a fresh C observation is supplementary.
+
+The concrete dispatch fields are `recovery_mode=recover-0.11.0`,
+`mode=publish`, `release_set_mode=disabled`, `expected_version=0.11.0`, and
+`expected_commit=<reviewed controller C>`. The frozen preparation and
+publication IDs are authenticated from the route constants and are not
+caller-overridable.
+
+The control job proves that C is the event SHA, workflow SHA, clean checkout,
+and current `main`, that M is an ancestor, and that the M-to-C delta contains
+only `.github/workflows/release.yml`, `scripts/verify-release.mjs`,
+`scripts/verify-release.test.mjs`, and this document. The immutable preparation
+bundle remains the source of all four package archives, sidecars, plan, body,
+inventory, and checksums; no recovery step rebuilds or replaces those bytes.
+The recovery context binds M, C, the reviewed preparation, original terminal
+publication/job outcomes, C CI, and the recovery run. Normal release-set
+validators continue to reject this mixed identity unless that context has
+passed.
+
+The recovery lane observes npm, RubyGems, and the published Rust 0.11.0 crate
+read-only. It requests no npm, RubyGems, or Rust credentials. PyPI is the only
+protected publisher: exact absent or cryptographically verified missing files
+may be staged, and the job has at most one upload invocation followed by a
+fresh attestation and consumer observation. Conflicting or ambiguous metadata
+stops the route; an upload outcome is never retried automatically. Tags
+`non-rust-v0.11.0` and `packages/go/v0.11.0`, Go provenance, and the final
+thirteen-asset Release target M, while observer and finalizer identities remain
+C. The finalizer uses numeric Release/asset IDs, verifies existing bytes before
+upload, publishes once, and checks authenticated and anonymous public bytes plus
+effective Latest.
+
+Recovery tooling uses a fresh Python 3.12.15 virtual environment without user
+or system site packages and exact pins `build==1.6.0`,
+`pypi-attestations==0.0.30`, `sigstore==4.5.1`, and
+`cryptography==50.0.2`. It verifies `pip check`, package origins, the real
+`Distribution`, `GitHubPublisher`, `Provenance`, and `cryptography.x509`
+imports, and the absence of `OpenSSL`/pyOpenSSL. This is release evidence and
+tooling provenance; it is not a legal or regulatory certification.
+
 ## One-off recovery of the published 0.9.1 cohort
 
 The accepted uploads from publication run `39871872971` are reconciled by the

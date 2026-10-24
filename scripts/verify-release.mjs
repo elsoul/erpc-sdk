@@ -241,6 +241,73 @@ export const RELEASE_SET_RECEIPT_ARTIFACT_ROLES = Object.freeze({
   'tag-proof.json': 'tag-proof', 'go-proof.json': 'go-proof',
 })
 
+// One-cohort publication recovery is deliberately a separate, finite
+// contract.  The package/preparation identity (M) stays immutable while the
+// controller that performs the recovery (C) is authenticated independently.
+// These values are frozen from the reviewed preparation/publication evidence;
+// they must not be inferred from a dispatch input or a rebuilt archive.
+export const PUBLICATION_RECOVERY_MODE = 'recover-0.11.0'
+export const PUBLICATION_RECOVERY_VERSION = '0.11.0'
+export const PUBLICATION_RECOVERY_SOURCE_M = '00343b27668122cffd6d5b2b7517eda96f109d5f'
+export const PUBLICATION_RECOVERY_PLAN_SHA256 = 'b8775c0335289ffaf21eb272e3464cbfcbafb737994d805ca46f8c9652b52cd8'
+export const PUBLICATION_RECOVERY_PREPARED_RUN_ID = '40116157011'
+export const PUBLICATION_RECOVERY_PREPARED_RUN_ATTEMPT = '1'
+export const PUBLICATION_RECOVERY_BUNDLE_ARTIFACT_ID = '12567863653'
+export const PUBLICATION_RECOVERY_BINDING_ARTIFACT_ID = '12568401850'
+export const PUBLICATION_RECOVERY_ORIGINAL_RUBYGEMS_RECEIPT_ARTIFACT_ID = '12569655440'
+export const PUBLICATION_RECOVERY_ORIGINAL_PUBLICATION_RUN_ID = '40116597887'
+export const PUBLICATION_RECOVERY_ORIGINAL_PUBLICATION_RUN_ATTEMPT = '1'
+export const PUBLICATION_RECOVERY_ORIGINAL_NPM_JOB_ID = '120939149010'
+export const PUBLICATION_RECOVERY_ORIGINAL_PYPI_JOB_ID = '120939149000'
+export const PUBLICATION_RECOVERY_ORIGINAL_RUBYGEMS_JOB_ID = '120939148972'
+export const PUBLICATION_RECOVERY_NPM_SHA256 = '50c6ad17e24050eb6e5a5752b6cfc9d4e5c85d1c3e01e7db03bd2aa45754325a'
+export const PUBLICATION_RECOVERY_RUBYGEMS_SHA256 = '957aab0bb58254b1cdd8d53d7540216f8d3eea2d30ce058b089c0f3d0eed02ef'
+export const PUBLICATION_RECOVERY_PYPI_WHEEL_SHA256 = 'aa60375f9e37dabb1aa798c4da59c1f5ce558125f952bf52b43f2ab460f7c02e'
+export const PUBLICATION_RECOVERY_PYPI_SDIST_SHA256 = 'ca9f1b2eedd6e6163ae5b7470e7588bd96e49e06de067c42256203ce6edfa2d2'
+export const PUBLICATION_RECOVERY_BUNDLE_ZIP_SHA256 = '01ba51df046f11323197d013ae79f28b7eaa3949287c356036e0243eca38e0bb'
+export const PUBLICATION_RECOVERY_BINDING_ZIP_SHA256 = '4ea1f1b78ac8f7df2711953ac7c2415155affc8c1cd9b864554b4bb11a2566b9'
+export const PUBLICATION_RECOVERY_ALLOWED_DELTA = Object.freeze([
+  '.github/workflows/release.yml',
+  'docs/RELEASING.md',
+  'scripts/verify-release.mjs',
+  'scripts/verify-release.test.mjs',
+])
+export const PUBLICATION_RECOVERY_BUNDLE_FILES = Object.freeze([
+  'elsoul-erpc-sdk-0.11.0.tgz',
+  'erpc_sdk-0.11.0-py3-none-any.whl',
+  'erpc_sdk-0.11.0.tar.gz',
+  'erpc-sdk-0.11.0.gem',
+  'release-set-plan.json',
+  'release-set-plan.sha256',
+  'release-body.md',
+  'go-inventory.json',
+  'checksums.txt',
+])
+export const PUBLICATION_RECOVERY_ARCHIVE_SHA256 = Object.freeze({
+  'elsoul-erpc-sdk-0.11.0.tgz': PUBLICATION_RECOVERY_NPM_SHA256,
+  'erpc_sdk-0.11.0-py3-none-any.whl': PUBLICATION_RECOVERY_PYPI_WHEEL_SHA256,
+  'erpc_sdk-0.11.0.tar.gz': PUBLICATION_RECOVERY_PYPI_SDIST_SHA256,
+  'erpc-sdk-0.11.0.gem': PUBLICATION_RECOVERY_RUBYGEMS_SHA256,
+})
+export const PUBLICATION_RECOVERY_TOOLCHAIN = Object.freeze({
+  python: '3.12.15',
+  build: '1.6.0',
+  pypiAttestations: '0.0.30',
+  sigstore: '4.5.1',
+  cryptography: '50.0.2',
+})
+
+// Short aliases keep the recovery tests and operator packet readable while
+// retaining the explicit publication namespace above.
+export const RECOVERY_SOURCE_M = PUBLICATION_RECOVERY_SOURCE_M
+export const RECOVERY_PLAN_SHA256 = PUBLICATION_RECOVERY_PLAN_SHA256
+export const RECOVERY_PREPARED_RUN_ID = PUBLICATION_RECOVERY_PREPARED_RUN_ID
+export const RECOVERY_PREPARED_ARTIFACT_ID = PUBLICATION_RECOVERY_BUNDLE_ARTIFACT_ID
+export const RECOVERY_PREPARED_BINDING_ARTIFACT_ID = PUBLICATION_RECOVERY_BINDING_ARTIFACT_ID
+export const RECOVERY_ORIGINAL_PUBLICATION_RUN_ID = PUBLICATION_RECOVERY_ORIGINAL_PUBLICATION_RUN_ID
+export const RECOVERY_BUNDLE_ZIP_SHA256 = PUBLICATION_RECOVERY_BUNDLE_ZIP_SHA256
+export const RECOVERY_BINDING_ZIP_SHA256 = PUBLICATION_RECOVERY_BINDING_ZIP_SHA256
+
 const STABLE_VERSION = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/
 const COMMIT_SHA = /^[0-9a-f]{40}$/
 const ARCHIVE_SHA256 = /^[0-9a-f]{64}$/
@@ -2160,6 +2227,388 @@ const releaseSetExpectedBundleFiles = plan => [
   'checksums.txt',
 ]
 
+const publicationRecoveryContextPayload = context => {
+  const { contextSha256: _contextSha256, ...payload } = context ?? {}
+  return payload
+}
+
+const publicationRecoveryExpectedArtifacts = Object.freeze({
+  npm: PUBLICATION_RECOVERY_NPM_SHA256,
+  'pypi-wheel': PUBLICATION_RECOVERY_PYPI_WHEEL_SHA256,
+  'pypi-sdist': PUBLICATION_RECOVERY_PYPI_SDIST_SHA256,
+  rubygems: PUBLICATION_RECOVERY_RUBYGEMS_SHA256,
+})
+
+const publicationRecoveryId = (value, label) => requireFuturePositiveId(value, label)
+
+const publicationRecoveryRunTuple = (value, label) => {
+  releaseSetObject(value, label)
+  return {
+    runId: publicationRecoveryId(value.runId, `${label} run ID`),
+    runAttempt: publicationRecoveryId(value.runAttempt, `${label} attempt`),
+  }
+}
+
+/**
+ * Validate the live controller identity for the one approved recovery route.
+ * This is intentionally separate from validateReleaseSetContext: a normal
+ * release-set plan is M-valued and must continue rejecting a C-valued runtime.
+ */
+export function validatePublicationRecoveryRuntimeContext(context) {
+  releaseSetKeys(context, [
+    'mode', 'repository', 'repositoryId', 'eventName', 'eventRef', 'eventSha',
+    'expectedControlCommit', 'checkoutHead', 'checkoutStatus', 'workflowRef',
+    'workflowSha', 'mainSha', 'sourceM', 'sourceMAncestor', 'deltaPaths',
+  ], 'Publication recovery runtime context')
+  requireEqual(context.mode, PUBLICATION_RECOVERY_MODE, 'Publication recovery mode is not the approved finite route')
+  requireEqual(context.repository, EXPECTED_REPOSITORY, 'Publication recovery repository mismatch')
+  requireEqual(String(context.repositoryId), EXPECTED_REPOSITORY_ID, 'Publication recovery repository ID mismatch')
+  requireEqual(context.eventName, 'workflow_dispatch', 'Publication recovery must be manually dispatched')
+  requireEqual(context.eventRef, 'refs/heads/main', 'Publication recovery must run on main')
+  requireSha(context.eventSha, 'Publication recovery event SHA')
+  requireSha(context.expectedControlCommit, 'Publication recovery control commit')
+  requireSha(context.checkoutHead, 'Publication recovery checkout HEAD')
+  requireSha(context.workflowSha, 'Publication recovery workflow SHA')
+  requireEqual(context.expectedControlCommit, context.eventSha, 'Publication recovery input must match the live event SHA')
+  requireEqual(context.expectedControlCommit, context.checkoutHead, 'Publication recovery checkout is not the reviewed controller')
+  requireEqual(context.expectedControlCommit, context.workflowSha, 'Publication recovery workflow SHA is not the reviewed controller')
+  requireEqual(context.mainSha, context.expectedControlCommit, 'Publication recovery main ref moved before the control boundary')
+  requireEqual(context.checkoutStatus, '', 'Publication recovery checkout must be clean')
+  requireEqual(context.workflowRef, `${EXPECTED_REPOSITORY}/${RELEASE_SET_WORKFLOW}@refs/heads/main`, 'Publication recovery workflow ref mismatch')
+  requireEqual(context.sourceM, PUBLICATION_RECOVERY_SOURCE_M, 'Publication recovery package source M mismatch')
+  requireEqual(context.sourceMAncestor, true, 'Publication recovery source M is not an ancestor of controller C')
+  if (!Array.isArray(context.deltaPaths)) fail('Publication recovery M-to-C delta is missing')
+  const delta = [...context.deltaPaths].sort()
+  const expected = [...PUBLICATION_RECOVERY_ALLOWED_DELTA].sort()
+  requireEqual(canonicalJson(delta), canonicalJson(expected), 'Publication recovery M-to-C delta is outside the four approved files')
+  return { controlCommit: context.expectedControlCommit, sourceM: context.sourceM, deltaPaths: delta }
+}
+
+/** Build the immutable recovery context recorded outside the public asset set. */
+export function buildPublicationRecoveryContext({ runtime, preparation, originalPublication, recoveryRun, ciProof, sourceCiProof }) {
+  const checkedRuntime = validatePublicationRecoveryRuntimeContext(runtime)
+  const checkedPreparation = publicationRecoveryRunTuple(preparation, 'Publication recovery preparation')
+  requireEqual(preparation.sourceCommit, PUBLICATION_RECOVERY_SOURCE_M, 'Publication recovery preparation source mismatch')
+  requireEqual(preparation.planSha256, PUBLICATION_RECOVERY_PLAN_SHA256, 'Publication recovery preparation plan mismatch')
+  const checkedOriginal = publicationRecoveryRunTuple(originalPublication, 'Publication recovery original publication')
+  requireEqual(checkedOriginal.runId, PUBLICATION_RECOVERY_ORIGINAL_PUBLICATION_RUN_ID, 'Publication recovery original publication run mismatch')
+  requireEqual(checkedOriginal.runAttempt, PUBLICATION_RECOVERY_ORIGINAL_PUBLICATION_RUN_ATTEMPT, 'Publication recovery original publication attempt mismatch')
+  const checkedRecovery = publicationRecoveryRunTuple(recoveryRun, 'Publication recovery run')
+  if (ciProof !== undefined) {
+    releaseSetObject(ciProof, 'Publication recovery C CI proof')
+    requireEqual(ciProof.sourceCommit, checkedRuntime.controlCommit, 'Publication recovery C CI source mismatch')
+    requireEqual(ciProof.conclusion, 'success', 'Publication recovery C CI did not succeed')
+  }
+  if (sourceCiProof !== undefined) {
+    releaseSetObject(sourceCiProof, 'Publication recovery M CI proof')
+    requireEqual(sourceCiProof.sourceCommit, PUBLICATION_RECOVERY_SOURCE_M, 'Publication recovery M CI source mismatch')
+    requireEqual(sourceCiProof.conclusion, 'success', 'Publication recovery M CI did not succeed')
+  }
+  const payload = {
+    schemaVersion: 1,
+    kind: 'erpc-sdk-publication-recovery-context',
+    mode: PUBLICATION_RECOVERY_MODE,
+    repository: EXPECTED_REPOSITORY,
+    repositoryId: EXPECTED_REPOSITORY_ID,
+    sourceM: PUBLICATION_RECOVERY_SOURCE_M,
+    controlCommit: checkedRuntime.controlCommit,
+    controlWorkflow: RELEASE_SET_WORKFLOW,
+    controlWorkflowRef: runtime.workflowRef,
+    event: { name: runtime.eventName, ref: runtime.eventRef, sha: runtime.eventSha },
+    checkout: { head: runtime.checkoutHead, status: runtime.checkoutStatus },
+    deltaPaths: [...runtime.deltaPaths].sort(),
+    planSha256: PUBLICATION_RECOVERY_PLAN_SHA256,
+    preparation: { ...checkedPreparation, sourceCommit: PUBLICATION_RECOVERY_SOURCE_M, artifactId: String(preparation.artifactId), bindingArtifactId: String(preparation.bindingArtifactId), planSha256: PUBLICATION_RECOVERY_PLAN_SHA256 },
+    originalPublication: {
+      ...checkedOriginal,
+      sourceCommit: PUBLICATION_RECOVERY_SOURCE_M,
+      workflowPath: RELEASE_SET_WORKFLOW,
+      status: originalPublication.status,
+      conclusion: originalPublication.conclusion,
+      jobOutcomes: originalPublication.jobOutcomes,
+      outcomes: originalPublication.outcomes,
+    },
+    recoveryRun: checkedRecovery,
+    ciProof,
+    sourceCiProof,
+    registryWrites: { npm: false, pypi: true, rubygems: false, rust: false },
+  }
+  return { ...payload, contextSha256: sha256Hex(canonicalJson(payload)) }
+}
+
+/**
+ * Authenticate a recovery context at every read/write boundary.  The context
+ * hash covers the frozen M/preparation/publication tuple and actual C run;
+ * callers must pass the same object again before an effect.
+ */
+export function validatePublicationRecoveryContext(context, { requireCiProof = false } = {}) {
+  releaseSetKeys(context, [
+    'schemaVersion', 'kind', 'mode', 'repository', 'repositoryId', 'sourceM',
+    'controlCommit', 'controlWorkflow', 'controlWorkflowRef', 'event', 'checkout',
+    'deltaPaths', 'planSha256', 'preparation', 'originalPublication', 'recoveryRun',
+    'ciProof', 'sourceCiProof', 'registryWrites', 'contextSha256',
+  ], 'Publication recovery context')
+  requireEqual(context.schemaVersion, 1, 'Publication recovery context schema mismatch')
+  requireEqual(context.kind, 'erpc-sdk-publication-recovery-context', 'Publication recovery context kind mismatch')
+  requireEqual(context.mode, PUBLICATION_RECOVERY_MODE, 'Publication recovery context mode mismatch')
+  requireEqual(context.sourceM, PUBLICATION_RECOVERY_SOURCE_M, 'Publication recovery context source M mismatch')
+  requireEqual(context.planSha256, PUBLICATION_RECOVERY_PLAN_SHA256, 'Publication recovery context plan mismatch')
+  requireEqual(context.controlCommit, context.event?.sha, 'Publication recovery context control/event mismatch')
+  requireEqual(context.controlCommit, context.checkout?.head, 'Publication recovery context checkout mismatch')
+  requireEqual(context.checkout?.status, '', 'Publication recovery context checkout is dirty')
+  requireEqual(context.controlWorkflow, RELEASE_SET_WORKFLOW, 'Publication recovery context workflow mismatch')
+  requireEqual(context.controlWorkflowRef, `${EXPECTED_REPOSITORY}/${RELEASE_SET_WORKFLOW}@refs/heads/main`, 'Publication recovery context workflow ref mismatch')
+  validatePublicationRecoveryRuntimeContext({
+    mode: context.mode,
+    repository: context.repository,
+    repositoryId: context.repositoryId,
+    eventName: context.event?.name,
+    eventRef: context.event?.ref,
+    eventSha: context.event?.sha,
+    expectedControlCommit: context.controlCommit,
+    checkoutHead: context.checkout?.head,
+    checkoutStatus: context.checkout?.status,
+    workflowRef: context.controlWorkflowRef,
+    workflowSha: context.controlCommit,
+    mainSha: context.controlCommit,
+    sourceM: context.sourceM,
+    sourceMAncestor: true,
+    deltaPaths: context.deltaPaths,
+  })
+  const preparation = { ...publicationRecoveryRunTuple(context.preparation, 'Publication recovery context preparation'), artifactId: publicationRecoveryId(context.preparation.artifactId, 'Publication recovery context preparation artifact'), bindingArtifactId: publicationRecoveryId(context.preparation.bindingArtifactId, 'Publication recovery context preparation binding artifact') }
+  requireEqual(preparation.runId, PUBLICATION_RECOVERY_PREPARED_RUN_ID, 'Publication recovery context preparation run mismatch')
+  requireEqual(preparation.runAttempt, PUBLICATION_RECOVERY_PREPARED_RUN_ATTEMPT, 'Publication recovery context preparation attempt mismatch')
+  requireEqual(preparation.artifactId, PUBLICATION_RECOVERY_BUNDLE_ARTIFACT_ID, 'Publication recovery context preparation artifact mismatch')
+  requireEqual(preparation.bindingArtifactId, PUBLICATION_RECOVERY_BINDING_ARTIFACT_ID, 'Publication recovery context preparation binding artifact mismatch')
+  requireEqual(context.preparation.sourceCommit, PUBLICATION_RECOVERY_SOURCE_M, 'Publication recovery context preparation source mismatch')
+  requireEqual(context.preparation.planSha256, PUBLICATION_RECOVERY_PLAN_SHA256, 'Publication recovery context preparation digest mismatch')
+  const original = publicationRecoveryRunTuple(context.originalPublication, 'Publication recovery context original publication')
+  requireEqual(original.runId, PUBLICATION_RECOVERY_ORIGINAL_PUBLICATION_RUN_ID, 'Publication recovery context original publication run mismatch')
+  requireEqual(original.runAttempt, PUBLICATION_RECOVERY_ORIGINAL_PUBLICATION_RUN_ATTEMPT, 'Publication recovery context original publication attempt mismatch')
+  requireEqual(context.originalPublication.sourceCommit, PUBLICATION_RECOVERY_SOURCE_M, 'Publication recovery context original publication source mismatch')
+  requireEqual(context.originalPublication.workflowPath, RELEASE_SET_WORKFLOW, 'Publication recovery context original publication workflow mismatch')
+  requireEqual(context.originalPublication.status, 'completed', 'Publication recovery original publication is not terminal')
+  requireEqual(context.originalPublication.conclusion, 'failure', 'Publication recovery original publication outcome mismatch')
+  validatePublicationRecoveryOriginalPublication({
+    run: { id: Number(original.runId), run_attempt: Number(original.runAttempt), repository: { full_name: EXPECTED_REPOSITORY, id: Number(EXPECTED_REPOSITORY_ID) }, path: RELEASE_SET_WORKFLOW, head_branch: 'main', head_sha: PUBLICATION_RECOVERY_SOURCE_M, event: 'workflow_dispatch', status: context.originalPublication.status, conclusion: context.originalPublication.conclusion },
+    jobs: context.originalPublication.jobOutcomes,
+    outcomes: context.originalPublication.outcomes,
+  })
+  const recovery = publicationRecoveryRunTuple(context.recoveryRun, 'Publication recovery context run')
+  if (requireCiProof && context.ciProof === undefined) fail('Publication recovery context is missing C CI proof')
+  if (requireCiProof && context.sourceCiProof === undefined) fail('Publication recovery context is missing M CI proof')
+  if (context.ciProof !== undefined) {
+    requireEqual(context.ciProof.sourceCommit, context.controlCommit, 'Publication recovery context C CI source mismatch')
+    requireEqual(context.ciProof.conclusion, 'success', 'Publication recovery context C CI outcome mismatch')
+  }
+  if (context.sourceCiProof !== undefined) {
+    requireEqual(context.sourceCiProof.sourceCommit, PUBLICATION_RECOVERY_SOURCE_M, 'Publication recovery context M CI source mismatch')
+    requireEqual(context.sourceCiProof.conclusion, 'success', 'Publication recovery context M CI outcome mismatch')
+  }
+  releaseSetKeys(context.registryWrites, ['npm', 'pypi', 'rubygems', 'rust'], 'Publication recovery registry-write capability')
+  requireEqual(context.registryWrites.npm, false, 'Publication recovery unexpectedly grants npm write capability')
+  requireEqual(context.registryWrites.rubygems, false, 'Publication recovery unexpectedly grants RubyGems write capability')
+  requireEqual(context.registryWrites.rust, false, 'Publication recovery unexpectedly grants Rust write capability')
+  requireEqual(context.registryWrites.pypi, true, 'Publication recovery PyPI write capability is missing')
+  requireArchiveSha(context.contextSha256, 'Publication recovery context hash')
+  requireEqual(context.contextSha256, sha256Hex(canonicalJson(publicationRecoveryContextPayload(context))), 'Publication recovery context hash mismatch')
+  return { ...context, preparation, originalPublication: original, recoveryRun: recovery }
+}
+
+/** Authenticate the observed terminal failure and its individual job outcomes. */
+export function validatePublicationRecoveryOriginalPublication({ run, jobs, outcomes }) {
+  requireEqual(run?.id, Number(PUBLICATION_RECOVERY_ORIGINAL_PUBLICATION_RUN_ID), 'Original publication run ID mismatch')
+  requireEqual(run?.run_attempt, Number(PUBLICATION_RECOVERY_ORIGINAL_PUBLICATION_RUN_ATTEMPT), 'Original publication attempt mismatch')
+  requireEqual(run?.repository?.full_name, EXPECTED_REPOSITORY, 'Original publication repository mismatch')
+  requireEqual(String(run?.repository?.id), EXPECTED_REPOSITORY_ID, 'Original publication repository ID mismatch')
+  requireEqual(run?.path, RELEASE_SET_WORKFLOW, 'Original publication workflow mismatch')
+  requireEqual(run?.head_branch, 'main', 'Original publication branch mismatch')
+  requireEqual(run?.head_sha, PUBLICATION_RECOVERY_SOURCE_M, 'Original publication source mismatch')
+  requireEqual(run?.event, 'workflow_dispatch', 'Original publication event mismatch')
+  requireEqual(run?.status, 'completed', 'Original publication is not complete')
+  requireEqual(run?.conclusion, 'failure', 'Original publication was not the recorded failure')
+  if (!Array.isArray(jobs) || jobs.length === 0) fail('Original publication job outcomes are missing')
+  const seen = new Set()
+  for (const job of jobs) {
+    const identity = `${job?.id ?? ''}/${job?.run_attempt ?? ''}`
+    if (seen.has(identity)) fail('Original publication job outcomes contain duplicate identities')
+    seen.add(identity)
+    publicationRecoveryId(job?.id, 'Original publication job ID')
+    requireEqual(job?.run_id, Number(PUBLICATION_RECOVERY_ORIGINAL_PUBLICATION_RUN_ID), 'Original publication job run mismatch')
+    requireEqual(job?.run_attempt, Number(PUBLICATION_RECOVERY_ORIGINAL_PUBLICATION_RUN_ATTEMPT), 'Original publication job attempt mismatch')
+    requireEqual(job?.status, 'completed', 'Original publication job is not terminal')
+    if (!['success', 'failure', 'cancelled', 'timed_out', 'action_required', 'neutral', 'skipped'].includes(job?.conclusion)) fail('Original publication job conclusion is invalid')
+  }
+  const jobsById = new Map(jobs.map(job => [String(job.id), job]))
+  const npmJob = jobsById.get(PUBLICATION_RECOVERY_ORIGINAL_NPM_JOB_ID)
+  const pypiJob = jobsById.get(PUBLICATION_RECOVERY_ORIGINAL_PYPI_JOB_ID)
+  const rubygemsJob = jobsById.get(PUBLICATION_RECOVERY_ORIGINAL_RUBYGEMS_JOB_ID)
+  for (const [job, label] of [[npmJob, 'npm'], [pypiJob, 'PyPI'], [rubygemsJob, 'RubyGems']]) {
+    if (job === undefined || !Array.isArray(job.steps)) fail(`Original publication ${label} individual job step evidence is missing`)
+  }
+  const stepConclusion = (job, needle, label) => {
+    const matches = job.steps.filter(step => `${step?.name ?? ''}`.toLowerCase().includes(needle))
+    if (matches.length !== 1) fail(`Original publication ${label} step evidence is missing or ambiguous`)
+    return matches[0]?.conclusion
+  }
+  requireEqual(stepConclusion(npmJob, 'publish exact npm archive once', 'npm upload'), 'success', 'Original publication npm upload step evidence mismatch')
+  requireEqual(stepConclusion(npmJob, 'observe npm public bytes', 'npm observer'), 'failure', 'Original publication npm observer step evidence mismatch')
+  requireEqual(stepConclusion(pypiJob, 'publish exact missing pypi files', 'PyPI upload'), 'skipped', 'Original publication PyPI upload step evidence mismatch')
+  requireEqual(stepConclusion(pypiJob, 'observe pypi files', 'PyPI observer'), 'failure', 'Original publication PyPI observer step evidence mismatch')
+  requireEqual(stepConclusion(rubygemsJob, 'publish the exact reviewed gem once', 'RubyGems upload'), 'success', 'Original publication RubyGems upload step evidence mismatch')
+  requireEqual(rubygemsJob.conclusion, 'success', 'Original publication RubyGems job outcome mismatch')
+  releaseSetKeys(outcomes, ['npmPublished', 'rubygemsPublished', 'pypiUploadAttempted', 'pypiBeforeUploadFailure', 'npmObserverFailure', 'npmJobConclusion', 'npmUploadStepConclusion', 'npmObserverStepConclusion', 'rubygemsJobConclusion', 'rubygemsUploadStepConclusion', 'pypiJobConclusion', 'pypiUploadStepConclusion', 'pypiObserverStepConclusion'], 'Original publication outcomes')
+  requireEqual(outcomes.npmPublished, true, 'Original publication did not authenticate npm upload step success')
+  requireEqual(outcomes.npmJobConclusion, 'failure', 'Original publication npm job failure is not retained')
+  requireEqual(outcomes.npmUploadStepConclusion, 'success', 'Original publication npm upload step was not successful')
+  requireEqual(outcomes.npmObserverStepConclusion, 'failure', 'Original publication npm observer failure is not retained')
+  requireEqual(outcomes.rubygemsPublished, true, 'Original publication did not authenticate RubyGems success')
+  requireEqual(outcomes.rubygemsJobConclusion, 'success', 'Original publication RubyGems job outcome mismatch')
+  requireEqual(outcomes.rubygemsUploadStepConclusion, 'success', 'Original publication RubyGems upload step mismatch')
+  requireEqual(outcomes.pypiUploadAttempted, false, 'Original publication unexpectedly uploaded PyPI bytes')
+  requireEqual(outcomes.pypiBeforeUploadFailure, true, 'Original publication PyPI failure was not before upload')
+  requireEqual(outcomes.pypiJobConclusion, 'failure', 'Original publication PyPI job failure is not retained')
+  requireEqual(outcomes.pypiUploadStepConclusion, 'skipped', 'Original publication PyPI upload step was not actually skipped')
+  requireEqual(outcomes.pypiObserverStepConclusion, 'failure', 'Original publication PyPI observer failure is not retained')
+  return { runId: PUBLICATION_RECOVERY_ORIGINAL_PUBLICATION_RUN_ID, runAttempt: PUBLICATION_RECOVERY_ORIGINAL_PUBLICATION_RUN_ATTEMPT, jobs: jobs.length, outcomes }
+}
+
+/**
+ * Verify the frozen plan/bundle directory before any recovery registry
+ * credential is requested.  This calls the ordinary byte/profile verifier;
+ * recovery only changes the accepted identity context, never archive bytes.
+ */
+export async function validatePublicationRecoveryBundle({ plan, artifactDirectory, binding, bindingArtifactId, bundleZip, bindingZip, bundleMetadata, bindingMetadata, bindingDirectory } = {}) {
+  const normalized = validateReleaseSetPlan(plan)
+  requireEqual(releaseSetPlanDigest(normalized), PUBLICATION_RECOVERY_PLAN_SHA256, 'Publication recovery plan digest mismatch')
+  requireEqual(normalized.sourceCommit, PUBLICATION_RECOVERY_SOURCE_M, 'Publication recovery plan source mismatch')
+  requireEqual(normalized.versions.nonRustVersion, PUBLICATION_RECOVERY_VERSION, 'Publication recovery non-Rust version mismatch')
+  requireEqual(normalized.versions.rustVersion, PUBLICATION_RECOVERY_VERSION, 'Publication recovery Rust version mismatch')
+  requireEqual(normalized.tags.commit, PUBLICATION_RECOVERY_SOURCE_M, 'Publication recovery tag source must remain M')
+  const expectedArchive = publicationRecoveryExpectedArtifacts
+  for (const artifact of normalized.artifacts) requireEqual(artifact.sha256, expectedArchive[artifact.kind], `Publication recovery ${artifact.kind} archive digest mismatch`)
+  const expectedFiles = [...PUBLICATION_RECOVERY_BUNDLE_FILES].sort()
+  const actualEntries = (await readdir(artifactDirectory, { withFileTypes: true })).map(entry => entry.name).sort()
+  requireEqual(canonicalJson(actualEntries), canonicalJson(expectedFiles), 'Publication recovery bundle members are not the frozen nine files')
+  const prepared = await ingestReleaseSetBundle({ plan: normalized, artifactDirectory })
+  if (bundleZip !== undefined || bindingZip !== undefined) {
+    if (bundleZip === undefined || bindingZip === undefined || bundleMetadata === undefined || bindingMetadata === undefined || bindingDirectory === undefined) fail('Publication recovery raw ZIP evidence is incomplete')
+    requireEqual(await sha256File(bundleZip), PUBLICATION_RECOVERY_BUNDLE_ZIP_SHA256, 'Publication recovery bundle ZIP digest mismatch')
+    requireEqual(await sha256File(bindingZip), PUBLICATION_RECOVERY_BINDING_ZIP_SHA256, 'Publication recovery binding ZIP digest mismatch')
+    await verifyReleaseSetArtifactZip({ zipFile: bundleZip, metadata: bundleMetadata, expectedId: PUBLICATION_RECOVERY_BUNDLE_ARTIFACT_ID, consumedDirectory: artifactDirectory, expectedName: `release-set-bundle-${PUBLICATION_RECOVERY_SOURCE_M}` })
+    await verifyReleaseSetArtifactZip({ zipFile: bindingZip, metadata: bindingMetadata, expectedId: PUBLICATION_RECOVERY_BINDING_ARTIFACT_ID, consumedDirectory: bindingDirectory, expectedName: `release-set-binding-${PUBLICATION_RECOVERY_PREPARED_RUN_ID}-${PUBLICATION_RECOVERY_PREPARED_RUN_ATTEMPT}` })
+  }
+  if (binding !== undefined) {
+    validateReleaseSetPreparationBinding(binding, { plan: normalized, expected: { runId: PUBLICATION_RECOVERY_PREPARED_RUN_ID, runAttempt: PUBLICATION_RECOVERY_PREPARED_RUN_ATTEMPT, artifactId: PUBLICATION_RECOVERY_BUNDLE_ARTIFACT_ID } })
+    if (bindingArtifactId !== undefined) requireEqual(String(bindingArtifactId), PUBLICATION_RECOVERY_BINDING_ARTIFACT_ID, 'Publication recovery binding artifact ID mismatch')
+  }
+  return { plan: normalized, prepared, sourceCommit: PUBLICATION_RECOVERY_SOURCE_M, planSha256: PUBLICATION_RECOVERY_PLAN_SHA256, bundleFiles: expectedFiles }
+}
+
+const publicationRecoveryReadOnlyState = (record, kind, expectedSha256, { provenanceSource = PUBLICATION_RECOVERY_SOURCE_M } = {}) => {
+  if (!record || typeof record !== 'object') fail(`Publication recovery ${kind} public proof is missing`)
+  requireEqual(record.state === undefined ? 'observed' : record.state, 'observed', `Publication recovery ${kind} public proof is incomplete`)
+  const observed = record.observedSha256 ?? record.archive?.sha256 ?? record.download?.sha256 ?? record.descriptor?.observedSha256
+  requireEqual(observed, expectedSha256, `Publication recovery ${kind} public bytes mismatch`)
+  requireEqual(record.auth?.requested, false, `Publication recovery ${kind} requested credentials`)
+  requireEqual(record.auth?.uploadAttempted, false, `Publication recovery ${kind} attempted an upload`)
+  const source = kind === 'Rust'
+    ? record.archive?.sourceCommit ?? record.preparation?.sourceCommit
+    : record.publisher?.sourceCommit ?? record.provenance?.sourceCommit ?? record.originalProvenance?.sourceCommit ?? record.preparation?.sourceCommit
+  requireEqual(source, provenanceSource, `Publication recovery ${kind} original provenance source mismatch`)
+  return record
+}
+
+/** Classify the finite recovery preflight before the PyPI protected job. */
+export function classifyPublicationRecoveryPreflight({ npm, rubygems, rust, pypi, controlCommit = undefined }) {
+  const npmProof = publicationRecoveryReadOnlyState(npm, 'npm', PUBLICATION_RECOVERY_NPM_SHA256)
+  const rubyProof = publicationRecoveryReadOnlyState(rubygems, 'RubyGems', PUBLICATION_RECOVERY_RUBYGEMS_SHA256)
+  const rustProof = publicationRecoveryReadOnlyState(rust, 'Rust', RUST_011_REUSE_SHA256, { provenanceSource: RUST_011_REUSE_SOURCE })
+  requireEqual(rust?.preparation?.sourceCommit, PUBLICATION_RECOVERY_SOURCE_M, 'Publication recovery Rust preparation source must remain M')
+  if (rust?.mode !== 'reuse' || rust?.version !== PUBLICATION_RECOVERY_VERSION) fail('Publication recovery Rust proof is not immutable reuse')
+  releaseSetKeys(pypi, ['state', 'status', 'missing', 'existing', 'absenceGate'], 'Publication recovery PyPI preflight')
+  if (!['absent', 'partial', 'match'].includes(pypi.state)) fail(`Publication recovery PyPI preflight stopped in ${pypi.state}`)
+  const expectedPyPi = new Set(['erpc_sdk-0.11.0-py3-none-any.whl', 'erpc_sdk-0.11.0.tar.gz'])
+  const missing = Array.isArray(pypi.missing) ? [...new Set(pypi.missing)] : []
+  const existing = Array.isArray(pypi.existing) ? pypi.existing : []
+  for (const filename of missing) if (!expectedPyPi.has(filename)) fail(`Publication recovery PyPI missing file is not approved: ${filename}`)
+  for (const file of existing) {
+    releaseSetKeys(file, ['filename', 'sha256', 'yanked', 'attestationVerified', 'publisherSourceCommit', 'publisher'], 'Publication recovery existing PyPI file')
+    const expected = file.filename === 'erpc_sdk-0.11.0-py3-none-any.whl' ? PUBLICATION_RECOVERY_PYPI_WHEEL_SHA256 : file.filename === 'erpc_sdk-0.11.0.tar.gz' ? PUBLICATION_RECOVERY_PYPI_SDIST_SHA256 : undefined
+    if (expected === undefined) fail(`Publication recovery PyPI existing file is not approved: ${file.filename}`)
+    requireEqual(file.sha256, expected, `Publication recovery PyPI existing ${file.filename} digest mismatch`)
+    requireEqual(file.yanked, false, `Publication recovery PyPI existing ${file.filename} is yanked`)
+    requireEqual(file.attestationVerified, true, `Publication recovery PyPI existing ${file.filename} attestation is not verified`)
+    requireEqual(file.publisherSourceCommit === PUBLICATION_RECOVERY_SOURCE_M || (controlCommit !== undefined && file.publisherSourceCommit === controlCommit), true, `Publication recovery PyPI existing ${file.filename} provenance source mismatch`)
+    if (file.publisher !== undefined) {
+      requireEqual(file.publisher.sourceCommit, file.publisherSourceCommit, `Publication recovery PyPI existing ${file.filename} publisher source mismatch`)
+      publicationRecoveryId(file.publisher.publisherRunId, `Publication recovery PyPI existing ${file.filename} publisher run ID`)
+      publicationRecoveryId(file.publisher.publisherAttempt, `Publication recovery PyPI existing ${file.filename} publisher attempt`)
+    }
+  }
+  if (pypi.state === 'absent') {
+    requireEqual(pypi.absenceGate, true, 'Publication recovery PyPI absence gate is missing')
+    requireEqual(canonicalJson(missing.sort()), canonicalJson([...expectedPyPi].sort()), 'Publication recovery absent PyPI target must stage both original files')
+  }
+  if (pypi.state === 'partial' && missing.length === 0) fail('Publication recovery PyPI partial state has no missing file')
+  if (pypi.state === 'match' && missing.length !== 0) fail('Publication recovery PyPI match state has missing files')
+  return { state: pypi.state, missing: missing.sort(), npm: npmProof, rubygems: rubyProof, rust: rustProof }
+}
+
+/** Validate mixed-origin receipts produced by the recovery observers. */
+export function validatePublicationRecoveryReceipt(receipt, { kind, context, expectedSha256, pypiPublisherSource, pypiPublisherSources } = {}) {
+  validatePublicationRecoveryContext(context)
+  releaseSetObject(receipt, `Publication recovery ${kind} receipt`)
+  requireEqual(receipt.repository, EXPECTED_REPOSITORY, `Publication recovery ${kind} receipt repository mismatch`)
+  requireEqual(String(receipt.repositoryId), EXPECTED_REPOSITORY_ID, `Publication recovery ${kind} receipt repository ID mismatch`)
+  requireEqual(receipt.planSha256, PUBLICATION_RECOVERY_PLAN_SHA256, `Publication recovery ${kind} receipt plan mismatch`)
+  requireEqual(receipt.preparation?.sourceCommit, PUBLICATION_RECOVERY_SOURCE_M, `Publication recovery ${kind} preparation source mismatch`)
+  requireEqual(String(receipt.preparation?.runId), PUBLICATION_RECOVERY_PREPARED_RUN_ID, `Publication recovery ${kind} preparation run mismatch`)
+  requireEqual(String(receipt.preparation?.runAttempt), PUBLICATION_RECOVERY_PREPARED_RUN_ATTEMPT, `Publication recovery ${kind} preparation attempt mismatch`)
+  requireEqual(String(receipt.preparation?.artifactId), PUBLICATION_RECOVERY_BUNDLE_ARTIFACT_ID, `Publication recovery ${kind} preparation artifact mismatch`)
+  requireEqual(receipt.observer?.sourceCommit, context.controlCommit, `Publication recovery ${kind} observer source must be C`)
+  requireEqual(receipt.recoveryContextSha256, context.contextSha256, `Publication recovery ${kind} context binding mismatch`)
+  if (kind === 'pypi') {
+    requireEqual(receipt.auth?.requested === true || receipt.auth?.requested === false, true, 'Publication recovery PyPI auth state is malformed')
+    requireEqual(receipt.auth?.uploadAttempted, receipt.auth?.requested, 'Publication recovery PyPI upload/auth state mismatch')
+  } else {
+    requireEqual(receipt.auth?.requested, false, `Publication recovery ${kind} receipt requested credentials unexpectedly`)
+    requireEqual(receipt.auth?.uploadAttempted, false, `Publication recovery ${kind} receipt upload capability is not read-only`)
+  }
+  if (expectedSha256 !== undefined) {
+    const observed = receipt.descriptor?.observedSha256 ?? receipt.archive?.sha256 ?? receipt.download?.sha256 ?? receipt.observedSha256
+    requireEqual(observed, expectedSha256, `Publication recovery ${kind} receipt digest mismatch`)
+  }
+  if (kind === 'pypi') {
+    if (pypiPublisherSource === undefined && pypiPublisherSources === undefined) fail('Publication recovery PyPI publisher source is missing')
+    if (pypiPublisherSource !== undefined) requireEqual(pypiPublisherSource === context.controlCommit || pypiPublisherSource === PUBLICATION_RECOVERY_SOURCE_M, true, 'Publication recovery PyPI publisher source is outside M/C')
+    const publishers = receipt.publishers ?? {}
+    for (const [filename, publisher] of Object.entries(publishers)) {
+      const expectedSource = pypiPublisherSources?.[filename] ?? pypiPublisherSource
+      requireEqual(expectedSource === context.controlCommit || expectedSource === PUBLICATION_RECOVERY_SOURCE_M, true, 'Publication recovery PyPI publisher source is outside M/C')
+      requireEqual(publisher.sourceCommit, expectedSource, 'Publication recovery PyPI publisher source is not the authenticated M/C identity')
+      publicationRecoveryId(publisher.publisherRunId, `Publication recovery PyPI ${filename} publisher run ID`)
+      publicationRecoveryId(publisher.publisherAttempt, `Publication recovery PyPI ${filename} publisher attempt`)
+    }
+  } else {
+    const provenanceSource = receipt.publisher?.sourceCommit ?? receipt.provenance?.certificateClaims?.['1.3.6.1.4.1.57264.1.13'] ?? receipt.originalProvenance?.sourceCommit ?? receipt.archive?.sourceCommit ?? receipt.preparation?.sourceCommit
+    requireEqual(provenanceSource, kind === 'rust' ? RUST_011_REUSE_SOURCE : PUBLICATION_RECOVERY_SOURCE_M, `Publication recovery ${kind} provenance must remain ${kind === 'rust' ? 'the immutable Rust source' : 'M'}`)
+  }
+  return receipt
+}
+
+/** Ensure a tag/Go target can only ever be M, never the recovery controller C. */
+export function validatePublicationRecoveryTagTargets({ plan, releaseTag, goTag, releaseCommit, goCommit }) {
+  releaseSetObject(plan, 'Publication recovery tag plan')
+  requireEqual(plan.sourceCommit, PUBLICATION_RECOVERY_SOURCE_M, 'Publication recovery tag plan source mismatch')
+  requireEqual(plan.tags?.commit, PUBLICATION_RECOVERY_SOURCE_M, 'Publication recovery tag plan target is not M')
+  requireEqual(releaseTag, plan.tags?.release, 'Publication recovery release tag name mismatch')
+  requireEqual(goTag, plan.tags?.go, 'Publication recovery Go tag name mismatch')
+  requireEqual(releaseCommit, PUBLICATION_RECOVERY_SOURCE_M, 'Publication recovery release tag target must be M')
+  requireEqual(goCommit, PUBLICATION_RECOVERY_SOURCE_M, 'Publication recovery Go tag target must be M')
+  return { releaseTag, goTag, commit: PUBLICATION_RECOVERY_SOURCE_M }
+}
+
 const releaseSetNormalizeChecksumPath = value => {
   if (typeof value !== 'string') fail('Release-set checksum filename is missing')
   let normalized = value.trim()
@@ -3094,7 +3543,7 @@ const npmInvoke = async (run, command, arguments_, options, stage, deadlineContr
 }
 
 const npmStrictInput = input => {
-  releaseSetKeys(input, ['descriptor', 'planSha256', 'preparation', 'publisher', 'observer', 'workDir', 'outputFile', 'toolPaths'], 'npm observer input')
+  releaseSetKeys(input, ['descriptor', 'planSha256', 'preparation', 'publisher', 'observer', 'workDir', 'outputFile', 'toolPaths', 'recoveryContext'], 'npm observer input')
   releaseSetKeys(input.descriptor, ['kind', 'filename', 'name', 'version', 'sha256', 'files', 'profile'], 'npm observer descriptor')
   requireEqual(input.descriptor.kind, 'npm', 'npm observer descriptor kind mismatch')
   requireEqual(input.descriptor.name, '@elsoul/erpc-sdk', 'npm observer package identity mismatch')
@@ -3122,6 +3571,11 @@ const npmStrictInput = input => {
   requireFuturePositiveId(input.observer.runAttempt, 'npm observer attempt')
   requireEqual(input.observer.workflowPath, RELEASE_SET_WORKFLOW, 'npm observer workflow mismatch')
   requireSha(input.observer.sourceCommit, 'npm observer source')
+  if (input.recoveryContext !== undefined) {
+    validatePublicationRecoveryContext(input.recoveryContext)
+    requireEqual(input.recoveryContext.sourceM, input.preparation.sourceCommit, 'npm observer recovery source/preparation mismatch')
+    requireEqual(input.observer.sourceCommit, input.recoveryContext.controlCommit, 'npm observer recovery observer source mismatch')
+  }
   releaseSetKeys(input.toolPaths, ['node', 'npmCli', 'python'], 'npm observer tool paths')
   for (const [name, value] of Object.entries(input.toolPaths)) npmSafePath(value, `npm observer ${name} path`)
   return input
@@ -3245,7 +3699,7 @@ export async function observeNpmRelease(input, adapters = {}) {
   const npmVersion = await npmInvoke(run, input.toolPaths.node, [input.toolPaths.npmCli, '--version'], { cwd: workDir, env: isolatedEnv }, 'npm-version', deadlineControl)
   if (!/^v24\./.test(String(nodeVersion.stdout).trim()) || String(npmVersion.stdout).trim() !== '11.19.1') fail('npm-observe-tool-version-mismatch')
   const pythonVersion = await npmInvoke(run, input.toolPaths.python, ['-c', 'import sys, cryptography; print(sys.version.split()[0]); print(cryptography.__version__)'], { cwd: workDir, env: isolatedEnv }, 'python-version', deadlineControl)
-  if (!/^3\.12\./m.test(pythonVersion.stdout) || !/^46\.0\.3$/m.test(pythonVersion.stdout)) fail('npm-observe-python-tool-version-mismatch')
+  if (!/^3\.12\./m.test(pythonVersion.stdout) || !/^50\.0\.2$/m.test(pythonVersion.stdout)) fail('npm-observe-python-tool-version-mismatch')
   const install = await npmInvoke(run, input.toolPaths.node, [input.toolPaths.npmCli, 'install', '--ignore-scripts', '--no-audit', '--no-fund', '--prefix', auditDirectory, `@elsoul/erpc-sdk@${version}`, `--registry=${npmRegistryOrigin}`], { cwd: auditDirectory, env: isolatedEnv }, 'audit-install', deadlineControl)
   const lockFile = join(auditDirectory, 'package-lock.json')
   const lock = JSON.parse(await readFile(lockFile, 'utf8'))
@@ -3307,7 +3761,7 @@ export async function observeNpmRelease(input, adapters = {}) {
     publisher: { ...input.publisher, invocation: expectedInvocation }, observer: input.observer, provenance: { certificateClaims: claims, subject: subject[0], workflow, invocation: predicate.runDetails.metadata.invocationId },
     toolVersions: { node: String(nodeVersion.stdout).trim(), npm: String(npmVersion.stdout).trim(), python: String(pythonVersion.stdout).trim() },
     consumer: { audit: { exitCode: audit.exitCode, invalid: auditPayload.invalid.length, missing: auditPayload.missing.length, verifiedTargetCount: targets.length }, smoke: { exitCodes: { install: smokeInstall.exitCode, require: smokeRequire.exitCode, import: smokeImport.exitCode }, packageRoot: 'external-consumer/node_modules/@elsoul/erpc-sdk' } },
-    auth: { requested: false, uploadAttempted: false }, observedAt: new Date().toISOString(),
+    auth: { requested: false, uploadAttempted: false }, ...(input.recoveryContext === undefined ? {} : { recoveryContextSha256: input.recoveryContext.contextSha256 }), observedAt: new Date().toISOString(),
   }
   const temporaryOutput = `${outputFile}.tmp-${process.pid}-${Math.random().toString(16).slice(2)}`
   await writeFile(temporaryOutput, `${canonicalJson(receipt)}\n`, { flag: 'wx' })
@@ -3371,7 +3825,7 @@ print(json.dumps(verified[0], sort_keys=True))
 `
 
 const pypiStrictInput = input => {
-  releaseSetKeys(input, ['descriptors', 'planSha256', 'preparation', 'publishers', 'observer', 'workDir', 'outputFile', 'toolPaths'], 'PyPI observer input')
+  releaseSetKeys(input, ['descriptors', 'planSha256', 'preparation', 'publishers', 'observer', 'workDir', 'outputFile', 'toolPaths', 'recoveryContext', 'publisherSources'], 'PyPI observer input')
   releaseSetKeys(input.descriptors, ['pypi-wheel', 'pypi-sdist'], 'PyPI observer descriptors')
   for (const kind of pypiExpectedKinds) {
     const descriptor = input.descriptors[kind]
@@ -3391,12 +3845,19 @@ const pypiStrictInput = input => {
   for (const [value, label] of [[input.preparation.runId, 'PyPI observer preparation run ID'], [input.preparation.runAttempt, 'PyPI observer preparation attempt'], [input.preparation.artifactId, 'PyPI observer preparation artifact ID'], [input.preparation.bindingArtifactId, 'PyPI observer preparation binding artifact ID']]) requireFuturePositiveId(value, label)
   const publisherKeys = pypiExpectedKinds.map(kind => input.descriptors[kind].filename)
   releaseSetObject(input.publishers, 'PyPI observer publishers')
+  const recoveryControlSource = input.recoveryContext === undefined ? undefined : validatePublicationRecoveryContext(input.recoveryContext).controlCommit
+  if (input.publisherSources !== undefined) releaseSetObject(input.publisherSources, 'PyPI observer publisher source map')
+  if (input.publisherSources !== undefined && Object.keys(input.publisherSources).some(filename => !publisherKeys.includes(filename))) fail('PyPI observer publisher source map contains an unknown file')
+  const publisherSource = input.recoveryContext === undefined ? input.preparation.sourceCommit : recoveryControlSource
+  if (input.recoveryContext !== undefined) requireEqual(input.recoveryContext.sourceM, input.preparation.sourceCommit, 'PyPI observer recovery source/preparation mismatch')
   if (Object.keys(input.publishers).some(filename => !publisherKeys.includes(filename))) fail('PyPI observer publishers contain an unknown file')
   for (const [filename, publisher] of Object.entries(input.publishers)) {
     releaseSetKeys(publisher, ['repository', 'repositoryId', 'sourceCommit', 'workflowPath', 'ref', 'event', 'environment', 'publisherRunId', 'publisherAttempt'], `PyPI observer publisher ${filename}`)
     requireEqual(publisher.repository, EXPECTED_REPOSITORY, `PyPI observer publisher ${filename} repository mismatch`)
     requireEqual(String(publisher.repositoryId), EXPECTED_REPOSITORY_ID, `PyPI observer publisher ${filename} repository ID mismatch`)
-    requireEqual(publisher.sourceCommit, input.preparation.sourceCommit, `PyPI observer publisher ${filename} source mismatch`)
+    const expectedPublisherSource = input.publisherSources?.[filename] ?? publisherSource
+    requireEqual(expectedPublisherSource === input.preparation.sourceCommit || expectedPublisherSource === recoveryControlSource, true, `PyPI observer publisher ${filename} source is outside M/C`)
+    requireEqual(publisher.sourceCommit, expectedPublisherSource, `PyPI observer publisher ${filename} source mismatch`)
     requireEqual(publisher.workflowPath, RELEASE_SET_WORKFLOW, `PyPI observer publisher ${filename} workflow mismatch`)
     requireEqual(publisher.ref, 'refs/heads/main', `PyPI observer publisher ${filename} ref mismatch`)
     requireEqual(publisher.event, 'workflow_dispatch', `PyPI observer publisher ${filename} event mismatch`)
@@ -3456,7 +3917,7 @@ export async function observePyPIRelease(input, adapters = {}) {
   const archiveExecutor = async (command, arguments_, options = {}) => { const result = await npmBoundedExecFile(command, arguments_, { ...options, cwd: options.cwd ?? workDir, env: isolatedEnv, timeout: Math.min(options.timeout ?? Number.POSITIVE_INFINITY, npmDeadlineRemaining(now, deadline)), killSignal: 'SIGTERM' }); npmCheckDeadline(now, deadline); return result }
   const toolVersion = await npmInvoke(run, input.toolPaths.python, ['-c', 'import sys,importlib.metadata,cryptography; print(sys.version.split()[0]); print(importlib.metadata.version("pypi-attestations")); print(cryptography.__version__)'], { cwd: workDir, env: isolatedEnv }, 'pypi-tool-versions', deadlineControl)
   const toolLines = String(toolVersion.stdout).trim().split(/\r?\n/)
-  if (toolLines.length < 3 || !/^3\.12\./.test(toolLines[0]) || toolLines[1] !== '0.0.30' || toolLines[2] !== '46.0.3') fail('pypi-observe-tool-version-mismatch')
+  if (toolLines.length < 3 || !/^3\.12\./.test(toolLines[0]) || toolLines[1] !== '0.0.30' || toolLines[2] !== '50.0.2') fail('pypi-observe-tool-version-mismatch')
   const buildVersion = await npmInvoke(run, input.toolPaths.python, ['-m', 'build', '--version'], { cwd: workDir, env: isolatedEnv }, 'pypi-build-version', deadlineControl)
   if (!/^build 1\.6\.0(?:\s|\(|$)/.test(String(buildVersion.stdout).trim())) fail('pypi-observe-build-version-mismatch')
   const observations = []
@@ -3528,7 +3989,7 @@ export async function observePyPIRelease(input, adapters = {}) {
   const sdistVenv = await mkdtemp(join(workDir, 'sdist-venv-')); await npmInvoke(run, input.toolPaths.python, ['-m', 'venv', sdistVenv], { cwd: workDir, env: isolatedEnv }, 'pypi-sdist-venv', deadlineControl); const sdistPython = join(sdistVenv, 'bin', 'python'); await npmInvoke(run, sdistPython, ['-m', 'pip', 'install', join(sdistBuild, builtWheels[0].name)], { cwd: workDir, env: isolatedEnv }, 'pypi-sdist-install', deadlineControl)
   const sdistImport = await npmInvoke(run, sdistPython, ['-c', 'import erpc_sdk, importlib.metadata, json; print(json.dumps({"origin": erpc_sdk.__file__, "version": importlib.metadata.version("erpc-sdk")}))'], { cwd: workDir, env: isolatedEnv }, 'pypi-sdist-consumer', deadlineControl); const sdistProof = await pypiConsumerProof(sdistImport, sdistPython, version, 'sdist')
   npmCheckDeadline(now, deadline)
-  const receipt = { schemaVersion: 1, kind: 'pypi-public-observation', state: 'observed', complete: true, repository: EXPECTED_REPOSITORY, repositoryId: EXPECTED_REPOSITORY_ID, planSha256: input.planSha256, preparation: input.preparation, version, publishers: Object.fromEntries(observations.map(file => [file.filename, file.publisher])), observer: input.observer, metadata: { url: metadataUrl, status: metadataResponse.status, bodySha256: sha256Hex(npmResponseBody(metadataResponse)) }, files: observations, consumers: { wheel: { exitCode: wheelImport.exitCode, proof: wheelProof }, sdist: { exitCode: sdistImport.exitCode, proof: sdistProof } }, auth: { requested: false, uploadAttempted: false }, observedAt: new Date().toISOString() }
+  const receipt = { schemaVersion: 1, kind: 'pypi-public-observation', state: 'observed', complete: true, repository: EXPECTED_REPOSITORY, repositoryId: EXPECTED_REPOSITORY_ID, planSha256: input.planSha256, preparation: input.preparation, version, publishers: Object.fromEntries(observations.map(file => [file.filename, file.publisher])), observer: input.observer, metadata: { url: metadataUrl, status: metadataResponse.status, bodySha256: sha256Hex(npmResponseBody(metadataResponse)) }, files: observations, consumers: { wheel: { exitCode: wheelImport.exitCode, proof: wheelProof }, sdist: { exitCode: sdistImport.exitCode, proof: sdistProof } }, auth: { requested: false, uploadAttempted: false }, ...(input.recoveryContext === undefined ? {} : { recoveryContextSha256: input.recoveryContext.contextSha256 }), observedAt: new Date().toISOString() }
   const temporaryOutput = `${outputFile}.tmp-${process.pid}-${Math.random().toString(16).slice(2)}`
   await writeFile(temporaryOutput, `${canonicalJson(receipt)}\n`, { flag: 'wx' })
   await rename(temporaryOutput, outputFile)
@@ -3741,7 +4202,7 @@ const rubyConsumerProof = async (result, runtime, version, gemHome) => {
 }
 
 const rubyStrictInput = input => {
-  releaseSetKeys(input, ['descriptor', 'planSha256', 'preparation', 'observer', 'workDir', 'outputFile', 'toolPaths'], 'RubyGems observer input')
+  releaseSetKeys(input, ['descriptor', 'planSha256', 'preparation', 'observer', 'workDir', 'outputFile', 'toolPaths', 'recoveryContext'], 'RubyGems observer input')
   releaseSetKeys(input.descriptor, ['kind', 'filename', 'name', 'version', 'sha256', 'files', 'profile'], 'RubyGems observer descriptor')
   requireEqual(input.descriptor.kind, 'rubygems', 'RubyGems observer descriptor kind mismatch')
   requireEqual(input.descriptor.name, 'erpc-sdk', 'RubyGems observer package identity mismatch')
@@ -3759,7 +4220,12 @@ const rubyStrictInput = input => {
   requireFuturePositiveId(input.observer.runAttempt, 'RubyGems observer attempt')
   requireEqual(input.observer.workflowPath, RELEASE_SET_WORKFLOW, 'RubyGems observer workflow mismatch')
   requireSha(input.observer.sourceCommit, 'RubyGems observer source')
-  requireEqual(input.observer.sourceCommit, input.preparation.sourceCommit, 'RubyGems observer source mismatch')
+  if (input.recoveryContext === undefined) requireEqual(input.observer.sourceCommit, input.preparation.sourceCommit, 'RubyGems observer source mismatch')
+  else {
+    const context = validatePublicationRecoveryContext(input.recoveryContext)
+    requireEqual(input.recoveryContext.sourceM, input.preparation.sourceCommit, 'RubyGems observer recovery source/preparation mismatch')
+    requireEqual(input.observer.sourceCommit, context.controlCommit, 'RubyGems observer recovery observer source mismatch')
+  }
   releaseSetKeys(input.toolPaths, ['ruby31', 'ruby34'], 'RubyGems observer tool paths')
   for (const [name, value] of Object.entries(input.toolPaths)) npmSafePath(value, `RubyGems observer ${name} path`)
   return input
@@ -3886,6 +4352,7 @@ export async function observeRubyGemsRelease(input, adapters = {}) {
     archive: { filename: archiveEvidence.filename, sha256: archiveEvidence.sha256, members: archiveEvidence.members },
     consumers,
     auth: { requested: false, uploadAttempted: false },
+    ...(input.recoveryContext === undefined ? {} : { recoveryContextSha256: input.recoveryContext.contextSha256 }),
     observedAt: new Date().toISOString(),
   }
   const temporaryOutput = `${outputFile}.tmp-${process.pid}-${Math.random().toString(16).slice(2)}`
@@ -3930,7 +4397,7 @@ const rustObserverDescriptor = descriptor => {
 }
 
 const rustObserverInput = input => {
-  releaseSetKeys(input, ['descriptor', 'planSha256', 'preparation', 'observer', 'workDir', 'outputFile'], 'Rust observer input')
+  releaseSetKeys(input, ['descriptor', 'planSha256', 'preparation', 'observer', 'workDir', 'outputFile', 'recoveryContext'], 'Rust observer input')
   const descriptor = rustObserverDescriptor(input.descriptor)
   if (input.planSha256 !== undefined) requireArchiveSha(input.planSha256, 'Rust observer plan SHA-256')
   if (input.preparation !== undefined) {
@@ -3948,6 +4415,11 @@ const rustObserverInput = input => {
   requireFuturePositiveId(input.observer.runAttempt, 'Rust observer attempt')
   requireEqual(input.observer.workflowPath, RELEASE_SET_WORKFLOW, 'Rust observer workflow mismatch')
   requireSha(input.observer.sourceCommit, 'Rust observer source')
+  if (input.recoveryContext !== undefined) {
+    validatePublicationRecoveryContext(input.recoveryContext)
+    requireEqual(input.recoveryContext.sourceM, input.preparation.sourceCommit, 'Rust observer recovery source/preparation mismatch')
+    requireEqual(input.observer.sourceCommit, input.recoveryContext.controlCommit, 'Rust observer recovery observer source mismatch')
+  }
   return { ...input, descriptor }
 }
 
@@ -4063,6 +4535,7 @@ export async function observeRustArtifact(input, adapters = {}) {
     download: { requestedUrl: apiDownloadUrl, url: currentUrl, status: downloadResponse.status, redirects, sha256: observedSha256, sizeInBytes: crateBytes.length },
     archive: { filename: normalizedInput.descriptor.filename, sha256: observedSha256, members: archive, sourceCommit: normalizedInput.descriptor.sourceCommit, pathInVcs: 'packages/rust' },
     auth: { requested: false, uploadAttempted: false },
+    ...(input.recoveryContext === undefined ? {} : { recoveryContextSha256: input.recoveryContext.contextSha256 }),
     observedAt: new Date().toISOString(),
   }
   const temporaryOutput = `${outputFile}.tmp-${process.pid}-${Math.random().toString(16).slice(2)}`
@@ -4559,16 +5032,41 @@ const githubArtifactMembers = async (zipBytes, workDir, expectedNames, stage) =>
   return { zipFile, members: members.map(member => member.name).sort(), bytes }
 }
 
-const releaseSetReceiptObserver = (value, label, plan) => {
+const releaseSetReceiptObserver = (value, label, plan, { observerSourceCommit = plan.sourceCommit } = {}) => {
   releaseSetKeys(value, ['runId', 'runAttempt', 'workflowPath', 'sourceCommit'], label)
   requireFuturePositiveId(value.runId, `${label} run ID`)
   requireFuturePositiveId(value.runAttempt, `${label} attempt`)
   requireEqual(value.workflowPath, RELEASE_SET_WORKFLOW, `${label} workflow mismatch`)
-  requireEqual(value.sourceCommit, plan.sourceCommit, `${label} source mismatch`)
+  requireEqual(value.sourceCommit, observerSourceCommit, `${label} source mismatch`)
   return { repository: EXPECTED_REPOSITORY, repositoryId: EXPECTED_REPOSITORY_ID, workflowPath: RELEASE_SET_WORKFLOW, sourceCommit: value.sourceCommit, runId: String(value.runId), runAttempt: String(value.runAttempt), ref: 'refs/heads/main', event: 'workflow_dispatch' }
 }
 
-const releaseSetReceiptCommon = (receipt, kind, plan, preparation) => {
+const validateReleaseSetRecoveryOptions = (options = {}) => {
+  const recoveryOverrideKeys = ['context', 'contextSha256', 'observerSourceCommit', 'observerSources', 'publisherSources', 'historicalReceiptFiles']
+  if (options.recovery !== true) {
+    if (recoveryOverrideKeys.some(key => options[key] !== undefined)) fail('Release-set recovery overrides require recovery mode with the validated publication recovery context')
+    return options
+  }
+  if (options.context === undefined) fail('Release-set recovery requires the validated publication recovery context')
+  const suppliedContext = options.context
+  const context = validatePublicationRecoveryContext(suppliedContext, { requireCiProof: true })
+  requireArchiveSha(options.contextSha256, 'Release-set recovery context hash')
+  requireEqual(options.contextSha256, context.contextSha256, 'Release-set recovery context hash is not authenticated')
+  requireEqual(options.observerSourceCommit, context.controlCommit, 'Release-set recovery observer source is not authenticated')
+  for (const [label, sources] of [['observer', options.observerSources], ['publisher', options.publisherSources]]) {
+    if (sources === undefined) continue
+    releaseSetObject(sources, `Release-set recovery ${label} source map`)
+    for (const source of Object.values(sources)) requireEqual(source === context.controlCommit || source === context.sourceM, true, `Release-set recovery ${label} source is outside the authenticated M/C cohort`)
+  }
+  return { ...options, context: suppliedContext, contextSha256: context.contextSha256, observerSourceCommit: context.controlCommit }
+}
+
+const releaseSetReceiptCommon = (receipt, kind, plan, preparation, options = {}) => {
+  options = validateReleaseSetRecoveryOptions(options)
+  if (options.recovery) {
+    requireArchiveSha(options.contextSha256, `${kind} recovery context hash`)
+    requireSha(options.observerSourceCommit, `${kind} recovery observer source`)
+  }
   releaseSetObject(receipt, `${kind} release receipt`)
   for (const key of ['schemaVersion', 'kind', 'state', 'repository', 'repositoryId', 'planSha256', 'preparation', 'observer', 'auth', 'observedAt']) if (!Object.hasOwn(receipt, key)) fail(`${kind} release receipt is missing ${key}`)
   requireEqual(receipt.schemaVersion, 1, `${kind} receipt schema mismatch`)
@@ -4579,21 +5077,33 @@ const releaseSetReceiptCommon = (receipt, kind, plan, preparation) => {
   requireEqual(receipt.planSha256, releaseSetPlanDigest(plan), `${kind} receipt plan mismatch`)
   const checkedPreparation = releaseSetPreparationTuple(receipt.preparation, `${kind} receipt preparation`)
   requireEqual(canonicalJson(checkedPreparation), canonicalJson(releaseSetPreparationTuple(preparation, `${kind} expected preparation`)), `${kind} receipt preparation mismatch`)
-  const observer = releaseSetReceiptObserver(receipt.observer, `${kind} receipt observer`, plan)
-  releaseSetKeys(receipt.auth, ['requested', 'uploadAttempted'], `${kind} receipt auth`)
-  requireEqual(receipt.auth.requested, false, `${kind} receipt requested credentials`)
-  requireEqual(receipt.auth.uploadAttempted, false, `${kind} receipt attempted an upload`)
+  const observer = releaseSetReceiptObserver(receipt.observer, `${kind} receipt observer`, plan, { ...options, observerSourceCommit: options.observerSources?.[kind === 'rubygems-public-observation' ? 'rubygems-proof.json' : kind === 'npm-public-observation' ? 'npm-proof.json' : kind === 'pypi-public-observation' ? 'pypi-proof.json' : kind === 'rust-artifact-observation' ? 'rust-proof.json' : kind === 'tag-public-observation' ? 'tag-proof.json' : 'go-proof.json'] ?? options.observerSourceCommit })
+  releaseSetKeys(receipt.auth, ['requested', 'uploadAttempted', ...(options.recovery && kind === 'pypi-public-observation' ? ['uploadOutcome'] : [])], `${kind} receipt auth`)
+  if (options.recovery && kind === 'pypi-public-observation') {
+    requireEqual(receipt.auth.requested === true || receipt.auth.requested === false, true, `${kind} receipt auth state is malformed`)
+    requireEqual(receipt.auth.uploadAttempted, receipt.auth.requested, `${kind} receipt upload/auth state mismatch`)
+  } else {
+    requireEqual(receipt.auth.requested, false, `${kind} receipt requested credentials`)
+    requireEqual(receipt.auth.uploadAttempted, false, `${kind} receipt attempted an upload`)
+  }
   if (typeof receipt.observedAt !== 'string' || Number.isNaN(Date.parse(receipt.observedAt))) fail(`${kind} receipt timestamp is invalid`)
+  if (options.recovery) {
+    const filename = kind === 'rubygems-public-observation' ? 'rubygems-proof.json' : kind === 'npm-public-observation' ? 'npm-proof.json' : kind === 'pypi-public-observation' ? 'pypi-proof.json' : kind === 'rust-artifact-observation' ? 'rust-proof.json' : kind === 'tag-public-observation' ? 'tag-proof.json' : 'go-proof.json'
+    const historical = options.historicalReceiptFiles?.includes(filename) === true
+    if (receipt.recoveryContextSha256 === undefined) {
+      if (!historical || options.observerSources?.[filename] !== plan.sourceCommit) fail(`${kind} receipt lacks an authenticated recovery context`)
+    } else requireEqual(receipt.recoveryContextSha256, options.contextSha256, `${kind} receipt recovery context mismatch`)
+  }
   return { observer, preparation: checkedPreparation }
 }
 
 const releaseSetExpectedGoInventory = plan => Object.fromEntries(plan.go.inventory.files.map(file => [file.path, file.sha256]))
 
-const releaseSetValidateReceipt = (receipt, filename, { plan, preparation }) => {
+const releaseSetValidateReceipt = (receipt, filename, { plan, preparation, recoveryOptions = {} }) => {
   const artifactByKind = Object.fromEntries(plan.artifacts.map(artifact => [artifact.kind, artifact]))
   if (filename === 'npm-proof.json') {
-    releaseSetKeys(receipt, ['schemaVersion', 'kind', 'state', 'repository', 'repositoryId', 'planSha256', 'preparation', 'observer', 'auth', 'observedAt', 'descriptor', 'registry', 'publisher', 'provenance', 'toolVersions', 'consumer'], 'npm receipt')
-    releaseSetReceiptCommon(receipt, 'npm-public-observation', plan, preparation)
+    releaseSetKeys(receipt, ['schemaVersion', 'kind', 'state', 'repository', 'repositoryId', 'planSha256', 'preparation', 'observer', 'auth', 'observedAt', 'descriptor', 'registry', 'publisher', 'provenance', 'toolVersions', 'consumer', ...(recoveryOptions.recovery ? ['recoveryContextSha256'] : [])], 'npm receipt')
+    releaseSetReceiptCommon(receipt, 'npm-public-observation', plan, preparation, recoveryOptions)
     releaseSetKeys(receipt.descriptor, ['kind', 'filename', 'name', 'version', 'expectedSha256', 'observedSha256', 'observedSRI'], 'npm receipt descriptor')
     const expected = artifactByKind.npm
     requireEqual(receipt.descriptor.kind, expected.kind, 'npm receipt descriptor kind mismatch')
@@ -4618,8 +5128,8 @@ const releaseSetValidateReceipt = (receipt, filename, { plan, preparation }) => 
     requireEqual(receipt.provenance?.certificateClaims?.['1.3.6.1.4.1.57264.1.21'], receipt.publisher.invocation, 'npm receipt provenance invocation mismatch')
     if (receipt.consumer?.audit?.exitCode !== 0 || receipt.consumer?.audit?.invalid !== 0 || receipt.consumer?.audit?.missing !== 0 || !(receipt.consumer?.audit?.verifiedTargetCount > 0) || receipt.consumer?.smoke?.exitCodes?.install !== 0 || receipt.consumer?.smoke?.exitCodes?.require !== 0 || receipt.consumer?.smoke?.exitCodes?.import !== 0) fail('npm receipt consumer proof is incomplete')
   } else if (filename === 'pypi-proof.json') {
-    releaseSetKeys(receipt, ['schemaVersion', 'kind', 'state', 'complete', 'repository', 'repositoryId', 'planSha256', 'preparation', 'observer', 'auth', 'observedAt', 'version', 'publishers', 'metadata', 'files', 'consumers'], 'PyPI receipt')
-    releaseSetReceiptCommon(receipt, 'pypi-public-observation', plan, preparation)
+    releaseSetKeys(receipt, ['schemaVersion', 'kind', 'state', 'complete', 'repository', 'repositoryId', 'planSha256', 'preparation', 'observer', 'auth', 'observedAt', 'version', 'publishers', 'metadata', 'files', 'consumers', ...(recoveryOptions.recovery ? ['recoveryContextSha256'] : [])], 'PyPI receipt')
+    releaseSetReceiptCommon(receipt, 'pypi-public-observation', plan, preparation, recoveryOptions)
     requireEqual(receipt.complete, true, 'PyPI receipt is incomplete')
     requireEqual(receipt.version, plan.versions.nonRustVersion, 'PyPI receipt version mismatch')
     const expectedFiles = new Map(plan.artifacts.filter(artifact => artifact.kind.startsWith('pypi')).map(artifact => [artifact.filename, artifact]))
@@ -4632,11 +5142,19 @@ const releaseSetValidateReceipt = (receipt, filename, { plan, preparation }) => 
       requireEqual(file.sha256, expectedFiles.get(file.filename).sha256, `PyPI receipt ${file.filename} digest mismatch`)
       requireEqual(receipt.publishers[file.filename] !== undefined, true, `PyPI receipt ${file.filename} publisher missing`)
       requireEqual(canonicalJson(file.publisher), canonicalJson(receipt.publishers[file.filename]), `PyPI receipt ${file.filename} publisher mismatch`)
+      if (recoveryOptions.recovery) {
+        const expectedPublisher = recoveryOptions.publisherSources?.[file.filename]
+        if (expectedPublisher !== undefined) requireEqual(file.publisher.sourceCommit, expectedPublisher, `PyPI receipt ${file.filename} publisher source mismatch`)
+        else requireEqual(file.publisher.sourceCommit === plan.sourceCommit || file.publisher.sourceCommit === recoveryOptions.observerSourceCommit, true, `PyPI receipt ${file.filename} publisher source is outside M/C`)
+        requireFuturePositiveId(file.publisher.publisherRunId, `PyPI receipt ${file.filename} publisher run ID`)
+        requireFuturePositiveId(file.publisher.publisherAttempt, `PyPI receipt ${file.filename} publisher attempt`)
+        requireEqual(file.certificateClaims?.['1.3.6.1.4.1.57264.1.13'], file.publisher.sourceCommit, `PyPI receipt ${file.filename} certificate source mismatch`)
+      }
     }
     if (seen.size !== expectedFiles.size || receipt.consumers?.wheel?.exitCode !== 0 || receipt.consumers?.sdist?.exitCode !== 0) fail('PyPI receipt consumer proof is incomplete')
   } else if (filename === 'rubygems-proof.json') {
-    releaseSetKeys(receipt, ['schemaVersion', 'kind', 'state', 'complete', 'repository', 'repositoryId', 'planSha256', 'preparation', 'observer', 'auth', 'observedAt', 'version', 'metadata', 'download', 'archive', 'consumers'], 'RubyGems receipt')
-    releaseSetReceiptCommon(receipt, 'rubygems-public-observation', plan, preparation)
+    releaseSetKeys(receipt, ['schemaVersion', 'kind', 'state', 'complete', 'repository', 'repositoryId', 'planSha256', 'preparation', 'observer', 'auth', 'observedAt', 'version', 'metadata', 'download', 'archive', 'consumers', ...(recoveryOptions.recovery ? ['recoveryContextSha256'] : [])], 'RubyGems receipt')
+    releaseSetReceiptCommon(receipt, 'rubygems-public-observation', plan, preparation, recoveryOptions)
     requireEqual(receipt.complete, true, 'RubyGems receipt is incomplete')
     requireEqual(receipt.version, plan.versions.nonRustVersion, 'RubyGems receipt version mismatch')
     const expected = artifactByKind.rubygems
@@ -4649,8 +5167,8 @@ const releaseSetValidateReceipt = (receipt, filename, { plan, preparation }) => 
       if (proof?.exitCode !== 0 || proof.base64Version !== '0.2.0' || proof.digestKeccakVersion !== '0.0.7' || !Array.isArray(proof.nativeExtensionFiles) || proof.nativeExtensionFiles.length === 0) fail(`RubyGems receipt ${runtime} consumer proof is incomplete`)
     }
   } else if (filename === 'rust-proof.json') {
-    releaseSetKeys(receipt, ['schemaVersion', 'kind', 'state', 'complete', 'repository', 'repositoryId', 'planSha256', 'preparation', 'observer', 'auth', 'observedAt', 'registry', 'mode', 'version', 'metadata', 'download', 'archive'], 'Rust receipt')
-    releaseSetReceiptCommon(receipt, 'rust-artifact-observation', plan, preparation)
+    releaseSetKeys(receipt, ['schemaVersion', 'kind', 'state', 'complete', 'repository', 'repositoryId', 'planSha256', 'preparation', 'observer', 'auth', 'observedAt', 'registry', 'mode', 'version', 'metadata', 'download', 'archive', ...(recoveryOptions.recovery ? ['recoveryContextSha256'] : [])], 'Rust receipt')
+    releaseSetReceiptCommon(receipt, 'rust-artifact-observation', plan, preparation, recoveryOptions)
     requireEqual(receipt.complete, true, 'Rust receipt is incomplete')
     requireEqual(receipt.registry, 'crates.io', 'Rust receipt registry mismatch')
     requireEqual(receipt.mode, plan.rust.mode, 'Rust receipt mode mismatch')
@@ -4662,8 +5180,8 @@ const releaseSetValidateReceipt = (receipt, filename, { plan, preparation }) => 
     if (plan.rust.reuse?.sizeInBytes !== undefined) requireEqual(receipt.download?.sizeInBytes, plan.rust.reuse.sizeInBytes, 'Rust receipt download size mismatch')
     if (plan.rust.mode === 'reuse') requireEqual(receipt.archive?.sourceCommit, plan.rust.sourceCommit, 'Rust receipt reuse source mismatch')
   } else if (filename === 'tag-proof.json') {
-    releaseSetKeys(receipt, ['schemaVersion', 'kind', 'state', 'complete', 'repository', 'repositoryId', 'planSha256', 'preparation', 'observer', 'auth', 'observedAt', 'tags'], 'Tag receipt')
-    releaseSetReceiptCommon(receipt, 'tag-public-observation', plan, preparation)
+    releaseSetKeys(receipt, ['schemaVersion', 'kind', 'state', 'complete', 'repository', 'repositoryId', 'planSha256', 'preparation', 'observer', 'auth', 'observedAt', 'tags', ...(recoveryOptions.recovery ? ['recoveryContextSha256'] : [])], 'Tag receipt')
+    releaseSetReceiptCommon(receipt, 'tag-public-observation', plan, preparation, recoveryOptions)
     requireEqual(receipt.complete, true, 'Tag receipt is incomplete')
     releaseSetTagRead(receipt.tags?.release, 'Release tag receipt')
     releaseSetTagRead(receipt.tags?.go, 'Go tag receipt')
@@ -4672,8 +5190,8 @@ const releaseSetValidateReceipt = (receipt, filename, { plan, preparation }) => 
     requireEqual(receipt.tags.release.sha, plan.sourceCommit, 'Release tag receipt source mismatch')
     requireEqual(receipt.tags.go.sha, plan.sourceCommit, 'Go tag receipt source mismatch')
   } else if (filename === 'go-proof.json') {
-    releaseSetKeys(receipt, ['schemaVersion', 'kind', 'state', 'complete', 'repository', 'repositoryId', 'registry', 'module', 'version', 'tag', 'sourceCommit', 'planSha256', 'preparation', 'observer', 'tooling', 'proxy', 'direct', 'auth', 'observedAt'], 'Go receipt')
-    releaseSetReceiptCommon(receipt, 'go-public-observation', plan, preparation)
+    releaseSetKeys(receipt, ['schemaVersion', 'kind', 'state', 'complete', 'repository', 'repositoryId', 'registry', 'module', 'version', 'tag', 'sourceCommit', 'planSha256', 'preparation', 'observer', 'tooling', 'proxy', 'direct', 'auth', 'observedAt', ...(recoveryOptions.recovery ? ['recoveryContextSha256'] : [])], 'Go receipt')
+    releaseSetReceiptCommon(receipt, 'go-public-observation', plan, preparation, recoveryOptions)
     requireEqual(receipt.complete, true, 'Go receipt is incomplete')
     requireEqual(receipt.module, plan.go.module, 'Go receipt module mismatch')
     requireEqual(receipt.version, plan.go.version, 'Go receipt version mismatch')
@@ -4690,7 +5208,8 @@ const releaseSetValidateReceipt = (receipt, filename, { plan, preparation }) => 
   return receipt
 }
 
-export function validateReleaseSetProofReceipts({ plan, preparation, receipts, receiptBytes }) {
+export function validateReleaseSetProofReceipts({ plan, preparation, receipts, receiptBytes, recoveryOptions = {} }) {
+  recoveryOptions = validateReleaseSetRecoveryOptions(recoveryOptions)
   const normalized = validateReleaseSetPlan(plan)
   const checkedPreparation = releaseSetPreparationTuple(preparation, 'Release-set proof preparation')
   if (!receipts || typeof receipts !== 'object' || Array.isArray(receipts)) fail('Release-set proof receipts are missing')
@@ -4704,7 +5223,7 @@ export function validateReleaseSetProofReceipts({ plan, preparation, receipts, r
     if (!Buffer.isBuffer(bytes)) fail(`Release-set ${filename} raw bytes are invalid`)
     let parsed = value
     if (parsed === undefined) { try { parsed = JSON.parse(bytes.toString('utf8')) } catch { fail(`Release-set ${filename} JSON is invalid`) } }
-    releaseSetValidateReceipt(parsed, filename, { plan: normalized, preparation: checkedPreparation })
+    releaseSetValidateReceipt(parsed, filename, { plan: normalized, preparation: checkedPreparation, recoveryOptions })
     digests[filename] = sha256Hex(bytes)
     normalizedReceipts[filename] = parsed
   }
@@ -4744,9 +5263,10 @@ export function validateReleaseSetProofManifest(manifest, { plan, preparation } 
   return { ...manifest, repositoryId: EXPECTED_REPOSITORY_ID, preparation: checkedPreparation, snapshot, receipts: Object.fromEntries(Object.entries(receiptDigests).sort()), receiptArtifacts: Object.fromEntries(Object.entries(receiptArtifacts).sort()) }
 }
 
-export function buildReleaseSetProofManifest({ plan, preparation, snapshot, receipts, receiptBytes, receiptArtifacts }) {
+export function buildReleaseSetProofManifest({ plan, preparation, snapshot, receipts, receiptBytes, receiptArtifacts, recoveryOptions = {} }) {
+  recoveryOptions = validateReleaseSetRecoveryOptions(recoveryOptions)
   const normalized = validateReleaseSetPlan(plan)
-  const checked = validateReleaseSetProofReceipts({ plan: normalized, preparation, receipts, receiptBytes })
+  const checked = validateReleaseSetProofReceipts({ plan: normalized, preparation, receipts, receiptBytes, recoveryOptions })
   const snapshotBinding = releaseSetArtifactBinding(snapshot, 'Release-set proof snapshot')
   requireEqual(snapshotBinding.artifactName, releaseSetSnapshotArtifactName(snapshotBinding.producer.runId, snapshotBinding.producer.runAttempt), 'Release-set proof snapshot name mismatch')
   if (!receiptArtifacts || typeof receiptArtifacts !== 'object' || Array.isArray(receiptArtifacts)) fail('Release-set proof receipt artifact bindings are missing')
@@ -4792,7 +5312,8 @@ const githubObserveReleaseSetArtifact = async ({ request, binding, expectedProdu
 }
 
 /** Authenticate a bounded subset of original one-member receipt artifacts before tag or Release effects. */
-export async function observeReleaseSetReceiptArtifacts({ plan, preparation, receiptArtifacts, filenames, observer, workDir, request, now = () => performance.now(), currentProducer = true }) {
+export async function observeReleaseSetReceiptArtifacts({ plan, preparation, receiptArtifacts, filenames, observer, workDir, request, now = () => performance.now(), currentProducer = true, recoveryOptions = {} }) {
+  recoveryOptions = validateReleaseSetRecoveryOptions(recoveryOptions)
   const normalized = validateReleaseSetPlan(plan)
   const checkedPreparation = releaseSetPreparationTuple(preparation, 'Release-set receipt preparation')
   const names = filenames === undefined ? ['npm-proof.json', 'pypi-proof.json', 'rubygems-proof.json'] : [...filenames]
@@ -4811,7 +5332,10 @@ export async function observeReleaseSetReceiptArtifacts({ plan, preparation, rec
     const bytes = observed.extracted.bytes.get(filename)
     let receipt
     try { receipt = JSON.parse(bytes.toString('utf8')) } catch { fail(`Release-set ${filename} receipt JSON is invalid`) }
-    releaseSetValidateReceipt(receipt, filename, { plan: normalized, preparation: checkedPreparation })
+    releaseSetValidateReceipt(receipt, filename, { plan: normalized, preparation: checkedPreparation, recoveryOptions })
+    const expectedObserverSource = recoveryOptions.observerSources?.[filename] ?? recoveryOptions.observerSourceCommit
+    const receiptObserver = releaseSetReceiptObserver(receipt.observer, `Release-set ${filename} receipt observer`, normalized, { observerSourceCommit: expectedObserverSource })
+    requireEqual(canonicalJson(receiptObserver), canonicalJson(observed.binding.producer), `Release-set ${filename} producer lineage mismatch`)
     receipts[filename] = receipt; receiptBytes[filename] = bytes; actualBindings[filename] = observed.binding
   }
   return { receipts, receiptBytes, receiptArtifacts: actualBindings, producerRuns: Object.fromEntries(observedRuns) }
@@ -4831,7 +5355,8 @@ const releaseSetSelector = selector => {
 }
 
 /** Authenticate the six source receipts and the immutable receipt-only snapshot. */
-export async function observeReleaseSetProofSnapshot({ plan, preparation, selector, observer, workDir, request, now = () => performance.now(), currentProducer = true }) {
+export async function observeReleaseSetProofSnapshot({ plan, preparation, selector, observer, workDir, request, now = () => performance.now(), currentProducer = true, recoveryOptions = {} }) {
+  recoveryOptions = validateReleaseSetRecoveryOptions(recoveryOptions)
   const normalized = validateReleaseSetPlan(plan)
   const checkedPreparation = releaseSetPreparationTuple(preparation, 'Release-set snapshot preparation')
   const checkedSelector = releaseSetSelector(selector)
@@ -4856,7 +5381,7 @@ export async function observeReleaseSetProofSnapshot({ plan, preparation, select
     const validated = validateReleaseSetProofManifest(manifest, { plan: normalized, preparation: checkedPreparation })
     const nestedRoot = join(root, 'checkpoint-lineage')
     await mkdir(nestedRoot)
-    const nested = await observeReleaseSetProofSnapshot({ plan: normalized, preparation: checkedPreparation, selector: { mode: 'current', snapshot: validated.snapshot, receiptArtifacts: validated.receiptArtifacts }, observer: undefined, workDir: nestedRoot, request, now, currentProducer: false })
+    const nested = await observeReleaseSetProofSnapshot({ plan: normalized, preparation: checkedPreparation, selector: { mode: 'current', snapshot: validated.snapshot, receiptArtifacts: validated.receiptArtifacts }, observer: undefined, workDir: nestedRoot, request, now, currentProducer: false, recoveryOptions })
     requireEqual(canonicalJson(nested.manifest), canonicalJson(validated), 'Release-set checkpoint manifest lineage changed')
     return { ...nested, checkpointManifestBytes: bytes }
   }
@@ -4885,12 +5410,12 @@ export async function observeReleaseSetProofSnapshot({ plan, preparation, select
     receiptBytes[filename] = bytes
     actualReceiptBindings[filename] = observed.binding
   }
-  const checkedReceipts = validateReleaseSetProofReceipts({ plan: normalized, preparation: checkedPreparation, receipts, receiptBytes })
+  const checkedReceipts = validateReleaseSetProofReceipts({ plan: normalized, preparation: checkedPreparation, receipts, receiptBytes, recoveryOptions })
   for (const filename of RELEASE_SET_RECEIPT_FILENAMES) {
-    const receiptObserver = releaseSetReceiptObserver(checkedReceipts.receipts[filename].observer, `Release-set ${filename} receipt observer`, normalized)
+    const receiptObserver = releaseSetReceiptObserver(checkedReceipts.receipts[filename].observer, `Release-set ${filename} receipt observer`, normalized, { ...recoveryOptions, observerSourceCommit: recoveryOptions.observerSources?.[filename] ?? recoveryOptions.observerSourceCommit })
     requireEqual(canonicalJson(receiptObserver), canonicalJson(actualReceiptBindings[filename].producer), `Release-set ${filename} producer lineage mismatch`)
   }
-  const manifest = buildReleaseSetProofManifest({ plan: normalized, preparation: checkedPreparation, snapshot: snapshot.binding, receipts: checkedReceipts.receipts, receiptBytes, receiptArtifacts: actualReceiptBindings })
+  const manifest = buildReleaseSetProofManifest({ plan: normalized, preparation: checkedPreparation, snapshot: snapshot.binding, receipts: checkedReceipts.receipts, receiptBytes, receiptArtifacts: actualReceiptBindings, recoveryOptions })
   return { selector: checkedSelector, snapshot: snapshot.binding, receiptArtifacts: actualReceiptBindings, receipts: checkedReceipts.receipts, receiptBytes, receiptDigests: checkedReceipts.receiptDigests, manifest, producerRuns: Object.fromEntries(observedProducerRuns) }
 }
 
@@ -4924,7 +5449,7 @@ const githubObserverDescriptor = descriptor => {
 }
 
 const githubObserverInput = input => {
-  releaseSetKeys(input, ['plan', 'descriptor', 'planSha256', 'preparation', 'observer', 'workDir', 'outputFile', 'snapshot', 'publicRead', 'requireSnapshot'], 'GitHub observer input')
+  releaseSetKeys(input, ['plan', 'descriptor', 'planSha256', 'preparation', 'observer', 'workDir', 'outputFile', 'snapshot', 'publicRead', 'requireSnapshot', 'recoveryOptions'], 'GitHub observer input')
   const descriptor = githubObserverDescriptor(input.descriptor)
   if (input.plan !== undefined) validateReleaseSetPlan(input.plan)
   if (input.planSha256 !== undefined) requireArchiveSha(input.planSha256, 'GitHub observer plan SHA-256')
@@ -5236,6 +5761,7 @@ export async function observeGitHubRelease(input, adapters = {}) {
       request,
       now,
       currentProducer: normalized.snapshot.mode === 'current',
+      recoveryOptions: input.recoveryOptions ?? {},
     })
     normalized.descriptor = githubApplyReleaseSetDynamicHashes(normalized.descriptor, snapshotEvidence).descriptor
   }
@@ -5274,7 +5800,7 @@ export async function observeGitHubRelease(input, adapters = {}) {
     let manifest
     try { manifest = JSON.parse(manifestBytes.toString('utf8')) } catch { fail('Release-set public manifest JSON is invalid') }
     const validatedManifest = validateReleaseSetProofManifest(manifest, { plan: normalized.plan, preparation: normalized.preparation })
-    const nested = await observeReleaseSetProofSnapshot({ plan: normalized.plan, preparation: normalized.preparation, selector: { mode: 'current', snapshot: validatedManifest.snapshot, receiptArtifacts: validatedManifest.receiptArtifacts }, workDir, request, now, currentProducer: false })
+    const nested = await observeReleaseSetProofSnapshot({ plan: normalized.plan, preparation: normalized.preparation, selector: { mode: 'current', snapshot: validatedManifest.snapshot, receiptArtifacts: validatedManifest.receiptArtifacts }, workDir, request, now, currentProducer: false, recoveryOptions: input.recoveryOptions ?? {} })
     requireEqual(Buffer.compare(Buffer.from(`${canonicalJson(nested.manifest)}\n`), manifestBytes), 0, 'Release-set public manifest bytes changed')
     snapshotEvidence = nested
     normalized.descriptor = githubApplyReleaseSetDynamicHashes(normalized.descriptor, snapshotEvidence).descriptor
@@ -5498,6 +6024,252 @@ const run = async arguments_ => {
     const digest = releaseSetPlanDigest(plan)
     if (optionalReleaseSetEnv('RELEASE_SET_PLAN_SHA256') !== undefined) requireEqual(optionalReleaseSetEnv('RELEASE_SET_PLAN_SHA256'), digest, 'Release-set reviewed plan digest mismatch')
     console.log(`release-set-plan=${digest}`)
+    return
+  }
+
+  if (arguments_[0] === '--publication-recovery-context') {
+    requireExactInternalMode(arguments_, '--publication-recovery-context')
+    const runtime = JSON.parse(await readFile(env('PUBLICATION_RECOVERY_RUNTIME_FILE'), 'utf8'))
+    const originalRun = JSON.parse(await readFile(env('PUBLICATION_RECOVERY_PUBLICATION_RUN_FILE'), 'utf8'))
+    const jobsPayload = JSON.parse(await readFile(env('PUBLICATION_RECOVERY_PUBLICATION_JOBS_FILE'), 'utf8'))
+    const jobs = Array.isArray(jobsPayload) ? jobsPayload : jobsPayload.jobs
+    const outcomes = JSON.parse(await readFile(env('PUBLICATION_RECOVERY_PUBLICATION_OUTCOMES_FILE'), 'utf8'))
+    validatePublicationRecoveryOriginalPublication({ run: originalRun, jobs, outcomes })
+    const preparation = JSON.parse(await readFile(env('PUBLICATION_RECOVERY_PREPARATION_FILE'), 'utf8'))
+    const ciProof = process.env.PUBLICATION_RECOVERY_CI_PROOF_FILE === undefined
+      ? undefined
+      : JSON.parse(await readFile(process.env.PUBLICATION_RECOVERY_CI_PROOF_FILE, 'utf8'))
+    const sourceCiProof = process.env.PUBLICATION_RECOVERY_SOURCE_CI_PROOF_FILE === undefined
+      ? undefined
+      : JSON.parse(await readFile(process.env.PUBLICATION_RECOVERY_SOURCE_CI_PROOF_FILE, 'utf8'))
+    const context = buildPublicationRecoveryContext({
+      runtime,
+      preparation,
+      originalPublication: { runId: String(originalRun.id), runAttempt: String(originalRun.run_attempt), sourceCommit: originalRun.head_sha, workflowPath: originalRun.path, status: originalRun.status, conclusion: originalRun.conclusion, jobOutcomes: jobs, outcomes },
+      recoveryRun: { runId: env('GITHUB_RUN_ID'), runAttempt: env('GITHUB_RUN_ATTEMPT') },
+      ciProof,
+      sourceCiProof,
+    })
+    validatePublicationRecoveryContext(context, { requireCiProof: ciProof !== undefined })
+    await writeFile(env('PUBLICATION_RECOVERY_CONTEXT_OUTPUT_FILE'), `${canonicalJson(context)}\n`)
+    console.log(`publication-recovery-context=${context.contextSha256}`)
+    return
+  }
+
+  if (arguments_[0] === '--publication-recovery-context-verify') {
+    requireExactInternalMode(arguments_, '--publication-recovery-context-verify')
+    const context = JSON.parse(await readFile(env('PUBLICATION_RECOVERY_CONTEXT_FILE'), 'utf8'))
+    validatePublicationRecoveryContext(context, { requireCiProof: process.env.PUBLICATION_RECOVERY_REQUIRE_CI_PROOF === 'true' })
+    console.log(`publication-recovery-context-verified=${context.contextSha256}`)
+    return
+  }
+
+  if (arguments_[0] === '--publication-recovery-bundle') {
+    requireExactInternalMode(arguments_, '--publication-recovery-bundle')
+    const context = JSON.parse(await readFile(env('PUBLICATION_RECOVERY_CONTEXT_FILE'), 'utf8'))
+    validatePublicationRecoveryContext(context, { requireCiProof: true })
+    const plan = JSON.parse(await readFile(env('PUBLICATION_RECOVERY_PLAN_FILE'), 'utf8'))
+    const binding = process.env.PUBLICATION_RECOVERY_BINDING_FILE === undefined
+      ? undefined
+      : JSON.parse(await readFile(process.env.PUBLICATION_RECOVERY_BINDING_FILE, 'utf8'))
+    const evidence = await validatePublicationRecoveryBundle({ plan, artifactDirectory: env('PUBLICATION_RECOVERY_ARTIFACT_DIR'), binding, bindingArtifactId: process.env.PUBLICATION_RECOVERY_BINDING_ARTIFACT_ID, bundleZip: process.env.PUBLICATION_RECOVERY_BUNDLE_ZIP_FILE, bindingZip: process.env.PUBLICATION_RECOVERY_BINDING_ZIP_FILE, bundleMetadata: process.env.PUBLICATION_RECOVERY_BUNDLE_METADATA_FILE === undefined ? undefined : JSON.parse(await readFile(process.env.PUBLICATION_RECOVERY_BUNDLE_METADATA_FILE, 'utf8')), bindingMetadata: process.env.PUBLICATION_RECOVERY_BINDING_METADATA_FILE === undefined ? undefined : JSON.parse(await readFile(process.env.PUBLICATION_RECOVERY_BINDING_METADATA_FILE, 'utf8')), bindingDirectory: process.env.PUBLICATION_RECOVERY_BINDING_DIR })
+    if (process.env.PUBLICATION_RECOVERY_BUNDLE_OUTPUT_FILE !== undefined) await writeFile(process.env.PUBLICATION_RECOVERY_BUNDLE_OUTPUT_FILE, `${canonicalJson(evidence)}\n`)
+    console.log(`publication-recovery-bundle=${evidence.planSha256}`)
+    return
+  }
+
+  if (arguments_[0] === '--publication-recovery-preflight') {
+    requireExactInternalMode(arguments_, '--publication-recovery-preflight')
+    const context = JSON.parse(await readFile(env('PUBLICATION_RECOVERY_CONTEXT_FILE'), 'utf8'))
+    validatePublicationRecoveryContext(context, { requireCiProof: true })
+    const result = classifyPublicationRecoveryPreflight({ ...JSON.parse(await readFile(env('PUBLICATION_RECOVERY_PREFLIGHT_INPUT_FILE'), 'utf8')), controlCommit: context.controlCommit })
+    await writeFile(env('PUBLICATION_RECOVERY_PREFLIGHT_OUTPUT_FILE'), `${canonicalJson(result)}\n`)
+    console.log(`publication-recovery-preflight=${canonicalJson({ state: result.state, missing: result.missing })}`)
+    return
+  }
+
+  if (arguments_[0] === '--publication-recovery-receipt') {
+    requireExactInternalMode(arguments_, '--publication-recovery-receipt')
+    const context = JSON.parse(await readFile(env('PUBLICATION_RECOVERY_CONTEXT_FILE'), 'utf8'))
+    const kind = env('PUBLICATION_RECOVERY_RECEIPT_KIND')
+    const receipt = JSON.parse(await readFile(env('PUBLICATION_RECOVERY_RECEIPT_FILE'), 'utf8'))
+    const expected = kind === 'npm' ? PUBLICATION_RECOVERY_NPM_SHA256 : kind === 'rubygems' ? PUBLICATION_RECOVERY_RUBYGEMS_SHA256 : kind === 'rust' ? RUST_011_REUSE_SHA256 : undefined
+    validatePublicationRecoveryReceipt(receipt, { kind, context, expectedSha256: expected, pypiPublisherSource: kind === 'pypi' ? context.controlCommit : undefined })
+    console.log(`publication-recovery-receipt=${kind}`)
+    return
+  }
+
+  if (arguments_[0] === '--publication-recovery-npm-observe') {
+    requireExactInternalMode(arguments_, '--publication-recovery-npm-observe')
+    const context = JSON.parse(await readFile(env('PUBLICATION_RECOVERY_CONTEXT_FILE'), 'utf8'))
+    validatePublicationRecoveryContext(context, { requireCiProof: true })
+    const plan = validateReleaseSetPlan(JSON.parse(await readFile(env('PUBLICATION_RECOVERY_PLAN_FILE'), 'utf8')))
+    const receipt = await observeNpmRelease({
+      descriptor: plan.artifacts.find(artifact => artifact.kind === 'npm'),
+      planSha256: PUBLICATION_RECOVERY_PLAN_SHA256,
+      preparation: context.preparation,
+      publisher: JSON.parse(await readFile(env('PUBLICATION_RECOVERY_PUBLISHER_FILE'), 'utf8')),
+      observer: { runId: env('PUBLICATION_RECOVERY_OBSERVER_RUN_ID'), runAttempt: env('PUBLICATION_RECOVERY_OBSERVER_ATTEMPT'), workflowPath: RELEASE_SET_WORKFLOW, sourceCommit: context.controlCommit },
+      recoveryContext: context,
+      workDir: env('PUBLICATION_RECOVERY_WORK_DIR'),
+      outputFile: env('PUBLICATION_RECOVERY_OUTPUT_FILE'),
+      toolPaths: { node: env('PUBLICATION_RECOVERY_NODE'), npmCli: env('PUBLICATION_RECOVERY_NPM_CLI'), python: env('PUBLICATION_RECOVERY_PYTHON') },
+    })
+    console.log(`publication-recovery-npm=${receipt.descriptor.observedSha256}`)
+    return
+  }
+
+  if (arguments_[0] === '--publication-recovery-pypi-observe') {
+    requireExactInternalMode(arguments_, '--publication-recovery-pypi-observe')
+    const context = JSON.parse(await readFile(env('PUBLICATION_RECOVERY_CONTEXT_FILE'), 'utf8'))
+    validatePublicationRecoveryContext(context, { requireCiProof: true })
+    const plan = validateReleaseSetPlan(JSON.parse(await readFile(env('PUBLICATION_RECOVERY_PLAN_FILE'), 'utf8')))
+    const receipt = await observePyPIRelease({
+      descriptors: { 'pypi-wheel': plan.artifacts.find(artifact => artifact.kind === 'pypi-wheel'), 'pypi-sdist': plan.artifacts.find(artifact => artifact.kind === 'pypi-sdist') },
+      planSha256: PUBLICATION_RECOVERY_PLAN_SHA256,
+      preparation: context.preparation,
+      publishers: JSON.parse(await readFile(env('PUBLICATION_RECOVERY_PUBLISHERS_FILE'), 'utf8')),
+      publisherSources: process.env.PUBLICATION_RECOVERY_PUBLISHER_SOURCES_FILE === undefined ? undefined : JSON.parse(await readFile(process.env.PUBLICATION_RECOVERY_PUBLISHER_SOURCES_FILE, 'utf8')),
+      observer: { runId: env('PUBLICATION_RECOVERY_OBSERVER_RUN_ID'), runAttempt: env('PUBLICATION_RECOVERY_OBSERVER_ATTEMPT'), workflowPath: RELEASE_SET_WORKFLOW, sourceCommit: context.controlCommit },
+      recoveryContext: context,
+      workDir: env('PUBLICATION_RECOVERY_WORK_DIR'),
+      outputFile: env('PUBLICATION_RECOVERY_OUTPUT_FILE'),
+      toolPaths: { python: env('PUBLICATION_RECOVERY_PYTHON') },
+    })
+    console.log(`publication-recovery-pypi=${receipt.version}`)
+    return
+  }
+
+  if (arguments_[0] === '--publication-recovery-pypi-existing-observe') {
+    requireExactInternalMode(arguments_, '--publication-recovery-pypi-existing-observe')
+    const context = JSON.parse(await readFile(env('PUBLICATION_RECOVERY_CONTEXT_FILE'), 'utf8'))
+    validatePublicationRecoveryContext(context, { requireCiProof: true })
+    const plan = validateReleaseSetPlan(JSON.parse(await readFile(env('PUBLICATION_RECOVERY_PLAN_FILE'), 'utf8')))
+    const receipt = await observePyPIRelease({
+      descriptors: { 'pypi-wheel': plan.artifacts.find(artifact => artifact.kind === 'pypi-wheel'), 'pypi-sdist': plan.artifacts.find(artifact => artifact.kind === 'pypi-sdist') },
+      planSha256: PUBLICATION_RECOVERY_PLAN_SHA256,
+      preparation: context.preparation,
+      publishers: JSON.parse(await readFile(env('PUBLICATION_RECOVERY_PUBLISHERS_FILE'), 'utf8')),
+      publisherSources: process.env.PUBLICATION_RECOVERY_PUBLISHER_SOURCES_FILE === undefined ? undefined : JSON.parse(await readFile(process.env.PUBLICATION_RECOVERY_PUBLISHER_SOURCES_FILE, 'utf8')),
+      observer: { runId: env('PUBLICATION_RECOVERY_OBSERVER_RUN_ID'), runAttempt: env('PUBLICATION_RECOVERY_OBSERVER_ATTEMPT'), workflowPath: RELEASE_SET_WORKFLOW, sourceCommit: context.controlCommit },
+      recoveryContext: context,
+      workDir: env('PUBLICATION_RECOVERY_WORK_DIR'),
+      outputFile: env('PUBLICATION_RECOVERY_OUTPUT_FILE'),
+      toolPaths: { python: env('PUBLICATION_RECOVERY_PYTHON') },
+    })
+    const enriched = { ...receipt, recoveryContextSha256: context.contextSha256 }
+    await writeFile(env('PUBLICATION_RECOVERY_OUTPUT_FILE'), `${canonicalJson(enriched)}\n`)
+    console.log(`publication-recovery-pypi-existing=${receipt.version}`)
+    return
+  }
+
+  if (arguments_[0] === '--publication-recovery-rubygems-observe') {
+    requireExactInternalMode(arguments_, '--publication-recovery-rubygems-observe')
+    const context = JSON.parse(await readFile(env('PUBLICATION_RECOVERY_CONTEXT_FILE'), 'utf8'))
+    validatePublicationRecoveryContext(context, { requireCiProof: true })
+    const plan = validateReleaseSetPlan(JSON.parse(await readFile(env('PUBLICATION_RECOVERY_PLAN_FILE'), 'utf8')))
+    const receipt = await observeRubyGemsRelease({
+      descriptor: plan.artifacts.find(artifact => artifact.kind === 'rubygems'),
+      planSha256: PUBLICATION_RECOVERY_PLAN_SHA256,
+      preparation: context.preparation,
+      observer: { runId: env('PUBLICATION_RECOVERY_OBSERVER_RUN_ID'), runAttempt: env('PUBLICATION_RECOVERY_OBSERVER_ATTEMPT'), workflowPath: RELEASE_SET_WORKFLOW, sourceCommit: context.controlCommit },
+      recoveryContext: context,
+      workDir: env('PUBLICATION_RECOVERY_WORK_DIR'),
+      outputFile: env('PUBLICATION_RECOVERY_OUTPUT_FILE'),
+      toolPaths: { ruby31: env('PUBLICATION_RECOVERY_RUBY31'), ruby34: env('PUBLICATION_RECOVERY_RUBY34') },
+    })
+    console.log(`publication-recovery-rubygems=${receipt.download.sha256}`)
+    return
+  }
+
+  if (arguments_[0] === '--publication-recovery-rust-observe') {
+    requireExactInternalMode(arguments_, '--publication-recovery-rust-observe')
+    const context = JSON.parse(await readFile(env('PUBLICATION_RECOVERY_CONTEXT_FILE'), 'utf8'))
+    validatePublicationRecoveryContext(context, { requireCiProof: true })
+    const plan = validateReleaseSetPlan(JSON.parse(await readFile(env('PUBLICATION_RECOVERY_PLAN_FILE'), 'utf8')))
+    const receipt = await observeRustArtifact({
+      descriptor: plan.rust,
+      planSha256: PUBLICATION_RECOVERY_PLAN_SHA256,
+      preparation: context.preparation,
+      observer: { runId: env('PUBLICATION_RECOVERY_OBSERVER_RUN_ID'), runAttempt: env('PUBLICATION_RECOVERY_OBSERVER_ATTEMPT'), workflowPath: RELEASE_SET_WORKFLOW, sourceCommit: context.controlCommit },
+      recoveryContext: context,
+      workDir: env('PUBLICATION_RECOVERY_WORK_DIR'),
+      outputFile: env('PUBLICATION_RECOVERY_OUTPUT_FILE'),
+    })
+    console.log(`publication-recovery-rust=${receipt.download.sha256}`)
+    return
+  }
+
+  if (arguments_[0] === '--publication-recovery-go-observe') {
+    requireExactInternalMode(arguments_, '--publication-recovery-go-observe')
+    const context = JSON.parse(await readFile(env('PUBLICATION_RECOVERY_CONTEXT_FILE'), 'utf8'))
+    validatePublicationRecoveryContext(context, { requireCiProof: true })
+    const plan = validateReleaseSetPlan(JSON.parse(await readFile(env('PUBLICATION_RECOVERY_PLAN_FILE'), 'utf8')))
+    const receipt = await observeGoModule({
+      descriptor: plan.go,
+      planSha256: PUBLICATION_RECOVERY_PLAN_SHA256,
+      preparation: context.preparation,
+      observer: { runId: env('PUBLICATION_RECOVERY_OBSERVER_RUN_ID'), runAttempt: env('PUBLICATION_RECOVERY_OBSERVER_ATTEMPT'), workflowPath: RELEASE_SET_WORKFLOW, sourceCommit: context.controlCommit },
+      workDir: env('PUBLICATION_RECOVERY_WORK_DIR'),
+      outputFile: env('PUBLICATION_RECOVERY_OUTPUT_FILE'),
+      toolPaths: { go: env('PUBLICATION_RECOVERY_GO'), git: env('PUBLICATION_RECOVERY_GIT'), python3: env('PUBLICATION_RECOVERY_PYTHON') },
+    })
+    console.log(`publication-recovery-go=${receipt.sourceCommit}`)
+    return
+  }
+
+  if (arguments_[0] === '--publication-recovery-snapshot') {
+    requireExactInternalMode(arguments_, '--publication-recovery-snapshot')
+    const context = JSON.parse(await readFile(env('PUBLICATION_RECOVERY_CONTEXT_FILE'), 'utf8'))
+    validatePublicationRecoveryContext(context, { requireCiProof: true })
+    const plan = validateReleaseSetPlan(JSON.parse(await readFile(env('PUBLICATION_RECOVERY_PLAN_FILE'), 'utf8')))
+    const snapshot = JSON.parse(await readFile(env('PUBLICATION_RECOVERY_SNAPSHOT_BINDING_FILE'), 'utf8'))
+    const receiptArtifacts = JSON.parse(await readFile(env('PUBLICATION_RECOVERY_RECEIPT_ARTIFACTS_FILE'), 'utf8'))
+    const publisherSources = process.env.PUBLICATION_RECOVERY_PUBLISHER_SOURCES_FILE === undefined ? undefined : JSON.parse(await readFile(process.env.PUBLICATION_RECOVERY_PUBLISHER_SOURCES_FILE, 'utf8'))
+    const observerSources = process.env.PUBLICATION_RECOVERY_OBSERVER_SOURCES_FILE === undefined ? undefined : JSON.parse(await readFile(process.env.PUBLICATION_RECOVERY_OBSERVER_SOURCES_FILE, 'utf8'))
+    const token = await readReleaseSetGithubReadTokenFd(process.env.PUBLICATION_RECOVERY_READ_TOKEN_FD)
+    const request = githubCapabilityRequest(npmDefaultRequest, token)
+    const result = await observeReleaseSetProofSnapshot({ plan, preparation: context.preparation, selector: { mode: 'current', snapshot, receiptArtifacts }, observer: { runId: env('PUBLICATION_RECOVERY_OBSERVER_RUN_ID'), runAttempt: env('PUBLICATION_RECOVERY_OBSERVER_ATTEMPT'), workflowPath: RELEASE_SET_WORKFLOW, sourceCommit: context.controlCommit }, workDir: env('PUBLICATION_RECOVERY_SNAPSHOT_WORK_DIR'), request, currentProducer: true, recoveryOptions: { recovery: true, context, contextSha256: context.contextSha256, observerSourceCommit: context.controlCommit, observerSources, publisherSources, historicalReceiptFiles: ['rubygems-proof.json'] } })
+    validateReleaseSetProofManifest(result.manifest, { plan, preparation: context.preparation })
+    await writeFile(env('PUBLICATION_RECOVERY_MANIFEST_OUTPUT_FILE'), `${canonicalJson(result.manifest)}\n`)
+    const receiptDir = npmSafePath(env('PUBLICATION_RECOVERY_RECEIPT_OUTPUT_DIR'), 'Publication recovery receipt output directory')
+    for (const [filename, bytes] of Object.entries(result.receiptBytes)) await writeFile(join(receiptDir, filename), bytes, { flag: 'wx' })
+    console.log(`publication-recovery-snapshot=${sha256Hex(canonicalJson(result.manifest))}`)
+    return
+  }
+
+  if (arguments_[0] === '--publication-recovery-receipts') {
+    requireExactInternalMode(arguments_, '--publication-recovery-receipts')
+    const context = JSON.parse(await readFile(env('PUBLICATION_RECOVERY_CONTEXT_FILE'), 'utf8'))
+    validatePublicationRecoveryContext(context, { requireCiProof: true })
+    const plan = validateReleaseSetPlan(JSON.parse(await readFile(env('PUBLICATION_RECOVERY_PLAN_FILE'), 'utf8')))
+    const receiptArtifacts = JSON.parse(await readFile(env('PUBLICATION_RECOVERY_RECEIPT_ARTIFACTS_FILE'), 'utf8'))
+    const publisherSources = process.env.PUBLICATION_RECOVERY_PUBLISHER_SOURCES_FILE === undefined ? undefined : JSON.parse(await readFile(process.env.PUBLICATION_RECOVERY_PUBLISHER_SOURCES_FILE, 'utf8'))
+    const observerSources = process.env.PUBLICATION_RECOVERY_OBSERVER_SOURCES_FILE === undefined ? undefined : JSON.parse(await readFile(process.env.PUBLICATION_RECOVERY_OBSERVER_SOURCES_FILE, 'utf8'))
+    const token = await readReleaseSetGithubReadTokenFd(process.env.PUBLICATION_RECOVERY_READ_TOKEN_FD)
+    const filenames = process.env.PUBLICATION_RECOVERY_RECEIPT_FILENAMES === undefined ? ['npm-proof.json', 'pypi-proof.json', 'rubygems-proof.json'] : process.env.PUBLICATION_RECOVERY_RECEIPT_FILENAMES.split(',').filter(Boolean)
+    const result = await observeReleaseSetReceiptArtifacts({ plan, preparation: context.preparation, receiptArtifacts, filenames, observer: { runId: env('PUBLICATION_RECOVERY_OBSERVER_RUN_ID'), runAttempt: env('PUBLICATION_RECOVERY_OBSERVER_ATTEMPT'), workflowPath: RELEASE_SET_WORKFLOW, sourceCommit: context.controlCommit }, workDir: env('PUBLICATION_RECOVERY_RECEIPT_WORK_DIR'), request: githubCapabilityRequest(npmDefaultRequest, token), currentProducer: true, recoveryOptions: { recovery: true, context, contextSha256: context.contextSha256, observerSourceCommit: context.controlCommit, observerSources, publisherSources, historicalReceiptFiles: ['rubygems-proof.json'] } })
+    await writeFile(env('PUBLICATION_RECOVERY_RECEIPT_OBSERVATION_FILE'), `${canonicalJson({ receipts: result.receipts, receiptArtifacts: result.receiptArtifacts, producerRuns: result.producerRuns })}\n`)
+    console.log(`publication-recovery-receipts=${sha256Hex(canonicalJson(result.receipts))}`)
+    return
+  }
+
+  if (arguments_[0] === '--publication-recovery-github-observe') {
+    requireExactInternalMode(arguments_, '--publication-recovery-github-observe')
+    const context = JSON.parse(await readFile(env('PUBLICATION_RECOVERY_CONTEXT_FILE'), 'utf8'))
+    validatePublicationRecoveryContext(context, { requireCiProof: true })
+    const plan = validateReleaseSetPlan(JSON.parse(await readFile(env('PUBLICATION_RECOVERY_PLAN_FILE'), 'utf8')))
+    const descriptor = JSON.parse(await readFile(env('PUBLICATION_RECOVERY_GITHUB_DESCRIPTOR_FILE'), 'utf8'))
+    await validateGitHubReleaseDescriptor({ plan, descriptor, artifactDirectory: env('PUBLICATION_RECOVERY_ARTIFACT_DIR') })
+    const snapshot = JSON.parse(await readFile(env('PUBLICATION_RECOVERY_SNAPSHOT_BINDING_FILE'), 'utf8'))
+    const receiptArtifacts = JSON.parse(await readFile(env('PUBLICATION_RECOVERY_RECEIPT_ARTIFACTS_FILE'), 'utf8'))
+    const publisherSources = process.env.PUBLICATION_RECOVERY_PUBLISHER_SOURCES_FILE === undefined ? undefined : JSON.parse(await readFile(process.env.PUBLICATION_RECOVERY_PUBLISHER_SOURCES_FILE, 'utf8'))
+    const observerSources = process.env.PUBLICATION_RECOVERY_OBSERVER_SOURCES_FILE === undefined ? undefined : JSON.parse(await readFile(process.env.PUBLICATION_RECOVERY_OBSERVER_SOURCES_FILE, 'utf8'))
+    const token = await readReleaseSetGithubReadTokenFd(process.env.PUBLICATION_RECOVERY_READ_TOKEN_FD)
+    const receipt = await observeGitHubRelease({ plan, descriptor, planSha256: PUBLICATION_RECOVERY_PLAN_SHA256, preparation: context.preparation, observer: { runId: env('PUBLICATION_RECOVERY_OBSERVER_RUN_ID'), runAttempt: env('PUBLICATION_RECOVERY_OBSERVER_ATTEMPT'), workflowPath: RELEASE_SET_WORKFLOW, sourceCommit: context.controlCommit }, workDir: env('PUBLICATION_RECOVERY_GITHUB_WORK_DIR'), outputFile: env('PUBLICATION_RECOVERY_GITHUB_OUTPUT_FILE'), snapshot: { mode: 'current', snapshot, receiptArtifacts }, requireSnapshot: true, recoveryOptions: { recovery: true, context, contextSha256: context.contextSha256, observerSourceCommit: context.controlCommit, observerSources, publisherSources, historicalReceiptFiles: ['rubygems-proof.json'] } }, { githubReadToken: token, anonymousRequest: githubAnonymousDefaultRequest })
+    if (receipt.complete !== true || receipt.state !== 'matching-public' || receipt.publicRead?.complete !== true) fail('publication-recovery-github-observation-incomplete')
+    await writeFile(env('PUBLICATION_RECOVERY_GITHUB_OUTPUT_FILE'), `${canonicalJson(receipt)}\n`)
+    console.log(`publication-recovery-github=${sha256Hex(canonicalJson(receipt))}`)
     return
   }
 

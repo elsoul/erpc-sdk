@@ -16,6 +16,20 @@ import {
   FOUNDATION_TAG,
   FOUNDATION_VERSION,
   CURRENT_RUST_VERSION,
+  PUBLICATION_RECOVERY_MODE,
+  PUBLICATION_RECOVERY_SOURCE_M,
+  PUBLICATION_RECOVERY_PLAN_SHA256,
+  PUBLICATION_RECOVERY_PREPARED_RUN_ID,
+  PUBLICATION_RECOVERY_PREPARED_RUN_ATTEMPT,
+  PUBLICATION_RECOVERY_BUNDLE_ARTIFACT_ID,
+  PUBLICATION_RECOVERY_BINDING_ARTIFACT_ID,
+  PUBLICATION_RECOVERY_ORIGINAL_PUBLICATION_RUN_ID,
+  PUBLICATION_RECOVERY_ORIGINAL_PUBLICATION_RUN_ATTEMPT,
+  PUBLICATION_RECOVERY_NPM_SHA256,
+  PUBLICATION_RECOVERY_RUBYGEMS_SHA256,
+  PUBLICATION_RECOVERY_PYPI_WHEEL_SHA256,
+  PUBLICATION_RECOVERY_PYPI_SDIST_SHA256,
+  PUBLICATION_RECOVERY_ALLOWED_DELTA,
   RUST_011_CLIENT_MODULES,
   RUST_011_LICENSE_HASHES,
   RUST_011_REUSE_SHA256,
@@ -69,6 +83,13 @@ import {
   validateReleaseSetPlan,
   validateReleaseSetPreparationBinding,
   validateReleaseSetPreparationMetadata,
+  buildPublicationRecoveryContext,
+  validatePublicationRecoveryRuntimeContext,
+  validatePublicationRecoveryContext,
+  validatePublicationRecoveryOriginalPublication,
+  classifyPublicationRecoveryPreflight,
+  validatePublicationRecoveryReceipt,
+  validatePublicationRecoveryTagTargets,
   selectFoundationCIRun,
   validateFoundationCIProof,
   validateWorkflowContext,
@@ -383,6 +404,188 @@ test('foundation workflow guard binds an exact main dispatch and fixed 0.9.1 coh
       ...mutation,
     }))
   }
+})
+
+const publicationRecoveryRuntimeFixture = () => {
+  const control = 'c'.repeat(40)
+  return {
+    mode: PUBLICATION_RECOVERY_MODE,
+    repository: 'elsoul/erpc-sdk',
+    repositoryId: '1429568627',
+    eventName: 'workflow_dispatch',
+    eventRef: 'refs/heads/main',
+    eventSha: control,
+    expectedControlCommit: control,
+    checkoutHead: control,
+    checkoutStatus: '',
+    workflowRef: 'elsoul/erpc-sdk/.github/workflows/release.yml@refs/heads/main',
+    workflowSha: control,
+    mainSha: control,
+    sourceM: PUBLICATION_RECOVERY_SOURCE_M,
+    sourceMAncestor: true,
+    deltaPaths: [...PUBLICATION_RECOVERY_ALLOWED_DELTA],
+  }
+}
+
+const publicationRecoveryContextFixture = () => buildPublicationRecoveryContext({
+  runtime: publicationRecoveryRuntimeFixture(),
+  preparation: {
+    sourceCommit: PUBLICATION_RECOVERY_SOURCE_M,
+    runId: PUBLICATION_RECOVERY_PREPARED_RUN_ID,
+    runAttempt: PUBLICATION_RECOVERY_PREPARED_RUN_ATTEMPT,
+    artifactId: PUBLICATION_RECOVERY_BUNDLE_ARTIFACT_ID,
+    bindingArtifactId: PUBLICATION_RECOVERY_BINDING_ARTIFACT_ID,
+    planSha256: PUBLICATION_RECOVERY_PLAN_SHA256,
+  },
+  originalPublication: {
+    runId: PUBLICATION_RECOVERY_ORIGINAL_PUBLICATION_RUN_ID,
+    runAttempt: PUBLICATION_RECOVERY_ORIGINAL_PUBLICATION_RUN_ATTEMPT,
+    sourceCommit: PUBLICATION_RECOVERY_SOURCE_M,
+    workflowPath: '.github/workflows/release.yml',
+    status: 'completed',
+    conclusion: 'failure',
+    jobOutcomes: [
+      { id: 120939149010, run_id: Number(PUBLICATION_RECOVERY_ORIGINAL_PUBLICATION_RUN_ID), run_attempt: 1, status: 'completed', conclusion: 'failure', steps: [{ name: 'Publish exact npm archive once when absent', conclusion: 'success' }, { name: 'Observe npm public bytes, provenance, and consumers', conclusion: 'failure' }] },
+      { id: 120939149000, run_id: Number(PUBLICATION_RECOVERY_ORIGINAL_PUBLICATION_RUN_ID), run_attempt: 1, status: 'completed', conclusion: 'failure', steps: [{ name: 'Publish exact missing PyPI files with the pinned trusted publisher', conclusion: 'skipped' }, { name: 'Observe PyPI files, attestations, and consumers', conclusion: 'failure' }] },
+      { id: 120939148972, run_id: Number(PUBLICATION_RECOVERY_ORIGINAL_PUBLICATION_RUN_ID), run_attempt: 1, status: 'completed', conclusion: 'success', steps: [{ name: 'Publish the exact reviewed gem once', conclusion: 'success' }] },
+    ],
+    outcomes: { npmPublished: true, rubygemsPublished: true, pypiUploadAttempted: false, pypiBeforeUploadFailure: true, npmObserverFailure: true, npmJobConclusion: 'failure', npmUploadStepConclusion: 'success', npmObserverStepConclusion: 'failure', rubygemsJobConclusion: 'success', rubygemsUploadStepConclusion: 'success', pypiJobConclusion: 'failure', pypiUploadStepConclusion: 'skipped', pypiObserverStepConclusion: 'failure' },
+  },
+  recoveryRun: { runId: '90001', runAttempt: '1' },
+  ciProof: { sourceCommit: 'c'.repeat(40), conclusion: 'success' },
+  sourceCiProof: { sourceCommit: PUBLICATION_RECOVERY_SOURCE_M, conclusion: 'success' },
+})
+
+test('publication recovery authenticates C separately from frozen M and rejects hostile identity/delta fixtures', () => {
+  const runtime = publicationRecoveryRuntimeFixture()
+  assert.deepEqual(validatePublicationRecoveryRuntimeContext(runtime).sourceM, PUBLICATION_RECOVERY_SOURCE_M)
+  for (const mutation of [
+    { expectedControlCommit: 'd'.repeat(40) },
+    { eventSha: 'd'.repeat(40) },
+    { workflowSha: 'd'.repeat(40) },
+    { mainSha: 'd'.repeat(40) },
+    { sourceM: 'e'.repeat(40) },
+    { sourceMAncestor: false },
+    { deltaPaths: ['packages/typescript/src/index.ts'] },
+    { checkoutStatus: ' M scripts/verify-release.mjs' },
+  ]) assert.throws(() => validatePublicationRecoveryRuntimeContext({ ...runtime, ...mutation }))
+  const context = publicationRecoveryContextFixture()
+  assert.equal(validatePublicationRecoveryContext(context, { requireCiProof: true }).contextSha256, context.contextSha256)
+  assert.throws(() => validatePublicationRecoveryContext({ ...context, contextSha256: '0'.repeat(64) }), /context hash mismatch/)
+})
+
+test('recovery YAML control guard executes the actual C/M boundary with no remote effects', async t => {
+  const workflow = await readFile(new URL('../.github/workflows/release.yml', import.meta.url), 'utf8')
+  const block = extractWorkflowRunBlock(workflow, 'Guard C, main, M ancestry, and the four-file delta')
+  const directory = await mkdtemp(join(tmpdir(), 'erpc-sdk-recovery-v2-control-'))
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  await mkdir(join(directory, '.github/workflows'), { recursive: true }); await mkdir(join(directory, 'scripts'), { recursive: true }); await mkdir(join(directory, 'docs'), { recursive: true })
+  for (const file of ['.github/workflows/release.yml', 'scripts/verify-release.mjs', 'scripts/verify-release.test.mjs', 'docs/RELEASING.md']) await writeFile(join(directory, file), 'M\n')
+  await execFileAsync('git', ['init', '-q'], { cwd: directory }); await execFileAsync('git', ['config', 'user.email', 'fixture@example.invalid'], { cwd: directory }); await execFileAsync('git', ['config', 'user.name', 'fixture'], { cwd: directory }); await execFileAsync('git', ['add', '.'], { cwd: directory }); await execFileAsync('git', ['commit', '-qm', 'M'], { cwd: directory })
+  const sourceM = (await execFileAsync('git', ['rev-parse', 'HEAD'], { cwd: directory })).stdout.trim()
+  await writeFile(join(directory, '.github/workflows/release.yml'), 'C\n'); await writeFile(join(directory, 'scripts/verify-release.mjs'), 'C\n'); await writeFile(join(directory, 'scripts/verify-release.test.mjs'), 'C\n'); await writeFile(join(directory, 'docs/RELEASING.md'), 'C\n'); await execFileAsync('git', ['add', '.'], { cwd: directory }); await execFileAsync('git', ['commit', '-qm', 'C'], { cwd: directory })
+  const control = (await execFileAsync('git', ['rev-parse', 'HEAD'], { cwd: directory })).stdout.trim(); const binDirectory = await mkdtemp(join(tmpdir(), 'erpc-sdk-recovery-v2-bin-')); const gh = join(binDirectory, 'gh')
+  await writeFile(gh, '#!/bin/sh\nif [ "$1" = api ]; then printf "%s\\n" "$CONTROL_COMMIT"; else printf \'{"object":{"sha":"%s"}}\\n\' "$CONTROL_COMMIT"; fi\n'); await chmod(gh, 0o755)
+  t.after(() => Promise.all([rm(gh, { force: true }), rm(binDirectory, { recursive: true, force: true })])); const runtime = join(directory, 'runtime.json'); await execFileAsync('bash', ['-c', `set -euo pipefail\n${block}`], { cwd: directory, env: { ...process.env, PATH: `${binDirectory}:${process.env.PATH ?? ''}`, CONTROL_COMMIT: control, EVENT_SHA: control, WORKFLOW_SHA: control, WORKFLOW_REF: 'elsoul/erpc-sdk/.github/workflows/release.yml@refs/heads/main', EVENT_NAME: 'workflow_dispatch', EVENT_REF: 'refs/heads/main', REPOSITORY: 'elsoul/erpc-sdk', REPOSITORY_ID: '1429568627', SOURCE_M: sourceM, RECOVERY_MODE: 'recover-0.11.0', FOUNDATION_MODE: 'publish', RELEASE_SET_MODE: 'disabled', EXPECTED_VERSION: '0.11.0', EXPECTED_REPOSITORY: 'elsoul/erpc-sdk', EXPECTED_REPOSITORY_ID: '1429568627', RUNNER_TEMP: directory } })
+  assert.deepEqual(JSON.parse(await readFile(join(directory, 'recovery-runtime.json'), 'utf8')), { mode: 'recover-0.11.0', repository: 'elsoul/erpc-sdk', repositoryId: '1429568627', eventName: 'workflow_dispatch', eventRef: 'refs/heads/main', eventSha: control, expectedControlCommit: control, checkoutHead: control, checkoutStatus: '', workflowRef: 'elsoul/erpc-sdk/.github/workflows/release.yml@refs/heads/main', workflowSha: control, mainSha: control, sourceM, sourceMAncestor: true, deltaPaths: ['.github/workflows/release.yml', 'docs/RELEASING.md', 'scripts/verify-release.mjs', 'scripts/verify-release.test.mjs'] })
+})
+
+test('publication recovery retains terminal original job outcomes and rejects altered publication history', () => {
+  const run = { id: Number(PUBLICATION_RECOVERY_ORIGINAL_PUBLICATION_RUN_ID), run_attempt: 1, repository: { full_name: 'elsoul/erpc-sdk', id: 1429568627 }, path: '.github/workflows/release.yml', head_branch: 'main', head_sha: PUBLICATION_RECOVERY_SOURCE_M, event: 'workflow_dispatch', status: 'completed', conclusion: 'failure' }
+  const jobs = [
+    { id: 120939149010, run_id: Number(PUBLICATION_RECOVERY_ORIGINAL_PUBLICATION_RUN_ID), run_attempt: 1, name: 'Publish or reuse schema2 npm artifact', status: 'completed', conclusion: 'failure', steps: [{ name: 'Publish exact npm archive once when absent', conclusion: 'success' }, { name: 'Observe npm public bytes, provenance, and consumers', conclusion: 'failure' }] },
+    { id: 120939148972, run_id: Number(PUBLICATION_RECOVERY_ORIGINAL_PUBLICATION_RUN_ID), run_attempt: 1, name: 'Publish or reuse schema2 RubyGems artifact', status: 'completed', conclusion: 'success', steps: [{ name: 'Publish the exact reviewed gem once', conclusion: 'success' }] },
+    { id: 120939149000, run_id: Number(PUBLICATION_RECOVERY_ORIGINAL_PUBLICATION_RUN_ID), run_attempt: 1, name: 'Publish or reuse schema2 PyPI artifacts', status: 'completed', conclusion: 'failure', steps: [{ name: 'Publish exact missing PyPI files with the pinned trusted publisher', conclusion: 'skipped' }, { name: 'Observe PyPI files, attestations, and consumers', conclusion: 'failure' }] },
+  ]
+  const outcomes = { npmPublished: true, rubygemsPublished: true, pypiUploadAttempted: false, pypiBeforeUploadFailure: true, npmObserverFailure: true, npmJobConclusion: 'failure', npmUploadStepConclusion: 'success', npmObserverStepConclusion: 'failure', rubygemsJobConclusion: 'success', rubygemsUploadStepConclusion: 'success', pypiJobConclusion: 'failure', pypiUploadStepConclusion: 'skipped', pypiObserverStepConclusion: 'failure' }
+  assert.equal(validatePublicationRecoveryOriginalPublication({ run, jobs, outcomes }).jobs, 3)
+  assert.throws(() => validatePublicationRecoveryOriginalPublication({ run: { ...run, head_sha: 'd'.repeat(40) }, jobs, outcomes }), /source mismatch/)
+  assert.throws(() => validatePublicationRecoveryOriginalPublication({ run, jobs, outcomes: { ...outcomes, pypiUploadAttempted: true } }), /unexpectedly uploaded/)
+})
+
+test('publication recovery preflight rejects false absence/conflicts and permits only verified missing PyPI bytes', () => {
+  const readOnly = { state: 'observed', auth: { requested: false, uploadAttempted: false }, publisher: { sourceCommit: PUBLICATION_RECOVERY_SOURCE_M }, observedSha256: PUBLICATION_RECOVERY_NPM_SHA256, preparation: { sourceCommit: PUBLICATION_RECOVERY_SOURCE_M } }
+  const ruby = { ...readOnly, observedSha256: PUBLICATION_RECOVERY_RUBYGEMS_SHA256 }
+  const rust = { ...readOnly, observedSha256: RUST_011_REUSE_SHA256, publisher: { sourceCommit: RUST_011_REUSE_SOURCE }, mode: 'reuse', version: '0.11.0', archive: { sourceCommit: RUST_011_REUSE_SOURCE }, preparation: { sourceCommit: PUBLICATION_RECOVERY_SOURCE_M } }
+  const absent = classifyPublicationRecoveryPreflight({ npm: readOnly, rubygems: ruby, rust, pypi: { state: 'absent', absenceGate: true, missing: ['erpc_sdk-0.11.0-py3-none-any.whl', 'erpc_sdk-0.11.0.tar.gz'], existing: [] } })
+  assert.deepEqual(absent.missing, ['erpc_sdk-0.11.0-py3-none-any.whl', 'erpc_sdk-0.11.0.tar.gz'])
+  assert.throws(() => classifyPublicationRecoveryPreflight({ npm: readOnly, rubygems: ruby, rust, pypi: { state: 'absent', absenceGate: false, missing: ['erpc_sdk-0.11.0-py3-none-any.whl', 'erpc_sdk-0.11.0.tar.gz'], existing: [] } }), /absence gate/)
+  assert.throws(() => classifyPublicationRecoveryPreflight({ npm: { ...readOnly, observedSha256: '0'.repeat(64) }, rubygems: ruby, rust, pypi: { state: 'absent', absenceGate: true, missing: ['erpc_sdk-0.11.0-py3-none-any.whl', 'erpc_sdk-0.11.0.tar.gz'], existing: [] } }), /public bytes mismatch/)
+  assert.throws(() => classifyPublicationRecoveryPreflight({ npm: readOnly, rubygems: ruby, rust, pypi: { state: 'partial', absenceGate: false, missing: [], existing: [] } }), /no missing file/)
+  const partial = classifyPublicationRecoveryPreflight({ npm: readOnly, rubygems: ruby, rust, pypi: { state: 'partial', missing: ['erpc_sdk-0.11.0.tar.gz'], existing: [{ filename: 'erpc_sdk-0.11.0-py3-none-any.whl', sha256: PUBLICATION_RECOVERY_PYPI_WHEEL_SHA256, yanked: false, attestationVerified: true, publisherSourceCommit: PUBLICATION_RECOVERY_SOURCE_M }], absenceGate: false } })
+  assert.deepEqual(partial.missing, ['erpc_sdk-0.11.0.tar.gz'])
+  assert.equal(PUBLICATION_RECOVERY_PYPI_SDIST_SHA256.length, 64)
+})
+
+test('publication recovery receipts bind observer C while retaining original npm provenance M', () => {
+  const context = publicationRecoveryContextFixture()
+  const receipt = { repository: 'elsoul/erpc-sdk', repositoryId: '1429568627', planSha256: PUBLICATION_RECOVERY_PLAN_SHA256, preparation: context.preparation, observer: { sourceCommit: context.controlCommit }, recoveryContextSha256: context.contextSha256, auth: { requested: false, uploadAttempted: false }, descriptor: { observedSha256: PUBLICATION_RECOVERY_NPM_SHA256 }, publisher: { sourceCommit: PUBLICATION_RECOVERY_SOURCE_M }, provenance: { certificateClaims: { '1.3.6.1.4.1.57264.1.13': PUBLICATION_RECOVERY_SOURCE_M } } }
+  assert.equal(validatePublicationRecoveryReceipt(receipt, { kind: 'npm', context, expectedSha256: PUBLICATION_RECOVERY_NPM_SHA256 }), receipt)
+  assert.throws(() => validatePublicationRecoveryReceipt({ ...receipt, publisher: { sourceCommit: context.controlCommit } }, { kind: 'npm', context, expectedSha256: PUBLICATION_RECOVERY_NPM_SHA256 }), /provenance must remain M|provenance source mismatch/)
+  assert.throws(() => validatePublicationRecoveryReceipt({ ...receipt, observer: { sourceCommit: PUBLICATION_RECOVERY_SOURCE_M } }, { kind: 'npm', context, expectedSha256: PUBLICATION_RECOVERY_NPM_SHA256 }), /observer source/)
+})
+
+test('publication recovery tag targets reject C and preserve exact M refs', () => {
+  const plan = { sourceCommit: PUBLICATION_RECOVERY_SOURCE_M, tags: { commit: PUBLICATION_RECOVERY_SOURCE_M, release: 'non-rust-v0.11.0', go: 'packages/go/v0.11.0' } }
+  assert.deepEqual(validatePublicationRecoveryTagTargets({ plan, releaseTag: 'non-rust-v0.11.0', goTag: 'packages/go/v0.11.0', releaseCommit: PUBLICATION_RECOVERY_SOURCE_M, goCommit: PUBLICATION_RECOVERY_SOURCE_M }).commit, PUBLICATION_RECOVERY_SOURCE_M)
+  assert.throws(() => validatePublicationRecoveryTagTargets({ plan, releaseTag: 'non-rust-v0.11.0', goTag: 'packages/go/v0.11.0', releaseCommit: 'c'.repeat(40), goCommit: PUBLICATION_RECOVERY_SOURCE_M }), /release tag target/)
+})
+
+test('publication recovery extracted effect boundaries include every pre-tag proof and preserve Release body bytes', async () => {
+  const workflow = await readFile(new URL('../.github/workflows/release.yml', import.meta.url), 'utf8')
+  const pretag = extractWorkflowRunBlock(workflow, 'Authenticate package receipt artifacts before any tag write')
+  assert.match(pretag, /PUBLICATION_RECOVERY_RECEIPT_FILENAMES='npm-proof\.json,pypi-proof\.json,rubygems-proof\.json,rust-proof\.json'/)
+  assert.match(pretag, /const names = \{ npm: 'npm-proof\.json', pypi: 'pypi-proof\.json', rubygems: 'rubygems-proof\.json', rust: 'rust-proof\.json' \}/)
+  const snapshot = extractWorkflowRunBlock(workflow, 'Authenticate receipt artifacts and snapshot with strict lineage verifier')
+  assert.match(snapshot, /writeFileSync\(process\.argv\[3\]/)
+  assert.match(snapshot, /writeFileSync\(process\.argv\[4\]/)
+  const reconcile = extractWorkflowRunBlock(workflow, 'Reconcile numeric Release and exact thirteen approved assets')
+  assert.match(reconcile, /recovery-release-request\.json/)
+  assert.match(reconcile, /gh api --method POST[^\n]+--input "\$RUNNER_TEMP\/recovery-release-request\.json"/)
+  assert.doesNotMatch(reconcile, /--raw-field body=/)
+  const github = extractWorkflowRunBlock(workflow, 'Run accepted authenticated and anonymous GitHub proof observer')
+  assert.match(github, /PUBLICATION_RECOVERY_GITHUB_OUTPUT_FILE=/)
+})
+
+test('recovery PyPI existing-attestation regex accepts the canonical invocation and rejects a tampered host', async () => {
+  const workflow = await readFile(new URL('../.github/workflows/release.yml', import.meta.url), 'utf8')
+  const canonical = 'https://github.com/elsoul/erpc-sdk/actions/runs/90001/attempts/1'
+  const tampered = 'https://evil.example/elsoul/erpc-sdk/actions/runs/90001/attempts/1'
+  for (const name of ['Fetch PyPI metadata before entering the protected environment', 'Preflight PyPI and stage only exact missing original bytes']) {
+    const block = extractWorkflowRunBlock(workflow, name)
+    const literal = block.match(/re\.fullmatch\((r'[^']+'),/)?.[1]
+    assert.ok(literal, `missing Python invocation regex in ${name}`)
+    await execFileAsync('python3', ['-c', `import re\npattern = ${literal}\nassert re.fullmatch(pattern, ${JSON.stringify(canonical)}) is not None\nassert re.fullmatch(pattern, ${JSON.stringify(tampered)}) is None\n`])
+  }
+})
+
+test('recovery PyPI publisher adapter projects verified existing records to the strict observer schema', async t => {
+  const workflow = await readFile(new URL('../.github/workflows/release.yml', import.meta.url), 'utf8')
+  const block = extractWorkflowRunBlock(workflow, 'Observe PyPI bytes, attestations, and fresh consumers')
+  const code = extractWorkflowHeredoc(workflow, 'node --input-type=module - "$PUBLISHER_FILE" "$RUNNER_TEMP/recovery-pypi-publisher-sources.json" <<\'NODE\'', 'NODE')
+  assert.match(block, /projectPublisher = publisher =>/)
+  const directory = await mkdtemp(join(tmpdir(), 'erpc-sdk-pypi-publisher-adapter-'))
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  const script = join(directory, 'adapter.mjs'); const publisherFile = join(directory, 'publishers.json'); const sourceFile = join(directory, 'sources.json'); const contextFile = join(directory, 'context.json'); const planFile = join(directory, 'plan.json'); const preflightFile = join(directory, 'recovery-pypi-input.json')
+  await writeFile(script, `${code}\n`)
+  await writeFile(contextFile, JSON.stringify({ controlCommit: 'c'.repeat(40) }))
+  const plan = { artifacts: [{ kind: 'pypi-wheel', filename: 'erpc_sdk-0.11.0-py3-none-any.whl' }, { kind: 'pypi-sdist', filename: 'erpc_sdk-0.11.0.tar.gz' }] }
+  await writeFile(planFile, JSON.stringify(plan))
+  await writeFile(preflightFile, JSON.stringify({ pypi: { existing: [{ filename: 'erpc_sdk-0.11.0-py3-none-any.whl', publisher: { repository: 'elsoul/erpc-sdk', repositoryId: '1429568627', sourceCommit: '00343b27668122cffd6d5b2b7517eda96f109d5f', workflowPath: '.github/workflows/release.yml', ref: 'refs/heads/main', event: 'workflow_dispatch', environment: 'pypi', publisherRunId: '40116597887', publisherAttempt: '1', invocation: 'https://github.com/elsoul/erpc-sdk/actions/runs/40116597887/attempts/1' } }] } }))
+  await execFileAsync(process.execPath, [script, publisherFile, sourceFile], { env: { ...process.env, CONTEXT: contextFile, PLAN: planFile, RUNNER_TEMP: directory, OUT: directory, GITHUB_RUN_ID: '90001', GITHUB_RUN_ATTEMPT: '1' } })
+  const publishers = JSON.parse(await readFile(publisherFile, 'utf8')); const existing = publishers['erpc_sdk-0.11.0-py3-none-any.whl']
+  assert.equal(existing.sourceCommit, '00343b27668122cffd6d5b2b7517eda96f109d5f')
+  assert.equal(existing.publisherRunId, '40116597887'); assert.equal(existing.publisherAttempt, '1'); assert.equal(Object.hasOwn(existing, 'invocation'), false)
+})
+
+test('recovery Release assets validate every existing byte before any upload', async () => {
+  const workflow = await readFile(new URL('../.github/workflows/release.yml', import.meta.url), 'utf8')
+  const block = extractWorkflowRunBlock(workflow, 'Reconcile numeric Release and exact thirteen approved assets')
+  const existingCheck = block.indexOf('recovery-existing-$file')
+  const upload = block.indexOf('encoded=')
+  assert.ok(existingCheck >= 0 && upload > existingCheck)
+  assert.match(block, /existing_count=.*recovery-assets-before\.json/)
+  assert.match(block, /if \[ -z "\$existing_id" \]; then[\s\S]*--data-binary "@\$ASSETS\/\$file"/)
 })
 
 test('preparation metadata requires a successful exact workflow run and both owned artifacts', () => {
@@ -1183,7 +1386,7 @@ globalThis.fetch = async url => {
 set -eu
 if [ "$1" = '-m' ] && [ "$2" = 'pypi_attestations' ]; then exit 0; fi
 if [ "$1" = '-m' ] && [ "$2" = 'pip' ]; then exit 0; fi
-if [ "$1" = '-c' ] && printf '%s' "$2" | grep -q 'import sys,importlib.metadata,cryptography'; then printf '3.12.11\\n0.0.30\\n46.0.3\\n'; exit 0; fi
+if [ "$1" = '-c' ] && printf '%s' "$2" | grep -q 'import sys,importlib.metadata,cryptography'; then printf '3.12.11\\n0.0.30\\n50.0.2\\n'; exit 0; fi
 if [ "$1" = '-c' ] && printf '%s' "$2" | grep -q 'from pypi_attestations'; then
   filename="$4"; digest="$5"; source='${sourceCommit}'
   printf '{"claims":{"1.3.6.1.4.1.57264.1.8":"https://token.actions.githubusercontent.com","1.3.6.1.4.1.57264.1.9":"https://github.com/elsoul/erpc-sdk/.github/workflows/release.yml@refs/heads/main","1.3.6.1.4.1.57264.1.10":"%s","1.3.6.1.4.1.57264.1.12":"https://github.com/elsoul/erpc-sdk","1.3.6.1.4.1.57264.1.13":"%s","1.3.6.1.4.1.57264.1.14":"refs/heads/main","1.3.6.1.4.1.57264.1.15":"1429568627","1.3.6.1.4.1.57264.1.18":"https://github.com/elsoul/erpc-sdk/.github/workflows/release.yml@refs/heads/main","1.3.6.1.4.1.57264.1.19":"%s","1.3.6.1.4.1.57264.1.20":"workflow_dispatch","1.3.6.1.4.1.57264.1.21":"https://github.com/elsoul/erpc-sdk/actions/runs/39871872971/attempts/1","1.3.6.1.4.1.57264.1.23":"pypi","1.3.6.1.4.1.57264.1.24":"repo:elsoul@42315168/erpc-sdk@1429568627:environment:pypi"},"publisher":{"kind":"GitHub","repository":"elsoul/erpc-sdk","workflow":"release.yml","environment":"pypi"},"subject":{"name":"%s","digest":{"sha256":"%s"}}}' "$source" "$source" "$source" "$filename" "$digest"
@@ -1483,7 +1686,7 @@ test('B1 npm observer executes actual HTTP/process/crypto-policy/consumer paths 
     calls.push(['run', command, args, options.cwd, options.env])
     if (args.includes('--version')) return { exitCode: 0, stdout: args.length === 1 ? 'v24.1.0\n' : '11.19.1\n', stderr: '' }
     if (command.includes('python') && args[0] === '-c' && args.at(-1)?.endsWith('.json')) return { exitCode: 0, stdout: `${JSON.stringify(claims)}\n`, stderr: '' }
-    if (command.includes('python') && args[0] === '-c') return { exitCode: 0, stdout: '3.12.11\n46.0.3\n', stderr: '' }
+    if (command.includes('python') && args[0] === '-c') return { exitCode: 0, stdout: '3.12.11\n50.0.2\n', stderr: '' }
     if (args.includes('install')) {
       const prefix = args[args.indexOf('--prefix') + 1]
       const packageDirectory = join(prefix, 'node_modules', '@elsoul', 'erpc-sdk')
@@ -1747,7 +1950,7 @@ test('B2 PyPI observer executes wheel/sdist byte, attestation, partial, and cons
   const run = async (command, args, options = {}) => {
     if (args[0] === '--version') return { exitCode: 0, stdout: 'Python 3.12.11\n', stderr: '' }
     if (args[0] === '-m' && args[1] === 'pypi_attestations') return { exitCode: 0, stdout: '', stderr: '' }
-    if (args[0] === '-c' && args[1]?.includes('import sys,importlib.metadata')) return { exitCode: 0, stdout: '3.12.11\n0.0.30\n46.0.3\n', stderr: '' }
+    if (args[0] === '-c' && args[1]?.includes('import sys,importlib.metadata')) return { exitCode: 0, stdout: '3.12.11\n0.0.30\n50.0.2\n', stderr: '' }
     if (args[0] === '-c' && args[1]?.includes('Provenance')) { const filename = args.at(-2).includes('whl') ? wheelDescriptor.filename : sdistDescriptor.filename; return { exitCode: 0, stdout: JSON.stringify({ ...claims, subject: { name: filename, digest: { sha256: filename.endsWith('.whl') ? wheelSha : sdistSha } } }), stderr: '' } }
     if (args[0] === '-m' && args[1] === 'venv') { await mkdir(join(args[2], 'bin'), { recursive: true }); await mkdir(join(args[2], 'lib', 'python3.12', 'site-packages', 'erpc_sdk'), { recursive: true }); await writeFile(join(args[2], 'lib', 'python3.12', 'site-packages', 'erpc_sdk', '__init__.py'), '__version__ = "1.2.3"\n'); return { exitCode: 0, stdout: '', stderr: '' } }
     if (args[0] === '-m' && args[1] === 'build' && args.includes('--version')) return { exitCode: 0, stdout: 'build 1.6.0\n', stderr: '' }
@@ -3967,7 +4170,7 @@ test('recovery npm provenance blocks execute cryptographic claim and SLSA policy
     const venv = join(directory, 'venv')
     await execFileAsync('python3', ['-m', 'venv', venv])
     python = join(venv, 'bin', 'python')
-    await execFileAsync(python, ['-m', 'pip', 'install', '--quiet', '--disable-pip-version-check', 'cryptography==46.0.3'])
+    await execFileAsync(python, ['-m', 'pip', 'install', '--quiet', '--disable-pip-version-check', 'cryptography==50.0.2'])
   }
   const source = '4677d67d14c8fbb17ada3ba824d1623180c6b4d9'
   const expectedWorkflow = 'https://github.com/elsoul/erpc-sdk/.github/workflows/release.yml@refs/heads/main'
@@ -4039,7 +4242,7 @@ test('recovery PyPI provenance block executes its crypto verifier and rejects ma
     const venv = join(directory, 'venv')
     await execFileAsync('python3', ['-m', 'venv', venv])
     python = join(venv, 'bin', 'python')
-    await execFileAsync(python, ['-m', 'pip', 'install', '--quiet', '--disable-pip-version-check', 'pypi-attestations==0.0.30', 'cryptography==46.0.3'])
+    await execFileAsync(python, ['-m', 'pip', 'install', '--quiet', '--disable-pip-version-check', 'pypi-attestations==0.0.30', 'sigstore==4.5.1', 'cryptography==50.0.2'])
   }
   await assert.rejects(
     execFileAsync(python, [script, downloads, directory], { env: { ...process.env, SOURCE_M: '4677d67d14c8fbb17ada3ba824d1623180c6b4d9' } }),
