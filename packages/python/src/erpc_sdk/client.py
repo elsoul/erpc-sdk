@@ -6,6 +6,20 @@ from dataclasses import dataclass
 
 import httpx
 
+from ._rpc_network_contract_data import RPC_NETWORK_CONTRACT as _RPC_NETWORK_CONTRACT
+from ._sui_grpc_web import SuiGrpcWebTransport
+from .arbitrum import ArbitrumClient, create_arbitrum_client
+from .arc import ArcClient, create_arc_client
+from .base import (
+    BaseClient,
+    SealedEvmTransportFacts,
+    _SealedEvmHttpTransport,
+    create_base_client,
+    sealed_evm_transport_facts,
+)
+from .bitcoin import BitcoinClient, create_bitcoin_client
+from .bitcoin_transport import BitcoinHttpTransport, bitcoin_transport_facts
+from .bsc import BscClient, create_bsc_client
 from .config import (
     ErpcClientConfig,
     ErpcCloudClientConfig,
@@ -14,6 +28,13 @@ from .config import (
     endpoint_with_path,
     websocket_url,
 )
+from .hyperliquid import HyperliquidClient, create_hyperliquid_client
+from .kaia import KaiaClient, create_kaia_client
+from .monad import MonadClient, create_monad_client
+from .near import NearClient, create_near_client
+from .near_transport import NearHttpTransport
+from .optimism import OptimismClient, create_optimism_client
+from .polygon import PolygonClient, create_polygon_client
 from .rest import (
     AccountClient,
     CloudCatalogClient,
@@ -22,6 +43,7 @@ from .rest import (
     PriceClient,
     UsageClient,
 )
+from .robinhood import RobinhoodClient, create_robinhood_client
 from .rpc import (
     AVALANCHE_AVAX_METHODS,
     AVALANCHE_INDEX_METHODS,
@@ -37,12 +59,14 @@ from .rpc import (
     SOLANA_RPC_METHODS,
     RpcNamespace,
 )
+from .soneium import SoneiumClient, create_soneium_client
 from .subscriptions import (
     EthereumSubscriptions,
     SolanaSubscriptions,
     UnavailableWebSocketJsonRpcTransport,
     WebSocketJsonRpcTransport,
 )
+from .sui import SuiClient, create_sui_client
 from .swap import SwapClient
 from .transport import (
     HttpJsonRpcTransport,
@@ -50,6 +74,7 @@ from .transport import (
     UnavailableHttpJsonRpcTransport,
     UnavailableRestTransport,
 )
+from .tron import TronClient, create_tron_client
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,6 +115,31 @@ class AvalancheClient:
     subscriptions: EthereumSubscriptions
 
 
+_BASE_TRANSPORT_FACTS = sealed_evm_transport_facts(
+    _RPC_NETWORK_CONTRACT,
+    "client-base-rpc",
+)
+_ARBITRUM_TRANSPORT_FACTS = sealed_evm_transport_facts(
+    _RPC_NETWORK_CONTRACT,
+    "client-arbitrum-rpc",
+)
+_BITCOIN_TRANSPORT_FACTS = bitcoin_transport_facts(_RPC_NETWORK_CONTRACT)
+_POLYGON_TRANSPORT_FACTS = sealed_evm_transport_facts(_RPC_NETWORK_CONTRACT, "client-polygon-rpc")
+_BSC_TRANSPORT_FACTS = sealed_evm_transport_facts(_RPC_NETWORK_CONTRACT, "client-bsc-rpc")
+_OPTIMISM_TRANSPORT_FACTS = sealed_evm_transport_facts(_RPC_NETWORK_CONTRACT, "client-optimism-rpc")
+_KAIA_TRANSPORT_FACTS = sealed_evm_transport_facts(_RPC_NETWORK_CONTRACT, "client-kaia-rpc")
+_SONEIUM_TRANSPORT_FACTS = sealed_evm_transport_facts(_RPC_NETWORK_CONTRACT, "client-soneium-rpc")
+_MONAD_TRANSPORT_FACTS = sealed_evm_transport_facts(_RPC_NETWORK_CONTRACT, "client-monad-rpc")
+_HYPERLIQUID_TRANSPORT_FACTS = sealed_evm_transport_facts(
+    _RPC_NETWORK_CONTRACT, "client-hyperliquid-rpc"
+)
+_ARC_TRANSPORT_FACTS = sealed_evm_transport_facts(_RPC_NETWORK_CONTRACT, "client-arc-rpc")
+_ROBINHOOD_TRANSPORT_FACTS = sealed_evm_transport_facts(
+    _RPC_NETWORK_CONTRACT, "client-robinhood-rpc"
+)
+_TRON_TRANSPORT_FACTS = sealed_evm_transport_facts(_RPC_NETWORK_CONTRACT, "client-tron-rpc")
+
+
 def _rpc_transport(
     config: ErpcClientConfig,
     override: RpcEndpointConfig | None,
@@ -115,6 +165,117 @@ def _rpc_transport(
         headers=config.headers,
         timeout=config.timeout,
         client=client,
+    )
+
+
+def _sealed_evm_transport(
+    config: ErpcClientConfig,
+    override: RpcEndpointConfig | None,
+    hosted_endpoint: str,
+    namespace: str,
+    facts: SealedEvmTransportFacts,
+    client: httpx.AsyncClient,
+) -> _SealedEvmHttpTransport:
+    if override is not None:
+        return _SealedEvmHttpTransport(
+            facts=facts,
+            direct_endpoint=override,
+            timeout=config.timeout,
+            http_client=client,
+            namespace=namespace,
+        )
+    if config.api_key is None:
+        return _SealedEvmHttpTransport(
+            facts=facts,
+            timeout=config.timeout,
+            http_client=client,
+            namespace=namespace,
+        )
+    return _SealedEvmHttpTransport(
+        facts=facts,
+        api_key=config.api_key,
+        endpoint=hosted_endpoint,
+        headers=config.headers,
+        timeout=config.timeout,
+        http_client=client,
+        namespace=namespace,
+    )
+
+
+def _bitcoin_transport(
+    config: ErpcClientConfig,
+    client: httpx.AsyncClient,
+) -> BitcoinHttpTransport:
+    if config.bitcoin_rpc is not None:
+        return BitcoinHttpTransport(
+            facts=_BITCOIN_TRANSPORT_FACTS,
+            direct_endpoint=config.bitcoin_rpc,
+            timeout=config.timeout,
+            http_client=client,
+        )
+    if config.api_key is None:
+        return BitcoinHttpTransport(
+            facts=_BITCOIN_TRANSPORT_FACTS,
+            timeout=config.timeout,
+            http_client=client,
+        )
+    return BitcoinHttpTransport(
+        facts=_BITCOIN_TRANSPORT_FACTS,
+        api_key=config.api_key,
+        endpoint=config.endpoint,
+        headers=config.headers,
+        timeout=config.timeout,
+        http_client=client,
+    )
+
+
+def _near_transport(
+    config: ErpcClientConfig,
+    client: httpx.AsyncClient,
+) -> NearHttpTransport:
+    if config.near_rpc is not None:
+        return NearHttpTransport(
+            direct_endpoint=config.near_rpc,
+            timeout=config.timeout,
+            http_client=client,
+        )
+    if config.api_key is None:
+        return NearHttpTransport(
+            timeout=config.timeout,
+            http_client=client,
+            namespace="near.rpc",
+        )
+    return NearHttpTransport(
+        api_key=config.api_key,
+        endpoint=config.near_endpoint,
+        headers=config.headers,
+        timeout=config.timeout,
+        http_client=client,
+    )
+
+
+def _sui_transport(
+    config: ErpcClientConfig,
+    client: httpx.AsyncClient,
+) -> SuiGrpcWebTransport:
+    if config.sui_grpc_web is not None:
+        return SuiGrpcWebTransport(
+            direct_endpoint=config.sui_grpc_web,
+            timeout=config.timeout,
+            http_client=client,
+        )
+    if config.api_key is None:
+        return SuiGrpcWebTransport(
+            timeout=config.timeout,
+            http_client=client,
+            namespace="sui.grpc",
+        )
+    return SuiGrpcWebTransport(
+        api_key=config.api_key,
+        endpoint=config.sui_endpoint,
+        headers=config.headers,
+        timeout=config.timeout,
+        http_client=client,
     )
 
 
@@ -171,6 +332,22 @@ def _websocket_transport(
 class ErpcClient:
     """Async-first client for JSON-RPC, REST, streams, and subscriptions."""
 
+    bitcoin: BitcoinClient
+    base: BaseClient
+    arbitrum: ArbitrumClient
+    polygon: PolygonClient
+    bsc: BscClient
+    optimism: OptimismClient
+    kaia: KaiaClient
+    soneium: SoneiumClient
+    monad: MonadClient
+    hyperliquid: HyperliquidClient
+    arc: ArcClient
+    robinhood: RobinhoodClient
+    near: NearClient
+    tron: TronClient
+    sui: SuiClient
+
     def __init__(
         self,
         config: ErpcClientConfig,
@@ -180,6 +357,105 @@ class ErpcClient:
         client = http_client or httpx.AsyncClient(timeout=None, follow_redirects=False)
         self._http_client = client
         self._owns_http_client = http_client is None
+        base_transport = _sealed_evm_transport(
+            config,
+            config.base_rpc,
+            config.base_endpoint,
+            "base.rpc",
+            _BASE_TRANSPORT_FACTS,
+            client,
+        )
+        arbitrum_transport = _sealed_evm_transport(
+            config,
+            config.arbitrum_rpc,
+            config.arbitrum_endpoint,
+            "arbitrum.rpc",
+            _ARBITRUM_TRANSPORT_FACTS,
+            client,
+        )
+        bitcoin_transport = _bitcoin_transport(config, client)
+        polygon_transport = _sealed_evm_transport(
+            config,
+            config.polygon_rpc,
+            config.polygon_endpoint,
+            "polygon.rpc",
+            _POLYGON_TRANSPORT_FACTS,
+            client,
+        )
+        bsc_transport = _sealed_evm_transport(
+            config,
+            config.bsc_rpc,
+            config.bsc_endpoint,
+            "bsc.rpc",
+            _BSC_TRANSPORT_FACTS,
+            client,
+        )
+        optimism_transport = _sealed_evm_transport(
+            config,
+            config.optimism_rpc,
+            config.optimism_endpoint,
+            "optimism.rpc",
+            _OPTIMISM_TRANSPORT_FACTS,
+            client,
+        )
+        kaia_transport = _sealed_evm_transport(
+            config,
+            config.kaia_rpc,
+            config.kaia_endpoint,
+            "kaia.rpc",
+            _KAIA_TRANSPORT_FACTS,
+            client,
+        )
+        soneium_transport = _sealed_evm_transport(
+            config,
+            config.soneium_rpc,
+            config.soneium_endpoint,
+            "soneium.rpc",
+            _SONEIUM_TRANSPORT_FACTS,
+            client,
+        )
+        monad_transport = _sealed_evm_transport(
+            config,
+            config.monad_rpc,
+            config.monad_endpoint,
+            "monad.rpc",
+            _MONAD_TRANSPORT_FACTS,
+            client,
+        )
+        hyperliquid_transport = _sealed_evm_transport(
+            config,
+            config.hyperliquid_rpc,
+            config.hyperliquid_endpoint,
+            "hyperliquid.rpc",
+            _HYPERLIQUID_TRANSPORT_FACTS,
+            client,
+        )
+        arc_transport = _sealed_evm_transport(
+            config,
+            config.arc_rpc,
+            config.arc_endpoint,
+            "arc.rpc",
+            _ARC_TRANSPORT_FACTS,
+            client,
+        )
+        robinhood_transport = _sealed_evm_transport(
+            config,
+            config.robinhood_rpc,
+            config.robinhood_endpoint,
+            "robinhood.rpc",
+            _ROBINHOOD_TRANSPORT_FACTS,
+            client,
+        )
+        tron_transport = _sealed_evm_transport(
+            config,
+            config.tron_rpc,
+            config.tron_endpoint,
+            "tron.rpc",
+            _TRON_TRANSPORT_FACTS,
+            client,
+        )
+        near_transport = _near_transport(config, client)
+        sui_transport = _sui_transport(config, client)
         solana_transport = _rpc_transport(
             config,
             config.solana_rpc,
@@ -373,7 +649,39 @@ class ErpcClient:
             ),
             subscriptions=EthereumSubscriptions(avalanche_ws),
         )
+        self.base = create_base_client(base_transport)
+        self.arbitrum = create_arbitrum_client(arbitrum_transport)
+        self.bitcoin = create_bitcoin_client(bitcoin_transport)
+        self.polygon = create_polygon_client(polygon_transport)
+        self.bsc = create_bsc_client(bsc_transport)
+        self.optimism = create_optimism_client(optimism_transport)
+        self.kaia = create_kaia_client(kaia_transport)
+        self.soneium = create_soneium_client(soneium_transport)
+        self.monad = create_monad_client(monad_transport)
+        self.hyperliquid = create_hyperliquid_client(hyperliquid_transport)
+        self.arc = create_arc_client(arc_transport)
+        self.robinhood = create_robinhood_client(robinhood_transport)
+        self.near = create_near_client(near_transport)
+        self.tron = create_tron_client(tron_transport)
+        self.sui = create_sui_client(sui_transport)
         self.swap = SwapClient(ethereum_transport, avalanche_transport)
+        self._base_transport = base_transport
+        self._arbitrum_transport = arbitrum_transport
+        self._bitcoin_transport = bitcoin_transport
+        self._sealed_chain_transports = (
+            polygon_transport,
+            bsc_transport,
+            optimism_transport,
+            kaia_transport,
+            soneium_transport,
+            monad_transport,
+            hyperliquid_transport,
+            arc_transport,
+            robinhood_transport,
+            tron_transport,
+        )
+        self._near_transport = near_transport
+        self._sui_transport = sui_transport
         if config.api_key is None:
             self.price = PriceClient(UnavailableRestTransport("price"))
             self.account = AccountClient(UnavailableRestTransport("account"))
@@ -415,6 +723,13 @@ class ErpcClient:
         await self.solana.subscriptions.close()
         await self.ethereum.subscriptions.close()
         await self.avalanche.subscriptions.close()
+        await self._base_transport.close()
+        await self._arbitrum_transport.close()
+        await self._bitcoin_transport.close()
+        for transport in self._sealed_chain_transports:
+            await transport.close()
+        await self._near_transport.close()
+        await self._sui_transport.close()
         if self._owns_http_client:
             await self._http_client.aclose()
 

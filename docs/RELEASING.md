@@ -108,6 +108,90 @@ schedule, or merge-triggered publication is configured. The release body
 states that Bitcoin HTTP JSON-RPC remains Rust-only and that this cohort adds
 no swap or bridge behavior.
 
+
+## Future v2 release-set controller
+
+The same manual `release.yml` exposes a separate `release_set_mode` choice for
+`prepare`, `publish`, `observe`, and `finalize`. Leave it `disabled` for the historical
+foundation path. A future run requires a complete
+`erpc-sdk-release-set-approval-plan` (schema 2) and its SHA-256; the verifier
+rejects foundation schema 1, implicit `0.9.1`/`0.10.0` substitutions, unknown
+fields, mixed source identities, arbitrary artifact names, and open asset
+inventories.
+
+Preparation validates the explicit non-Rust and Rust versions, exact source,
+controller/workflow SHA, clean `main` dispatch, successful required CI proof,
+Go inventory, package hashes, release body, tags, and the closed public asset
+set. It builds from the reviewed checkout into one immutable bundle and writes
+a separate run/artifact binding. The Rust descriptor is either:
+
+- `reuse`, which carries a separately observed existing crates.io source,
+  checksum, unyanked state, and MIT profile without requesting credentials; or
+- `publish`, which carries only a prepared archive/source/run/artifact
+  descriptor. A later run of the separate Rust adapter must supply successful
+  publication proof before the aggregate can finish. A prepared descriptor is
+  never treated as a published receipt.
+
+The schema 2 producer has two review states. An initial run validates the live
+dispatch, exact checkout, workflow, and exact successful CI run/jobs before
+building; it computes the measured plan digest for human review. A reviewed run
+must supply that digest and a corresponding reviewed plan before package build;
+the measured output must match it again before any bundle upload. Runtime source
+and CI identities come from the live checks, never from a tracked template's
+run or artifact declarations. Archive inspection uses the inner Ruby spec/data
+member set, exact Python metadata/license-file mappings, and source-bound MIT,
+Apache, Google BSD, and provenance notice bytes. Historical foundation Go
+inventory keeps its MIT-only contract; the future profile adds the complete
+component inventory.
+
+Fresh runners receive the schema 2 inputs through the manual dispatch fields
+`release_set_plan_template_json` and, for a matching reviewed rerun,
+`release_set_plan_json` plus `release_set_plan_sha256`. The workflow parses each
+JSON value with Node and writes it under the runner's temporary directory before
+any plan or runtime guard. Do not rely on a caller's local path or a tracked
+`.release-set/plan*.json` file; malformed JSON and a mismatched reviewed digest
+stop before package commands or bundle uploads.
+
+The CP1 implementation records the prepared bundle, binding, and allocated
+Actions artifact IDs. The CP2 publish path now consumes that authenticated
+bundle directly, runs finite npm/PyPI/RubyGems preflight before fanout, allows
+one protected upload attempt for explicitly absent or verified-missing files,
+and always follows the attempt with the corresponding read-only observer.
+Observer receipts and separate publication-outcome/cleanup evidence retain the
+original publisher context separately from the current observer run. Ambiguous
+upload outcomes are observed once and are never retried by the workflow.
+Successful one-member receipt artifacts use the machine-readable names
+`release-set-npm-proof-<run>-<attempt>`,
+`release-set-pypi-proof-<run>-<attempt>`, and
+`release-set-rubygems-proof-<run>-<attempt>`; publication outcome evidence is
+stored in separate artifacts.
+
+The normal schema2 `publish` invocation now continues automatically after the
+three protected package jobs. It verifies the immutable Rust reuse, creates or
+reuses only exact release and Go tags, runs the public proxy/direct Go proof,
+authenticates each one-member receipt artifact and the receipt-only snapshot,
+uploads the canonical manifest checkpoint before draft creation, reconciles the
+numeric Release and every asset without overwrites, publishes the draft once,
+and finishes with authenticated plus anonymous full-A Release/Latest proof.
+Fresh completion authenticates package receipt ZIPs before tag writes and uses
+the current snapshot selector for the in-progress run. A matching resume
+selects the existing numeric Release and preserved public manifest/checkpoint,
+keeps its receipt bytes, and performs zero tag, asset, or Release mutations.
+All Release reads, asset downloads, and missing uploads use numeric API IDs;
+effective Latest is read from the dedicated latest Release endpoint.
+The `observe` and `finalize` modes remain manual recovery boundaries for
+operator-led reconciliation; they are not required for a successful normal
+publish. Do not treat the schema2 path as whole-release complete until the
+automatic DAG and independent gates finish.
+
+The aligned `0.11.0` cohort is a future candidate until package/version,
+licence, dependency, fresh-consumer, provenance, independent gate, and human
+publication evidence exist. The current Rust `0.10.0` mixed-source candidate
+remains release-invalid; do not run Cargo packaging or aggregate release
+checks to force it through. The historical fifteen-asset foundation layout
+stays fixed. A future plan explicitly enumerates its own closed inventory and
+adds the Rust `.crate` as a sixteenth role only when the plan carries a fresh
+Rust publication proof. Weekly release scheduling remains future work.
 ## Historical Rust 0.10.0 receipt
 
 Rust `0.10.0` is an immutable published receipt used by the foundation

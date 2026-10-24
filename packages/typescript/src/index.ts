@@ -51,9 +51,111 @@ export {
   type ErpcSolanaClient,
 } from './client'
 export {
+  ARBITRUM_RPC_METHODS,
+  type ArbitrumReadRpcClient,
+  type ArbitrumRpcEndpointConfig,
+  type ErpcArbitrumClient,
+} from './rpc/arbitrum'
+export {
+  BITCOIN_RPC_METHODS,
+  BitcoinJsonNumber,
+  type BitcoinJsonValue,
+  type BitcoinRpcClient,
+  type BitcoinRpcEndpointConfig,
+  type ErpcBitcoinClient,
+} from './rpc/bitcoin'
+export {
   type BaseReadRpcClient,
   type ErpcBaseClient,
 } from './rpc/base'
+export {
+  BSC_RPC_METHODS,
+  type BscReadRpcClient,
+  type BscRpcEndpointConfig,
+  type ErpcBscClient,
+} from './rpc/bsc'
+export {
+  ARC_RPC_METHODS,
+  type ArcReadRpcClient,
+  type ArcRpcEndpointConfig,
+  type ErpcArcClient,
+} from './rpc/arc'
+export {
+  HYPERLIQUID_RPC_METHODS,
+  type ErpcHyperliquidClient,
+  type HyperliquidReadRpcClient,
+  type HyperliquidRpcEndpointConfig,
+} from './rpc/hyperliquid'
+export {
+  NEAR_RPC_METHODS,
+  NearJsonNumber,
+  type ErpcNearClient,
+  type NearAccountView,
+  type NearBlockHeader,
+  type NearBlockId,
+  type NearBlockReference,
+  type NearBlockView,
+  type NearFinality,
+  type NearJsonValue,
+  type NearNodeVersion,
+  type NearReadRpcClient,
+  type NearRpcEndpointConfig,
+  type NearStatus,
+  type NearSyncInfo,
+} from './rpc/near'
+export {
+  KAIA_RPC_METHODS,
+  type ErpcKaiaClient,
+  type KaiaReadRpcClient,
+  type KaiaRpcEndpointConfig,
+} from './rpc/kaia'
+export {
+  MONAD_RPC_METHODS,
+  type ErpcMonadClient,
+  type MonadReadRpcClient,
+  type MonadRpcEndpointConfig,
+} from './rpc/monad'
+export {
+  OPTIMISM_RPC_METHODS,
+  type ErpcOptimismClient,
+  type OptimismReadRpcClient,
+  type OptimismRpcEndpointConfig,
+} from './rpc/optimism'
+export {
+  POLYGON_RPC_METHODS,
+  type ErpcPolygonClient,
+  type PolygonReadRpcClient,
+  type PolygonRpcEndpointConfig,
+} from './rpc/polygon'
+export {
+  SONEIUM_RPC_METHODS,
+  type ErpcSoneiumClient,
+  type SoneiumReadRpcClient,
+  type SoneiumRpcEndpointConfig,
+} from './rpc/soneium'
+export {
+  ROBINHOOD_RPC_METHODS,
+  type ErpcRobinhoodClient,
+  type RobinhoodReadRpcClient,
+  type RobinhoodRpcEndpointConfig,
+} from './rpc/robinhood'
+export {
+  PendingSuiGrpcWebRequest,
+  SUI_GRPC_WEB_CONTENT_TYPE,
+  SUI_GRPC_WEB_METHODS,
+  type ErpcSuiClient,
+  type SuiBalance,
+  type SuiGrpcWebClient,
+  type SuiGrpcWebEndpointConfig,
+  type SuiObjectSummary,
+  type SuiServiceInfo,
+} from './rpc/sui'
+export {
+  TRON_RPC_METHODS,
+  type ErpcTronClient,
+  type TronReadRpcClient,
+  type TronRpcEndpointConfig,
+} from './rpc/tron'
 export {
   SwapExecutionError,
   SWAP_EXECUTION_ERROR_MESSAGES,
@@ -165,12 +267,28 @@ export {
 } from './generated/bridge_capabilities'
 export {
   DEFAULT_ACCOUNT_ENDPOINT,
+  DEFAULT_ARC_ENDPOINT,
+  DEFAULT_ARBITRUM_ENDPOINT,
   DEFAULT_AVALANCHE_ENDPOINT,
   DEFAULT_BASE_ENDPOINT,
+  DEFAULT_BSC_ENDPOINT,
   DEFAULT_ENDPOINT,
+  DEFAULT_HYPERLIQUID_ENDPOINT,
+  DEFAULT_KAIA_ENDPOINT,
+  DEFAULT_MONAD_ENDPOINT,
+  DEFAULT_OPTIMISM_ENDPOINT,
+  DEFAULT_POLYGON_ENDPOINT,
+  DEFAULT_ROBINHOOD_ENDPOINT,
+  DEFAULT_NEAR_ENDPOINT,
+  DEFAULT_SUI_ENDPOINT,
+  DEFAULT_TRON_ENDPOINT,
+  type ResolvedSuiGrpcWebEndpointConfig,
+  DEFAULT_SONEIUM_ENDPOINT,
   DEFAULT_TIMEOUT_MS,
   DEFAULT_USER_ENDPOINT,
   type BaseRpcEndpointConfig,
+  type ResolvedArbitrumRpcEndpointConfig,
+  type ResolvedBitcoinRpcEndpointConfig,
   type ErpcClientConfig,
   type ResolvedRpcEndpointConfig,
   type RpcEndpointConfig,

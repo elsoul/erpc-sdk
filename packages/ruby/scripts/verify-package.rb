@@ -5,6 +5,7 @@ require "rbconfig"
 require "json"
 require "rubygems/package"
 require "tmpdir"
+require "digest"
 
 require_relative "../lib/erpc_sdk/version"
 
@@ -13,6 +14,7 @@ raise "Missing packaged gem #{gem_path}" unless File.file?(gem_path)
 
 expected_runtime_dependencies = {
   "base64" => Gem::Requirement.new("= 0.2.0"),
+  "bigdecimal" => Gem::Requirement.new("= 4.1.3"),
   "digest-keccak" => Gem::Requirement.new("= 0.0.7")
 }.freeze
 
@@ -25,15 +27,22 @@ unless runtime_dependencies == expected_runtime_dependencies
 end
 
 expected = Dir.chdir(File.expand_path("..", __dir__)) do
-  Dir["lib/**/*.rb"].sort + %w[LICENSE README.md]
+  Dir["lib/**/*.rb"].sort + %w[
+    LICENSE README.md THIRD_PARTY_NOTICES.md
+    LICENSES/Apache-2.0.txt LICENSES/BSD-3-Clause-Google-Protobuf.txt
+  ]
 end
 actual = package_spec.files.sort
 raise "Unexpected gem contents: #{actual.inspect}" unless actual == expected.sort
+unless package_spec.licenses.sort == ["Apache-2.0", "BSD-3-Clause", "MIT"]
+  raise "Unexpected gem license metadata: #{package_spec.licenses.inspect}"
+end
 
 def installed_dependency_context
   roots = Gem.path.dup
   expected_versions = {
     "base64" => "0.2.0",
+    "bigdecimal" => "4.1.3",
     "digest-keccak" => "0.0.7"
   }
   specs = expected_versions.each_with_object({}) do |(name, version), result|
@@ -47,6 +56,7 @@ def installed_dependency_context
         "roots" => Gem.path,
         "specs" => {
           "base64" => Gem::Specification.find_all_by_name("base64", "0.2.0").map(&:full_gem_path),
+          "bigdecimal" => Gem::Specification.find_all_by_name("bigdecimal", "4.1.3").map(&:full_gem_path),
           "digest-keccak" => Gem::Specification.find_all_by_name("digest-keccak", "0.0.7").map(&:full_gem_path)
         }
       )
@@ -103,9 +113,24 @@ child_environment["GEM_PATH"] = dependency_roots.join(File::PATH_SEPARATOR)
 Dir.mktmpdir("erpc-sdk-gem-") do |directory|
   Gem::Package.new(gem_path).extract_files(directory)
   library = File.join(directory, "lib")
+  expected_license_files = {
+    "LICENSES/Apache-2.0.txt" => "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+    "LICENSES/BSD-3-Clause-Google-Protobuf.txt" => "87a95acbb870e296243a71b67631984702e6e55e9057deaf01018f0bad4ca4e0"
+  }
+  expected_license_files.each do |relative, expected_digest|
+    actual_path = File.join(directory, relative)
+    abort "Missing packaged #{relative}" unless File.file?(actual_path)
+    abort "Packaged #{relative} hash mismatch" unless Digest::SHA256.file(actual_path).hexdigest == expected_digest
+  end
+  sui_source = File.read(File.join(library, "erpc_sdk/sui_proto.rb"))
+  abort "Sui source provenance pin missing" unless sui_source.include?("aa9ba2c13b2a9348059b38110e64af39849a0377")
+  abort "Sui source SPDX attribution missing" unless sui_source.include?("Apache-2.0 AND BSD-3-Clause")
+  abort "Google Timestamp attribution missing" unless sui_source.include?("Copyright 2008 Google Inc.")
   child_code = <<~RUBY
+    gem "bigdecimal", "4.1.3"
     require "erpc_sdk"
     require "base64"
+    require "bigdecimal"
     expected_origin = File.realpath(File.join(#{library.inspect}, "erpc_sdk.rb"))
     loaded_origin = $LOADED_FEATURES.map do |feature|
       begin
@@ -120,6 +145,7 @@ Dir.mktmpdir("erpc-sdk-gem-") do |directory|
     abort "SDK version mismatch" unless ERPC::VERSION == #{ERPC::VERSION.inspect}
     expected_dependencies = {
       "base64" => "0.2.0",
+      "bigdecimal" => "4.1.3",
       "digest-keccak" => "0.0.7"
     }
     dependency_roots = ENV.fetch("GEM_PATH").split(File::PATH_SEPARATOR).map do |path|
@@ -150,6 +176,24 @@ Dir.mktmpdir("erpc-sdk-gem-") do |directory|
         abort "Loaded \#{name} outside isolated dependency roots"
       end
     end
+    bigdecimal_spec = Gem.loaded_specs.fetch("bigdecimal")
+    abort "BigDecimal version mismatch" unless BigDecimal::VERSION == "4.1.3"
+    abort "BigDecimal must load as the exact MRI ruby gem" unless bigdecimal_spec.platform.to_s == "ruby"
+    abort "BigDecimal must not fall back to a default gem" if bigdecimal_spec.respond_to?(:default_gem?) && bigdecimal_spec.default_gem?
+    bigdecimal_root = File.realpath(bigdecimal_spec.full_gem_path)
+    abort "BigDecimal must load from an isolated gem root" unless dependency_roots.any? do |root|
+      bigdecimal_root == root || bigdecimal_root.start_with?("\#{root}\#{File::SEPARATOR}")
+    end
+    loaded_bigdecimal = $LOADED_FEATURES.map do |feature|
+      begin
+        File.realpath(feature)
+      rescue Errno::ENOENT, TypeError
+        nil
+      end
+    end.compact.find do |feature|
+      feature.start_with?("\#{bigdecimal_root}\#{File::SEPARATOR}") && feature.match?(/bigdecimal(?:\\.bundle|\\.so|\\.dylib|\\.dll|\\.rb)\\z/)
+    end
+    abort "BigDecimal native/load origin was not observed" unless loaded_bigdecimal
     encoded = Base64.strict_encode64("erpc-sdk")
     abort "Base64 round-trip failed" unless Base64.strict_decode64(encoded) == "erpc-sdk"
     catalog = ERPC::TokenCatalog

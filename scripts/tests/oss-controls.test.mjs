@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, cpSync, symlinkSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, cpSync, symlinkSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import test from 'node:test';
 
 const root = resolve(import.meta.dirname, '../..');
@@ -98,7 +99,7 @@ function scan(dir, configuration, content, filename = 'sample.txt') {
   rmSync(report, { force: true });
   const result = run(shell, [join(root, 'scripts/run-gitleaks.sh'), 'dir', '--redact', '--config', join(dir, 'config.toml'), '--report-path', report, '--report-format', 'json', '.'], data);
   assert.ok([0, 1].includes(result.status), result.output);
-  return JSON.parse(readFileSync(report, 'utf8') || '[]');
+  return existsSync(report) ? JSON.parse(readFileSync(report, 'utf8') || '[]') : [];
 }
 function requireRules(findings) {
   const actual = new Set(findings.map(f => f.RuleID));
@@ -170,6 +171,29 @@ test('Gitleaks public metadata exceptions do not hide nearby credentials or key 
   const indices = JSON.stringify(Array.from({ length: 64 }, (_, i) => i));
   assert.equal(scan(dir, config, indices, 'registry/evidence/discovery-receipts-2026-09-16.json').length, 0);
   assert.ok(scan(dir, config, indices, 'another.json').some(f => f.RuleID === 'solana-keypair-json'));
+});
+
+test('Gitleaks hash metadata exception is exact, rule-local, and AND-scoped', t => {
+  const dir = fixture(t);
+  const hash = createHash('sha256').update(`runtime-${synthetic}`).digest('hex');
+  const valid = `"rawTokenSha256": "${hash}"`;
+  const nearbyApiKey = `api_key = "${synthetic.repeat(2)}"`;
+  const exactPath = 'registry/fixtures/rpc-chain-contract-cases.json';
+  assert.equal(scan(dir, config, valid, exactPath).filter(f => f.RuleID === 'generic-api-key').length, 0);
+  assert.ok(scan(dir, config, valid, `${exactPath}.bak`).some(f => f.RuleID === 'generic-api-key'));
+  assert.ok(scan(dir, config, valid, 'registry/fixtures/rpc-chain-contract-cases.jsonx').some(f => f.RuleID === 'generic-api-key'));
+  assert.ok(scan(dir, config, valid, 'registry/fixtures/rpc-chain-contract-cases-copy.json').some(f => f.RuleID === 'generic-api-key'));
+  assert.ok(scan(dir, config, valid.replaceAll('a', 'A'), exactPath).some(f => f.RuleID === 'generic-api-key'));
+  assert.ok(scan(dir, config, valid.replace(hash, `${hash}f`), exactPath).some(f => f.RuleID === 'generic-api-key'));
+  assert.ok(scan(dir, config, valid.replace(hash, `g${hash.slice(1)}`), exactPath).some(f => f.RuleID === 'generic-api-key'));
+  assert.ok(scan(dir, config, `${valid}; ${nearbyApiKey}`, exactPath).some(f => f.RuleID === 'generic-api-key'));
+  assert.ok(scan(dir, config, `private_key = "${'b'.repeat(64)}"`, exactPath).some(f => f.RuleID === 'blockchain-private-key-hex'));
+
+  const start = config.lastIndexOf('[[rules.allowlists]]');
+  const exactBlock = config.slice(start);
+  const broad = config.replace(exactBlock, exactBlock.replace('condition = "AND"', 'condition = "OR"'));
+  assert.ok(scan(dir, config, nearbyApiKey, exactPath).some(f => f.RuleID === 'generic-api-key'));
+  assert.equal(scan(dir, broad, nearbyApiKey, exactPath).some(f => f.RuleID === 'generic-api-key'), false, 'AND-to-OR mutation must be observable');
 });
 
 function requiredScript(source) {

@@ -340,7 +340,9 @@
           "scripts/verify-release.test.mjs",
           "scripts/oss-public-hosts.txt",
           "docs/RELEASING.md",
-          "CHANGELOG.md"
+          "CHANGELOG.md",
+          ".gitleaks.toml",
+          "scripts/tests/oss-controls.test.mjs"
         ],
         "pathPrefixes": [
           ".github/workflows/"

@@ -11,13 +11,28 @@ import (
 // Client groups all API namespaces backed by one API key and optional direct
 // chain RPC endpoints.
 type Client struct {
-	Solana    *SolanaClient
-	Ethereum  *EthereumClient
-	Avalanche *AvalancheClient
-	Swap      *SwapClient
-	Price     *PriceClient
-	Account   *AccountClient
-	Usage     *UsageClient
+	Solana      *SolanaClient
+	Ethereum    *EthereumClient
+	Avalanche   *AvalancheClient
+	Bitcoin     *BitcoinClient
+	Base        *BaseClient
+	Arbitrum    *ArbitrumClient
+	Polygon     *PolygonClient
+	Bsc         *BscClient
+	Optimism    *OptimismClient
+	Kaia        *KaiaClient
+	Soneium     *SoneiumClient
+	Monad       *MonadClient
+	Hyperliquid *HyperliquidClient
+	Arc         *ArcClient
+	Robinhood   *RobinhoodClient
+	Near        *NearClient
+	Tron        *TronClient
+	Sui         *SuiClient
+	Swap        *SwapClient
+	Price       *PriceClient
+	Account     *AccountClient
+	Usage       *UsageClient
 }
 
 // NewClient validates config and creates an inert client. It performs no
@@ -26,6 +41,18 @@ func NewClient(config Config) (*Client, error) {
 	resolved, err := resolveConfig(config)
 	if err != nil {
 		return nil, err
+	}
+	bitcoinFacts, err := generatedC1Facts("bitcoin-read12")
+	if err != nil {
+		return nil, err
+	}
+	evmFacts, err := generatedC1Facts("sealed-evm-read3")
+	if err != nil {
+		return nil, err
+	}
+	nearFacts, err := generatedC1Facts("near-read3")
+	if err != nil {
+		nearFacts = c1MethodFacts{}
 	}
 	solanaHTTP := rpcHTTPTransport(resolved, resolved.solanaRPC, resolved.endpoint, "solana.rpc")
 	ethereumHTTP := rpcHTTPTransport(resolved, resolved.ethereumRPC, endpointPath(resolved.endpoint, "/eth"), "ethereum.rpc")
@@ -59,6 +86,38 @@ func NewClient(config Config) (*Client, error) {
 	sharedREST := legacyOrUnavailableRESTTransport(resolved, resolved.endpoint, "price")
 	accountREST := legacyOrUnavailableRESTTransport(resolved, resolved.accountEndpoint, "account")
 	userREST := legacyOrUnavailableRESTTransport(resolved, resolved.userEndpoint, "usage")
+	bitcoinTransport := newC1BitcoinTransport(
+		resolved,
+		endpointPath(resolved.endpoint, "bitcoin"),
+		resolved.bitcoinRPC,
+		bitcoinFacts,
+	)
+	baseTransport := newC1EVMTransport(
+		resolved,
+		resolved.baseEndpoint,
+		resolved.baseRPC,
+		evmFacts,
+		"base.rpc",
+	)
+	arbitrumTransport := newC1EVMTransport(
+		resolved,
+		resolved.arbitrumEndpoint,
+		resolved.arbitrumRPC,
+		evmFacts,
+		"arbitrum.rpc",
+	)
+	polygonTransport := newC1EVMTransport(resolved, resolved.polygonEndpoint, resolved.polygonRPC, evmFacts, "polygon.rpc")
+	bscTransport := newC1EVMTransport(resolved, resolved.bscEndpoint, resolved.bscRPC, evmFacts, "bsc.rpc")
+	optimismTransport := newC1EVMTransport(resolved, resolved.optimismEndpoint, resolved.optimismRPC, evmFacts, "optimism.rpc")
+	kaiaTransport := newC1EVMTransport(resolved, resolved.kaiaEndpoint, resolved.kaiaRPC, evmFacts, "kaia.rpc")
+	soneiumTransport := newC1EVMTransport(resolved, resolved.soneiumEndpoint, resolved.soneiumRPC, evmFacts, "soneium.rpc")
+	monadTransport := newC1EVMTransport(resolved, resolved.monadEndpoint, resolved.monadRPC, evmFacts, "monad.rpc")
+	hyperliquidTransport := newC1EVMTransport(resolved, resolved.hyperliquidEndpoint, resolved.hyperliquidRPC, evmFacts, "hyperliquid.rpc")
+	arcTransport := newC1EVMTransport(resolved, resolved.arcEndpoint, resolved.arcRPC, evmFacts, "arc.rpc")
+	robinhoodTransport := newC1EVMTransport(resolved, resolved.robinhoodEndpoint, resolved.robinhoodRPC, evmFacts, "robinhood.rpc")
+	nearTransport := newC1EVMTransport(resolved, resolved.nearEndpoint, resolved.nearRPC, nearFacts, "near.rpc")
+	tronTransport := newC1EVMTransport(resolved, resolved.tronEndpoint, resolved.tronRPC, evmFacts, "tron.rpc")
+	suiTransport := newSuiGRPCWebTransport(resolved, resolved.suiEndpoint, resolved.suiGRPCWeb)
 	solana := newSolanaClient(solanaHTTP, solanaWS)
 	if resolved.solanaRPC == nil && resolved.apiKey == "" {
 		solana.DAS = &RPCNamespace{transport: newUnavailableHTTPRPCTransport(resolved, "solana.das"), policy: batchAny}
@@ -75,13 +134,28 @@ func NewClient(config Config) (*Client, error) {
 		avalanche.Info = newUnavailableAvalancheNamespace(resolved, "avalanche.info", "info", AvalancheInfoMethods)
 	}
 	return &Client{
-		Solana:    solana,
-		Ethereum:  newEthereumClient(ethereumHTTP, ethereumWS),
-		Avalanche: avalanche,
-		Swap:      newSwapClient(ethereumHTTP, avalancheHTTP),
-		Price:     &PriceClient{transport: sharedREST},
-		Account:   &AccountClient{transport: accountREST},
-		Usage:     &UsageClient{transport: userREST},
+		Solana:      solana,
+		Ethereum:    newEthereumClient(ethereumHTTP, ethereumWS),
+		Avalanche:   avalanche,
+		Bitcoin:     newBitcoinClient(bitcoinTransport, c1BitcoinFacts{methods: bitcoinFacts.methods}),
+		Base:        newBaseClient(baseTransport, c1EVMFacts{methods: evmFacts.methods}),
+		Arbitrum:    newArbitrumClient(arbitrumTransport, c1EVMFacts{methods: evmFacts.methods}),
+		Polygon:     newPolygonClient(polygonTransport, c1EVMFacts{methods: evmFacts.methods}),
+		Bsc:         newBscClient(bscTransport, c1EVMFacts{methods: evmFacts.methods}),
+		Optimism:    newOptimismClient(optimismTransport, c1EVMFacts{methods: evmFacts.methods}),
+		Kaia:        newKaiaClient(kaiaTransport, c1EVMFacts{methods: evmFacts.methods}),
+		Soneium:     newSoneiumClient(soneiumTransport, c1EVMFacts{methods: evmFacts.methods}),
+		Monad:       newMonadClient(monadTransport, c1EVMFacts{methods: evmFacts.methods}),
+		Hyperliquid: newHyperliquidClient(hyperliquidTransport, c1EVMFacts{methods: evmFacts.methods}),
+		Arc:         newArcClient(arcTransport, c1EVMFacts{methods: evmFacts.methods}),
+		Robinhood:   newRobinhoodClient(robinhoodTransport, c1EVMFacts{methods: evmFacts.methods}),
+		Near:        newNearClient(nearTransport, c1EVMFacts{methods: nearFacts.methods}),
+		Tron:        newTronClient(tronTransport, c1EVMFacts{methods: evmFacts.methods}),
+		Sui:         newSuiClient(suiTransport),
+		Swap:        newSwapClient(ethereumHTTP, avalancheHTTP),
+		Price:       &PriceClient{transport: sharedREST},
+		Account:     &AccountClient{transport: accountREST},
+		Usage:       &UsageClient{transport: userREST},
 	}, nil
 }
 

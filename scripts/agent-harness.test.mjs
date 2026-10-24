@@ -26,7 +26,7 @@ test('harness, future assets, and CI route correctly', () => {
   const ci = '.github/workflows/release.yml'; assert.deepEqual(route(registry, ci, { taskBrief: brief(ci, selected(ci)) }).requiredGates, ['cyan']);
 });
 test('CI release exact paths route through bounded release ownership', () => {
-  const targets = ['scripts/verify-release.test.mjs', 'scripts/oss-public-hosts.txt', 'docs/RELEASING.md', 'CHANGELOG.md'];
+  const targets = ['scripts/verify-release.test.mjs', 'scripts/oss-public-hosts.txt', 'docs/RELEASING.md', 'CHANGELOG.md', '.gitleaks.toml', 'scripts/tests/oss-controls.test.mjs'];
   for (const target of targets) {
     const rule = selected(target);
     assert.equal(rule.id, 'ci-release');
@@ -70,8 +70,9 @@ test('CI release exact paths route through bounded release ownership', () => {
     assert.deepEqual(security.requiredGates, ['cyan']);
     assert.equal(security.dispatchL3, true);
   }
-  for (const target of ['scripts/oss-public-hosts.txt.bak', 'archive/scripts/oss-public-hosts.txt', 'scripts/check-oss-hygiene.sh', 'CONTRIBUTING.md', 'scripts/verify-release.test.mjs.bak', 'docs/RELEASING.md.bak', 'archive/CHANGELOG.md']) {
+  for (const target of ['scripts/oss-public-hosts.txt.bak', 'archive/scripts/oss-public-hosts.txt', 'scripts/check-oss-hygiene.sh', 'CONTRIBUTING.md', 'scripts/verify-release.test.mjs.bak', 'docs/RELEASING.md.bak', 'archive/CHANGELOG.md', '.gitleaks.toml.bak', 'scripts/tests/oss-controls.test.mjs.bak']) {
     const unresolved = route(registry, target);
+    assert.equal(unresolved.phase, 'fallback');
     assert.equal(unresolved.status, 'ROUTE_UNRESOLVED');
     assert.deepEqual(unresolved.roles, ['el', 'edgar']);
     assert.equal(unresolved.dispatchL3, false);

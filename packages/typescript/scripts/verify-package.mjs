@@ -1,4 +1,5 @@
 import { access, readFile } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
 import { createRequire } from 'node:module'
 
 const packageJson = JSON.parse(
@@ -23,6 +24,7 @@ if (packageJson.name !== '@elsoul/erpc-sdk' || packageJson.private === true) {
 const approvedDependencies = {
   '@noble/curves': '1.9.7',
   '@noble/hashes': '1.8.0',
+  'lossless-json': '4.3.3',
 }
 const runtimeDependencies = packageJson.dependencies ?? {}
 if (
@@ -31,6 +33,31 @@ if (
   Object.entries(approvedDependencies).some(([name, version]) => runtimeDependencies[name] !== version)
 ) {
   throw new Error('Runtime dependency allowlist check failed')
+}
+if (packageJson.license !== 'MIT AND Apache-2.0 AND BSD-3-Clause') {
+  throw new Error('Mixed Sui licence expression check failed')
+}
+for (const relativePath of [
+  'LICENSES/Apache-2.0.txt',
+  'LICENSES/BSD-3-Clause-Google-Protobuf.txt',
+  'THIRD_PARTY_NOTICES.md',
+]) {
+  if (!packageJson.files.includes(relativePath)) {
+    throw new Error(`Package file inclusion check failed: ${relativePath}`)
+  }
+}
+const fileSha256 = async (relativePath) => createHash('sha256')
+  .update(await readFile(new URL(`../${relativePath}`, import.meta.url)))
+  .digest('hex')
+if (await fileSha256('LICENSES/Apache-2.0.txt') !== 'c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4') {
+  throw new Error('Apache licence text hash check failed')
+}
+if (await fileSha256('LICENSES/BSD-3-Clause-Google-Protobuf.txt') !== '87a95acbb870e296243a71b67631984702e6e55e9057deaf01018f0bad4ca4e0') {
+  throw new Error('Google BSD licence text hash check failed')
+}
+const notice = await readFile(new URL('../THIRD_PARTY_NOTICES.md', import.meta.url), 'utf8')
+if (!notice.includes('aa9ba2c13b2a9348059b38110e64af39849a0377') || !notice.includes('MIT AND Apache-2.0 AND BSD-3-Clause')) {
+  throw new Error('Sui attribution notice check failed')
 }
 for (const field of ['optionalDependencies', 'peerDependencies']) {
   if (Object.keys(packageJson[field] ?? {}).length > 0) {
@@ -46,7 +73,24 @@ if (
   typeof esm.CloudResourcesClient !== 'function' ||
   typeof esm.UsageClient !== 'function' ||
   typeof esm.createMayanSwiftV2BridgeClient !== 'function' ||
-  esm.DEFAULT_AVALANCHE_ENDPOINT !== 'https://ava-rpc.erpc.global'
+  esm.DEFAULT_AVALANCHE_ENDPOINT !== 'https://ava-rpc.erpc.global' ||
+  esm.DEFAULT_ARBITRUM_ENDPOINT !== 'https://arbitrum.erpc.global' ||
+  typeof esm.BitcoinJsonNumber !== 'function' ||
+  !Array.isArray(esm.BITCOIN_RPC_METHODS) ||
+  esm.BITCOIN_RPC_METHODS.length !== 12 ||
+  !Array.isArray(esm.ARBITRUM_RPC_METHODS) ||
+  esm.ARBITRUM_RPC_METHODS.length !== 3 ||
+  esm.DEFAULT_POLYGON_ENDPOINT !== 'https://polygon.erpc.global' ||
+  esm.DEFAULT_BSC_ENDPOINT !== 'https://bsc.erpc.global' ||
+  esm.DEFAULT_OPTIMISM_ENDPOINT !== 'https://optimism.erpc.global' ||
+  esm.DEFAULT_NEAR_ENDPOINT !== 'https://near.erpc.global' ||
+  esm.DEFAULT_TRON_ENDPOINT !== 'https://tron.erpc.global' ||
+  esm.DEFAULT_SUI_ENDPOINT !== 'https://sui.erpc.global' ||
+  typeof esm.NearJsonNumber !== 'function' ||
+  !Array.isArray(esm.NEAR_RPC_METHODS) ||
+  esm.NEAR_RPC_METHODS.length !== 3 ||
+  !Array.isArray(esm.SUI_GRPC_WEB_METHODS) ||
+  esm.SUI_GRPC_WEB_METHODS.length !== 3
 ) {
   throw new Error('ESM export check failed')
 }
@@ -79,7 +123,16 @@ if (
   typeof cjs.CloudCreditClient !== 'function' ||
   typeof cjs.CloudResourcesClient !== 'function' ||
   typeof cjs.UsageClient !== 'function' ||
-  cjs.DEFAULT_AVALANCHE_ENDPOINT !== 'https://ava-rpc.erpc.global'
+  cjs.DEFAULT_AVALANCHE_ENDPOINT !== 'https://ava-rpc.erpc.global' ||
+  cjs.DEFAULT_ARBITRUM_ENDPOINT !== 'https://arbitrum.erpc.global' ||
+  typeof cjs.BitcoinJsonNumber !== 'function' ||
+  !Array.isArray(cjs.BITCOIN_RPC_METHODS) ||
+  cjs.BITCOIN_RPC_METHODS.length !== 12 ||
+  !Array.isArray(cjs.ARBITRUM_RPC_METHODS) ||
+  cjs.ARBITRUM_RPC_METHODS.length !== 3 ||
+  typeof cjs.NearJsonNumber !== 'function' ||
+  !Array.isArray(cjs.SUI_GRPC_WEB_METHODS) ||
+  cjs.SUI_GRPC_WEB_METHODS.length !== 3
 ) {
   throw new Error('CommonJS export check failed')
 }
@@ -143,6 +196,20 @@ const client = esm.createErpcClient({
 })
 if (client.avalanche?.rpc?.endpoint !== 'https://ava-rpc.erpc.global/ava') {
   throw new Error('Avalanche client export check failed')
+}
+if (
+  client.bitcoin?.rpc?.endpoint !== 'https://edge.erpc.global/' ||
+  typeof client.bitcoin.rpc.getBlockCount !== 'function' ||
+  client.arbitrum?.rpc?.endpoint !== 'https://arbitrum.erpc.global/' ||
+  typeof client.arbitrum.rpc.eth_chainId !== 'function' ||
+  typeof client.base?.rpc?.eth_chainId !== 'function' ||
+  typeof client.polygon?.rpc?.eth_chainId !== 'function' ||
+  typeof client.bsc?.rpc?.eth_chainId !== 'function' ||
+  typeof client.near?.rpc?.status !== 'function' ||
+  typeof client.sui?.grpc?.getServiceInfo !== 'function' ||
+  typeof client.tron?.rpc?.eth_chainId !== 'function'
+) {
+  throw new Error('C1 client export check failed')
 }
 client.close()
 const bridge = esm.createMayanSwiftV2BridgeClient({

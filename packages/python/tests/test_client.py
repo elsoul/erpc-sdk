@@ -59,6 +59,52 @@ def test_keyless_config_requires_a_direct_rpc_override() -> None:
         ErpcClientConfig()
 
 
+def test_new_sealed_config_defaults_and_origin_only_diagnostics() -> None:
+    config = ErpcClientConfig(
+        "secret",
+        base_endpoint="https://base.example/customer/path?token=base-secret",
+        arbitrum_endpoint="https://arbitrum.example/customer/path?token=arb-secret",
+        bitcoin_rpc=RpcEndpointConfig(
+            "https://bitcoin.example/customer/path?token=btc-secret",
+            headers={"authorization": "Bearer bitcoin-secret"},
+        ),
+    )
+    assert config.base_endpoint == "https://base.example/customer/path"
+    assert config.arbitrum_endpoint == "https://arbitrum.example/customer/path"
+    rendered = repr(config)
+    assert "base.example/" in rendered
+    assert "arbitrum.example/" in rendered
+    assert "bitcoin.example/" in rendered
+    for secret in ("base-secret", "arb-secret", "btc-secret", "bitcoin-secret"):
+        assert secret not in rendered
+    assert "customer/path" not in rendered
+
+
+@pytest.mark.parametrize("field", ["base_rpc", "arbitrum_rpc", "bitcoin_rpc"])
+def test_new_sealed_config_rejects_websocket_overrides(field: str) -> None:
+    endpoint = RpcEndpointConfig(
+        "https://rpc.example/path",
+        websocket_url="wss://rpc.example/stream",
+    )
+    with pytest.raises(ErpcConfigError) as captured:
+        ErpcClientConfig(**{field: endpoint})
+    assert field in str(captured.value)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("base_endpoint", "https://user:host-secret@rpc.example/path"),
+        ("arbitrum_endpoint", "https://rpc.example/path#fragment-secret"),
+    ],
+)
+def test_new_hosted_endpoints_reject_unsafe_diagnostics(field: str, value: str) -> None:
+    with pytest.raises(ErpcConfigError) as captured:
+        ErpcClientConfig("key", **{field: value})
+    assert "secret" not in str(captured.value)
+    assert "fragment" not in str(captured.value)
+
+
 @pytest.mark.parametrize(
     "url",
     [
@@ -307,6 +353,114 @@ async def test_direct_avalanche_c_transport_is_separate_from_native_and_index() 
     await http.aclose()
 
 
+@pytest.mark.asyncio
+async def test_new_sealed_clients_are_composed_from_generated_facts() -> None:
+    received: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        received.append(request)
+        body = json.loads(request.content)
+        if body["method"] == "getblockcount":
+            result: object = 7
+        else:
+            result = body["method"]
+        return httpx.Response(
+            200,
+            json={"jsonrpc": "2.0", "id": body["id"], "result": result},
+        )
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    erpc = ErpcClient(
+        ErpcClientConfig(
+            "shared-key",
+            endpoint="https://edge.example/customer",
+            base_endpoint="https://base.example/rpc",
+            arbitrum_endpoint="https://arbitrum.example/rpc",
+            headers={"x-global": "hosted-only"},
+        ),
+        http_client=http,
+    )
+    try:
+        pending = erpc.bitcoin.rpc.get_block_count()
+        assert received == []
+        assert await pending.send() == 7
+        assert await erpc.base.rpc.eth_chain_id().send() == "eth_chainId"
+        assert await erpc.arbitrum.rpc.eth_get_balance("0xabc").send() == "eth_getBalance"
+        assert [str(request.url) for request in received] == [
+            "https://edge.example/customer/bitcoin",
+            "https://base.example/rpc?api-key=shared-key",
+            "https://arbitrum.example/rpc?api-key=shared-key",
+        ]
+        assert received[0].headers["authorization"] == "Bearer shared-key"
+        assert received[0].headers["x-global"] == "hosted-only"
+        assert received[1].headers["x-global"] == "hosted-only"
+        assert received[2].headers["x-global"] == "hosted-only"
+        assert {name for name in dir(erpc.bitcoin.rpc) if not name.startswith("_")} == {
+            "endpoint",
+            "estimate_smart_fee",
+            "get_best_block_hash",
+            "get_block",
+            "get_block_count",
+            "get_block_hash",
+            "get_block_header",
+            "get_blockchain_info",
+            "get_mempool_info",
+            "get_network_info",
+            "get_raw_mempool",
+            "get_raw_transaction",
+            "get_tx_out",
+        }
+    finally:
+        await erpc.close()
+        await http.aclose()
+
+
+@pytest.mark.asyncio
+async def test_remaining_sealed_evm_clients_use_generated_roots_and_no_suffixes() -> None:
+    received: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        received.append(request)
+        body = cast(dict[str, Any], json.loads(request.content))
+        return httpx.Response(
+            200,
+            json={"jsonrpc": "2.0", "id": body["id"], "result": "0x1"},
+        )
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    client = ErpcClient(ErpcClientConfig("shared-key"), http_client=http)
+    try:
+        for name in (
+            "polygon",
+            "bsc",
+            "optimism",
+            "kaia",
+            "soneium",
+            "monad",
+            "hyperliquid",
+            "arc",
+            "robinhood",
+            "tron",
+        ):
+            await getattr(client, name).rpc.eth_chain_id().send()
+        assert [str(request.url) for request in received] == [
+            "https://polygon.erpc.global/?api-key=shared-key",
+            "https://bsc.erpc.global/?api-key=shared-key",
+            "https://optimism.erpc.global/?api-key=shared-key",
+            "https://kaia.erpc.global/?api-key=shared-key",
+            "https://soneium.erpc.global/?api-key=shared-key",
+            "https://monad.erpc.global/?api-key=shared-key",
+            "https://hyperliquid.erpc.global/?api-key=shared-key",
+            "https://arc.erpc.global/?api-key=shared-key",
+            "https://robinhood.erpc.global/?api-key=shared-key",
+            "https://tron.erpc.global/?api-key=shared-key",
+        ]
+        assert all("/jsonrpc" not in str(request.url) for request in received)
+    finally:
+        await client.close()
+        await http.aclose()
+
+
 def _load_direct_quote_case(case_id: str) -> dict[str, Any]:
     if not _SWAP_FIXTURE_PATH.is_file():
         pytest.skip("shared quote fixtures are available only in the repository workspace")
@@ -532,6 +686,53 @@ async def test_direct_redaction_preserves_plaintext_case_and_folds_percent_hex_c
     assert "Mixed%2FSecret%2FValue" in rendered
     await erpc.close()
     await http.aclose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("chain", ["bitcoin", "polygon", "near"])
+async def test_new_direct_rpc_errors_redact_path_credentials_recursively(chain: str) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        return httpx.Response(
+            200,
+            json={
+                "jsonrpc": "2.0",
+                "id": body["id"],
+                "error": {
+                    "code": -32000,
+                    "message": "REVIEW-PATH a%2fb a/b",
+                    "data": {
+                        "REVIEW-PATH": ["a%2Fb", {"a/b": "REVIEW-PATH"}],
+                    },
+                },
+            },
+        )
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    client = ErpcClient(
+        ErpcClientConfig(
+            **{
+                f"{chain}_rpc": RpcEndpointConfig(
+                    "https://example.invalid/REVIEW-PATH/a%2Fb"
+                )
+            }
+        ),
+        http_client=http,
+    )
+    try:
+        with pytest.raises(ErpcJsonRpcError) as captured:
+            if chain == "bitcoin":
+                await client.bitcoin.rpc.get_block_count().send()
+            elif chain == "polygon":
+                await client.polygon.rpc.eth_chain_id().send()
+            else:
+                await client.near.rpc.status().send()
+        rendered = f"{captured.value} {captured.value.data!r}"
+        for secret in ("REVIEW-PATH", "a%2Fb", "a%2fb", "a/b"):
+            assert secret not in rendered
+    finally:
+        await client.close()
+        await http.aclose()
 
 
 @pytest.mark.asyncio

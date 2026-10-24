@@ -11,6 +11,41 @@ on:
         options:
           - prepare
           - publish
+      release_set_mode:
+        description: Future schema2 release-set stage; disabled for the historical foundation path
+        required: true
+        default: disabled
+        type: choice
+        options:
+          - disabled
+          - prepare
+          - publish
+          - observe
+          - finalize
+      release_set_plan_json:
+        description: Reviewed schema2 release-set plan JSON for a matching prepare rerun
+        required: false
+        default: ''
+        type: string
+      release_set_plan_template_json:
+        description: Schema2 release-set plan template JSON for prepare
+        required: false
+        default: ''
+        type: string
+      release_set_plan_file:
+        description: Reviewed schema2 release-set plan path in the exact checkout
+        required: false
+        default: .release-set/plan.json
+        type: string
+      release_set_plan_template_file:
+        description: Schema2 plan template populated only after measured archives/CI bytes
+        required: false
+        default: .release-set/plan-template.json
+        type: string
+      release_set_plan_sha256:
+        description: Reviewed schema2 plan SHA-256
+        required: false
+        type: string
       expected_commit:
         description: Exact 40-character main commit to validate
         required: true
@@ -56,7 +91,7 @@ env:
 jobs:
   prepare:
     name: Prepare immutable approval bundle
-    if: ${{ inputs.mode == 'prepare' }}
+    if: ${{ inputs.mode == 'prepare' && inputs.release_set_mode == 'disabled' }}
     runs-on: ubuntu-latest
     timeout-minutes: 35
     permissions:
@@ -337,7 +372,7 @@ jobs:
 
   publication-validation:
     name: Validate approved publication bundle
-    if: ${{ inputs.mode == 'publish' }}
+    if: ${{ inputs.mode == 'publish' && inputs.release_set_mode == 'disabled' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -446,7 +481,7 @@ jobs:
   npm:
     name: Publish exact npm archive
     needs: publication-validation
-    if: ${{ inputs.mode == 'publish' && needs.publication-validation.result == 'success' }}
+    if: ${{ inputs.mode == 'publish' && inputs.release_set_mode == 'disabled' && needs.publication-validation.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment: npm
@@ -712,7 +747,7 @@ jobs:
   pypi:
     name: Publish exact PyPI distributions
     needs: publication-validation
-    if: ${{ inputs.mode == 'publish' && needs.publication-validation.result == 'success' }}
+    if: ${{ inputs.mode == 'publish' && inputs.release_set_mode == 'disabled' && needs.publication-validation.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment: pypi
@@ -937,7 +972,7 @@ jobs:
   rubygems:
     name: Publish exact Ruby gem
     needs: publication-validation
-    if: ${{ inputs.mode == 'publish' && needs.publication-validation.result == 'success' }}
+    if: ${{ inputs.mode == 'publish' && inputs.release_set_mode == 'disabled' && needs.publication-validation.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment: rubygems
@@ -1101,7 +1136,7 @@ jobs:
   rust-reuse:
     name: Verify existing Rust receipt read-only
     needs: publication-validation
-    if: ${{ inputs.mode == 'publish' && needs.publication-validation.result == 'success' }}
+    if: ${{ inputs.mode == 'publish' && inputs.release_set_mode == 'disabled' && needs.publication-validation.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -1160,7 +1195,7 @@ jobs:
       - pypi
       - rubygems
       - rust-reuse
-    if: ${{ inputs.mode == 'publish' && needs.publication-validation.result == 'success' && needs.npm.result == 'success' && needs.pypi.result == 'success' && needs.rubygems.result == 'success' && needs.rust-reuse.result == 'success' }}
+    if: ${{ inputs.mode == 'publish' && inputs.release_set_mode == 'disabled' && needs.publication-validation.result == 'success' && needs.npm.result == 'success' && needs.pypi.result == 'success' && needs.rubygems.result == 'success' && needs.rust-reuse.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -1259,7 +1294,7 @@ jobs:
   go-proof:
     name: Verify public Go module and inventory
     needs: tags
-    if: ${{ inputs.mode == 'publish' && needs.tags.result == 'success' }}
+    if: ${{ inputs.mode == 'publish' && inputs.release_set_mode == 'disabled' && needs.tags.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -1418,7 +1453,7 @@ jobs:
       - rust-reuse
       - tags
       - go-proof
-    if: ${{ inputs.mode == 'publish' && needs.publication-validation.result == 'success' && needs.npm.result == 'success' && needs.pypi.result == 'success' && needs.rubygems.result == 'success' && needs.rust-reuse.result == 'success' && needs.tags.result == 'success' && needs.go-proof.result == 'success' }}
+    if: ${{ inputs.mode == 'publish' && inputs.release_set_mode == 'disabled' && needs.publication-validation.result == 'success' && needs.npm.result == 'success' && needs.pypi.result == 'success' && needs.rubygems.result == 'success' && needs.rust-reuse.result == 'success' && needs.tags.result == 'success' && needs.go-proof.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -1516,7 +1551,7 @@ jobs:
       - pypi
       - rubygems
       - rust-reuse
-    if: ${{ inputs.mode == 'publish' && needs.publication-validation.result == 'success' && needs.tags.result == 'success' && needs.go-proof.result == 'success' && needs.proof-aggregate.result == 'success' && needs.npm.result == 'success' && needs.pypi.result == 'success' && needs.rubygems.result == 'success' && needs.rust-reuse.result == 'success' }}
+    if: ${{ inputs.mode == 'publish' && inputs.release_set_mode == 'disabled' && needs.publication-validation.result == 'success' && needs.tags.result == 'success' && needs.go-proof.result == 'success' && needs.proof-aggregate.result == 'success' && needs.npm.result == 'success' && needs.pypi.result == 'success' && needs.rubygems.result == 'success' && needs.rust-reuse.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -1755,3 +1790,2092 @@ jobs:
           path: ${{ runner.temp }}/final-release-proof.json
           if-no-files-found: error
           retention-days: 365
+
+  # Schema2 path. This is deliberately opt-in and disabled by default. It
+  # reuses the existing protected publisher/tag/Release operations only after
+  # the verifier has authenticated their actual preparation and observation
+  # artifacts.
+  release-set-prepare:
+    name: Prepare schema2 release set
+    if: ${{ inputs.release_set_mode == 'prepare' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      plan_sha256: ${{ steps.prepare.outputs.plan_sha256 }}
+      bundle_artifact_id: ${{ steps.bundle.outputs.artifact-id }}
+      binding_artifact_id: ${{ steps.binding.outputs.artifact-id }}
+    steps:
+      - name: Check out exact reviewed source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.expected_commit }}
+          persist-credentials: false
+      - name: Install pinned Node runtime
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Install pinned Python packaging toolchain
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: '1.22.x'
+          cache: false
+      - uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b # v1
+        with:
+          ruby-version: '3.4'
+          bundler-cache: false
+      - name: Materialize schema2 JSON inputs before guards
+        env:
+          RELEASE_SET_PLAN_TEMPLATE_JSON: ${{ inputs.release_set_plan_template_json }}
+          RELEASE_SET_PLAN_JSON: ${{ inputs.release_set_plan_json }}
+          RELEASE_SET_PLAN_TEMPLATE_FILE: ${{ runner.temp }}/release-set-inputs/plan-template.json
+          RELEASE_SET_PLAN_FILE: ${{ runner.temp }}/release-set-inputs/plan.json
+        run: |
+          set -euo pipefail
+          node --input-type=module - <<'NODE'
+          import { mkdir, writeFile } from 'node:fs/promises'
+          import { dirname } from 'node:path'
+
+          const parseInput = (name, raw, required) => {
+            if (typeof raw !== 'string' || (required && raw.trim() === '')) throw new Error(`${name} is required`)
+            if (!required && raw.trim() === '') return undefined
+            let value
+            try {
+              value = JSON.parse(raw)
+            } catch {
+              throw new Error(`${name} is not valid JSON`)
+            }
+            if (value === null || typeof value !== 'object' || Array.isArray(value)) throw new Error(`${name} must be a JSON object`)
+            return value
+          }
+
+          const template = parseInput('release_set_plan_template_json', process.env.RELEASE_SET_PLAN_TEMPLATE_JSON, true)
+          const plan = parseInput('release_set_plan_json', process.env.RELEASE_SET_PLAN_JSON, false)
+          const templateFile = process.env.RELEASE_SET_PLAN_TEMPLATE_FILE
+          const planFile = process.env.RELEASE_SET_PLAN_FILE
+          if (!templateFile || !planFile || templateFile === planFile) throw new Error('schema2 input output paths are invalid')
+          await mkdir(dirname(templateFile), { recursive: true })
+          await writeFile(templateFile, `${JSON.stringify(template)}\n`)
+          if (plan !== undefined) await writeFile(planFile, `${JSON.stringify(plan)}\n`)
+          NODE
+      - name: Validate supplied reviewed plan before package effects
+        if: ${{ inputs.release_set_plan_sha256 != '' }}
+        env:
+          RELEASE_SET_PLAN_FILE: ${{ runner.temp }}/release-set-inputs/plan.json
+          RELEASE_SET_PLAN_SHA256: ${{ inputs.release_set_plan_sha256 }}
+        run: |
+          set -euo pipefail
+          test -f "$RELEASE_SET_PLAN_FILE"
+          node scripts/verify-release.mjs --release-set-validate
+      - name: Fetch and validate exact-source CI proof before package effects
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+          REPOSITORY: ${{ github.repository }}
+          REPOSITORY_ID: ${{ github.repository_id }}
+          CI_DIR: ${{ runner.temp }}/release-set-ci
+        run: |
+          set -euo pipefail
+          mkdir -p "$CI_DIR"
+          gh api "/repos/$REPOSITORY/actions/workflows/ci.yml" > "$CI_DIR/workflow.json"
+          ci_workflow_id="$(node --input-type=module - "$CI_DIR/workflow.json" <<'NODE'
+          import { readFileSync } from 'node:fs'
+          const workflow = JSON.parse(readFileSync(process.argv[2], 'utf8'))
+          if (!Number.isSafeInteger(workflow.id) || workflow.path !== '.github/workflows/ci.yml') throw new Error('CI workflow identity is not exact')
+          console.log(workflow.id)
+          NODE
+          )"
+          gh api "/repos/$REPOSITORY/actions/workflows/$ci_workflow_id/runs?branch=main&head_sha=$EXPECTED_COMMIT&per_page=100" > "$CI_DIR/runs.json"
+          RELEASE_SET_CI_WORKFLOW_FILE="$CI_DIR/workflow.json" RELEASE_SET_CI_RUNS_FILE="$CI_DIR/runs.json" RELEASE_SET_CI_SELECTION_FILE="$CI_DIR/selection.json" EXPECTED_COMMIT="$EXPECTED_COMMIT" node scripts/verify-release.mjs --release-set-ci-select
+          ci_run_id="$(node --input-type=module - "$CI_DIR/selection.json" <<'NODE'
+          import { readFileSync } from 'node:fs'
+          console.log(JSON.parse(readFileSync(process.argv[2], 'utf8')).id)
+          NODE
+          )"
+          ci_run_attempt="$(node --input-type=module - "$CI_DIR/selection.json" <<'NODE'
+          import { readFileSync } from 'node:fs'
+          console.log(JSON.parse(readFileSync(process.argv[2], 'utf8')).runAttempt)
+          NODE
+          )"
+          gh api "/repos/$REPOSITORY/actions/runs/$ci_run_id/attempts/$ci_run_attempt" > "$CI_DIR/recheck.json"
+          gh api "/repos/$REPOSITORY/actions/runs/$ci_run_id/attempts/$ci_run_attempt/jobs?per_page=100" > "$CI_DIR/jobs.json"
+          RELEASE_SET_CI_WORKFLOW_FILE="$CI_DIR/workflow.json" RELEASE_SET_CI_RUNS_FILE="$CI_DIR/runs.json" RELEASE_SET_CI_SELECTION_FILE="$CI_DIR/selection.json" RELEASE_SET_CI_RECHECK_FILE="$CI_DIR/recheck.json" RELEASE_SET_CI_JOBS_FILE="$CI_DIR/jobs.json" RELEASE_SET_CI_EVIDENCE_FILE="$CI_DIR/evidence.json" EXPECTED_COMMIT="$EXPECTED_COMMIT" node scripts/verify-release.mjs --release-set-ci-proof
+      - name: Validate template and live runtime before package effects
+        env:
+          RELEASE_SET_PLAN_TEMPLATE_FILE: ${{ runner.temp }}/release-set-inputs/plan-template.json
+          RELEASE_SET_PLAN_SHA256: ${{ inputs.release_set_plan_sha256 }}
+          RELEASE_SET_CI_EVIDENCE_FILE: ${{ runner.temp }}/release-set-ci/evidence.json
+          REPOSITORY: ${{ github.repository }}
+          REPOSITORY_ID: ${{ github.repository_id }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_REF: ${{ github.ref }}
+          EVENT_SHA: ${{ github.sha }}
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+          CHECKOUT_HEAD: ${{ inputs.expected_commit }}
+          CHECKOUT_STATUS: ''
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+        run: |
+          set -euo pipefail
+          test -f "$RELEASE_SET_PLAN_TEMPLATE_FILE"
+          test -f "$RELEASE_SET_CI_EVIDENCE_FILE"
+          CHECKOUT_STATUS="$(git status --porcelain)" CHECKOUT_HEAD="$(git rev-parse HEAD)" node scripts/verify-release.mjs --release-set-prepare-guard
+      - name: Build measured package archives and Go source inputs
+        env:
+          BUNDLE_DIR: ${{ runner.temp }}/release-set-bundle
+        run: |
+          set -euo pipefail
+          mkdir -p "$BUNDLE_DIR"
+          corepack enable
+          corepack prepare pnpm@11.24.0 --activate
+          corepack pnpm install --frozen-lockfile
+          corepack pnpm --filter @elsoul/erpc-sdk check
+          corepack pnpm --filter @elsoul/erpc-sdk test
+          corepack pnpm --filter @elsoul/erpc-sdk build
+          (cd packages/typescript && npm install --global npm@11.19.1 && npm pack --ignore-scripts --pack-destination "$BUNDLE_DIR")
+          python -m pip install --disable-pip-version-check --no-input build==1.6.0 twine==7.0.0
+          python -m build --verbose packages/python --outdir "$BUNDLE_DIR"
+          (cd packages/ruby && bundle install --jobs 4 --retry 3 && bundle exec rake check && bundle exec rake test && bundle exec rake package && cp pkg/*.gem "$BUNDLE_DIR/")
+      - name: Validate exact source, measured plan, and common gates
+        id: prepare
+        env:
+          RELEASE_SET_PLAN_TEMPLATE_FILE: ${{ runner.temp }}/release-set-inputs/plan-template.json
+          RELEASE_SET_PLAN_FILE: ${{ runner.temp }}/release-set-bundle/release-set-plan.json
+          RELEASE_SET_PLAN_DIGEST_OUTPUT: ${{ runner.temp }}/release-set-plan.sha256
+          RELEASE_SET_ARTIFACT_DIR: ${{ runner.temp }}/release-set-bundle
+          RELEASE_SET_GO_ROOT: packages/go
+          RELEASE_SET_CI_EVIDENCE_FILE: ${{ runner.temp }}/release-set-ci/evidence.json
+          RELEASE_SET_PLAN_SHA256: ${{ inputs.release_set_plan_sha256 }}
+          RELEASE_SET_PREPARED_EVIDENCE_FILE: ${{ runner.temp }}/release-set-prepared.json
+          REPOSITORY: ${{ github.repository }}
+          REPOSITORY_ID: ${{ github.repository_id }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_REF: ${{ github.ref }}
+          EVENT_SHA: ${{ github.sha }}
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+          CHECKOUT_HEAD: ${{ inputs.expected_commit }}
+          CHECKOUT_STATUS: ''
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+        run: |
+          set -euo pipefail
+          test "$EVENT_NAME" = workflow_dispatch
+          test "$EVENT_REF" = refs/heads/main
+          test "$EVENT_SHA" = "$EXPECTED_COMMIT"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_COMMIT"
+          test -z "$(git status --porcelain)"
+          test -f "$RELEASE_SET_PLAN_TEMPLATE_FILE"
+          test -n "$RELEASE_SET_ARTIFACT_DIR"
+          node scripts/verify-release.mjs --release-set-prepare
+          printf 'plan_sha256=%s\n' "$(cat "$RELEASE_SET_PLAN_DIGEST_OUTPUT")" >> "$GITHUB_OUTPUT"
+          node scripts/agent-harness.mjs check
+          node --test scripts/agent-harness.test.mjs
+      - name: Upload measured immutable bundle
+        id: bundle
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: release-set-bundle-${{ inputs.expected_commit }}
+          path: ${{ runner.temp }}/release-set-bundle
+          if-no-files-found: error
+          retention-days: 365
+      - name: Serialize binding with allocated bundle ID
+        env:
+          PLAN_FILE: ${{ runner.temp }}/release-set-bundle/release-set-plan.json
+          PLAN_SHA256: ${{ runner.temp }}/release-set-plan.sha256
+          BUNDLE_ID: ${{ steps.bundle.outputs.artifact-id }}
+          BINDING_FILE: ${{ runner.temp }}/release-set-binding.json
+        run: |
+          set -euo pipefail
+          node --input-type=module - "$PLAN_FILE" "$PLAN_SHA256" "$BUNDLE_ID" "$BINDING_FILE" <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs'
+          const [planFile, digestFile, bundleId, bindingFile] = process.argv.slice(2)
+          const plan = JSON.parse(readFileSync(planFile, 'utf8'))
+          const digest = readFileSync(digestFile, 'utf8').trim()
+          if (!/^[1-9][0-9]*$/.test(bundleId)) throw new Error('bundle upload did not return an allocated numeric ID')
+          if (!/^[0-9a-f]{64}$/.test(digest)) throw new Error('measured plan digest is malformed')
+          writeFileSync(bindingFile, `${JSON.stringify({ schemaVersion: 2, kind: 'erpc-sdk-release-set-preparation-binding', repository: plan.repository, repositoryId: plan.repositoryId, workflowPath: plan.workflowPath, sourceCommit: plan.sourceCommit, versions: plan.versions, runId: process.env.GITHUB_RUN_ID, runAttempt: process.env.GITHUB_RUN_ATTEMPT, artifactId: bundleId, planSha256: digest })}\n`)
+          NODE
+      - name: Upload allocated binding
+        id: binding
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: release-set-binding-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/release-set-binding.json
+          if-no-files-found: error
+          retention-days: 365
+
+  release-set-publish:
+    name: Validate schema2 publish handoff
+    if: ${{ inputs.release_set_mode == 'publish' }}
+    outputs:
+      verified_artifact_id: ${{ steps.verified_handoff.outputs.artifact-id }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Check out exact reviewed source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.expected_commit }}
+          persist-credentials: false
+      - name: Install pinned Node runtime
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Install pinned Python runtime for existing-target proof
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Install pinned existing-target proof tooling
+        run: python -m pip install --disable-pip-version-check build==1.6.0 pypi-attestations==0.0.30
+      - name: Install and verify pinned npm client for existing-target proof
+        run: npm install --global npm@11.19.1 && test "$(npm --version)" = 11.19.1
+      - name: Install Ruby 3.1 for existing-target proof
+        uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b # v1
+        with:
+          ruby-version: '3.1'
+          bundler-cache: false
+      - name: Capture existing-target Ruby 3.1 path
+        run: echo "BARRIER_RUBY31=$(command -v ruby)" >> "$GITHUB_ENV"
+      - name: Install Ruby 3.4 for existing-target proof
+        uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b # v1
+        with:
+          ruby-version: '3.4'
+          bundler-cache: false
+      - name: Capture existing-target Ruby 3.4 path
+        run: echo "BARRIER_RUBY34=$(command -v ruby)" >> "$GITHUB_ENV"
+      - name: Download and authenticate exact allocated preparation artifacts
+        env:
+          RELEASE_SET_PLAN_FILE: ${{ runner.temp }}/release-set-bundle/release-set-plan.json
+          RELEASE_SET_PLAN_SHA256: ${{ inputs.release_set_plan_sha256 }}
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          REPOSITORY_ID: ${{ github.repository_id }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_REF: ${{ github.ref }}
+          EVENT_SHA: ${{ github.sha }}
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+          CHECKOUT_HEAD: ${{ inputs.expected_commit }}
+          CHECKOUT_STATUS: ''
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          RELEASE_SET_PREPARED_RUN_ID: ${{ inputs.prepared_run_id }}
+          RELEASE_SET_PREPARED_RUN_ATTEMPT: ${{ inputs.prepared_run_attempt }}
+          RELEASE_SET_PREPARED_ARTIFACT_ID: ${{ inputs.prepared_artifact_id }}
+          RELEASE_SET_PREPARED_BINDING_ARTIFACT_ID: ${{ inputs.prepared_binding_artifact_id }}
+        run: |
+          set -euo pipefail
+          test -n "$RELEASE_SET_PREPARED_RUN_ID"
+          test -n "$RELEASE_SET_PREPARED_RUN_ATTEMPT"
+          test -n "$RELEASE_SET_PREPARED_ARTIFACT_ID"
+          test -n "$RELEASE_SET_PREPARED_BINDING_ARTIFACT_ID"
+          mkdir -p "$RUNNER_TEMP/release-set-bundle" "$RUNNER_TEMP/release-set-binding" "$RUNNER_TEMP/release-set-zips"
+          api="https://api.github.com/repos/$REPOSITORY"
+          auth=(--header "Authorization: Bearer $GH_TOKEN" --header 'Accept: application/vnd.github+json' --user-agent "$RELEASE_USER_AGENT")
+          curl --fail --silent --show-error "${auth[@]}" "$api/actions/runs/$RELEASE_SET_PREPARED_RUN_ID/attempts/$RELEASE_SET_PREPARED_RUN_ATTEMPT" > "$RUNNER_TEMP/release-set-run.json"
+          curl --fail --silent --show-error "${auth[@]}" "$api/actions/artifacts/$RELEASE_SET_PREPARED_ARTIFACT_ID" > "$RUNNER_TEMP/release-set-bundle-meta.json"
+          curl --fail --silent --show-error "${auth[@]}" "$api/actions/artifacts/$RELEASE_SET_PREPARED_BINDING_ARTIFACT_ID" > "$RUNNER_TEMP/release-set-binding-meta.json"
+          curl --fail --silent --show-error --location "${auth[@]}" --output "$RUNNER_TEMP/release-set-zips/bundle.zip" "$api/actions/artifacts/$RELEASE_SET_PREPARED_ARTIFACT_ID/zip"
+          curl --fail --silent --show-error --location "${auth[@]}" --output "$RUNNER_TEMP/release-set-zips/binding.zip" "$api/actions/artifacts/$RELEASE_SET_PREPARED_BINDING_ARTIFACT_ID/zip"
+          python - "$RUNNER_TEMP/release-set-zips/bundle.zip" "$RUNNER_TEMP/release-set-zips/binding.zip" <<'PY'
+          import stat, sys, zipfile
+          for archive, expected in [(sys.argv[1], None), (sys.argv[2], {'release-set-binding.json'})]:
+              with zipfile.ZipFile(archive) as handle:
+                  names = handle.namelist()
+                  if len(names) != len(set(names)):
+                      raise SystemExit('release-set archive contains duplicate members')
+                  if expected is not None and set(names) != expected:
+                      raise SystemExit('release-set binding archive member set is not exact')
+                  for info in handle.infolist():
+                      name = info.filename.replace('\\', '/')
+                      if name.startswith('/') or any(part in ('', '..') for part in name.split('/')):
+                          raise SystemExit('release-set archive member path is unsafe')
+                      mode = (info.external_attr >> 16) & 0o170000
+                      if mode == stat.S_IFLNK or mode == stat.S_IFDIR:
+                          raise SystemExit('release-set archive member is not a regular file')
+          PY
+          unzip -q "$RUNNER_TEMP/release-set-zips/bundle.zip" -d "$RUNNER_TEMP/release-set-bundle"
+          unzip -q "$RUNNER_TEMP/release-set-zips/binding.zip" -d "$RUNNER_TEMP/release-set-binding"
+          find "$RUNNER_TEMP/release-set-bundle" -maxdepth 1 -type f -print
+          test -f "$RELEASE_SET_PLAN_FILE"
+          test -f "$RUNNER_TEMP/release-set-binding/release-set-binding.json"
+          RELEASE_SET_RUN_FILE="$RUNNER_TEMP/release-set-run.json" \
+          RELEASE_SET_ARTIFACT_METADATA_FILE="$RUNNER_TEMP/release-set-bundle-meta.json" \
+          RELEASE_SET_BINDING_METADATA_FILE="$RUNNER_TEMP/release-set-binding-meta.json" \
+          RELEASE_SET_BINDING_FILE="$RUNNER_TEMP/release-set-binding/release-set-binding.json" \
+          RELEASE_SET_ARTIFACT_DIR="$RUNNER_TEMP/release-set-bundle" \
+          RELEASE_SET_BINDING_DIR="$RUNNER_TEMP/release-set-binding" \
+          RELEASE_SET_BUNDLE_ZIP_FILE="$RUNNER_TEMP/release-set-zips/bundle.zip" \
+          RELEASE_SET_BINDING_ZIP_FILE="$RUNNER_TEMP/release-set-zips/binding.zip" \
+          node scripts/verify-release.mjs --release-set-verify
+      - name: Preflight all release-set registries before protected publisher fanout
+        env:
+          PLAN_FILE: ${{ runner.temp }}/release-set-bundle/release-set-plan.json
+          PREFLIGHT_INPUT_FILE: ${{ runner.temp }}/release-set-preflight-input.json
+          PREFLIGHT_OUTPUT_FILE: ${{ runner.temp }}/release-set-preflight.json
+          RELEASE_USER_AGENT: erpc-sdk-release-verification (https://github.com/elsoul/erpc-sdk)
+        run: |
+          set -euo pipefail
+          version="$(node --input-type=module - "$PLAN_FILE" <<'NODE'
+          import { readFileSync } from 'node:fs'
+          console.log(JSON.parse(readFileSync(process.argv[2], 'utf8')).versions.nonRustVersion)
+          NODE
+          )"
+          npm_response="$RUNNER_TEMP/release-set-preflight-npm.json"
+          npm_full_response="$RUNNER_TEMP/release-set-preflight-npm-full.json"
+          npm_full_recheck_response="$RUNNER_TEMP/release-set-preflight-npm-full-recheck.json"
+          pypi_response="$RUNNER_TEMP/release-set-preflight-pypi.json"
+          rubygems_response="$RUNNER_TEMP/release-set-preflight-rubygems.json"
+          npm_status="$(curl --silent --show-error --max-time 20 --retry 0 --user-agent "$RELEASE_USER_AGENT" --output "$npm_response" --write-out '%{http_code}' "https://registry.npmjs.org/%40elsoul%2Ferpc-sdk/$version")"
+          npm_full_status="$(curl --silent --show-error --max-time 20 --retry 0 --user-agent "$RELEASE_USER_AGENT" --output "$npm_full_response" --write-out '%{http_code}' "https://registry.npmjs.org/%40elsoul%2Ferpc-sdk")"
+          npm_status_recheck="$(curl --silent --show-error --max-time 20 --retry 0 --user-agent "$RELEASE_USER_AGENT" --output /dev/null --write-out '%{http_code}' "https://registry.npmjs.org/%40elsoul%2Ferpc-sdk/$version")"
+          npm_full_status_recheck="$(curl --silent --show-error --max-time 20 --retry 0 --user-agent "$RELEASE_USER_AGENT" --output "$npm_full_recheck_response" --write-out '%{http_code}' "https://registry.npmjs.org/%40elsoul%2Ferpc-sdk")"
+          pypi_status="$(curl --silent --show-error --max-time 20 --retry 0 --user-agent "$RELEASE_USER_AGENT" --output "$pypi_response" --write-out '%{http_code}' "https://pypi.org/pypi/erpc-sdk/$version/json")"
+          pypi_status_recheck="$(curl --silent --show-error --max-time 20 --retry 0 --user-agent "$RELEASE_USER_AGENT" --output /dev/null --write-out '%{http_code}' "https://pypi.org/pypi/erpc-sdk/$version/json")"
+          rubygems_status="$(curl --silent --show-error --max-time 20 --retry 0 --user-agent "$RELEASE_USER_AGENT" --output "$rubygems_response" --write-out '%{http_code}' "https://rubygems.org/api/v2/rubygems/erpc-sdk/versions/$version.json")"
+          rubygems_status_recheck="$(curl --silent --show-error --max-time 20 --retry 0 --user-agent "$RELEASE_USER_AGENT" --output /dev/null --write-out '%{http_code}' "https://rubygems.org/api/v2/rubygems/erpc-sdk/versions/$version.json")"
+          node --input-type=module - "$npm_response" "$npm_status" "$npm_full_response" "$npm_full_status" "$npm_full_recheck_response" "$npm_full_status_recheck" "$npm_status_recheck" "$version" "$pypi_response" "$pypi_status" "$pypi_status_recheck" "$rubygems_response" "$rubygems_status" "$rubygems_status_recheck" "$PREFLIGHT_INPUT_FILE" <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs'
+          const [npmFile, npmStatus, npmFullFile, npmFullStatus, npmFullRecheckFile, npmFullRecheckStatus, npmRecheck, version, pypiFile, pypiStatus, pypiRecheck, rubygemsFile, rubygemsStatus, rubygemsRecheck, output] = process.argv.slice(2)
+          const body = file => readFileSync(file, 'utf8')
+          const parseFullPackument = (file, status, label) => {
+            if (status !== '200') return undefined
+            let packument
+            try { packument = JSON.parse(body(file)) } catch { throw new Error(`${label} response is not valid JSON`) }
+            if (packument?.name !== '@elsoul/erpc-sdk' || packument?.versions === null || typeof packument?.versions !== 'object' || Array.isArray(packument.versions)) throw new Error(`${label} response is not a canonical npm packument`)
+            return packument
+          }
+          const npmFullPackument = parseFullPackument(npmFullFile, npmFullStatus, 'npm full-packument')
+          const npmFullRecheckPackument = parseFullPackument(npmFullRecheckFile, npmFullRecheckStatus, 'npm full-packument recheck')
+          const npmFullBodiesAgreeAbsent = npmFullStatus === '404' && npmFullRecheckStatus === '404'
+            || npmFullStatus === '200' && npmFullRecheckStatus === '200' && npmFullPackument.versions[version] === undefined && npmFullRecheckPackument.versions[version] === undefined
+          if (npmStatus === '404' && npmRecheck === '404' && npmFullStatus === '200' && npmFullRecheckStatus === '200' && !npmFullBodiesAgreeAbsent) throw new Error('npm target appeared or full-packument reread was inconsistent')
+          writeFileSync(output, `${JSON.stringify({ npm: { status: npmStatus, body: body(npmFile), fullStatus: npmFullStatus, fullBody: body(npmFullFile), fullRecheckStatus: npmFullRecheckStatus, fullRecheckBody: body(npmFullRecheckFile), absenceGate: npmStatus === '404' && npmRecheck === '404' && npmFullBodiesAgreeAbsent }, pypi: { status: pypiStatus, body: body(pypiFile), absenceGate: pypiStatus === '404' && pypiRecheck === '404' }, rubygems: { status: rubygemsStatus, body: body(rubygemsFile), absenceGate: rubygemsStatus === '404' && rubygemsRecheck === '404' } })}\n`)
+          NODE
+          RELEASE_SET_PLAN_FILE="$PLAN_FILE" RELEASE_SET_PREFLIGHT_INPUT_FILE="$PREFLIGHT_INPUT_FILE" RELEASE_SET_PREFLIGHT_OUTPUT_FILE="$PREFLIGHT_OUTPUT_FILE" node scripts/verify-release.mjs --release-set-preflight
+      - name: Prove every matching target before protected publisher fanout
+        env:
+          PLAN_FILE: ${{ runner.temp }}/release-set-bundle/release-set-plan.json
+          PREFLIGHT_FILE: ${{ runner.temp }}/release-set-preflight.json
+          BARRIER_DIR: ${{ runner.temp }}/release-set-existing-proof
+          RELEASE_SET_PLAN_SHA256: ${{ inputs.release_set_plan_sha256 }}
+          RELEASE_USER_AGENT: erpc-sdk-release-verification (https://github.com/elsoul/erpc-sdk)
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+          REPOSITORY_ID: ${{ github.repository_id }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_REF: ${{ github.ref }}
+          EVENT_SHA: ${{ github.sha }}
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          PREPARED_RUN_ID: ${{ inputs.prepared_run_id }}
+          PREPARED_RUN_ATTEMPT: ${{ inputs.prepared_run_attempt }}
+          PREPARED_ARTIFACT_ID: ${{ inputs.prepared_artifact_id }}
+          PREPARED_BINDING_ARTIFACT_ID: ${{ inputs.prepared_binding_artifact_id }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$BARRIER_DIR" "$BARRIER_DIR/npm-work" "$BARRIER_DIR/pypi-work" "$BARRIER_DIR/rubygems-work" "$BARRIER_DIR/provenance"
+          export RELEASE_SET_PLAN_FILE="$PLAN_FILE" RELEASE_SET_BINDING_FILE="$RUNNER_TEMP/release-set-binding/release-set-binding.json" RELEASE_SET_ARTIFACT_DIR="$RUNNER_TEMP/release-set-bundle" RELEASE_SET_BINDING_DIR="$RUNNER_TEMP/release-set-binding" RELEASE_SET_RUN_FILE="$RUNNER_TEMP/release-set-run.json" RELEASE_SET_ARTIFACT_METADATA_FILE="$RUNNER_TEMP/release-set-bundle-meta.json" RELEASE_SET_BINDING_METADATA_FILE="$RUNNER_TEMP/release-set-binding-meta.json" RELEASE_SET_BUNDLE_ZIP_FILE="$RUNNER_TEMP/release-set-zips/bundle.zip" RELEASE_SET_BINDING_ZIP_FILE="$RUNNER_TEMP/release-set-zips/binding.zip"
+          export RELEASE_SET_PREPARED_RUN_ID="$PREPARED_RUN_ID" RELEASE_SET_PREPARED_RUN_ATTEMPT="$PREPARED_RUN_ATTEMPT" RELEASE_SET_PREPARED_ARTIFACT_ID="$PREPARED_ARTIFACT_ID" RELEASE_SET_PREPARED_BINDING_ARTIFACT_ID="$PREPARED_BINDING_ARTIFACT_ID" REPOSITORY REPOSITORY_ID EVENT_NAME EVENT_REF EVENT_SHA EXPECTED_COMMIT WORKFLOW_REF WORKFLOW_SHA CHECKOUT_HEAD="$EXPECTED_COMMIT" CHECKOUT_STATUS=''
+          npm_state="$(node --input-type=module - "$PREFLIGHT_FILE" <<'NODE'
+          import { readFileSync } from 'node:fs'; console.log(JSON.parse(readFileSync(process.argv[2], 'utf8')).registries.npm.state)
+          NODE
+          )"
+          pypi_state="$(node --input-type=module - "$PREFLIGHT_FILE" <<'NODE'
+          import { readFileSync } from 'node:fs'; console.log(JSON.parse(readFileSync(process.argv[2], 'utf8')).registries.pypi.state)
+          NODE
+          )"
+          rubygems_state="$(node --input-type=module - "$PREFLIGHT_FILE" <<'NODE'
+          import { readFileSync } from 'node:fs'; console.log(JSON.parse(readFileSync(process.argv[2], 'utf8')).registries.rubygems.state)
+          NODE
+          )"
+          validate_run_context() {
+            node --input-type=module - "$1" "$2" "$EXPECTED_COMMIT" <<'NODE'
+          import { readFileSync } from 'node:fs'
+          const [file, publisherFile, source] = process.argv.slice(2); const run = JSON.parse(readFileSync(file, 'utf8')); const publisher = JSON.parse(readFileSync(publisherFile, 'utf8'))
+          if (String(run.id) !== String(publisher.publisherRunId) || String(run.run_attempt) !== String(publisher.publisherAttempt) || run.head_sha !== source || run.head_branch !== 'main' || run.event !== 'workflow_dispatch' || run.path !== '.github/workflows/release.yml' || String(run.repository?.id ?? run.repository_id) !== '1429568627' || (run.repository?.full_name !== undefined && run.repository.full_name !== 'elsoul/erpc-sdk')) throw new Error('original publisher run context is not source-bound')
+          const current = run.id === Number(process.env.GITHUB_RUN_ID) && run.run_attempt === Number(process.env.GITHUB_RUN_ATTEMPT); if (!current && (run.status !== 'completed' || !['success', 'failure', 'cancelled', 'timed_out', 'action_required', 'neutral', 'skipped'].includes(run.conclusion))) throw new Error('historical publisher run is not terminal')
+          NODE
+          }
+          if [ "$npm_state" = match ]; then
+            : > "$BARRIER_DIR/empty-npmrc"; : > "$BARRIER_DIR/empty-global-npmrc"; audit_dir="$BARRIER_DIR/npm-audit"; mkdir -p "$audit_dir"
+            version="$(node --input-type=module - "$PLAN_FILE" <<'NODE'
+          import { readFileSync } from 'node:fs'; console.log(JSON.parse(readFileSync(process.argv[2], 'utf8')).versions.nonRustVersion)
+          NODE
+            )"
+            NPM_CONFIG_USERCONFIG="$BARRIER_DIR/empty-npmrc" NPM_CONFIG_GLOBALCONFIG="$BARRIER_DIR/empty-global-npmrc" npm install --ignore-scripts --no-audit --no-fund --prefix "$audit_dir" "@elsoul/erpc-sdk@$version" --registry=https://registry.npmjs.org/ >/dev/null
+            NPM_CONFIG_USERCONFIG="$BARRIER_DIR/empty-npmrc" NPM_CONFIG_GLOBALCONFIG="$BARRIER_DIR/empty-global-npmrc" npm audit signatures --json --include-attestations --prefix "$audit_dir" > "$BARRIER_DIR/npm-audit.json"
+            node --input-type=module - "$BARRIER_DIR/npm-audit.json" "$BARRIER_DIR/npm-publisher.json" "$PLAN_FILE" <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs'
+          const [auditFile, output, planFile] = process.argv.slice(2); const audit = JSON.parse(readFileSync(auditFile, 'utf8')); const plan = JSON.parse(readFileSync(planFile, 'utf8')); const target = audit.verified?.find(item => item.name === '@elsoul/erpc-sdk' && item.version === plan.versions.nonRustVersion && (!item.registry || item.registry === 'https://registry.npmjs.org')); const bundles = (target?.attestationBundles ?? []).filter(item => item.predicateType === 'https://slsa.dev/provenance/v1' && item.bundle?.dsseEnvelope?.payload); if (bundles.length !== 1) throw new Error('npm barrier attestation is not unique'); const provenance = JSON.parse(Buffer.from(bundles[0].bundle.dsseEnvelope.payload, 'base64').toString('utf8')); const invocation = provenance.predicate?.runDetails?.metadata?.invocationId; const match = /^https:\/\/github\.com\/elsoul\/erpc-sdk\/actions\/runs\/([1-9][0-9]*)\/attempts\/([1-9][0-9]*)$/.exec(invocation ?? ''); if (!match) throw new Error('npm barrier invocation is invalid'); const source = provenance.predicate?.buildDefinition?.resolvedDependencies?.find(item => item.digest?.gitCommit === plan.sourceCommit)?.digest?.gitCommit; if (source !== plan.sourceCommit) throw new Error('npm barrier source mismatch'); writeFileSync(output, `${JSON.stringify({ repository: 'elsoul/erpc-sdk', repositoryId: '1429568627', sourceCommit: source, workflowPath: '.github/workflows/release.yml', ref: 'refs/heads/main', event: 'workflow_dispatch', environment: 'npm', publisherRunId: match[1], publisherAttempt: match[2] })}\n`)
+          NODE
+            gh api "/repos/$REPOSITORY/actions/runs/$(node --input-type=module - "$BARRIER_DIR/npm-publisher.json" <<'NODE'
+          import { readFileSync } from 'node:fs'; console.log(JSON.parse(readFileSync(process.argv[2], 'utf8')).publisherRunId)
+          NODE
+            )/attempts/$(node --input-type=module - "$BARRIER_DIR/npm-publisher.json" <<'NODE'
+          import { readFileSync } from 'node:fs'; console.log(JSON.parse(readFileSync(process.argv[2], 'utf8')).publisherAttempt)
+          NODE
+            )" > "$BARRIER_DIR/npm-run.json"
+            validate_run_context "$BARRIER_DIR/npm-run.json" "$BARRIER_DIR/npm-publisher.json"
+            RELEASE_SET_NPM_PUBLISHER_FILE="$BARRIER_DIR/npm-publisher.json" RELEASE_SET_NPM_OBSERVER_RUN_ID="$GITHUB_RUN_ID" RELEASE_SET_NPM_OBSERVER_ATTEMPT="$GITHUB_RUN_ATTEMPT" RELEASE_SET_NPM_OBSERVER_WORKFLOW='.github/workflows/release.yml' RELEASE_SET_NPM_OBSERVER_SOURCE="$EXPECTED_COMMIT" RELEASE_SET_NPM_OUTPUT_FILE="$BARRIER_DIR/npm-proof.json" RELEASE_SET_NPM_WORK_DIR="$BARRIER_DIR/npm-work" RELEASE_SET_NPM_NODE="$(command -v node)" RELEASE_SET_NPM_CLI="$(command -v npm)" RELEASE_SET_NPM_PYTHON="$(command -v python)" node scripts/verify-release.mjs --release-set-npm-observe
+          fi
+          if [ "$pypi_state" = match ] || [ "$pypi_state" = partial ]; then
+            response="$BARRIER_DIR/pypi.json"; version="$(node --input-type=module - "$PLAN_FILE" <<'NODE'
+          import { readFileSync } from 'node:fs'; console.log(JSON.parse(readFileSync(process.argv[2], 'utf8')).versions.nonRustVersion)
+          NODE
+            )"; curl --fail --silent --show-error --max-time 30 --retry 0 --user-agent "$RELEASE_USER_AGENT" --output "$response" "https://pypi.org/pypi/erpc-sdk/$version/json"
+            python - "$response" "$PLAN_FILE" "$BARRIER_DIR/provenance" "$BARRIER_DIR/pypi-publishers.json" <<'PY'
+          import json, os, re, subprocess, sys
+          from pypi_attestations import Distribution, GitHubPublisher, Provenance
+          response, plan_file, provenance_dir, output = sys.argv[1:]; plan = json.load(open(plan_file)); payload = json.load(open(response)); expected = {a['filename']: a for a in plan['artifacts'] if a['kind'].startswith('pypi')}; contexts = {}
+          for filename, descriptor in expected.items():
+              item = next((x for x in payload.get('urls', []) if x.get('filename') == filename), None)
+              if item is None: continue
+              provenance = os.path.join(provenance_dir, filename + '.json'); subprocess.run(['curl', '--fail', '--silent', '--show-error', '--max-time', '30', '--retry', '0', '--user-agent', os.environ['RELEASE_USER_AGENT'], '--output', provenance, f"https://pypi.org/integrity/erpc-sdk/{plan['versions']['nonRustVersion']}/{filename}/provenance"], check=True)
+              document = Provenance.model_validate_json(open(provenance).read()); found=[]
+              for bundle in document.attestation_bundles:
+                  for attestation in bundle.attestations:
+                      statement=json.loads(attestation.envelope.statement.decode()); subject=next((s for s in statement.get('subject',[]) if s.get('name')==filename and s.get('digest',{}).get('sha256')==descriptor['sha256']),None)
+                      if statement.get('predicateType')!='https://docs.pypi.org/attestations/publish/v1' or subject is None: continue
+                      attestation.verify(GitHubPublisher(repository='elsoul/erpc-sdk', workflow='release.yml', environment='pypi'), Distribution(name=filename, digest=descriptor['sha256'])); claims=attestation.certificate_claims; match=re.fullmatch(r'https://github\.com/elsoul/erpc-sdk/actions/runs/([1-9][0-9]*)/attempts/([1-9][0-9]*)', claims.get('1.3.6.1.4.1.57264.1.21','')); source=claims.get('1.3.6.1.4.1.57264.1.13');
+                      if not match or source != plan['sourceCommit']: raise SystemExit('PyPI barrier publisher context mismatch')
+                      found.append({'repository':'elsoul/erpc-sdk','repositoryId':'1429568627','sourceCommit':source,'workflowPath':'.github/workflows/release.yml','ref':'refs/heads/main','event':'workflow_dispatch','environment':'pypi','publisherRunId':match.group(1),'publisherAttempt':match.group(2)})
+              if len(found)!=1: raise SystemExit(f'PyPI barrier publisher context is not unique for {filename}')
+              contexts[filename]=found[0]
+          json.dump(contexts, open(output,'w')); open(output,'a').write('\n')
+          PY
+            node --input-type=module - "$BARRIER_DIR/pypi-publishers.json" "$BARRIER_DIR/pypi-run-requests.tsv" <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs'; const publishers=JSON.parse(readFileSync(process.argv[2],'utf8')); const seen=new Set(); const rows=[]; for (const p of Object.values(publishers)) { const key=`${p.publisherRunId}/${p.publisherAttempt}`; if(!seen.has(key)){seen.add(key); rows.push(key)} } writeFileSync(process.argv[3], `${rows.join('\n')}\n`)
+          NODE
+            while IFS=/ read -r run_id attempt; do [ -n "$run_id" ] || continue; gh api "/repos/$REPOSITORY/actions/runs/$run_id/attempts/$attempt" > "$BARRIER_DIR/$run_id-$attempt.json"; done < "$BARRIER_DIR/pypi-run-requests.tsv"
+            while IFS=/ read -r run_id attempt; do [ -n "$run_id" ] || continue; node --input-type=module - "$BARRIER_DIR/$run_id-$attempt.json" "$EXPECTED_COMMIT" "$run_id" "$attempt" <<'NODE'
+          import { readFileSync } from 'node:fs'; const [file, source, requestedId, requestedAttempt]=process.argv.slice(2); const run=JSON.parse(readFileSync(file,'utf8')); const current=run.id===Number(process.env.GITHUB_RUN_ID)&&run.run_attempt===Number(process.env.GITHUB_RUN_ATTEMPT); if(String(run.id)!==String(requestedId)||String(run.run_attempt)!==String(requestedAttempt)||run.head_sha!==source||run.head_branch!=='main'||run.event!=='workflow_dispatch'||run.path!=='.github/workflows/release.yml'||String(run.repository?.id??run.repository_id)!=='1429568627'||(!current&&(run.status!=='completed'||!['success','failure','cancelled','timed_out','action_required','neutral','skipped'].includes(run.conclusion)))) throw new Error('PyPI barrier publisher run context is not terminal/source-bound')
+          NODE
+            done < "$BARRIER_DIR/pypi-run-requests.tsv"
+            RELEASE_SET_PYPI_PUBLISHERS_FILE="$BARRIER_DIR/pypi-publishers.json" RELEASE_SET_PYPI_OBSERVER_RUN_ID="$GITHUB_RUN_ID" RELEASE_SET_PYPI_OBSERVER_ATTEMPT="$GITHUB_RUN_ATTEMPT" RELEASE_SET_PYPI_OBSERVER_WORKFLOW='.github/workflows/release.yml' RELEASE_SET_PYPI_OBSERVER_SOURCE="$EXPECTED_COMMIT" RELEASE_SET_PYPI_OUTPUT_FILE="$BARRIER_DIR/pypi-proof.json" RELEASE_SET_PYPI_WORK_DIR="$BARRIER_DIR/pypi-work" RELEASE_SET_PYPI_PREFLIGHT_ONLY='true' RELEASE_SET_PYPI_PYTHON="$(command -v python)" node scripts/verify-release.mjs --release-set-pypi-observe
+          fi
+          if [ "$rubygems_state" = match ]; then
+            RELEASE_SET_RUBYGEMS_OBSERVER_RUN_ID="$GITHUB_RUN_ID" RELEASE_SET_RUBYGEMS_OBSERVER_ATTEMPT="$GITHUB_RUN_ATTEMPT" RELEASE_SET_RUBYGEMS_OBSERVER_WORKFLOW='.github/workflows/release.yml' RELEASE_SET_RUBYGEMS_OBSERVER_SOURCE="$EXPECTED_COMMIT" RELEASE_SET_RUBYGEMS_OUTPUT_FILE="$BARRIER_DIR/rubygems-proof.json" RELEASE_SET_RUBYGEMS_WORK_DIR="$BARRIER_DIR/rubygems-work" RELEASE_SET_RUBYGEMS_RUBY31="$BARRIER_RUBY31" RELEASE_SET_RUBYGEMS_RUBY34="$BARRIER_RUBY34" node scripts/verify-release.mjs --release-set-rubygems-observe
+          fi
+          printf '%s\n' "npm=$npm_state" "pypi=$pypi_state" "rubygems=$rubygems_state" > "$BARRIER_DIR/barrier.txt"
+      - name: Build authenticated protected-publisher handoff
+        env:
+          VERIFIED_DIR: ${{ runner.temp }}/release-set-verified
+        run: |
+          set -euo pipefail
+          mkdir -p "$VERIFIED_DIR/bundle" "$VERIFIED_DIR/binding" "$VERIFIED_DIR/evidence" "$VERIFIED_DIR/zips"
+          cp -R "$RUNNER_TEMP/release-set-bundle/." "$VERIFIED_DIR/bundle/"
+          cp -R "$RUNNER_TEMP/release-set-binding/." "$VERIFIED_DIR/binding/"
+          cp "$RUNNER_TEMP/release-set-run.json" "$VERIFIED_DIR/evidence/run.json"
+          cp "$RUNNER_TEMP/release-set-bundle-meta.json" "$VERIFIED_DIR/evidence/bundle-metadata.json"
+          cp "$RUNNER_TEMP/release-set-binding-meta.json" "$VERIFIED_DIR/evidence/binding-metadata.json"
+          cp "$RUNNER_TEMP/release-set-preflight.json" "$VERIFIED_DIR/evidence/preflight.json"
+          cp "$RUNNER_TEMP/release-set-zips/bundle.zip" "$VERIFIED_DIR/zips/bundle.zip"
+          cp "$RUNNER_TEMP/release-set-zips/binding.zip" "$VERIFIED_DIR/zips/binding.zip"
+      - name: Upload authenticated bundle for protected publishers
+        id: verified_handoff
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: release-set-verified-preparation-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/release-set-verified
+          if-no-files-found: error
+          retention-days: 7
+
+  release-set-finalize-auto:
+    name: Automatically finalize schema2 release
+    needs:
+      - release-set-publish
+      - release-set-publish-npm
+      - release-set-publish-pypi
+      - release-set-publish-rubygems
+    if: ${{ inputs.release_set_mode == 'publish' && needs.release-set-publish.result == 'success' && needs.release-set-publish-npm.result == 'success' && needs.release-set-publish-pypi.result == 'success' && needs.release-set-publish-rubygems.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - name: Check out exact reviewed source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.expected_commit }}
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: '1.22.x'
+          cache: false
+      - name: Download authenticated preparation and package receipts
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          artifact-ids: ${{ needs.release-set-publish.outputs.verified_artifact_id }}
+          path: ${{ runner.temp }}/release-set-verified
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          artifact-ids: ${{ needs.release-set-publish-npm.outputs.receipt_artifact_id }}
+          path: ${{ runner.temp }}/release-set-receipt-downloads/npm
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          artifact-ids: ${{ needs.release-set-publish-pypi.outputs.receipt_artifact_id }}
+          path: ${{ runner.temp }}/release-set-receipt-downloads/pypi
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          artifact-ids: ${{ needs.release-set-publish-rubygems.outputs.receipt_artifact_id }}
+          path: ${{ runner.temp }}/release-set-receipt-downloads/rubygems
+      - name: Verify preparation and materialize receipt workspace
+        env:
+          PLAN_FILE: ${{ runner.temp }}/release-set-verified/bundle/release-set-plan.json
+          BINDING_FILE: ${{ runner.temp }}/release-set-verified/binding/release-set-binding.json
+          RELEASE_SET_PLAN_SHA256: ${{ inputs.release_set_plan_sha256 }}
+          REPOSITORY: ${{ github.repository }}
+          REPOSITORY_ID: ${{ github.repository_id }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_REF: ${{ github.ref }}
+          EVENT_SHA: ${{ github.sha }}
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+          CHECKOUT_HEAD: ${{ inputs.expected_commit }}
+          CHECKOUT_STATUS: ''
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          RELEASE_SET_PREPARED_RUN_ID: ${{ inputs.prepared_run_id }}
+          RELEASE_SET_PREPARED_RUN_ATTEMPT: ${{ inputs.prepared_run_attempt }}
+          RELEASE_SET_PREPARED_ARTIFACT_ID: ${{ inputs.prepared_artifact_id }}
+          RELEASE_SET_PREPARED_BINDING_ARTIFACT_ID: ${{ inputs.prepared_binding_artifact_id }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/release-set-receipts" "$RUNNER_TEMP/release-set-proof-assets" "$RUNNER_TEMP/release-set-finalizer"
+          for family in npm pypi rubygems; do
+            name="$family-proof.json"
+            source="$(find "$RUNNER_TEMP/release-set-receipt-downloads/$family" -type f -name "$name" -print -quit)"
+            test -n "$source"
+            cp "$source" "$RUNNER_TEMP/release-set-receipts/$name"
+          done
+          RELEASE_SET_PLAN_FILE="$PLAN_FILE" RELEASE_SET_BINDING_FILE="$BINDING_FILE" \
+          RELEASE_SET_RUN_FILE="$RUNNER_TEMP/release-set-verified/evidence/run.json" \
+          RELEASE_SET_ARTIFACT_METADATA_FILE="$RUNNER_TEMP/release-set-verified/evidence/bundle-metadata.json" \
+          RELEASE_SET_BINDING_METADATA_FILE="$RUNNER_TEMP/release-set-verified/evidence/binding-metadata.json" \
+          RELEASE_SET_ARTIFACT_DIR="$RUNNER_TEMP/release-set-verified/bundle" \
+          RELEASE_SET_BINDING_DIR="$RUNNER_TEMP/release-set-verified/binding" \
+          RELEASE_SET_BUNDLE_ZIP_FILE="$RUNNER_TEMP/release-set-verified/zips/bundle.zip" \
+          RELEASE_SET_BINDING_ZIP_FILE="$RUNNER_TEMP/release-set-verified/zips/binding.zip" \
+          node scripts/verify-release.mjs --release-set-verify
+          node --input-type=module - "$PLAN_FILE" "$BINDING_FILE" "$RUNNER_TEMP/release-set-preparation.json" <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs'
+          const [planFile, bindingFile, output] = process.argv.slice(2)
+          const plan = JSON.parse(readFileSync(planFile, 'utf8'))
+          const binding = JSON.parse(readFileSync(bindingFile, 'utf8'))
+          writeFileSync(output, JSON.stringify({ sourceCommit: plan.sourceCommit, runId: String(binding.runId), runAttempt: String(binding.runAttempt), artifactId: String(binding.artifactId), bindingArtifactId: String(process.env.RELEASE_SET_PREPARED_BINDING_ARTIFACT_ID), planSha256: process.env.RELEASE_SET_PLAN_SHA256 }) + '\n')
+          NODE
+      - name: Authenticate original package receipt ZIPs before tag effects
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+          RELEASE_SET_PLAN_SHA256: ${{ inputs.release_set_plan_sha256 }}
+          REPOSITORY_ID: ${{ github.repository_id }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_REF: ${{ github.ref }}
+          EVENT_SHA: ${{ github.sha }}
+          CHECKOUT_HEAD: ${{ inputs.expected_commit }}
+          CHECKOUT_STATUS: ''
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          PREPARED_RUN_ID: ${{ inputs.prepared_run_id }}
+          PREPARED_RUN_ATTEMPT: ${{ inputs.prepared_run_attempt }}
+          PREPARED_ARTIFACT_ID: ${{ inputs.prepared_artifact_id }}
+          PREPARED_BINDING_ARTIFACT_ID: ${{ inputs.prepared_binding_artifact_id }}
+          PLAN_FILE: ${{ runner.temp }}/release-set-verified/bundle/release-set-plan.json
+          BINDING_FILE: ${{ runner.temp }}/release-set-verified/binding/release-set-binding.json
+          NPM_RECEIPT_ID: ${{ needs.release-set-publish-npm.outputs.receipt_artifact_id }}
+          PYPI_RECEIPT_ID: ${{ needs.release-set-publish-pypi.outputs.receipt_artifact_id }}
+          RUBYGEMS_RECEIPT_ID: ${{ needs.release-set-publish-rubygems.outputs.receipt_artifact_id }}
+          RELEASE_SET_PREPARED_RUN_ID: ${{ inputs.prepared_run_id }}
+          RELEASE_SET_PREPARED_RUN_ATTEMPT: ${{ inputs.prepared_run_attempt }}
+          RELEASE_SET_PREPARED_ARTIFACT_ID: ${{ inputs.prepared_artifact_id }}
+          RELEASE_SET_PREPARED_BINDING_ARTIFACT_ID: ${{ inputs.prepared_binding_artifact_id }}
+        run: |
+          set -euo pipefail
+          meta_dir="$RUNNER_TEMP/release-set-finalizer/package-artifact-metadata"
+          mkdir -p "$meta_dir"
+          gh api "repos/$REPOSITORY/actions/artifacts/$NPM_RECEIPT_ID" > "$meta_dir/npm-proof.json.meta.json"
+          gh api "repos/$REPOSITORY/actions/artifacts/$PYPI_RECEIPT_ID" > "$meta_dir/pypi-proof.json.meta.json"
+          gh api "repos/$REPOSITORY/actions/artifacts/$RUBYGEMS_RECEIPT_ID" > "$meta_dir/rubygems-proof.json.meta.json"
+          node --input-type=module - "$meta_dir" "$RUNNER_TEMP/release-set-package-receipt-artifacts.json" <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs'
+          import { join } from 'node:path'
+          const [directory, output] = process.argv.slice(2); const runId = String(process.env.GITHUB_RUN_ID); const runAttempt = String(process.env.GITHUB_RUN_ATTEMPT); const sourceCommit = process.env.EXPECTED_COMMIT
+          const requested = { 'npm-proof.json': process.env.NPM_RECEIPT_ID, 'pypi-proof.json': process.env.PYPI_RECEIPT_ID, 'rubygems-proof.json': process.env.RUBYGEMS_RECEIPT_ID }
+          const expectedNames = { 'npm-proof.json': 'release-set-npm-proof-' + runId + '-' + runAttempt, 'pypi-proof.json': 'release-set-pypi-proof-' + runId + '-' + runAttempt, 'rubygems-proof.json': 'release-set-rubygems-proof-' + runId + '-' + runAttempt }
+          const producer = { repository: 'elsoul/erpc-sdk', repositoryId: '1429568627', workflowPath: '.github/workflows/release.yml', sourceCommit, runId, runAttempt, ref: 'refs/heads/main', event: 'workflow_dispatch' }; const bindings = {}
+          for (const filename of Object.keys(requested)) {
+            const meta = JSON.parse(readFileSync(join(directory, filename + '.meta.json'), 'utf8'))
+            if (String(meta.id) !== String(requested[filename]) || meta.name !== expectedNames[filename] || meta.expired !== false || meta.workflow_run?.id !== Number(runId) || meta.workflow_run?.head_sha !== sourceCommit || !/^sha256:[0-9a-f]{64}$/.test(meta.digest ?? '') || !Number.isSafeInteger(meta.size_in_bytes) || meta.size_in_bytes <= 0) throw new Error('package receipt artifact metadata is not exact for ' + filename)
+            bindings[filename] = { artifactId: String(meta.id), artifactName: meta.name, sha256: meta.digest.slice(7), sizeInBytes: meta.size_in_bytes, producer }
+          }
+          writeFileSync(output, JSON.stringify(bindings) + '\n')
+          NODE
+          exec {receipt_read_fd}<<<"$GH_TOKEN"
+          export RELEASE_SET_RECEIPT_READ_TOKEN_FD="$receipt_read_fd"
+          mkdir -p "$RUNNER_TEMP/release-set-package-receipt-work"
+          RELEASE_SET_PLAN_FILE="$PLAN_FILE" RELEASE_SET_BINDING_FILE="$BINDING_FILE" RELEASE_SET_RUN_FILE="$RUNNER_TEMP/release-set-verified/evidence/run.json" RELEASE_SET_ARTIFACT_METADATA_FILE="$RUNNER_TEMP/release-set-verified/evidence/bundle-metadata.json" RELEASE_SET_BINDING_METADATA_FILE="$RUNNER_TEMP/release-set-verified/evidence/binding-metadata.json" RELEASE_SET_ARTIFACT_DIR="$RUNNER_TEMP/release-set-verified/bundle" RELEASE_SET_BINDING_DIR="$RUNNER_TEMP/release-set-verified/binding" RELEASE_SET_BUNDLE_ZIP_FILE="$RUNNER_TEMP/release-set-verified/zips/bundle.zip" RELEASE_SET_BINDING_ZIP_FILE="$RUNNER_TEMP/release-set-verified/zips/binding.zip" RELEASE_SET_RECEIPT_ARTIFACTS_FILE="$RUNNER_TEMP/release-set-package-receipt-artifacts.json" RELEASE_SET_RECEIPT_NAMES='npm-proof.json,pypi-proof.json,rubygems-proof.json' RELEASE_SET_RECEIPTS_OBSERVATION_FILE="$RUNNER_TEMP/release-set-package-receipt-observation.json" RELEASE_SET_RECEIPT_WORK_DIR="$RUNNER_TEMP/release-set-package-receipt-work" RELEASE_SET_RECEIPT_OBSERVER_RUN_ID="$GITHUB_RUN_ID" RELEASE_SET_RECEIPT_OBSERVER_ATTEMPT="$GITHUB_RUN_ATTEMPT" RELEASE_SET_RECEIPT_OBSERVER_WORKFLOW='.github/workflows/release.yml' RELEASE_SET_RECEIPT_OBSERVER_SOURCE="$EXPECTED_COMMIT" node scripts/verify-release.mjs --release-set-receipts-observe
+      - name: Observe exact immutable Rust reuse
+        env:
+          RELEASE_SET_PLAN_FILE: ${{ runner.temp }}/release-set-verified/bundle/release-set-plan.json
+          RELEASE_SET_PLAN_SHA256: ${{ inputs.release_set_plan_sha256 }}
+          RELEASE_SET_BINDING_FILE: ${{ runner.temp }}/release-set-verified/binding/release-set-binding.json
+          RELEASE_SET_ARTIFACT_DIR: ${{ runner.temp }}/release-set-verified/bundle
+          RELEASE_SET_BINDING_DIR: ${{ runner.temp }}/release-set-verified/binding
+          RELEASE_SET_RUN_FILE: ${{ runner.temp }}/release-set-verified/evidence/run.json
+          RELEASE_SET_ARTIFACT_METADATA_FILE: ${{ runner.temp }}/release-set-verified/evidence/bundle-metadata.json
+          RELEASE_SET_BINDING_METADATA_FILE: ${{ runner.temp }}/release-set-verified/evidence/binding-metadata.json
+          RELEASE_SET_BUNDLE_ZIP_FILE: ${{ runner.temp }}/release-set-verified/zips/bundle.zip
+          RELEASE_SET_BINDING_ZIP_FILE: ${{ runner.temp }}/release-set-verified/zips/binding.zip
+          RELEASE_SET_PREPARED_RUN_ID: ${{ inputs.prepared_run_id }}
+          RELEASE_SET_PREPARED_RUN_ATTEMPT: ${{ inputs.prepared_run_attempt }}
+          RELEASE_SET_PREPARED_ARTIFACT_ID: ${{ inputs.prepared_artifact_id }}
+          RELEASE_SET_PREPARED_BINDING_ARTIFACT_ID: ${{ inputs.prepared_binding_artifact_id }}
+          REPOSITORY: ${{ github.repository }}
+          REPOSITORY_ID: ${{ github.repository_id }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_REF: ${{ github.ref }}
+          EVENT_SHA: ${{ github.sha }}
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+          CHECKOUT_HEAD: ${{ inputs.expected_commit }}
+          CHECKOUT_STATUS: ''
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          RELEASE_SET_RUST_OBSERVER_RUN_ID: ${{ github.run_id }}
+          RELEASE_SET_RUST_OBSERVER_ATTEMPT: ${{ github.run_attempt }}
+          RELEASE_SET_RUST_OBSERVER_WORKFLOW: .github/workflows/release.yml
+          RELEASE_SET_RUST_OBSERVER_SOURCE: ${{ inputs.expected_commit }}
+          RELEASE_SET_RUST_OUTPUT_FILE: ${{ runner.temp }}/rust-proof.json
+          RELEASE_SET_RUST_WORK_DIR: ${{ runner.temp }}/rust-observer
+        run: |
+          set -euo pipefail
+          mkdir -p "$RELEASE_SET_RUST_WORK_DIR"
+          node scripts/verify-release.mjs --release-set-rust-observe
+          cp "$RELEASE_SET_RUST_OUTPUT_FILE" "$RUNNER_TEMP/release-set-receipts/rust-proof.json"
+      - name: Preflight and create only exact release and Go refs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+          RELEASE_SET_PLAN_SHA256: ${{ inputs.release_set_plan_sha256 }}
+          PLAN_FILE: ${{ runner.temp }}/release-set-verified/bundle/release-set-plan.json
+          BODY_FILE: ${{ runner.temp }}/release-set-verified/bundle/release-body.md
+          RECEIPTS_DIR: ${{ runner.temp }}/release-set-receipts
+          RELEASE_USER_AGENT: erpc-sdk-release-verification (https://github.com/elsoul/erpc-sdk)
+        run: |
+          set -euo pipefail
+          api="https://api.github.com/repos/$REPOSITORY"
+          mkdir -p "$RUNNER_TEMP/release-set-finalizer/tag-state"
+          release_values="$(node --input-type=module - "$PLAN_FILE" <<'NODE'
+          import { readFileSync } from 'node:fs'
+          const plan = JSON.parse(readFileSync(process.argv[2], 'utf8'))
+          console.log(plan.tags.release); console.log(plan.tags.go); console.log(plan.githubRelease.title)
+          NODE
+          )"
+          release_tag="$(printf '%s\n' "$release_values" | sed -n '1p')"
+          go_tag="$(printf '%s\n' "$release_values" | sed -n '2p')"
+          release_title="$(printf '%s\n' "$release_values" | sed -n '3p')"
+          read_ref() {
+            local tag="$1" output="$2" status curl_status
+            set +e
+            status="$(curl --silent --show-error --max-time 30 --retry 0 --user-agent "$RELEASE_USER_AGENT" --header "Authorization: Bearer $GH_TOKEN" --header 'Accept: application/vnd.github+json' --output "$output" --write-out '%{http_code}' "$api/git/ref/tags/$tag")"
+            curl_status=$?
+            set -e
+            test "$curl_status" -eq 0
+            if [ "$status" = 404 ]; then printf '%s\n' absent > "$output.state"
+            elif [ "$status" = 200 ]; then
+              node --input-type=module - "$output" "refs/tags/$tag" "$EXPECTED_COMMIT" <<'NODE'
+          import { readFileSync } from 'node:fs'
+          const [file, expectedRef, source] = process.argv.slice(2); const payload = JSON.parse(readFileSync(file, 'utf8'))
+          if (payload.ref !== expectedRef || payload.object?.type !== 'commit' || payload.object?.sha !== source) throw new Error('existing tag is not bound to the reviewed source')
+          NODE
+              printf '%s\n' present > "$output.state"
+            else echo "tag read failed with HTTP $status" >&2; exit 1; fi
+          }
+          read_ref "$release_tag" "$RUNNER_TEMP/release-set-finalizer/tag-state/release.json"
+          read_ref "$go_tag" "$RUNNER_TEMP/release-set-finalizer/tag-state/go.json"
+          release_json="$RUNNER_TEMP/release-set-finalizer/release-preflight.json"
+          set +e
+          release_status="$(curl --silent --show-error --max-time 30 --retry 0 --user-agent "$RELEASE_USER_AGENT" --header "Authorization: Bearer $GH_TOKEN" --header 'Accept: application/vnd.github+json' --output "$release_json" --write-out '%{http_code}' "$api/releases/tags/$release_tag")"
+          release_curl_status=$?
+          set -e
+          test "$release_curl_status" -eq 0
+          release_collection="$RUNNER_TEMP/release-set-finalizer/release-collection-preflight.json"
+          gh api --paginate --slurp "$api/releases?per_page=100" > "$release_collection"
+          node --input-type=module - "$release_collection" "$BODY_FILE" "$release_tag" "$release_title" "$EXPECTED_COMMIT" <<'NODE'
+          import { readFileSync } from 'node:fs'
+          const [file, bodyFile, tag, title, source] = process.argv.slice(2); const matches = JSON.parse(readFileSync(file, 'utf8')).flat().filter(Boolean).filter(item => item.tag_name === tag)
+          if (matches.length > 1) throw new Error('matching Release collection is ambiguous')
+          if (matches.length === 1 && (matches[0].name !== title || matches[0].body !== readFileSync(bodyFile, 'utf8') || (matches[0].target_commitish !== source && matches[0].target_commitish !== tag) || matches[0].prerelease === true)) throw new Error('matching Release collection conflicts with the reviewed plan')
+          NODE
+          if [ "$release_status" = 200 ]; then
+            node --input-type=module - "$release_json" "$BODY_FILE" "$release_tag" "$release_title" "$EXPECTED_COMMIT" <<'NODE'
+          import { readFileSync } from 'node:fs'
+          const [file, bodyFile, tag, title, source] = process.argv.slice(2)
+          const release = JSON.parse(readFileSync(file, 'utf8'))
+          if (release.tag_name !== tag || release.name !== title || release.body !== readFileSync(bodyFile, 'utf8') || (release.target_commitish !== source && release.target_commitish !== tag) || release.prerelease === true) throw new Error('existing release conflicts with the reviewed plan')
+          NODE
+          elif [ "$release_status" != 404 ]; then echo "release preflight failed with HTTP $release_status" >&2; exit 1; fi
+          for pair in "release:$release_tag" "go:$go_tag"; do
+            IFS=: read -r key tag <<< "$pair"
+            state="$(cat "$RUNNER_TEMP/release-set-finalizer/tag-state/$key.json.state")"
+            if [ "$state" = absent ]; then
+              set +e
+              gh api --method POST "$api/git/refs" -f "ref=refs/tags/$tag" -f "sha=$EXPECTED_COMMIT" >/dev/null
+              create_status=$?
+              set -e
+              : "$create_status"
+              printf '%s\n' "$create_status" > "$RUNNER_TEMP/release-set-finalizer/tag-state/$key.create-status"
+            fi
+          done
+          for pair in "release:$release_tag" "go:$go_tag"; do
+            IFS=: read -r key tag <<< "$pair"
+            for attempt in 1 2; do
+              file="$RUNNER_TEMP/release-set-finalizer/tag-state/$key-final-$attempt.json"
+              status="$(curl --silent --show-error --max-time 30 --retry 0 --user-agent "$RELEASE_USER_AGENT" --header "Authorization: Bearer $GH_TOKEN" --header 'Accept: application/vnd.github+json' --output "$file" --write-out '%{http_code}' "$api/git/ref/tags/$tag")"
+              test "$status" = 200
+              node --input-type=module - "$file" "refs/tags/$tag" "$EXPECTED_COMMIT" <<'NODE'
+          import { readFileSync } from 'node:fs'; const [file, expectedRef, source] = process.argv.slice(2); const payload = JSON.parse(readFileSync(file, 'utf8')); if (payload.ref !== expectedRef || payload.object?.type !== 'commit' || payload.object?.sha !== source) throw new Error('tag reread is not bound to the reviewed source')
+          NODE
+            done
+          done
+          node --input-type=module - "$RUNNER_TEMP/release-set-finalizer/tag-state" "$RECEIPTS_DIR/tag-proof.json" "$PLAN_FILE" <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs'
+          const [stateDir, output, planFile] = process.argv.slice(2)
+          const plan = JSON.parse(readFileSync(planFile, 'utf8'))
+          const read = name => {
+            const filename = stateDir + '/' + name + '-final-2.json'; const recheckFilename = stateDir + '/' + name + '-final-1.json'
+            const payload = JSON.parse(readFileSync(filename, 'utf8')); const recheck = JSON.parse(readFileSync(recheckFilename, 'utf8'))
+            const expectedRef = 'refs/tags/' + (name === 'release' ? plan.tags.release : plan.tags.go)
+            if (payload.ref !== expectedRef || payload.object?.type !== 'commit' || payload.object?.sha !== plan.sourceCommit || recheck.ref !== expectedRef || recheck.object?.type !== 'commit' || recheck.object?.sha !== plan.sourceCommit) throw new Error('tag is not bound to the reviewed source')
+            return { ref: payload.ref, type: payload.object.type, sha: payload.object.sha, recheck: { ref: recheck.ref, type: recheck.object.type, sha: recheck.object.sha } }
+          }
+          const preparation = JSON.parse(readFileSync(process.env.RUNNER_TEMP + '/release-set-preparation.json', 'utf8'))
+          const observer = { runId: process.env.GITHUB_RUN_ID, runAttempt: process.env.GITHUB_RUN_ATTEMPT, workflowPath: '.github/workflows/release.yml', sourceCommit: plan.sourceCommit }
+          writeFileSync(output, JSON.stringify({ schemaVersion: 1, kind: 'tag-public-observation', state: 'observed', complete: true, repository: plan.repository, repositoryId: plan.repositoryId, planSha256: process.env.RELEASE_SET_PLAN_SHA256, preparation, observer, auth: { requested: false, uploadAttempted: false }, observedAt: new Date().toISOString(), tags: { release: read('release'), go: read('go') } }) + '\n')
+          NODE
+      - name: Observe public Go proxy and direct module bytes
+        env:
+          RELEASE_SET_PLAN_FILE: ${{ runner.temp }}/release-set-verified/bundle/release-set-plan.json
+          RELEASE_SET_PLAN_SHA256: ${{ inputs.release_set_plan_sha256 }}
+          RELEASE_SET_BINDING_FILE: ${{ runner.temp }}/release-set-verified/binding/release-set-binding.json
+          RELEASE_SET_ARTIFACT_DIR: ${{ runner.temp }}/release-set-verified/bundle
+          RELEASE_SET_BINDING_DIR: ${{ runner.temp }}/release-set-verified/binding
+          RELEASE_SET_RUN_FILE: ${{ runner.temp }}/release-set-verified/evidence/run.json
+          RELEASE_SET_ARTIFACT_METADATA_FILE: ${{ runner.temp }}/release-set-verified/evidence/bundle-metadata.json
+          RELEASE_SET_BINDING_METADATA_FILE: ${{ runner.temp }}/release-set-verified/evidence/binding-metadata.json
+          RELEASE_SET_BUNDLE_ZIP_FILE: ${{ runner.temp }}/release-set-verified/zips/bundle.zip
+          RELEASE_SET_BINDING_ZIP_FILE: ${{ runner.temp }}/release-set-verified/zips/binding.zip
+          RELEASE_SET_PREPARED_RUN_ID: ${{ inputs.prepared_run_id }}
+          RELEASE_SET_PREPARED_RUN_ATTEMPT: ${{ inputs.prepared_run_attempt }}
+          RELEASE_SET_PREPARED_ARTIFACT_ID: ${{ inputs.prepared_artifact_id }}
+          RELEASE_SET_PREPARED_BINDING_ARTIFACT_ID: ${{ inputs.prepared_binding_artifact_id }}
+          REPOSITORY: ${{ github.repository }}
+          REPOSITORY_ID: ${{ github.repository_id }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_REF: ${{ github.ref }}
+          EVENT_SHA: ${{ github.sha }}
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+          CHECKOUT_HEAD: ${{ inputs.expected_commit }}
+          CHECKOUT_STATUS: ''
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          RELEASE_SET_GO_OBSERVER_RUN_ID: ${{ github.run_id }}
+          RELEASE_SET_GO_OBSERVER_ATTEMPT: ${{ github.run_attempt }}
+          RELEASE_SET_GO_OBSERVER_WORKFLOW: .github/workflows/release.yml
+          RELEASE_SET_GO_OBSERVER_SOURCE: ${{ inputs.expected_commit }}
+          RELEASE_SET_GO_OUTPUT_FILE: ${{ runner.temp }}/go-proof.json
+          RELEASE_SET_GO_WORK_DIR: ${{ runner.temp }}/go-observer
+        run: |
+          set -euo pipefail
+          mkdir -p "$RELEASE_SET_GO_WORK_DIR"
+          RELEASE_SET_GO_GO="$(command -v go)" RELEASE_SET_GO_GIT="$(command -v git)" RELEASE_SET_GO_PYTHON="$(command -v python3)" node scripts/verify-release.mjs --release-set-go-observe
+          cp "$RELEASE_SET_GO_OUTPUT_FILE" "$RUNNER_TEMP/release-set-receipts/go-proof.json"
+      - name: Upload Rust receipt with exact lineage name
+        id: rust_receipt
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: release-set-rust-proof-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/release-set-receipts/rust-proof.json
+          if-no-files-found: error
+          retention-days: 365
+      - name: Upload tag receipt with exact lineage name
+        id: tag_receipt
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: release-set-tag-proof-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/release-set-receipts/tag-proof.json
+          if-no-files-found: error
+          retention-days: 365
+      - name: Upload Go receipt with exact lineage name
+        id: go_receipt
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: release-set-go-proof-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/release-set-receipts/go-proof.json
+          if-no-files-found: error
+          retention-days: 365
+      - name: Upload immutable receipt-only snapshot
+        id: receipt_snapshot
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: release-set-proof-receipts-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/release-set-receipts
+          if-no-files-found: error
+          retention-days: 365
+      - name: Bind all actual receipt and snapshot artifact IDs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+          NPM_RECEIPT_ID: ${{ needs.release-set-publish-npm.outputs.receipt_artifact_id }}
+          PYPI_RECEIPT_ID: ${{ needs.release-set-publish-pypi.outputs.receipt_artifact_id }}
+          RUBYGEMS_RECEIPT_ID: ${{ needs.release-set-publish-rubygems.outputs.receipt_artifact_id }}
+          RUST_RECEIPT_ID: ${{ steps.rust_receipt.outputs.artifact-id }}
+          TAG_RECEIPT_ID: ${{ steps.tag_receipt.outputs.artifact-id }}
+          GO_RECEIPT_ID: ${{ steps.go_receipt.outputs.artifact-id }}
+          SNAPSHOT_ID: ${{ steps.receipt_snapshot.outputs.artifact-id }}
+        run: |
+          set -euo pipefail
+          api="repos/$REPOSITORY/actions/artifacts"
+          meta_dir="$RUNNER_TEMP/release-set-finalizer/artifact-metadata"
+          mkdir -p "$meta_dir"
+          for pair in "npm-proof.json:$NPM_RECEIPT_ID:release-set-npm-proof-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" "pypi-proof.json:$PYPI_RECEIPT_ID:release-set-pypi-proof-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" "rubygems-proof.json:$RUBYGEMS_RECEIPT_ID:release-set-rubygems-proof-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" "rust-proof.json:$RUST_RECEIPT_ID:release-set-rust-proof-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" "tag-proof.json:$TAG_RECEIPT_ID:release-set-tag-proof-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" "go-proof.json:$GO_RECEIPT_ID:release-set-go-proof-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"; do
+            IFS=: read -r filename artifact_id artifact_name <<< "$pair"
+            : "$artifact_name"
+            gh api "$api/$artifact_id" > "$meta_dir/$filename.meta.json"
+          done
+          gh api "$api/$SNAPSHOT_ID" > "$meta_dir/snapshot.meta.json"
+          node --input-type=module - "$meta_dir" "$RUNNER_TEMP/release-set-receipt-artifacts.json" "$RUNNER_TEMP/release-set-snapshot-binding.json" "$RUNNER_TEMP/release-set-receipts" <<'NODE'
+          import { readdirSync, readFileSync, writeFileSync } from 'node:fs'
+          import { join } from 'node:path'
+          const [directory, bindingsFile, snapshotFile, receiptsDir] = process.argv.slice(2)
+          const runId = String(process.env.GITHUB_RUN_ID)
+          const runAttempt = String(process.env.GITHUB_RUN_ATTEMPT)
+          const sourceCommit = process.env.EXPECTED_COMMIT
+          const producer = { repository: 'elsoul/erpc-sdk', repositoryId: '1429568627', workflowPath: '.github/workflows/release.yml', sourceCommit, runId, runAttempt, ref: 'refs/heads/main', event: 'workflow_dispatch' }
+          const expectedNames = { 'npm-proof.json': 'release-set-npm-proof-' + runId + '-' + runAttempt, 'pypi-proof.json': 'release-set-pypi-proof-' + runId + '-' + runAttempt, 'rubygems-proof.json': 'release-set-rubygems-proof-' + runId + '-' + runAttempt, 'rust-proof.json': 'release-set-rust-proof-' + runId + '-' + runAttempt, 'tag-proof.json': 'release-set-tag-proof-' + runId + '-' + runAttempt, 'go-proof.json': 'release-set-go-proof-' + runId + '-' + runAttempt }
+          const requestedIds = { 'npm-proof.json': process.env.NPM_RECEIPT_ID, 'pypi-proof.json': process.env.PYPI_RECEIPT_ID, 'rubygems-proof.json': process.env.RUBYGEMS_RECEIPT_ID, 'rust-proof.json': process.env.RUST_RECEIPT_ID, 'tag-proof.json': process.env.TAG_RECEIPT_ID, 'go-proof.json': process.env.GO_RECEIPT_ID }
+          const bind = (metaFile, expectedName, requestedId) => {
+            const meta = JSON.parse(readFileSync(join(directory, metaFile), 'utf8'))
+            if (String(meta.id) !== String(requestedId) || meta.name !== expectedName || meta.expired !== false || meta.workflow_run?.id !== Number(runId) || meta.workflow_run?.head_sha !== sourceCommit) throw new Error('artifact metadata lineage mismatch for ' + metaFile)
+            if (!/^sha256:[0-9a-f]{64}$/.test(meta.digest ?? '') || !Number.isSafeInteger(meta.size_in_bytes) || meta.size_in_bytes <= 0) throw new Error('artifact metadata digest/size invalid for ' + metaFile)
+            return { artifactId: String(meta.id), artifactName: meta.name, sha256: meta.digest.slice(7), sizeInBytes: meta.size_in_bytes, producer }
+          }
+          const receiptArtifacts = {}
+          for (const filename of Object.keys(expectedNames)) receiptArtifacts[filename] = bind(filename + '.meta.json', expectedNames[filename], requestedIds[filename])
+          const snapshot = bind('snapshot.meta.json', 'release-set-proof-receipts-' + runId + '-' + runAttempt, process.env.SNAPSHOT_ID)
+          writeFileSync(bindingsFile, JSON.stringify(receiptArtifacts) + '\n')
+          writeFileSync(snapshotFile, JSON.stringify(snapshot) + '\n')
+          for (const filename of Object.keys(expectedNames)) if (!readdirSync(receiptsDir).includes(filename)) throw new Error('receipt member missing ' + filename)
+          NODE
+      - name: Authenticate current snapshot and receipt ZIPs before draft creation
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SET_PLAN_FILE: ${{ runner.temp }}/release-set-verified/bundle/release-set-plan.json
+          RELEASE_SET_PLAN_SHA256: ${{ inputs.release_set_plan_sha256 }}
+          RELEASE_SET_BINDING_FILE: ${{ runner.temp }}/release-set-verified/binding/release-set-binding.json
+          RELEASE_SET_ARTIFACT_DIR: ${{ runner.temp }}/release-set-verified/bundle
+          RELEASE_SET_BINDING_DIR: ${{ runner.temp }}/release-set-verified/binding
+          RELEASE_SET_RUN_FILE: ${{ runner.temp }}/release-set-verified/evidence/run.json
+          RELEASE_SET_ARTIFACT_METADATA_FILE: ${{ runner.temp }}/release-set-verified/evidence/bundle-metadata.json
+          RELEASE_SET_BINDING_METADATA_FILE: ${{ runner.temp }}/release-set-verified/evidence/binding-metadata.json
+          RELEASE_SET_BUNDLE_ZIP_FILE: ${{ runner.temp }}/release-set-verified/zips/bundle.zip
+          RELEASE_SET_BINDING_ZIP_FILE: ${{ runner.temp }}/release-set-verified/zips/binding.zip
+          RELEASE_SET_PREPARED_RUN_ID: ${{ inputs.prepared_run_id }}
+          RELEASE_SET_PREPARED_RUN_ATTEMPT: ${{ inputs.prepared_run_attempt }}
+          RELEASE_SET_PREPARED_ARTIFACT_ID: ${{ inputs.prepared_artifact_id }}
+          RELEASE_SET_PREPARED_BINDING_ARTIFACT_ID: ${{ inputs.prepared_binding_artifact_id }}
+          REPOSITORY: ${{ github.repository }}
+          REPOSITORY_ID: ${{ github.repository_id }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_REF: ${{ github.ref }}
+          EVENT_SHA: ${{ github.sha }}
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+          CHECKOUT_HEAD: ${{ inputs.expected_commit }}
+          CHECKOUT_STATUS: ''
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          RELEASE_SET_SNAPSHOT_BINDING_FILE: ${{ runner.temp }}/release-set-snapshot-binding.json
+          RELEASE_SET_RECEIPT_ARTIFACTS_FILE: ${{ runner.temp }}/release-set-receipt-artifacts.json
+          RELEASE_SET_SNAPSHOT_READ_TOKEN_FD: ''
+          RELEASE_SET_SNAPSHOT_OBSERVER_RUN_ID: ${{ github.run_id }}
+          RELEASE_SET_SNAPSHOT_OBSERVER_ATTEMPT: ${{ github.run_attempt }}
+          RELEASE_SET_SNAPSHOT_OBSERVER_WORKFLOW: .github/workflows/release.yml
+          RELEASE_SET_SNAPSHOT_OBSERVER_SOURCE: ${{ inputs.expected_commit }}
+          RELEASE_SET_SNAPSHOT_WORK_DIR: ${{ runner.temp }}/release-set-snapshot-work
+          RELEASE_SET_SNAPSHOT_OBSERVATION_FILE: ${{ runner.temp }}/release-set-current-snapshot.json
+        run: |
+          set -euo pipefail
+          mkdir -p "$RELEASE_SET_SNAPSHOT_WORK_DIR"
+          exec {snapshot_read_fd}<<<"$GH_TOKEN"
+          export RELEASE_SET_SNAPSHOT_READ_TOKEN_FD="$snapshot_read_fd"
+          node scripts/verify-release.mjs --release-set-snapshot-observe
+      - name: Build authenticated canonical manifest before draft creation
+        env:
+          RELEASE_SET_PLAN_FILE: ${{ runner.temp }}/release-set-verified/bundle/release-set-plan.json
+          RELEASE_SET_PLAN_SHA256: ${{ inputs.release_set_plan_sha256 }}
+          RELEASE_SET_PREPARATION_FILE: ${{ runner.temp }}/release-set-preparation.json
+          RELEASE_SET_SNAPSHOT_BINDING_FILE: ${{ runner.temp }}/release-set-snapshot-binding.json
+          RELEASE_SET_RECEIPT_ARTIFACTS_FILE: ${{ runner.temp }}/release-set-receipt-artifacts.json
+          RELEASE_SET_RECEIPTS_DIR: ${{ runner.temp }}/release-set-receipts
+          RELEASE_SET_MANIFEST_FILE: ${{ runner.temp }}/release-set-finalizer/release-set-proof-manifest.json
+        run: |
+          set -euo pipefail
+          node scripts/verify-release.mjs --release-set-assemble
+      - name: Upload authenticated manifest checkpoint before draft creation
+        id: manifest_checkpoint
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: release-set-proof-manifest-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/release-set-finalizer/release-set-proof-manifest.json
+          if-no-files-found: error
+          retention-days: 365
+
+      - name: Build exact Release asset descriptor from prepared bytes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          PLAN_FILE: ${{ runner.temp }}/release-set-verified/bundle/release-set-plan.json
+          BUNDLE_DIR: ${{ runner.temp }}/release-set-verified/bundle
+          PROOF_DIR: ${{ runner.temp }}/release-set-receipts
+          ASSET_DIR: ${{ runner.temp }}/release-set-proof-assets
+          MANIFEST_FILE: ${{ runner.temp }}/release-set-finalizer/release-set-proof-manifest.json
+          DESCRIPTOR_FILE: ${{ runner.temp }}/release-set-finalizer/github-descriptor.json
+          MANIFEST_ID: ${{ steps.manifest_checkpoint.outputs.artifact-id }}
+          SNAPSHOT_BINDING_FILE: ${{ runner.temp }}/release-set-snapshot-binding.json
+          RECEIPT_ARTIFACTS_FILE: ${{ runner.temp }}/release-set-receipt-artifacts.json
+        run: |
+          set -euo pipefail
+          gh api "repos/$REPOSITORY/actions/artifacts/$MANIFEST_ID" > "$RUNNER_TEMP/release-set-finalizer/manifest.meta.json"
+          node --input-type=module - "$PLAN_FILE" "$BUNDLE_DIR" "$PROOF_DIR" "$ASSET_DIR" "$MANIFEST_FILE" "$DESCRIPTOR_FILE" "$RUNNER_TEMP/release-set-finalizer/manifest.meta.json" <<'NODE'
+          import { copyFileSync, readFileSync, statSync, writeFileSync, mkdirSync } from 'node:fs'
+          import { createHash } from 'node:crypto'
+          import { join } from 'node:path'
+          const [planFile, bundle, proofDir, assetsDir, manifestFile, descriptorFile, metaFile] = process.argv.slice(2)
+          const plan = JSON.parse(readFileSync(planFile, 'utf8')); const meta = JSON.parse(readFileSync(metaFile, 'utf8'))
+          if (meta.name !== 'release-set-proof-manifest-' + process.env.GITHUB_RUN_ID + '-' + process.env.GITHUB_RUN_ATTEMPT || meta.expired !== false || !/^sha256:[0-9a-f]{64}$/.test(meta.digest ?? '') || !Number.isSafeInteger(meta.size_in_bytes) || meta.size_in_bytes <= 0) throw new Error('manifest checkpoint metadata is not exact')
+          mkdirSync(assetsDir, { recursive: true }); const staticKinds = new Map(plan.artifacts.map(item => [item.kind, item.filename])); const files = []
+          for (const item of plan.approval.publicAssets) {
+            const source = staticKinds.has(item.role) ? join(bundle, staticKinds.get(item.role)) : item.role === 'release-body' || item.role === 'go-inventory' ? join(bundle, item.filename) : item.role === 'release-set-proof-manifest' ? manifestFile : join(proofDir, item.filename)
+            const destination = join(assetsDir, item.filename); copyFileSync(source, destination); const bytes = readFileSync(destination)
+            files.push({ role: item.role, filename: item.filename, sha256: createHash('sha256').update(bytes).digest('hex'), sizeInBytes: statSync(destination).size })
+          }
+          const producer = { repository: 'elsoul/erpc-sdk', repositoryId: '1429568627', workflowPath: '.github/workflows/release.yml', sourceCommit: plan.sourceCommit, runId: String(process.env.GITHUB_RUN_ID), runAttempt: String(process.env.GITHUB_RUN_ATTEMPT), ref: 'refs/heads/main', event: 'workflow_dispatch' }
+          const snapshot = JSON.parse(readFileSync(process.env.SNAPSHOT_BINDING_FILE, 'utf8')); const receiptArtifacts = JSON.parse(readFileSync(process.env.RECEIPT_ARTIFACTS_FILE, 'utf8'))
+          const descriptor = { repository: plan.repository, repositoryId: plan.repositoryId, releaseTag: plan.tags.release, title: plan.githubRelease.title, bodySha256: plan.githubRelease.bodySha256, sourceCommit: plan.sourceCommit, assets: files, prerelease: false, latest: plan.githubRelease.latest === true, requirePublic: true, snapshot: { mode: 'current', snapshot, receiptArtifacts } }
+          writeFileSync(descriptorFile, JSON.stringify(descriptor) + '\n')
+          NODE
+      - name: Reconcile draft, verify every existing asset, and publish once
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+          RELEASE_SET_PLAN_SHA256: ${{ inputs.release_set_plan_sha256 }}
+          REPOSITORY_ID: ${{ github.repository_id }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_REF: ${{ github.ref }}
+          EVENT_SHA: ${{ github.sha }}
+          CHECKOUT_HEAD: ${{ inputs.expected_commit }}
+          CHECKOUT_STATUS: ''
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          PREPARED_RUN_ID: ${{ inputs.prepared_run_id }}
+          PREPARED_RUN_ATTEMPT: ${{ inputs.prepared_run_attempt }}
+          PREPARED_ARTIFACT_ID: ${{ inputs.prepared_artifact_id }}
+          PREPARED_BINDING_ARTIFACT_ID: ${{ inputs.prepared_binding_artifact_id }}
+          PLAN_FILE: ${{ runner.temp }}/release-set-verified/bundle/release-set-plan.json
+          BODY_FILE: ${{ runner.temp }}/release-set-verified/bundle/release-body.md
+          ASSET_DIR: ${{ runner.temp }}/release-set-proof-assets
+          RELEASE_USER_AGENT: erpc-sdk-release-verification (https://github.com/elsoul/erpc-sdk)
+        run: |
+          set -euo pipefail
+          api="https://api.github.com/repos/$REPOSITORY"
+          release_values="$(node --input-type=module - "$PLAN_FILE" <<'NODE'
+          import { readFileSync } from 'node:fs'
+          const plan = JSON.parse(readFileSync(process.argv[2], 'utf8'))
+          console.log(plan.tags.release); console.log(plan.githubRelease.title); console.log(plan.githubRelease.latest === true ? 'true' : 'false')
+          NODE
+          )"
+          tag="$(printf '%s\n' "$release_values" | sed -n '1p')"
+          title="$(printf '%s\n' "$release_values" | sed -n '2p')"
+          latest="$(printf '%s\n' "$release_values" | sed -n '3p')"
+          payload="$RUNNER_TEMP/release-set-finalizer/release-create.json"
+          node --input-type=module - "$PLAN_FILE" "$BODY_FILE" "$payload" <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs'
+          const [planFile, bodyFile, output] = process.argv.slice(2)
+          const plan = JSON.parse(readFileSync(planFile, 'utf8'))
+          writeFileSync(output, JSON.stringify({ tag_name: plan.tags.release, target_commitish: plan.sourceCommit, name: plan.githubRelease.title, body: readFileSync(bodyFile, 'utf8'), draft: true, prerelease: false, make_latest: 'false' }))
+          NODE
+          releases_file="$RUNNER_TEMP/release-set-finalizer/releases.json"
+          gh api --paginate --slurp "$api/releases?per_page=100" > "$releases_file"
+          release_id="$(node --input-type=module - "$releases_file" "$BODY_FILE" "$tag" "$title" "$EXPECTED_COMMIT" <<'NODE'
+          import { readFileSync } from 'node:fs'
+          const [file, bodyFile, expectedTag, expectedTitle, source] = process.argv.slice(2)
+          const matches = JSON.parse(readFileSync(file, 'utf8')).flat().filter(Boolean).filter(item => item.tag_name === expectedTag)
+          if (matches.length > 1) throw new Error('matching Release is ambiguous')
+          if (matches.length === 0) process.stdout.write('')
+          else {
+            const release = matches[0]
+            if (!Number.isSafeInteger(release.id) || release.id <= 0 || release.name !== expectedTitle || release.body !== readFileSync(bodyFile, 'utf8') || (release.target_commitish !== source && release.target_commitish !== expectedTag) || release.prerelease === true) throw new Error('matching Release conflicts with plan')
+            console.log(release.id)
+          }
+          NODE
+          )"
+          if [ -z "$release_id" ]; then
+            set +e
+            gh api --method POST "$api/releases" --input "$payload" > "$RUNNER_TEMP/release-set-finalizer/create-response.json"
+            create_status=$?
+            set -e
+            : "$create_status"
+            release_id="$(node --input-type=module - "$RUNNER_TEMP/release-set-finalizer/create-response.json" <<'NODE'
+          import { existsSync, readFileSync } from 'node:fs'
+          const file = process.argv[2]
+          if (!existsSync(file)) process.stdout.write('')
+          else {
+            try {
+              const value = JSON.parse(readFileSync(file, 'utf8'))
+              if (Number.isSafeInteger(value.id) && value.id > 0) console.log(value.id)
+              else process.stdout.write('')
+            } catch { process.stdout.write('') }
+          }
+          NODE
+            )"
+            if [ -z "$release_id" ]; then
+              gh api --paginate --slurp "$api/releases?per_page=100" > "$RUNNER_TEMP/release-set-finalizer/releases-after-create.json"
+              release_id="$(node --input-type=module - "$RUNNER_TEMP/release-set-finalizer/releases-after-create.json" "$tag" <<'NODE'
+          import { readFileSync } from 'node:fs'
+          const [file, expectedTag] = process.argv.slice(2)
+          const matches = JSON.parse(readFileSync(file, 'utf8')).flat().filter(Boolean).filter(item => item.tag_name === expectedTag)
+          if (matches.length !== 1 || !Number.isSafeInteger(matches[0]?.id) || matches[0].id <= 0) throw new Error('lost Release create response did not reconcile to one numeric Release')
+          console.log(matches[0].id)
+          NODE
+              )"
+            fi
+          fi
+          release_file="$RUNNER_TEMP/release-set-finalizer/release.json"
+          gh api "$api/releases/$release_id" > "$release_file"
+          node --input-type=module - "$release_file" "$BODY_FILE" "$tag" "$title" "$EXPECTED_COMMIT" "$release_id" <<'NODE'
+          import { readFileSync } from 'node:fs'
+          const [file, bodyFile, expectedTag, expectedTitle, source, expectedId] = process.argv.slice(2)
+          const release = JSON.parse(readFileSync(file, 'utf8'))
+          if (!Number.isSafeInteger(release.id) || release.id <= 0 || String(release.id) !== String(expectedId) || release.tag_name !== expectedTag || release.name !== expectedTitle || release.body !== readFileSync(bodyFile, 'utf8') || (release.target_commitish !== source && release.target_commitish !== expectedTag) || release.prerelease === true) throw new Error('numeric Release identity conflicts with plan')
+          NODE
+          upload_url="$(node --input-type=module - "$release_file" "$api" <<'NODE'
+          import { readFileSync } from 'node:fs'
+          const [file, api] = process.argv.slice(2); const release = JSON.parse(readFileSync(file, 'utf8')); const value = String(release.upload_url ?? '').replace(/\{\?name,label\}$/, ''); const expected = 'https://uploads.github.com/repos/elsoul/erpc-sdk/releases/' + release.id + '/assets'
+          if (value !== expected || new URL(value).username || new URL(value).password || new URL(value).search || new URL(value).hash) throw new Error('Release upload URL is not the canonical numeric repository endpoint')
+          console.log(value)
+          NODE
+          )"
+          download_asset() {
+            local id="$1" output="$2"
+            curl --fail --silent --show-error --location --max-time 60 --retry 0 --user-agent "$RELEASE_USER_AGENT" --header "Authorization: Bearer $GH_TOKEN" --header 'Accept: application/octet-stream' --output "$output" "$api/releases/assets/$id"
+          }
+          asset_pages="$RUNNER_TEMP/release-set-finalizer/assets-before.json"
+          gh api --paginate --slurp "$api/releases/$release_id/assets?per_page=100" > "$asset_pages"
+          asset_map="$RUNNER_TEMP/release-set-finalizer/assets-before.tsv"
+          node --input-type=module - "$asset_pages" "$ASSET_DIR" "$asset_map" <<'NODE'
+          import { readdirSync, readFileSync, writeFileSync } from 'node:fs'
+          const [pagesFile, assetsDir, mapFile] = process.argv.slice(2)
+          const remote = JSON.parse(readFileSync(pagesFile, 'utf8')).flat().filter(Boolean)
+          const names = remote.map(item => item.name); const expected = readdirSync(assetsDir)
+          if (new Set(names).size !== names.length || remote.some(item => !expected.includes(item.name))) throw new Error('Release contains duplicate or unexpected assets')
+          writeFileSync(mapFile, remote.map(item => [item.name, item.id, item.digest ?? '', item.size ?? ''].join('\t')).join('\n') + (remote.length ? '\n' : ''))
+          NODE
+          resume_manifest_id="$(awk -F '\t' '$1 == "release-set-proof-manifest.json" { print $2 }' "$asset_map")"
+          checkpoint_id=""
+          resume_manifest_dir="$RUNNER_TEMP/release-set-finalizer/resume-assets"
+          mkdir -p "$resume_manifest_dir"
+          while IFS=$'\t' read -r name asset_id digest size; do
+            [ -n "$name" ] || continue
+            download_asset "$asset_id" "$resume_manifest_dir/$name"
+          done < "$asset_map"
+          if [ -z "$resume_manifest_id" ] && [ -f "$resume_manifest_dir/npm-proof.json" ]; then
+            checkpoint_context="$(node --input-type=module - "$resume_manifest_dir/npm-proof.json" <<'NODE'
+          import { readFileSync } from 'node:fs'
+          const receipt = JSON.parse(readFileSync(process.argv[2], 'utf8')); console.log(String(receipt.observer?.runId || '') + '/' + String(receipt.observer?.runAttempt || ''))
+          NODE
+            )"
+            checkpoint_run="${checkpoint_context%/*}"; checkpoint_attempt="${checkpoint_context#*/}"
+            if [ -n "$checkpoint_run" ] && [ -n "$checkpoint_attempt" ] && [ "$checkpoint_run" != "$checkpoint_context" ]; then
+              checkpoint_name="release-set-proof-manifest-$checkpoint_run-$checkpoint_attempt"
+              gh api "repos/$REPOSITORY/actions/artifacts?name=$checkpoint_name&per_page=100" > "$RUNNER_TEMP/release-set-finalizer/checkpoint-artifacts.json"
+              checkpoint_id="$(node --input-type=module - "$RUNNER_TEMP/release-set-finalizer/checkpoint-artifacts.json" "$checkpoint_name" "$EXPECTED_COMMIT" <<'NODE'
+          import { readFileSync } from 'node:fs'; const [file, expectedName, source] = process.argv.slice(2); const records = JSON.parse(readFileSync(file, 'utf8')).artifacts.filter(item => item.name === expectedName && item.expired === false && item.workflow_run?.head_sha === source); if (records.length !== 1) throw new Error('original manifest checkpoint is missing or ambiguous'); console.log(records[0].id)
+          NODE
+              )"
+              gh api "$api/actions/artifacts/$checkpoint_id" > "$RUNNER_TEMP/release-set-finalizer/checkpoint-meta.json"
+              node --input-type=module - "$RUNNER_TEMP/release-set-finalizer/checkpoint-meta.json" "$checkpoint_id" "$checkpoint_name" "$checkpoint_run" "$checkpoint_attempt" "$EXPECTED_COMMIT" "$RUNNER_TEMP/release-set-finalizer/checkpoint-binding.json" <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs'; const [metaFile, id, name, runId, runAttempt, source, output] = process.argv.slice(2); const meta = JSON.parse(readFileSync(metaFile, 'utf8')); if (String(meta.id) !== String(id) || meta.name !== name || meta.expired !== false || meta.workflow_run?.id !== Number(runId) || meta.workflow_run?.head_sha !== source || !/^sha256:[0-9a-f]{64}$/.test(meta.digest ?? '') || !Number.isSafeInteger(meta.size_in_bytes) || meta.size_in_bytes <= 0) throw new Error('historical checkpoint metadata is not exact'); writeFileSync(output, JSON.stringify({ artifactId: String(meta.id), artifactName: meta.name, sha256: meta.digest.slice(7), sizeInBytes: meta.size_in_bytes, producer: { repository: 'elsoul/erpc-sdk', repositoryId: '1429568627', workflowPath: '.github/workflows/release.yml', sourceCommit: source, runId: String(runId), runAttempt: String(runAttempt), ref: 'refs/heads/main', event: 'workflow_dispatch' } }) + '\n')
+          NODE
+              resume_manifest_id="$checkpoint_id"
+            fi
+          fi
+          if [ -n "$resume_manifest_id" ]; then
+            if [ -z "$checkpoint_id" ]; then
+              node --input-type=module - "$resume_manifest_dir/release-set-proof-manifest.json" "$asset_map" <<'NODE'
+          import { createHash } from 'node:crypto'
+          import { readFileSync as read } from 'node:fs'
+          const [manifestFile, mapFile] = process.argv.slice(2); const bytes = read(manifestFile); const record = read(mapFile, 'utf8').split(/\r?\n/).map(line => line.split('\t')).find(fields => fields[0] === 'release-set-proof-manifest.json'); if (!record) throw new Error('public manifest asset record is missing'); if (record[2] && record[2] !== 'sha256:' + createHash('sha256').update(bytes).digest('hex')) throw new Error('public manifest asset digest mismatch'); if (record[3] && Number(record[3]) !== bytes.length) throw new Error('public manifest asset size mismatch')
+          NODE
+              exec {historical_read_fd}<<<"$GH_TOKEN"; export RELEASE_SET_MANIFEST_READ_TOKEN_FD="$historical_read_fd"
+              mkdir -p "$RUNNER_TEMP/release-set-finalizer/historical-manifest-work"
+              RELEASE_SET_PLAN_FILE="$PLAN_FILE" RELEASE_SET_PLAN_SHA256="$RELEASE_SET_PLAN_SHA256" RELEASE_SET_BINDING_FILE="$RUNNER_TEMP/release-set-verified/binding/release-set-binding.json" RELEASE_SET_ARTIFACT_DIR="$RUNNER_TEMP/release-set-verified/bundle" RELEASE_SET_BINDING_DIR="$RUNNER_TEMP/release-set-verified/binding" RELEASE_SET_RUN_FILE="$RUNNER_TEMP/release-set-verified/evidence/run.json" RELEASE_SET_ARTIFACT_METADATA_FILE="$RUNNER_TEMP/release-set-verified/evidence/bundle-metadata.json" RELEASE_SET_BINDING_METADATA_FILE="$RUNNER_TEMP/release-set-verified/evidence/binding-metadata.json" RELEASE_SET_BUNDLE_ZIP_FILE="$RUNNER_TEMP/release-set-verified/zips/bundle.zip" RELEASE_SET_BINDING_ZIP_FILE="$RUNNER_TEMP/release-set-verified/zips/binding.zip" RELEASE_SET_PREPARED_RUN_ID="$PREPARED_RUN_ID" RELEASE_SET_PREPARED_RUN_ATTEMPT="$PREPARED_RUN_ATTEMPT" RELEASE_SET_PREPARED_ARTIFACT_ID="$PREPARED_ARTIFACT_ID" RELEASE_SET_PREPARED_BINDING_ARTIFACT_ID="$PREPARED_BINDING_ARTIFACT_ID" RELEASE_SET_MANIFEST_FILE="$resume_manifest_dir/release-set-proof-manifest.json" RELEASE_SET_MANIFEST_WORK_DIR="$RUNNER_TEMP/release-set-finalizer/historical-manifest-work" RELEASE_SET_MANIFEST_OBSERVATION_FILE="$RUNNER_TEMP/release-set-finalizer/historical-manifest-observation.json" node scripts/verify-release.mjs --release-set-manifest-observe
+            else
+              exec {historical_read_fd}<<<"$GH_TOKEN"; export RELEASE_SET_CHECKPOINT_READ_TOKEN_FD="$historical_read_fd"
+              mkdir -p "$RUNNER_TEMP/release-set-finalizer/historical-checkpoint-work" "$RUNNER_TEMP/release-set-finalizer/historical-checkpoint-receipts"
+              RELEASE_SET_PLAN_FILE="$PLAN_FILE" RELEASE_SET_PLAN_SHA256="$RELEASE_SET_PLAN_SHA256" RELEASE_SET_BINDING_FILE="$RUNNER_TEMP/release-set-verified/binding/release-set-binding.json" RELEASE_SET_ARTIFACT_DIR="$RUNNER_TEMP/release-set-verified/bundle" RELEASE_SET_BINDING_DIR="$RUNNER_TEMP/release-set-verified/binding" RELEASE_SET_RUN_FILE="$RUNNER_TEMP/release-set-verified/evidence/run.json" RELEASE_SET_ARTIFACT_METADATA_FILE="$RUNNER_TEMP/release-set-verified/evidence/bundle-metadata.json" RELEASE_SET_BINDING_METADATA_FILE="$RUNNER_TEMP/release-set-verified/evidence/binding-metadata.json" RELEASE_SET_BUNDLE_ZIP_FILE="$RUNNER_TEMP/release-set-verified/zips/bundle.zip" RELEASE_SET_BINDING_ZIP_FILE="$RUNNER_TEMP/release-set-verified/zips/binding.zip" RELEASE_SET_PREPARED_RUN_ID="$PREPARED_RUN_ID" RELEASE_SET_PREPARED_RUN_ATTEMPT="$PREPARED_RUN_ATTEMPT" RELEASE_SET_PREPARED_ARTIFACT_ID="$PREPARED_ARTIFACT_ID" RELEASE_SET_PREPARED_BINDING_ARTIFACT_ID="$PREPARED_BINDING_ARTIFACT_ID" RELEASE_SET_CHECKPOINT_BINDING_FILE="$RUNNER_TEMP/release-set-finalizer/checkpoint-binding.json" RELEASE_SET_CHECKPOINT_WORK_DIR="$RUNNER_TEMP/release-set-finalizer/historical-checkpoint-work" RELEASE_SET_CHECKPOINT_MANIFEST_OUTPUT_FILE="$resume_manifest_dir/release-set-proof-manifest.json" RELEASE_SET_CHECKPOINT_RECEIPT_OUTPUT_DIR="$RUNNER_TEMP/release-set-finalizer/historical-checkpoint-receipts" RELEASE_SET_CHECKPOINT_OBSERVATION_FILE="$RUNNER_TEMP/release-set-finalizer/historical-checkpoint-observation.json" node scripts/verify-release.mjs --release-set-checkpoint-observe
+              for filename in npm-proof.json pypi-proof.json rubygems-proof.json rust-proof.json tag-proof.json go-proof.json; do
+                authenticated="$RUNNER_TEMP/release-set-finalizer/historical-checkpoint-receipts/$filename"
+                test -f "$authenticated"
+                if [ -f "$resume_manifest_dir/$filename" ]; then
+                  cmp -s "$authenticated" "$resume_manifest_dir/$filename" || { echo "existing public receipt differs from authenticated checkpoint: $filename" >&2; exit 1; }
+                else
+                  cp "$authenticated" "$resume_manifest_dir/$filename"
+                fi
+              done
+            fi
+          else
+            if awk -F '\t' '$1 == "npm-proof.json" || $1 == "pypi-proof.json" || $1 == "rubygems-proof.json" || $1 == "rust-proof.json" || $1 == "tag-proof.json" || $1 == "go-proof.json" { found=1 } END { exit found ? 0 : 1 }' "$asset_map"; then echo 'existing dynamic proof assets require an authenticated original manifest or checkpoint' >&2; exit 1; fi
+          fi
+          if [ -n "$resume_manifest_id" ]; then
+            node --input-type=module - "$resume_manifest_dir/release-set-proof-manifest.json" "$PLAN_FILE" "$ASSET_DIR" "$RUNNER_TEMP/release-set-finalizer/github-descriptor.json" "$resume_manifest_dir" <<'NODE'
+          import { copyFileSync, existsSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+          import { createHash } from 'node:crypto'
+          import { join } from 'node:path'
+          const [manifestFile, planFile, assetsDir, descriptorFile, resumeDir] = process.argv.slice(2)
+          const plan = JSON.parse(readFileSync(planFile, 'utf8')); const manifest = JSON.parse(readFileSync(manifestFile, 'utf8')); const descriptor = JSON.parse(readFileSync(descriptorFile, 'utf8'))
+          if (manifest.kind !== 'erpc-sdk-release-set-proof-manifest' || manifest.state !== 'complete' || manifest.sourceCommit !== plan.sourceCommit || manifest.planSha256 !== process.env.RELEASE_SET_PLAN_SHA256) throw new Error('existing public manifest does not match the prepared plan')
+          for (const filename of ['npm-proof.json', 'pypi-proof.json', 'rubygems-proof.json', 'rust-proof.json', 'tag-proof.json', 'go-proof.json']) {
+            const file = join(resumeDir, filename); if (!existsSync(file) || createHash('sha256').update(readFileSync(file)).digest('hex') !== manifest.receipts[filename]) throw new Error('existing public receipt differs from the original manifest: ' + filename)
+          }
+          const dynamicRoles = new Set(['npm-proof', 'pypi-proof', 'rubygems-proof', 'rust-proof', 'tag-proof', 'go-proof', 'release-set-proof-manifest'])
+          for (const asset of descriptor.assets) {
+            if (!dynamicRoles.has(asset.role)) continue
+            const source = join(resumeDir, asset.filename)
+            if (existsSync(source)) { copyFileSync(source, join(assetsDir, asset.filename)); asset.sha256 = createHash('sha256').update(readFileSync(source)).digest('hex'); asset.sizeInBytes = statSync(source).size }
+          }
+          descriptor.snapshot = { mode: 'preserved-manifest' }
+          writeFileSync(descriptorFile, JSON.stringify(descriptor) + '\n')
+          NODE
+          fi
+          preflight_dir="$RUNNER_TEMP/release-set-finalizer/preflight-assets"
+          mkdir -p "$preflight_dir"
+          while IFS=$'\t' read -r name asset_id digest size; do
+            [ -n "$name" ] || continue
+            : "$digest" "$size"
+            download_asset "$asset_id" "$preflight_dir/$name"
+            test "$(sha256sum "$preflight_dir/$name" | awk '{print $1}')" = "$(sha256sum "$ASSET_DIR/$name" | awk '{print $1}')"
+            test "$(stat -c '%s' "$preflight_dir/$name")" = "$(stat -c '%s' "$ASSET_DIR/$name")"
+          done < "$asset_map"
+          missing_file="$RUNNER_TEMP/release-set-finalizer/missing-assets.txt"
+          node --input-type=module - "$asset_map" "$ASSET_DIR" <<'NODE' > "$missing_file"
+          import { readdirSync, readFileSync } from 'node:fs'
+          const [mapFile, assetsDir] = process.argv.slice(2); const remote = new Set(readFileSync(mapFile, 'utf8').split(/\r?\n/).filter(Boolean).map(line => line.split('\t')[0]))
+          for (const name of readdirSync(assetsDir)) if (!remote.has(name)) console.log(assetsDir + '/' + name)
+          NODE
+          if [ -s "$missing_file" ]; then
+            set +e
+            while IFS= read -r asset; do
+              [ -n "$asset" ] || continue
+              name="$(basename "$asset")"
+              encoded_name="$(node --input-type=module - "$name" <<'NODE'
+          console.log(encodeURIComponent(process.argv[2]))
+          NODE
+              )"
+              curl --fail --silent --show-error --max-time 60 --retry 0 --user-agent "$RELEASE_USER_AGENT" --header "Authorization: Bearer $GH_TOKEN" --header 'Accept: application/vnd.github+json' --header 'Content-Type: application/octet-stream' --data-binary "@$asset" --request POST "$upload_url?name=$encoded_name" > "$RUNNER_TEMP/release-set-finalizer/upload-$name.json"
+              upload_status=$?
+              if [ "$upload_status" -ne 0 ]; then break; fi
+            done < "$missing_file"
+            set -e
+            printf '%s\n' "$upload_status" > "$RUNNER_TEMP/release-set-finalizer/upload-status"
+          else
+            printf '0\n' > "$RUNNER_TEMP/release-set-finalizer/upload-status"
+          fi
+          asset_pages="$RUNNER_TEMP/release-set-finalizer/assets-after.json"
+          gh api --paginate --slurp "$api/releases/$release_id/assets?per_page=100" > "$asset_pages"
+          asset_map="$RUNNER_TEMP/release-set-finalizer/assets-after.tsv"
+          node --input-type=module - "$asset_pages" "$ASSET_DIR" "$asset_map" <<'NODE'
+          import { readdirSync, readFileSync, writeFileSync } from 'node:fs'
+          const [pagesFile, assetsDir, mapFile] = process.argv.slice(2); const remote = JSON.parse(readFileSync(pagesFile, 'utf8')).flat().filter(Boolean); const expected = readdirSync(assetsDir)
+          if (new Set(remote.map(item => item.name)).size !== remote.length || remote.some(item => !expected.includes(item.name)) || expected.some(name => !remote.some(item => item.name === name))) throw new Error('Release assets are incomplete after the single upload attempt')
+          writeFileSync(mapFile, remote.map(item => [item.name, item.id, item.digest ?? '', item.size ?? ''].join('\t')).join('\n') + (remote.length ? '\n' : ''))
+          NODE
+          final_dir="$RUNNER_TEMP/release-set-finalizer/assets-final"
+          mkdir -p "$final_dir"
+          while IFS=$'\t' read -r name asset_id digest size; do
+            [ -n "$name" ] || continue
+            download_asset "$asset_id" "$final_dir/$name"
+            test "$(sha256sum "$final_dir/$name" | awk '{print $1}')" = "$(sha256sum "$ASSET_DIR/$name" | awk '{print $1}')"
+            test "$(stat -c '%s' "$final_dir/$name")" = "$(stat -c '%s' "$ASSET_DIR/$name")"
+          done < "$asset_map"
+          draft="$(node --input-type=module - "$release_file" <<'NODE'
+          import { readFileSync } from 'node:fs'; console.log(JSON.parse(readFileSync(process.argv[2], 'utf8')).draft ? 'true' : 'false')
+          NODE
+          )"
+          if [ "$draft" = true ]; then
+            patch_file="$RUNNER_TEMP/release-set-finalizer/release-patch.json"
+            node --input-type=module - "$latest" "$patch_file" <<'NODE'
+          import { writeFileSync } from 'node:fs'; writeFileSync(process.argv[3], JSON.stringify({ draft: false, prerelease: false, make_latest: process.argv[2] === 'true' ? 'true' : 'false' }))
+          NODE
+            set +e
+            gh api --method PATCH "$api/releases/$release_id" --input "$patch_file" > "$RUNNER_TEMP/release-set-finalizer/patch-response.json"
+            patch_status=$?
+            set -e
+            : "$patch_status"
+            gh api "$api/releases/$release_id" > "$release_file"
+            node --input-type=module - "$release_file" "$latest" <<'NODE'
+          import { readFileSync } from 'node:fs'; const release = JSON.parse(readFileSync(process.argv[2], 'utf8')); const latest = process.argv[3] === 'true'; if (release.draft || release.prerelease || (release.make_latest !== undefined && Boolean(release.make_latest) !== latest)) throw new Error('Release finalization did not reach the intended state')
+          NODE
+          fi
+      - name: Run authenticated and anonymous full-A GitHub Release proof
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SET_PLAN_FILE: ${{ runner.temp }}/release-set-verified/bundle/release-set-plan.json
+          RELEASE_SET_PLAN_SHA256: ${{ inputs.release_set_plan_sha256 }}
+          RELEASE_SET_BINDING_FILE: ${{ runner.temp }}/release-set-verified/binding/release-set-binding.json
+          RELEASE_SET_ARTIFACT_DIR: ${{ runner.temp }}/release-set-verified/bundle
+          RELEASE_SET_BINDING_DIR: ${{ runner.temp }}/release-set-verified/binding
+          RELEASE_SET_RUN_FILE: ${{ runner.temp }}/release-set-verified/evidence/run.json
+          RELEASE_SET_ARTIFACT_METADATA_FILE: ${{ runner.temp }}/release-set-verified/evidence/bundle-metadata.json
+          RELEASE_SET_BINDING_METADATA_FILE: ${{ runner.temp }}/release-set-verified/evidence/binding-metadata.json
+          RELEASE_SET_BUNDLE_ZIP_FILE: ${{ runner.temp }}/release-set-verified/zips/bundle.zip
+          RELEASE_SET_BINDING_ZIP_FILE: ${{ runner.temp }}/release-set-verified/zips/binding.zip
+          RELEASE_SET_PREPARED_RUN_ID: ${{ inputs.prepared_run_id }}
+          RELEASE_SET_PREPARED_RUN_ATTEMPT: ${{ inputs.prepared_run_attempt }}
+          RELEASE_SET_PREPARED_ARTIFACT_ID: ${{ inputs.prepared_artifact_id }}
+          RELEASE_SET_PREPARED_BINDING_ARTIFACT_ID: ${{ inputs.prepared_binding_artifact_id }}
+          REPOSITORY: ${{ github.repository }}
+          REPOSITORY_ID: ${{ github.repository_id }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_REF: ${{ github.ref }}
+          EVENT_SHA: ${{ github.sha }}
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+          CHECKOUT_HEAD: ${{ inputs.expected_commit }}
+          CHECKOUT_STATUS: ''
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          RELEASE_SET_GITHUB_OBSERVER_RUN_ID: ${{ github.run_id }}
+          RELEASE_SET_GITHUB_OBSERVER_ATTEMPT: ${{ github.run_attempt }}
+          RELEASE_SET_GITHUB_OBSERVER_WORKFLOW: .github/workflows/release.yml
+          RELEASE_SET_GITHUB_OBSERVER_SOURCE: ${{ inputs.expected_commit }}
+          RELEASE_SET_GITHUB_OUTPUT_FILE: ${{ runner.temp }}/release-set-finalizer/github-proof.json
+          RELEASE_SET_GITHUB_WORK_DIR: ${{ runner.temp }}/release-set-finalizer/github-observer
+          RELEASE_SET_GITHUB_DESCRIPTOR_FILE: ${{ runner.temp }}/release-set-finalizer/github-descriptor.json
+        run: |
+          set -euo pipefail
+          mkdir -p "$RELEASE_SET_GITHUB_WORK_DIR"
+          exec {github_read_fd}<<<"$GH_TOKEN"
+          export RELEASE_SET_GITHUB_READ_TOKEN_FD="$github_read_fd"
+          node scripts/verify-release.mjs --release-set-github-observe
+      - name: Upload final anonymous GitHub proof
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: release-set-github-proof-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/release-set-finalizer/github-proof.json
+          if-no-files-found: error
+          retention-days: 365
+
+  release-set-observe:
+    name: Observe schema2 package, tag, Go, and receipt proofs
+    if: ${{ inputs.release_set_mode == 'observe' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Check out exact reviewed source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.expected_commit }}
+          persist-credentials: false
+      - name: Install pinned Node runtime
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Validate receipt assembly inputs
+        env:
+          RELEASE_SET_PLAN_FILE: ${{ inputs.release_set_plan_file }}
+          RELEASE_SET_PLAN_SHA256: ${{ inputs.release_set_plan_sha256 }}
+        run: |
+          set -euo pipefail
+          test -f "$RELEASE_SET_PLAN_FILE"
+          node scripts/verify-release.mjs --release-set-validate
+          printf '%s\n' 'release-set-observe=authenticated-run-artifact-zip-and-public-byte-proof'
+      - name: Run the authenticated full-A GitHub observer when the protected FD is present
+        if: ${{ env.RELEASE_SET_GITHUB_READ_TOKEN_FD != '' }}
+        env:
+          RELEASE_SET_PLAN_FILE: ${{ inputs.release_set_plan_file }}
+          RELEASE_SET_PLAN_SHA256: ${{ inputs.release_set_plan_sha256 }}
+          RELEASE_SET_GITHUB_READ_TOKEN_FD: ${{ env.RELEASE_SET_GITHUB_READ_TOKEN_FD }}
+        run: node scripts/verify-release.mjs --release-set-github-observe
+      - name: Upload immutable receipt snapshot handoff
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: release-set-proof-receipts-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/release-set-proof-receipts
+          if-no-files-found: error
+          retention-days: 365
+
+  release-set-finalize:
+    name: Finalize schema2 GitHub Release
+    if: ${{ inputs.release_set_mode == 'finalize' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - name: Check out exact reviewed source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.expected_commit }}
+          persist-credentials: false
+      - name: Install pinned Node runtime
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Validate final numeric Release state before mutation
+        env:
+          RELEASE_SET_PLAN_FILE: ${{ inputs.release_set_plan_file }}
+          RELEASE_SET_PLAN_SHA256: ${{ inputs.release_set_plan_sha256 }}
+        run: |
+          set -euo pipefail
+          test -f "$RELEASE_SET_PLAN_FILE"
+          node scripts/verify-release.mjs --release-set-validate
+          printf '%s\n' 'release-set-finalize=tags-go-snapshot-draft-assets-patch-anonymous-proof'
+          printf '%s\n' 'release-set-upload-policy=one-attempt-then-observe'
+          printf '%s\n' 'release-set-latest=explicitly-observed make_latest:false'
+
+  release-set-publish-npm:
+    name: Publish or reuse schema2 npm artifact
+    needs: release-set-publish
+    if: ${{ inputs.release_set_mode == 'publish' && needs.release-set-publish.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    outputs:
+      receipt_artifact_id: ${{ steps.npm_receipt_artifact.outputs.artifact-id }}
+      publication_artifact_id: ${{ steps.npm_publication_artifact.outputs.artifact-id }}
+    environment: npm
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.expected_commit }}
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Install pinned npm observer Python tooling
+        run: python -m pip install --disable-pip-version-check pypi-attestations==0.0.30
+      - name: Install and verify pinned npm client
+        run: npm install --global npm@11.19.1 && test "$(npm --version)" = 11.19.1
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: release-set-verified-preparation-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/release-set-verified
+      - name: Recheck exact npm target and local upload bytes
+        id: preflight
+        env:
+          PLAN_FILE: ${{ runner.temp }}/release-set-verified/bundle/release-set-plan.json
+          BUNDLE_DIR: ${{ runner.temp }}/release-set-verified/bundle
+          RELEASE_USER_AGENT: erpc-sdk-release-verification (https://github.com/elsoul/erpc-sdk)
+        run: |
+          set -euo pipefail
+          readarray -t npm_info < <(node --input-type=module - "$PLAN_FILE" <<'NODE'
+          import { readFileSync } from 'node:fs'
+          const plan = JSON.parse(readFileSync(process.argv[2], 'utf8'))
+          const artifact = plan.artifacts.find(item => item.kind === 'npm')
+          if (!artifact) throw new Error('npm artifact missing from schema2 plan')
+          console.log(artifact.version); console.log(artifact.filename); console.log(artifact.sha256)
+          NODE
+          )
+          version="${npm_info[0]}"; filename="${npm_info[1]}"; expected="${npm_info[2]}"
+          response="$RUNNER_TEMP/npm-release-set.json"
+          status="$(curl --silent --show-error --max-time 20 --retry 0 --user-agent "$RELEASE_USER_AGENT" --output "$response" --write-out '%{http_code}' "https://registry.npmjs.org/%40elsoul%2Ferpc-sdk/$version")"
+          status_recheck="$(curl --silent --show-error --max-time 20 --retry 0 --user-agent "$RELEASE_USER_AGENT" --output /dev/null --write-out '%{http_code}' "https://registry.npmjs.org/%40elsoul%2Ferpc-sdk/$version")"
+          if [ "$status" = 404 ]; then
+            test "$status_recheck" = 404
+            state=absent
+          elif [ "$status" = 200 ]; then
+            tarball="$(node --input-type=module - "$response" <<'NODE'
+          import { readFileSync } from 'node:fs'
+          const data = JSON.parse(readFileSync(process.argv[2], 'utf8')); console.log(data.dist?.tarball ?? '')
+          NODE
+            )"
+            observed="$RUNNER_TEMP/npm-release-set.tgz"
+            curl --fail --silent --show-error --location --max-time 60 --retry 0 --user-agent "$RELEASE_USER_AGENT" --output "$observed" "$tarball"
+            test "$(sha256sum "$observed" | awk '{print $1}')" = "$expected"
+            state=match
+          else
+            echo "npm preflight stopped in HTTP $status" >&2
+            exit 64
+          fi
+          test "$(sha256sum "$BUNDLE_DIR/$filename" | awk '{print $1}')" = "$expected"
+          echo "state=$state" >> "$GITHUB_OUTPUT"
+          echo "filename=$filename" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "$state" > "$RUNNER_TEMP/npm-release-set-state"
+      - name: Build original npm publisher context
+        env:
+          PLAN_FILE: ${{ runner.temp }}/release-set-verified/bundle/release-set-plan.json
+          PUBLISHER_FILE: ${{ runner.temp }}/npm-publisher.json
+        run: |
+          set -euo pipefail
+          if [ "$(cat "$RUNNER_TEMP/npm-release-set-state")" = absent ]; then
+            node --input-type=module - "$PUBLISHER_FILE" "$PLAN_FILE" <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs'
+          const [output, planFile] = process.argv.slice(2)
+          const plan = JSON.parse(readFileSync(planFile, 'utf8'))
+          writeFileSync(output, `${JSON.stringify({ repository: 'elsoul/erpc-sdk', repositoryId: '1429568627', sourceCommit: plan.sourceCommit, workflowPath: '.github/workflows/release.yml', ref: 'refs/heads/main', event: 'workflow_dispatch', environment: 'npm', publisherRunId: process.env.GITHUB_RUN_ID, publisherAttempt: process.env.GITHUB_RUN_ATTEMPT })}\n`)
+          NODE
+            exit 0
+          fi
+          : > "$RUNNER_TEMP/empty-npmrc"
+          : > "$RUNNER_TEMP/empty-global-npmrc"
+          audit_dir="$RUNNER_TEMP/npm-publisher-audit"
+          mkdir -p "$audit_dir"
+          NPM_CONFIG_USERCONFIG="$RUNNER_TEMP/empty-npmrc" NPM_CONFIG_GLOBALCONFIG="$RUNNER_TEMP/empty-global-npmrc" npm install --ignore-scripts --no-audit --no-fund --prefix "$audit_dir" "@elsoul/erpc-sdk@$(node --input-type=module - "$PLAN_FILE" <<'NODE'
+          import { readFileSync } from 'node:fs'; console.log(JSON.parse(readFileSync(process.argv[2], 'utf8')).versions.nonRustVersion)
+          NODE
+          )" --registry=https://registry.npmjs.org/ >/dev/null
+          NPM_CONFIG_USERCONFIG="$RUNNER_TEMP/empty-npmrc" NPM_CONFIG_GLOBALCONFIG="$RUNNER_TEMP/empty-global-npmrc" npm audit signatures --json --include-attestations --prefix "$audit_dir" > "$RUNNER_TEMP/npm-publisher-audit.json"
+          node --input-type=module - "$RUNNER_TEMP/npm-publisher-audit.json" "$PUBLISHER_FILE" "$PLAN_FILE" <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs'
+          const [auditFile, output, planFile] = process.argv.slice(2)
+          const audit = JSON.parse(readFileSync(auditFile, 'utf8')); const plan = JSON.parse(readFileSync(planFile, 'utf8'))
+          const target = audit.verified?.find(item => item.name === '@elsoul/erpc-sdk' && item.version === plan.versions.nonRustVersion && (!item.registry || item.registry === 'https://registry.npmjs.org'))
+          const bundles = (target?.attestationBundles ?? []).filter(item => item.predicateType === 'https://slsa.dev/provenance/v1' && item.bundle?.dsseEnvelope?.payload)
+          if (bundles.length !== 1) throw new Error('npm original publisher attestation is not unique')
+          const provenance = JSON.parse(Buffer.from(bundles[0].bundle.dsseEnvelope.payload, 'base64').toString('utf8'))
+          const invocation = provenance.predicate?.runDetails?.metadata?.invocationId
+          const match = /^https:\/\/github\.com\/elsoul\/erpc-sdk\/actions\/runs\/([1-9][0-9]*)\/attempts\/([1-9][0-9]*)$/.exec(invocation ?? '')
+          const source = provenance.predicate?.buildDefinition?.resolvedDependencies?.find(item => item.digest?.gitCommit === plan.sourceCommit)?.digest?.gitCommit
+          if (!match || !/^[0-9a-f]{40}$/.test(source ?? '') || source !== plan.sourceCommit) throw new Error('npm original publisher context is not source-bound')
+          writeFileSync(output, `${JSON.stringify({ repository: 'elsoul/erpc-sdk', repositoryId: '1429568627', sourceCommit: source, workflowPath: '.github/workflows/release.yml', ref: 'refs/heads/main', event: 'workflow_dispatch', environment: 'npm', publisherRunId: match[1], publisherAttempt: match[2] })}\n`)
+          NODE
+      - name: Authenticate original npm publisher run context
+        env:
+          PUBLISHER_FILE: ${{ runner.temp }}/npm-publisher.json
+          CONTEXT_DIR: ${{ runner.temp }}/npm-publisher-runs
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$CONTEXT_DIR"
+          node --input-type=module - "$PUBLISHER_FILE" "$CONTEXT_DIR/requests.tsv" <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs'
+          const publishers = JSON.parse(readFileSync(process.argv[2], 'utf8')); const seen = new Set(); const rows = []
+          for (const publisher of [publishers]) { const key = `${publisher.publisherRunId}/${publisher.publisherAttempt}`; if (!seen.has(key)) { seen.add(key); rows.push(key) } }
+          writeFileSync(process.argv[3], `${rows.join('\n')}\n`)
+          NODE
+          while IFS=/ read -r run_id attempt; do
+            [ -n "$run_id" ] || continue
+            gh api "/repos/$REPOSITORY/actions/runs/$run_id/attempts/$attempt" > "$CONTEXT_DIR/$run_id-$attempt.json"
+          done < "$CONTEXT_DIR/requests.tsv"
+          node --input-type=module - "$PUBLISHER_FILE" "$CONTEXT_DIR" "$EXPECTED_COMMIT" <<'NODE'
+          import { readdirSync, readFileSync } from 'node:fs'
+          const [publisherFile, directory, source] = process.argv.slice(2); const publisher = JSON.parse(readFileSync(publisherFile, 'utf8')); const run = JSON.parse(readFileSync(`${directory}/${publisher.publisherRunId}-${publisher.publisherAttempt}.json`, 'utf8'))
+          if (String(run.id) !== String(publisher.publisherRunId) || String(run.run_attempt) !== String(publisher.publisherAttempt) || run.head_sha !== source || run.head_branch !== 'main' || run.event !== 'workflow_dispatch' || run.path !== '.github/workflows/release.yml' || String(run.repository?.id ?? run.repository_id) !== '1429568627' || (run.repository?.full_name !== undefined && run.repository.full_name !== 'elsoul/erpc-sdk')) throw new Error('npm original publisher run context is not bound to the approved source')
+          const current = run.id === Number(process.env.GITHUB_RUN_ID) && run.run_attempt === Number(process.env.GITHUB_RUN_ATTEMPT); if (!current && (run.status !== 'completed' || !['success', 'failure', 'cancelled', 'timed_out', 'action_required', 'neutral', 'skipped'].includes(run.conclusion))) throw new Error('npm historical publisher run is not terminal')
+          if (readdirSync(directory).length < 2) throw new Error('npm original publisher run context is incomplete')
+          NODE
+      - name: Publish exact npm archive once when absent
+        if: steps.preflight.outputs.state == 'absent'
+        id: publish_npm
+        continue-on-error: true
+        env:
+          NPM_CONFIG_PROVENANCE: 'true'
+          NPM_CONFIG_AUDIT: 'false'
+          NPM_CONFIG_FUND: 'false'
+          NPM_CONFIG_USERCONFIG: ${{ runner.temp }}/empty-npmrc
+          NPM_CONFIG_GLOBALCONFIG: ${{ runner.temp }}/empty-global-npmrc
+        run: npm publish "${{ runner.temp }}/release-set-verified/bundle/${{ steps.preflight.outputs.filename }}" --registry=https://registry.npmjs.org/ --access public --provenance --ignore-scripts
+      - name: Observe npm public bytes, provenance, and consumers
+        if: always() && (steps.preflight.outputs.state == 'absent' || steps.preflight.outputs.state == 'match')
+        id: observe_npm
+        env:
+          RELEASE_SET_PLAN_FILE: ${{ runner.temp }}/release-set-verified/bundle/release-set-plan.json
+          RELEASE_SET_PLAN_SHA256: ${{ inputs.release_set_plan_sha256 }}
+          RELEASE_SET_BINDING_FILE: ${{ runner.temp }}/release-set-verified/binding/release-set-binding.json
+          RELEASE_SET_ARTIFACT_DIR: ${{ runner.temp }}/release-set-verified/bundle
+          RELEASE_SET_BINDING_DIR: ${{ runner.temp }}/release-set-verified/binding
+          RELEASE_SET_RUN_FILE: ${{ runner.temp }}/release-set-verified/evidence/run.json
+          RELEASE_SET_ARTIFACT_METADATA_FILE: ${{ runner.temp }}/release-set-verified/evidence/bundle-metadata.json
+          RELEASE_SET_BINDING_METADATA_FILE: ${{ runner.temp }}/release-set-verified/evidence/binding-metadata.json
+          RELEASE_SET_BUNDLE_ZIP_FILE: ${{ runner.temp }}/release-set-verified/zips/bundle.zip
+          RELEASE_SET_BINDING_ZIP_FILE: ${{ runner.temp }}/release-set-verified/zips/binding.zip
+          RELEASE_SET_PREPARED_RUN_ID: ${{ inputs.prepared_run_id }}
+          RELEASE_SET_PREPARED_RUN_ATTEMPT: ${{ inputs.prepared_run_attempt }}
+          RELEASE_SET_PREPARED_ARTIFACT_ID: ${{ inputs.prepared_artifact_id }}
+          RELEASE_SET_PREPARED_BINDING_ARTIFACT_ID: ${{ inputs.prepared_binding_artifact_id }}
+          REPOSITORY: ${{ github.repository }}
+          REPOSITORY_ID: ${{ github.repository_id }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_REF: ${{ github.ref }}
+          EVENT_SHA: ${{ github.sha }}
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+          CHECKOUT_HEAD: ${{ inputs.expected_commit }}
+          CHECKOUT_STATUS: ''
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          RELEASE_SET_NPM_PUBLISHER_FILE: ${{ runner.temp }}/npm-publisher.json
+          RELEASE_SET_NPM_OBSERVER_RUN_ID: ${{ github.run_id }}
+          RELEASE_SET_NPM_OBSERVER_ATTEMPT: ${{ github.run_attempt }}
+          RELEASE_SET_NPM_OBSERVER_WORKFLOW: .github/workflows/release.yml
+          RELEASE_SET_NPM_OBSERVER_SOURCE: ${{ inputs.expected_commit }}
+          RELEASE_SET_NPM_OUTPUT_FILE: ${{ runner.temp }}/npm-proof.json
+          RELEASE_SET_NPM_WORK_DIR: ${{ runner.temp }}/npm-observer
+        run: |
+          set -euo pipefail
+          mkdir -p "$RELEASE_SET_NPM_WORK_DIR"
+          RELEASE_SET_NPM_NODE="$(command -v node)" RELEASE_SET_NPM_CLI="$(command -v npm)" RELEASE_SET_NPM_PYTHON="$(command -v python)" node scripts/verify-release.mjs --release-set-npm-observe
+      - name: Record npm publication outcome
+        if: always()
+        env:
+          OUTPUT_DIR: ${{ runner.temp }}/release-set-npm-publication
+          RECEIPT_DIR: ${{ runner.temp }}/release-set-npm-receipt
+          OBSERVER_FILE: ${{ runner.temp }}/npm-proof.json
+          PREFLIGHT_STATE: ${{ steps.preflight.outputs.state }}
+          UPLOAD_OUTCOME: ${{ steps.publish_npm.outcome }}
+          OBSERVER_OUTCOME: ${{ steps.observe_npm.outcome }}
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$OUTPUT_DIR"
+          node --input-type=module - "$OUTPUT_DIR/publication.json" "$RECEIPT_DIR" "$OBSERVER_FILE" <<'NODE'
+          import { copyFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs'
+          const [output, receiptDirectory, observer] = process.argv.slice(2); const attempted = Boolean(process.env.UPLOAD_OUTCOME && process.env.UPLOAD_OUTCOME !== 'skipped'); const observed = process.env.OBSERVER_OUTCOME === 'success' && existsSync(observer)
+          writeFileSync(output, `${JSON.stringify({ schemaVersion: 1, kind: 'npm-public-publication-outcome', preflightState: process.env.PREFLIGHT_STATE, auth: { requested: attempted, uploadAttempted: attempted, uploadOutcome: process.env.UPLOAD_OUTCOME || 'not-requested' }, observer: { outcome: process.env.OBSERVER_OUTCOME || 'skipped', receiptPresent: observed }, sourceCommit: process.env.EXPECTED_COMMIT, observedRunId: process.env.GITHUB_RUN_ID, observedAttempt: process.env.GITHUB_RUN_ATTEMPT } )}\n`)
+          if (observed) { mkdirSync(receiptDirectory, { recursive: true }); copyFileSync(observer, `${receiptDirectory}/npm-proof.json`) }
+          NODE
+      - name: Clean npm credential workspace
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/empty-npmrc" "$RUNNER_TEMP/empty-global-npmrc" "$RUNNER_TEMP/npm-publisher-audit" "$RUNNER_TEMP/npm-publisher-audit.json" "$RUNNER_TEMP/npm-publisher-runs"
+      - name: Upload npm publication outcome
+        if: always()
+        id: npm_publication_artifact
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: release-set-npm-publication-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/release-set-npm-publication
+          if-no-files-found: error
+          retention-days: 365
+      - name: Upload successful npm receipt
+        if: steps.observe_npm.outcome == 'success'
+        id: npm_receipt_artifact
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: release-set-npm-proof-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/release-set-npm-receipt/npm-proof.json
+          if-no-files-found: error
+          retention-days: 365
+      - name: Retain npm receipt artifact allocation
+        if: always()
+        run: printf 'release_set_npm_receipt_artifact_id=%s\n' '${{ steps.npm_receipt_artifact.outputs.artifact-id }}' >> "$GITHUB_STEP_SUMMARY"
+
+  release-set-publish-pypi:
+    name: Publish or reuse schema2 PyPI artifacts
+    needs: release-set-publish
+    if: ${{ inputs.release_set_mode == 'publish' && needs.release-set-publish.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    outputs:
+      receipt_artifact_id: ${{ steps.pypi_receipt_artifact.outputs.artifact-id }}
+      publication_artifact_id: ${{ steps.pypi_publication_artifact.outputs.artifact-id }}
+    environment: pypi
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.expected_commit }}
+          persist-credentials: false
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: release-set-verified-preparation-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/release-set-verified
+      - name: Install pinned PyPI observer tooling
+        run: python -m pip install --disable-pip-version-check build==1.6.0 pypi-attestations==0.0.30
+      - name: Recheck PyPI files and stage only verified missing bytes
+        id: preflight
+        env:
+          PLAN_FILE: ${{ runner.temp }}/release-set-verified/bundle/release-set-plan.json
+          BUNDLE_DIR: ${{ runner.temp }}/release-set-verified/bundle
+          STAGE_DIR: ${{ runner.temp }}/release-set-pypi
+          MISSING_FILE: ${{ runner.temp }}/pypi-missing-files.json
+          PROVENANCE_DIR: ${{ runner.temp }}/release-set-pypi-provenance
+          RELEASE_USER_AGENT: erpc-sdk-release-verification (https://github.com/elsoul/erpc-sdk)
+        run: |
+          set -euo pipefail
+          mkdir -p "$STAGE_DIR" "$PROVENANCE_DIR"
+          version="$(node --input-type=module - "$PLAN_FILE" <<'NODE'
+          import { readFileSync } from 'node:fs'; console.log(JSON.parse(readFileSync(process.argv[2], 'utf8')).versions.nonRustVersion)
+          NODE
+          )"
+          response="$RUNNER_TEMP/pypi-release-set.json"
+          status="$(curl --silent --show-error --max-time 20 --retry 0 --user-agent "$RELEASE_USER_AGENT" --output "$response" --write-out '%{http_code}' "https://pypi.org/pypi/erpc-sdk/$version/json")"
+          status_recheck="$(curl --silent --show-error --max-time 20 --retry 0 --user-agent "$RELEASE_USER_AGENT" --output /dev/null --write-out '%{http_code}' "https://pypi.org/pypi/erpc-sdk/$version/json")"
+          node --input-type=module - "$response" "$status" "$status_recheck" "$RUNNER_TEMP/pypi-preflight-input.json" <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs'
+          const [response, status, recheck, output] = process.argv.slice(2)
+          writeFileSync(output, `${JSON.stringify({ npm: { status: 404, body: '{}', fullStatus: 404, fullBody: '', fullRecheckStatus: 404, fullRecheckBody: '', absenceGate: true }, pypi: { status, body: readFileSync(response, 'utf8'), absenceGate: status === '404' && recheck === '404' }, rubygems: { status: 404, body: '{}', fullStatus: 404, fullBody: '', fullRecheckStatus: 404, fullRecheckBody: '', absenceGate: true } })}\n`)
+          NODE
+          RELEASE_SET_PLAN_FILE="$PLAN_FILE" RELEASE_SET_PREFLIGHT_INPUT_FILE="$RUNNER_TEMP/pypi-preflight-input.json" RELEASE_SET_PREFLIGHT_OUTPUT_FILE="$RUNNER_TEMP/pypi-preflight.json" node scripts/verify-release.mjs --release-set-preflight
+          state="$(node --input-type=module - "$RUNNER_TEMP/pypi-preflight.json" <<'NODE'
+          import { readFileSync } from 'node:fs'; console.log(JSON.parse(readFileSync(process.argv[2], 'utf8')).registries.pypi.state)
+          NODE
+          )"
+          node --input-type=module - "$response" "$PLAN_FILE" "$BUNDLE_DIR" "$STAGE_DIR" "$PROVENANCE_DIR" "$MISSING_FILE" "$state" <<'NODE'
+          import { readFileSync, copyFileSync, writeFileSync } from 'node:fs'
+          import { join } from 'node:path'
+          const [responseFile, planFile, bundle, stage, provenanceDir, missingFile, state] = process.argv.slice(2)
+          const plan = JSON.parse(readFileSync(planFile, 'utf8')); const response = state === 'absent' ? {} : JSON.parse(readFileSync(responseFile, 'utf8'))
+          const expected = plan.artifacts.filter(item => item.kind.startsWith('pypi')); const visible = new Map((response.urls ?? []).map(item => [item.filename, item]))
+          const missing = []
+          for (const item of expected) {
+            const publicFile = visible.get(item.filename)
+            if (publicFile !== undefined) {
+              if (publicFile.yanked !== false || publicFile.digests?.sha256 !== item.sha256) throw new Error(`PyPI preflight conflict for ${item.filename}`)
+              writeFileSync(join(provenanceDir, `${item.filename}.url`), `${publicFile.url}\n`)
+            } else missing.push(item.filename)
+          }
+          for (const filename of missing) copyFileSync(join(bundle, filename), join(stage, filename))
+          writeFileSync(missingFile, `${JSON.stringify(missing)}\n`)
+          NODE
+          node --input-type=module - "$PLAN_FILE" "$STAGE_DIR" <<'NODE'
+          import { createHash } from 'node:crypto'
+          import { readdirSync, readFileSync, statSync } from 'node:fs'
+          import { join } from 'node:path'
+          const [planFile, stage] = process.argv.slice(2); const plan = JSON.parse(readFileSync(planFile, 'utf8'))
+          const expected = new Map(plan.artifacts.filter(item => item.kind.startsWith('pypi')).map(item => [item.filename, item.sha256]))
+          for (const filename of readdirSync(stage)) { if (!expected.has(filename) || !statSync(join(stage, filename)).isFile()) throw new Error(`unexpected PyPI staged member ${filename}`); const digest = createHash('sha256').update(readFileSync(join(stage, filename))).digest('hex'); if (digest !== expected.get(filename)) throw new Error(`PyPI staged digest mismatch for ${filename}`) }
+          NODE
+          for provenance in "$PROVENANCE_DIR"/*.url; do
+            [ -e "$provenance" ] || continue
+            name="$(basename "$provenance" .url)"
+            curl --fail --silent --show-error --max-time 30 --retry 0 --user-agent "$RELEASE_USER_AGENT" --output "$PROVENANCE_DIR/$name.json" "https://pypi.org/integrity/erpc-sdk/$version/$name/provenance"
+          done
+          missing_count="$(node --input-type=module - "$MISSING_FILE" <<'NODE'
+          import { readFileSync } from 'node:fs'; console.log(JSON.parse(readFileSync(process.argv[2], 'utf8')).length)
+          NODE
+          )"
+          {
+            echo "state=$state"
+            echo "missing=$([ "$missing_count" -gt 0 ] && echo true || echo false)"
+            echo "missing_files=$missing_count"
+          } >> "$GITHUB_OUTPUT"
+      - name: Build original per-file PyPI publisher contexts
+        env:
+          PLAN_FILE: ${{ runner.temp }}/release-set-verified/bundle/release-set-plan.json
+          PROVENANCE_DIR: ${{ runner.temp }}/release-set-pypi-provenance
+          PUBLISHERS_FILE: ${{ runner.temp }}/pypi-publishers.json
+        run: |
+          set -euo pipefail
+          python - "$PLAN_FILE" "$PROVENANCE_DIR" "$PUBLISHERS_FILE" <<'PY'
+          import json, os, re, sys
+          from pypi_attestations import Distribution, GitHubPublisher, Provenance
+          plan_file, provenance_dir, output_file = sys.argv[1:]
+          plan = json.load(open(plan_file, encoding='utf-8'))
+          expected = {item['filename']: item for item in plan['artifacts'] if item['kind'].startswith('pypi')}
+          current = {"repository": "elsoul/erpc-sdk", "repositoryId": "1429568627", "sourceCommit": plan['sourceCommit'], "workflowPath": ".github/workflows/release.yml", "ref": "refs/heads/main", "event": "workflow_dispatch", "environment": "pypi", "publisherRunId": os.environ['GITHUB_RUN_ID'], "publisherAttempt": os.environ['GITHUB_RUN_ATTEMPT']}
+          contexts = {}
+          for filename, descriptor in expected.items():
+              provenance_path = os.path.join(provenance_dir, filename + '.json')
+              if not os.path.exists(provenance_path):
+                  contexts[filename] = current
+                  continue
+              document = Provenance.model_validate_json(open(provenance_path, encoding='utf-8').read())
+              found = []
+              for bundle in document.attestation_bundles:
+                  for attestation in bundle.attestations:
+                      statement = json.loads(attestation.envelope.statement.decode('utf-8'))
+                      subject = next((item for item in statement.get('subject', []) if item.get('name') == filename and item.get('digest', {}).get('sha256') == descriptor['sha256']), None)
+                      if statement.get('predicateType') != 'https://docs.pypi.org/attestations/publish/v1' or subject is None:
+                          continue
+                      attestation.verify(GitHubPublisher(repository='elsoul/erpc-sdk', workflow='release.yml', environment='pypi'), Distribution(name=filename, digest=descriptor['sha256']))
+                      claims = attestation.certificate_claims
+                      invocation = claims.get('1.3.6.1.4.1.57264.1.21')
+                      match = re.fullmatch(r'https://github\.com/elsoul/erpc-sdk/actions/runs/([1-9][0-9]*)/attempts/([1-9][0-9]*)', invocation or '')
+                      source = claims.get('1.3.6.1.4.1.57264.1.13')
+                      if not match or source != plan['sourceCommit']:
+                          raise SystemExit(f'publisher context is not source-bound for {filename}')
+                      found.append({**current, 'sourceCommit': source, 'publisherRunId': match.group(1), 'publisherAttempt': match.group(2)})
+              if len(found) != 1:
+                  raise SystemExit(f'publisher context is not unique for {filename}')
+              contexts[filename] = found[0]
+          json.dump(contexts, open(output_file, 'w', encoding='utf-8')); open(output_file, 'a', encoding='utf-8').write('\n')
+          PY
+      - name: Authenticate original PyPI publisher run contexts
+        env:
+          PUBLISHERS_FILE: ${{ runner.temp }}/pypi-publishers.json
+          CONTEXT_DIR: ${{ runner.temp }}/pypi-publisher-runs
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$CONTEXT_DIR"
+          node --input-type=module - "$PUBLISHERS_FILE" "$CONTEXT_DIR/requests.tsv" <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs'
+          const publishers = JSON.parse(readFileSync(process.argv[2], 'utf8')); const seen = new Set(); const rows = []
+          for (const publisher of Object.values(publishers)) { const key = `${publisher.publisherRunId}/${publisher.publisherAttempt}`; if (!seen.has(key)) { seen.add(key); rows.push(key) } }
+          writeFileSync(process.argv[3], `${rows.join('\n')}\n`)
+          NODE
+          while IFS=/ read -r run_id attempt; do
+            [ -n "$run_id" ] || continue
+            gh api "/repos/$REPOSITORY/actions/runs/$run_id/attempts/$attempt" > "$CONTEXT_DIR/$run_id-$attempt.json"
+          done < "$CONTEXT_DIR/requests.tsv"
+          node --input-type=module - "$PUBLISHERS_FILE" "$CONTEXT_DIR" "$EXPECTED_COMMIT" <<'NODE'
+          import { readFileSync } from 'node:fs'
+          const [publisherFile, directory, source] = process.argv.slice(2); const publishers = JSON.parse(readFileSync(publisherFile, 'utf8'))
+          for (const publisher of Object.values(publishers)) { const run = JSON.parse(readFileSync(`${directory}/${publisher.publisherRunId}-${publisher.publisherAttempt}.json`, 'utf8')); if (String(run.id) !== String(publisher.publisherRunId) || String(run.run_attempt) !== String(publisher.publisherAttempt) || run.head_sha !== source || run.head_branch !== 'main' || run.event !== 'workflow_dispatch' || run.path !== '.github/workflows/release.yml' || String(run.repository?.id ?? run.repository_id) !== '1429568627' || (run.repository?.full_name !== undefined && run.repository.full_name !== 'elsoul/erpc-sdk')) throw new Error('PyPI original publisher run context is not bound to the approved source'); const current = run.id === Number(process.env.GITHUB_RUN_ID) && run.run_attempt === Number(process.env.GITHUB_RUN_ATTEMPT); if (!current && (run.status !== 'completed' || !['success', 'failure', 'cancelled', 'timed_out', 'action_required', 'neutral', 'skipped'].includes(run.conclusion))) throw new Error('PyPI historical publisher run is not terminal') }
+          NODE
+      - name: Verify existing PyPI files before missing-file authentication
+        if: steps.preflight.outputs.state == 'partial' || steps.preflight.outputs.state == 'match'
+        env:
+          RELEASE_SET_PLAN_FILE: ${{ runner.temp }}/release-set-verified/bundle/release-set-plan.json
+          RELEASE_SET_PLAN_SHA256: ${{ inputs.release_set_plan_sha256 }}
+          RELEASE_SET_BINDING_FILE: ${{ runner.temp }}/release-set-verified/binding/release-set-binding.json
+          RELEASE_SET_ARTIFACT_DIR: ${{ runner.temp }}/release-set-verified/bundle
+          RELEASE_SET_BINDING_DIR: ${{ runner.temp }}/release-set-verified/binding
+          RELEASE_SET_RUN_FILE: ${{ runner.temp }}/release-set-verified/evidence/run.json
+          RELEASE_SET_ARTIFACT_METADATA_FILE: ${{ runner.temp }}/release-set-verified/evidence/bundle-metadata.json
+          RELEASE_SET_BINDING_METADATA_FILE: ${{ runner.temp }}/release-set-verified/evidence/binding-metadata.json
+          RELEASE_SET_BUNDLE_ZIP_FILE: ${{ runner.temp }}/release-set-verified/zips/bundle.zip
+          RELEASE_SET_BINDING_ZIP_FILE: ${{ runner.temp }}/release-set-verified/zips/binding.zip
+          RELEASE_SET_PREPARED_RUN_ID: ${{ inputs.prepared_run_id }}
+          RELEASE_SET_PREPARED_RUN_ATTEMPT: ${{ inputs.prepared_run_attempt }}
+          RELEASE_SET_PREPARED_ARTIFACT_ID: ${{ inputs.prepared_artifact_id }}
+          RELEASE_SET_PREPARED_BINDING_ARTIFACT_ID: ${{ inputs.prepared_binding_artifact_id }}
+          REPOSITORY: ${{ github.repository }}
+          REPOSITORY_ID: ${{ github.repository_id }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_REF: ${{ github.ref }}
+          EVENT_SHA: ${{ github.sha }}
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+          CHECKOUT_HEAD: ${{ inputs.expected_commit }}
+          CHECKOUT_STATUS: ''
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          RELEASE_SET_PYPI_PUBLISHERS_FILE: ${{ runner.temp }}/pypi-publishers.json
+          RELEASE_SET_PYPI_OBSERVER_RUN_ID: ${{ github.run_id }}
+          RELEASE_SET_PYPI_OBSERVER_ATTEMPT: ${{ github.run_attempt }}
+          RELEASE_SET_PYPI_OBSERVER_WORKFLOW: .github/workflows/release.yml
+          RELEASE_SET_PYPI_OBSERVER_SOURCE: ${{ inputs.expected_commit }}
+          RELEASE_SET_PYPI_OUTPUT_FILE: ${{ runner.temp }}/pypi-existing-proof.json
+          RELEASE_SET_PYPI_WORK_DIR: ${{ runner.temp }}/pypi-existing-observer
+          RELEASE_SET_PYPI_PREFLIGHT_ONLY: 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p "$RELEASE_SET_PYPI_WORK_DIR"
+          RELEASE_SET_PYPI_PYTHON="$(command -v python)" node scripts/verify-release.mjs --release-set-pypi-observe
+      - name: Publish exact missing PyPI files with the pinned trusted publisher
+        if: steps.preflight.outputs.missing == 'true'
+        id: publish_pypi
+        continue-on-error: true
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
+        with:
+          packages-dir: ${{ runner.temp }}/release-set-pypi
+          attestations: true
+      - name: Observe PyPI files, attestations, and consumers
+        if: always() && (steps.preflight.outputs.state == 'absent' || steps.preflight.outputs.state == 'partial' || steps.preflight.outputs.state == 'match')
+        id: observe_pypi
+        env:
+          RELEASE_SET_PLAN_FILE: ${{ runner.temp }}/release-set-verified/bundle/release-set-plan.json
+          RELEASE_SET_PLAN_SHA256: ${{ inputs.release_set_plan_sha256 }}
+          RELEASE_SET_BINDING_FILE: ${{ runner.temp }}/release-set-verified/binding/release-set-binding.json
+          RELEASE_SET_ARTIFACT_DIR: ${{ runner.temp }}/release-set-verified/bundle
+          RELEASE_SET_BINDING_DIR: ${{ runner.temp }}/release-set-verified/binding
+          RELEASE_SET_RUN_FILE: ${{ runner.temp }}/release-set-verified/evidence/run.json
+          RELEASE_SET_ARTIFACT_METADATA_FILE: ${{ runner.temp }}/release-set-verified/evidence/bundle-metadata.json
+          RELEASE_SET_BINDING_METADATA_FILE: ${{ runner.temp }}/release-set-verified/evidence/binding-metadata.json
+          RELEASE_SET_BUNDLE_ZIP_FILE: ${{ runner.temp }}/release-set-verified/zips/bundle.zip
+          RELEASE_SET_BINDING_ZIP_FILE: ${{ runner.temp }}/release-set-verified/zips/binding.zip
+          RELEASE_SET_PREPARED_RUN_ID: ${{ inputs.prepared_run_id }}
+          RELEASE_SET_PREPARED_RUN_ATTEMPT: ${{ inputs.prepared_run_attempt }}
+          RELEASE_SET_PREPARED_ARTIFACT_ID: ${{ inputs.prepared_artifact_id }}
+          RELEASE_SET_PREPARED_BINDING_ARTIFACT_ID: ${{ inputs.prepared_binding_artifact_id }}
+          REPOSITORY: ${{ github.repository }}
+          REPOSITORY_ID: ${{ github.repository_id }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_REF: ${{ github.ref }}
+          EVENT_SHA: ${{ github.sha }}
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+          CHECKOUT_HEAD: ${{ inputs.expected_commit }}
+          CHECKOUT_STATUS: ''
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          RELEASE_SET_PYPI_PUBLISHERS_FILE: ${{ runner.temp }}/pypi-publishers.json
+          RELEASE_SET_PYPI_OBSERVER_RUN_ID: ${{ github.run_id }}
+          RELEASE_SET_PYPI_OBSERVER_ATTEMPT: ${{ github.run_attempt }}
+          RELEASE_SET_PYPI_OBSERVER_WORKFLOW: .github/workflows/release.yml
+          RELEASE_SET_PYPI_OBSERVER_SOURCE: ${{ inputs.expected_commit }}
+          RELEASE_SET_PYPI_OUTPUT_FILE: ${{ runner.temp }}/pypi-proof.json
+          RELEASE_SET_PYPI_WORK_DIR: ${{ runner.temp }}/pypi-observer
+        run: |
+          set -euo pipefail
+          mkdir -p "$RELEASE_SET_PYPI_WORK_DIR"
+          RELEASE_SET_PYPI_PYTHON="$(command -v python)" node scripts/verify-release.mjs --release-set-pypi-observe
+      - name: Record PyPI publication outcome
+        if: always()
+        env:
+          OUTPUT_DIR: ${{ runner.temp }}/release-set-pypi-publication
+          RECEIPT_DIR: ${{ runner.temp }}/release-set-pypi-receipt
+          OBSERVER_FILE: ${{ runner.temp }}/pypi-proof.json
+          PREFLIGHT_STATE: ${{ steps.preflight.outputs.state }}
+          MISSING: ${{ steps.preflight.outputs.missing }}
+          UPLOAD_OUTCOME: ${{ steps.publish_pypi.outcome }}
+          OBSERVER_OUTCOME: ${{ steps.observe_pypi.outcome }}
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$OUTPUT_DIR"
+          node --input-type=module - "$OUTPUT_DIR/publication.json" "$RECEIPT_DIR" "$OBSERVER_FILE" <<'NODE'
+          import { copyFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs'
+          const [output, receiptDirectory, observer] = process.argv.slice(2); const attempted = Boolean(process.env.UPLOAD_OUTCOME && process.env.UPLOAD_OUTCOME !== 'skipped'); const observed = process.env.OBSERVER_OUTCOME === 'success' && existsSync(observer)
+          writeFileSync(output, `${JSON.stringify({ schemaVersion: 1, kind: 'pypi-public-publication-outcome', preflightState: process.env.PREFLIGHT_STATE, missing: process.env.MISSING === 'true', auth: { requested: attempted, uploadAttempted: attempted, uploadOutcome: process.env.UPLOAD_OUTCOME || 'not-requested' }, observer: { outcome: process.env.OBSERVER_OUTCOME || 'skipped', receiptPresent: observed }, sourceCommit: process.env.EXPECTED_COMMIT, observedRunId: process.env.GITHUB_RUN_ID, observedAttempt: process.env.GITHUB_RUN_ATTEMPT } )}\n`)
+          if (observed) { mkdirSync(receiptDirectory, { recursive: true }); copyFileSync(observer, `${receiptDirectory}/pypi-proof.json`) }
+          NODE
+      - name: Clean PyPI credential and staging workspace
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/release-set-pypi" "$RUNNER_TEMP/release-set-pypi-provenance" "$RUNNER_TEMP/pypi-publishers.json" "$RUNNER_TEMP/pypi-publisher-runs" "$RUNNER_TEMP/pypi-missing-files.json"
+      - name: Upload PyPI publication outcome
+        if: always()
+        id: pypi_publication_artifact
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: release-set-pypi-publication-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/release-set-pypi-publication
+          if-no-files-found: error
+          retention-days: 365
+      - name: Upload successful PyPI receipt
+        if: steps.observe_pypi.outcome == 'success'
+        id: pypi_receipt_artifact
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: release-set-pypi-proof-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/release-set-pypi-receipt/pypi-proof.json
+          if-no-files-found: error
+          retention-days: 365
+      - name: Retain PyPI receipt artifact allocation
+        if: always()
+        run: printf 'release_set_pypi_receipt_artifact_id=%s\n' '${{ steps.pypi_receipt_artifact.outputs.artifact-id }}' >> "$GITHUB_STEP_SUMMARY"
+
+  release-set-publish-rubygems:
+    name: Publish or reuse schema2 RubyGems artifact
+    needs: release-set-publish
+    if: ${{ inputs.release_set_mode == 'publish' && needs.release-set-publish.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    outputs:
+      receipt_artifact_id: ${{ steps.rubygems_receipt_artifact.outputs.artifact-id }}
+      publication_artifact_id: ${{ steps.rubygems_publication_artifact.outputs.artifact-id }}
+    environment: rubygems
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.expected_commit }}
+          persist-credentials: false
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: release-set-verified-preparation-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/release-set-verified
+      - name: Install Ruby 3.1 observer runtime
+        uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b # v1
+        with:
+          ruby-version: '3.1'
+          bundler-cache: false
+      - name: Capture Ruby 3.1 path
+        run: echo "RUBY31=$(command -v ruby)" >> "$GITHUB_ENV"
+      - name: Install Ruby 3.4 observer runtime
+        uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b # v1
+        with:
+          ruby-version: '3.4'
+          bundler-cache: false
+      - name: Capture Ruby 3.4 path
+        run: echo "RUBY34=$(command -v ruby)" >> "$GITHUB_ENV"
+      - name: Recheck exact RubyGems target and local upload bytes
+        id: preflight
+        env:
+          PLAN_FILE: ${{ runner.temp }}/release-set-verified/bundle/release-set-plan.json
+          BUNDLE_DIR: ${{ runner.temp }}/release-set-verified/bundle
+          RELEASE_USER_AGENT: erpc-sdk-release-verification (https://github.com/elsoul/erpc-sdk)
+        run: |
+          set -euo pipefail
+          version="$(ruby -rjson -e 'puts JSON.parse(File.read(ARGV.fetch(0))).fetch("versions").fetch("nonRustVersion")' "$PLAN_FILE")"
+          gem_file="$(node --input-type=module - "$PLAN_FILE" <<'NODE'
+          import { readFileSync } from 'node:fs'; console.log(JSON.parse(readFileSync(process.argv[2], 'utf8')).artifacts.find(item => item.kind === 'rubygems').filename)
+          NODE
+          )"
+          expected="$(node --input-type=module - "$PLAN_FILE" <<'NODE'
+          import { readFileSync } from 'node:fs'; console.log(JSON.parse(readFileSync(process.argv[2], 'utf8')).artifacts.find(item => item.kind === 'rubygems').sha256)
+          NODE
+          )"
+          status="$(curl --silent --show-error --max-time 20 --retry 0 --user-agent "$RELEASE_USER_AGENT" --output "$RUNNER_TEMP/rubygems-release-set.json" --write-out '%{http_code}' "https://rubygems.org/api/v2/rubygems/erpc-sdk/versions/$version.json")"
+          status_recheck="$(curl --silent --show-error --max-time 20 --retry 0 --user-agent "$RELEASE_USER_AGENT" --output /dev/null --write-out '%{http_code}' "https://rubygems.org/api/v2/rubygems/erpc-sdk/versions/$version.json")"
+          if [ "$status" = 404 ]; then test "$status_recheck" = 404; state=absent; elif [ "$status" = 200 ]; then state=match; test "$(node --input-type=module - "$RUNNER_TEMP/rubygems-release-set.json" <<'NODE'
+          import { readFileSync } from 'node:fs'; console.log(JSON.parse(readFileSync(process.argv[2], 'utf8')).sha)
+          NODE
+          )" = "$expected"; else echo "RubyGems preflight stopped in HTTP $status" >&2; exit 64; fi
+          test "$(sha256sum "$BUNDLE_DIR/$gem_file" | awk '{print $1}')" = "$expected"
+          echo "state=$state" >> "$GITHUB_OUTPUT"
+          echo "$state" > "$RUNNER_TEMP/rubygems-release-set-state"
+      - name: Configure the existing RubyGems trusted publisher
+        if: steps.preflight.outputs.state == 'absent'
+        id: rubygems_auth
+        continue-on-error: true
+        uses: rubygems/configure-rubygems-credentials@dc5a8d8553e6ee01fc26761a49e99e733d17954a # v2.1.0
+        with:
+          trusted-publisher: true
+      - name: Publish the exact reviewed gem once
+        if: steps.rubygems_auth.outcome == 'success' && steps.preflight.outputs.state == 'absent'
+        id: publish_gem
+        continue-on-error: true
+        env:
+          PLAN_FILE: ${{ runner.temp }}/release-set-verified/bundle/release-set-plan.json
+          BUNDLE_DIR: ${{ runner.temp }}/release-set-verified/bundle
+        run: |
+          set -euo pipefail
+          gem_file="$(node --input-type=module - "$PLAN_FILE" <<'NODE'
+          import { readFileSync } from 'node:fs'
+          console.log(JSON.parse(readFileSync(process.argv[2], 'utf8')).artifacts.find(item => item.kind === 'rubygems').filename)
+          NODE
+          )"
+          gem push "$BUNDLE_DIR/$gem_file"
+      - name: Clean RubyGems credentials before observer consumers
+        if: always()
+        id: rubygems_cleanup
+        run: |
+          set -euo pipefail
+          credential_seen=false
+          if [ -n "${GEM_HOST_API_KEY:-}" ] || [ -n "${RUBYGEMS_API_KEY:-}" ] || [ -f "$HOME/.gem/credentials" ] || [ -f "$HOME/.config/gem/credentials" ]; then credential_seen=true; fi
+          printf '%s\n' "$credential_seen" > "$RUNNER_TEMP/rubygems-credential-seen"
+          rm -f "$HOME/.gem/credentials" "$HOME/.config/gem/credentials"
+          unset GEM_HOST_API_KEY RUBYGEMS_API_KEY RUBYGEMS_HOST_API_KEY
+      - name: Observe RubyGems bytes and isolated Ruby consumers
+        if: always() && (steps.preflight.outputs.state == 'absent' || steps.preflight.outputs.state == 'match')
+        id: observe_rubygems
+        env:
+          RELEASE_SET_PLAN_FILE: ${{ runner.temp }}/release-set-verified/bundle/release-set-plan.json
+          RELEASE_SET_PLAN_SHA256: ${{ inputs.release_set_plan_sha256 }}
+          RELEASE_SET_BINDING_FILE: ${{ runner.temp }}/release-set-verified/binding/release-set-binding.json
+          RELEASE_SET_ARTIFACT_DIR: ${{ runner.temp }}/release-set-verified/bundle
+          RELEASE_SET_BINDING_DIR: ${{ runner.temp }}/release-set-verified/binding
+          RELEASE_SET_RUN_FILE: ${{ runner.temp }}/release-set-verified/evidence/run.json
+          RELEASE_SET_ARTIFACT_METADATA_FILE: ${{ runner.temp }}/release-set-verified/evidence/bundle-metadata.json
+          RELEASE_SET_BINDING_METADATA_FILE: ${{ runner.temp }}/release-set-verified/evidence/binding-metadata.json
+          RELEASE_SET_BUNDLE_ZIP_FILE: ${{ runner.temp }}/release-set-verified/zips/bundle.zip
+          RELEASE_SET_BINDING_ZIP_FILE: ${{ runner.temp }}/release-set-verified/zips/binding.zip
+          RELEASE_SET_PREPARED_RUN_ID: ${{ inputs.prepared_run_id }}
+          RELEASE_SET_PREPARED_RUN_ATTEMPT: ${{ inputs.prepared_run_attempt }}
+          RELEASE_SET_PREPARED_ARTIFACT_ID: ${{ inputs.prepared_artifact_id }}
+          RELEASE_SET_PREPARED_BINDING_ARTIFACT_ID: ${{ inputs.prepared_binding_artifact_id }}
+          REPOSITORY: ${{ github.repository }}
+          REPOSITORY_ID: ${{ github.repository_id }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_REF: ${{ github.ref }}
+          EVENT_SHA: ${{ github.sha }}
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+          CHECKOUT_HEAD: ${{ inputs.expected_commit }}
+          CHECKOUT_STATUS: ''
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          RELEASE_SET_RUBYGEMS_OBSERVER_RUN_ID: ${{ github.run_id }}
+          RELEASE_SET_RUBYGEMS_OBSERVER_ATTEMPT: ${{ github.run_attempt }}
+          RELEASE_SET_RUBYGEMS_OBSERVER_WORKFLOW: .github/workflows/release.yml
+          RELEASE_SET_RUBYGEMS_OBSERVER_SOURCE: ${{ inputs.expected_commit }}
+          RELEASE_SET_RUBYGEMS_OUTPUT_FILE: ${{ runner.temp }}/rubygems-proof.json
+          RELEASE_SET_RUBYGEMS_WORK_DIR: ${{ runner.temp }}/rubygems-observer
+        run: |
+          set -euo pipefail
+          mkdir -p "$RELEASE_SET_RUBYGEMS_WORK_DIR"
+          RELEASE_SET_RUBYGEMS_RUBY31="$RUBY31" RELEASE_SET_RUBYGEMS_RUBY34="$RUBY34" node scripts/verify-release.mjs --release-set-rubygems-observe
+      - name: Record RubyGems publication outcome and cleanup status
+        if: always()
+        env:
+          OUTPUT_DIR: ${{ runner.temp }}/release-set-rubygems-publication
+          RECEIPT_DIR: ${{ runner.temp }}/release-set-rubygems-receipt
+          OBSERVER_FILE: ${{ runner.temp }}/rubygems-proof.json
+          AUTH_OUTCOME: ${{ steps.rubygems_auth.outcome }}
+          CLEANUP_OUTCOME: ${{ steps.rubygems_cleanup.outcome }}
+          PREFLIGHT_STATE: ${{ steps.preflight.outputs.state }}
+          UPLOAD_OUTCOME: ${{ steps.publish_gem.outcome }}
+          OBSERVER_OUTCOME: ${{ steps.observe_rubygems.outcome }}
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$OUTPUT_DIR"
+          credential_seen="$(cat "$RUNNER_TEMP/rubygems-credential-seen" 2>/dev/null || printf false)"
+          export CREDENTIAL_SEEN="$credential_seen"
+          node --input-type=module - "$OUTPUT_DIR/publication.json" "$RECEIPT_DIR" "$OBSERVER_FILE" <<'NODE'
+          import { copyFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs'
+          const [output, receiptDirectory, observer] = process.argv.slice(2); const attempted = Boolean(process.env.UPLOAD_OUTCOME && process.env.UPLOAD_OUTCOME !== 'skipped'); const observed = process.env.OBSERVER_OUTCOME === 'success' && existsSync(observer)
+          const cleanupOk = process.env.CLEANUP_OUTCOME === 'success'; writeFileSync(output, `${JSON.stringify({ schemaVersion: 1, kind: 'rubygems-public-publication-outcome', preflightState: process.env.PREFLIGHT_STATE, auth: { requested: Boolean(process.env.AUTH_OUTCOME && process.env.AUTH_OUTCOME !== 'skipped'), uploadAttempted: attempted, uploadOutcome: process.env.UPLOAD_OUTCOME || 'not-requested', credentialObserved: process.env.CREDENTIAL_SEEN === 'true' }, cleanup: { envCleared: cleanupOk, filesCleared: cleanupOk }, observer: { outcome: process.env.OBSERVER_OUTCOME || 'skipped', receiptPresent: observed }, sourceCommit: process.env.EXPECTED_COMMIT, observedRunId: process.env.GITHUB_RUN_ID, observedAttempt: process.env.GITHUB_RUN_ATTEMPT } )}\n`)
+          if (observed) { mkdirSync(receiptDirectory, { recursive: true }); copyFileSync(observer, `${receiptDirectory}/rubygems-proof.json`) }
+          NODE
+      - name: Upload RubyGems publication outcome
+        if: always()
+        id: rubygems_publication_artifact
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: release-set-rubygems-publication-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/release-set-rubygems-publication
+          if-no-files-found: error
+          retention-days: 365
+      - name: Upload successful RubyGems receipt
+        if: steps.observe_rubygems.outcome == 'success'
+        id: rubygems_receipt_artifact
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: release-set-rubygems-proof-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/release-set-rubygems-receipt/rubygems-proof.json
+          if-no-files-found: error
+          retention-days: 365
+      - name: Retain RubyGems receipt artifact allocation
+        if: always()
+        run: printf 'release_set_rubygems_receipt_artifact_id=%s\n' '${{ steps.rubygems_receipt_artifact.outputs.artifact-id }}' >> "$GITHUB_STEP_SUMMARY"

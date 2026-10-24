@@ -679,6 +679,141 @@ describe('ERPC client', () => {
     client.close()
   })
 
+  it('routes the integrated Bitcoin, Arbitrum, and preserved Base facades', async () => {
+    const requests: Array<{
+      readonly body: { readonly id: number; readonly method: string; readonly params?: unknown }
+      readonly headers: Headers
+      readonly redirect: RequestRedirect | undefined
+      readonly url: string
+    }> = []
+    const client = createErpcClient({
+      apiKey: 'integration-key',
+      headers: { authorization: 'Bearer global-secret', 'x-global': 'global' },
+      fetch: async (input, init) => {
+        const body = JSON.parse(String(init?.body)) as {
+          readonly id: number
+          readonly method: string
+          readonly params?: unknown
+        }
+        requests.push({
+          body,
+          headers: new Headers(init?.headers),
+          redirect: init?.redirect,
+          url: String(input),
+        })
+        const result = body.method === 'getblockcount'
+          ? null
+          : body.method === 'eth_chainId'
+            ? String(input).includes('arbitrum') ? '0xa4b1' : '0x2105'
+            : '0x0'
+        const response = body.method === 'getblockcount'
+          ? `{"jsonrpc":"2.0","id":${body.id},"result":18446744073709551615}`
+          : JSON.stringify({ jsonrpc: '2.0', id: body.id, result })
+        return new Response(response, { headers: { 'content-type': 'application/json' } })
+      },
+    })
+
+    expect(client.bitcoin.rpc.endpoint).toBe('https://edge.erpc.global/')
+    expect(client.arbitrum.rpc.endpoint).toBe('https://arbitrum.erpc.global/')
+    expect(client.base.rpc.endpoint).toBe('https://base.erpc.global/')
+    expect('raw' in client.bitcoin.rpc).toBe(false)
+    expect('request' in client.arbitrum.rpc).toBe(false)
+
+    await expect(client.bitcoin.rpc.getBlockCount().send()).resolves.toBe(
+      18_446_744_073_709_551_615n,
+    )
+    await expect(client.arbitrum.rpc.eth_chainId().send()).resolves.toBe('0xa4b1')
+    await expect(client.base.rpc.eth_chainId().send()).resolves.toBe('0x2105')
+
+    expect(requests.map(({ url }) => url)).toEqual([
+      'https://edge.erpc.global/bitcoin',
+      'https://arbitrum.erpc.global/?api-key=integration-key',
+      'https://base.erpc.global/?api-key=integration-key',
+    ])
+    expect(requests[0]?.headers.get('authorization')).toBe('Bearer integration-key')
+    expect(requests[0]?.headers.get('x-global')).toBe('global')
+    expect(requests[0]?.url).not.toContain('api-key')
+    expect(requests[1]?.redirect).toBe('manual')
+    expect(requests[2]?.redirect).toBe('manual')
+    client.close()
+  })
+
+  it('supports keyless direct Bitcoin and Arbitrum endpoints with scoped headers', async () => {
+    const requests: Array<{ readonly headers: Headers; readonly url: string }> = []
+    const client = createErpcClient({
+      bitcoinRpc: {
+        httpUrl: 'https://btc.example/customer/path?region=eu',
+        headers: { authorization: 'Bearer btc-secret', 'x-btc': 'btc-only' },
+      },
+      arbitrumRpc: {
+        httpUrl: 'https://arb.example/customer/path?region=us',
+        headers: { authorization: 'Bearer arb-secret', 'x-arb': 'arb-only' },
+      },
+      headers: { authorization: 'Bearer global-secret', 'x-global': 'must-not-forward' },
+      fetch: async (input, init) => {
+        requests.push({ headers: new Headers(init?.headers), url: String(input) })
+        const body = JSON.parse(String(init?.body)) as { readonly id: number }
+        return new Response(JSON.stringify({
+          jsonrpc: '2.0',
+          id: body.id,
+          result: '0xa4b1',
+        }))
+      },
+    })
+
+    await client.bitcoin.rpc.getBestBlockHash().send()
+    await client.arbitrum.rpc.eth_chainId().send()
+    expect(requests.map(({ url }) => url)).toEqual([
+      'https://btc.example/customer/path?region=eu',
+      'https://arb.example/customer/path?region=us',
+    ])
+    expect(requests[0]?.headers.get('authorization')).toBe('Bearer btc-secret')
+    expect(requests[0]?.headers.get('x-btc')).toBe('btc-only')
+    expect(requests[0]?.headers.get('x-global')).toBeNull()
+    expect(requests[1]?.headers.get('authorization')).toBe('Bearer arb-secret')
+    expect(requests[1]?.headers.get('x-arb')).toBe('arb-only')
+    expect(requests[1]?.headers.get('x-global')).toBeNull()
+    client.close()
+  })
+
+  it('rejects WebSocket fields on sealed Bitcoin and Arbitrum overrides', () => {
+    expect(() => createErpcClient({
+      bitcoinRpc: {
+        httpUrl: 'https://btc.example/rpc',
+        webSocketUrl: 'wss://btc.example/socket',
+      } as never,
+      fetch: async () => new Response('{}'),
+    })).toThrow(ErpcConfigError)
+    expect(() => createErpcClient({
+      arbitrumRpc: {
+        httpUrl: 'https://arb.example/rpc',
+        webSocketUrl: 'wss://arb.example/socket',
+      } as never,
+      fetch: async () => new Response('{}'),
+    })).toThrow(ErpcConfigError)
+  })
+
+  it('fails an unconfigured Arbitrum namespace locally with an empty diagnostic', async () => {
+    let fetchCount = 0
+    const client = createErpcClient({
+      bitcoinRpc: { httpUrl: 'https://btc.example/rpc' },
+      fetch: async () => {
+        fetchCount += 1
+        return new Response('{}')
+      },
+    })
+    expect(client.arbitrum.rpc.endpoint).toBe('')
+    expect(client.polygon.rpc.endpoint).toBe('')
+    expect(client.near.rpc.endpoint).toBe('')
+    expect(client.sui.grpc.endpoint).toBe('')
+    await expect(client.arbitrum.rpc.eth_chainId().send()).rejects.toMatchObject({
+      code: 'ERPC_NOT_CONFIGURED',
+      namespace: 'arbitrum.rpc',
+    })
+    expect(fetchCount).toBe(0)
+    client.close()
+  })
+
   it('does not follow redirects from direct HTTP endpoints', async () => {
     let firstCalls = 0
     let secondCalls = 0
@@ -869,6 +1004,77 @@ describe('ERPC client', () => {
     expect(data).not.toContain(lowerEncoded)
     expect(data).not.toContain(mixedEncoded)
     expect(data).toContain(distinctLowercase)
+    client.close()
+  })
+
+  it('constructs all remaining hosted facades from generated root defaults', async () => {
+    const requests: Array<{ readonly url: string; readonly method: string }> = []
+    const client = createErpcClient({
+      apiKey: 'remaining-chain-key',
+      fetch: async (input, init) => {
+        const body = JSON.parse(String(init?.body)) as { readonly id: number; readonly method: string }
+        requests.push({ url: String(input), method: body.method })
+        return new Response(JSON.stringify({
+          jsonrpc: '2.0',
+          id: body.id,
+          result: body.method === 'eth_chainId' ? '0x1' : '0x0',
+        }), { headers: { 'content-type': 'application/json' } })
+      },
+    })
+
+    await client.polygon.rpc.eth_chainId().send()
+    await client.bsc.rpc.eth_chainId().send()
+    await client.optimism.rpc.eth_chainId().send()
+    await client.kaia.rpc.eth_chainId().send()
+    await client.soneium.rpc.eth_chainId().send()
+    await client.monad.rpc.eth_chainId().send()
+    await client.hyperliquid.rpc.eth_chainId().send()
+    await client.arc.rpc.eth_chainId().send()
+    await client.robinhood.rpc.eth_chainId().send()
+    await client.tron.rpc.eth_chainId().send()
+
+    expect(requests.map(({ url }) => url)).toEqual([
+      'https://polygon.erpc.global/?api-key=remaining-chain-key',
+      'https://bsc.erpc.global/?api-key=remaining-chain-key',
+      'https://optimism.erpc.global/?api-key=remaining-chain-key',
+      'https://kaia.erpc.global/?api-key=remaining-chain-key',
+      'https://soneium.erpc.global/?api-key=remaining-chain-key',
+      'https://monad.erpc.global/?api-key=remaining-chain-key',
+      'https://hyperliquid.erpc.global/?api-key=remaining-chain-key',
+      'https://arc.erpc.global/?api-key=remaining-chain-key',
+      'https://robinhood.erpc.global/?api-key=remaining-chain-key',
+      'https://tron.erpc.global/?api-key=remaining-chain-key',
+    ])
+    expect(client.near.rpc.endpoint).toBe('https://near.erpc.global/')
+    expect(client.sui.grpc.endpoint).toBe('https://sui.erpc.global/')
+    client.close()
+  })
+
+  it('strictly validates sealed EVM envelopes while preserving Base compatibility', async () => {
+    let mode: 'wrong-result' | 'malformed-error' = 'wrong-result'
+    const client = createErpcClient({
+      polygonRpc: { httpUrl: 'https://polygon.example/rpc' },
+      baseRpc: { httpUrl: 'https://base.example/rpc' },
+      fetch: async (_input, init) => {
+        const request = JSON.parse(String(init?.body)) as { readonly id: number }
+        return new Response(JSON.stringify({
+          jsonrpc: '2.0',
+          id: request.id,
+          ...(mode === 'wrong-result'
+            ? { result: 123 }
+            : { result: '0x1', error: 'malformed' }),
+        }))
+      },
+    })
+
+    await expect(client.polygon.rpc.eth_chainId().send())
+      .rejects.toBeInstanceOf(ErpcInvalidResponseError)
+    mode = 'malformed-error'
+    await expect(client.polygon.rpc.eth_chainId().send())
+      .rejects.toBeInstanceOf(ErpcInvalidResponseError)
+
+    mode = 'wrong-result'
+    await expect(client.base.rpc.eth_chainId().send()).resolves.toBe(123 as never)
     client.close()
   })
 })

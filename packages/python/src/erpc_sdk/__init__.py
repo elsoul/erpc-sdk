@@ -12,6 +12,16 @@ from ._swap_execution_capabilities_data import (
     SWAP_EXECUTION_FUNCTION_SELECTOR,
     SWAP_EXECUTION_FUNCTION_SIGNATURE,
 )
+from .arbitrum import ARBITRUM_RPC_METHODS, ArbitrumClient, ArbitrumRpcClient
+from .arc import ARC_RPC_METHODS, ArcClient, ArcRpcClient
+from .base import BASE_RPC_METHODS, BaseClient, BaseRpcClient
+from .bitcoin import (
+    BITCOIN_RPC_METHODS,
+    BitcoinClient,
+    BitcoinPendingRequest,
+    BitcoinRpcClient,
+)
+from .bitcoin_codec import BitcoinJsonValue
 from .bridge import (
     BRIDGE_ERROR_MESSAGES,
     BridgeClient,
@@ -56,6 +66,7 @@ from .bridge_local import (
     MayanSwiftV2LocalSourceSwapSolanaJupiter,
     MayanSwiftV2SourceSwapPlan,
 )
+from .bsc import BSC_RPC_METHODS, BscClient, BscRpcClient
 from .client import (
     AvalancheClient,
     AvalancheIndexClient,
@@ -68,13 +79,28 @@ from .client import (
 )
 from .config import (
     DEFAULT_ACCOUNT_ENDPOINT,
+    DEFAULT_ARBITRUM_ENDPOINT,
+    DEFAULT_ARC_ENDPOINT,
     DEFAULT_AVALANCHE_ENDPOINT,
+    DEFAULT_BASE_ENDPOINT,
+    DEFAULT_BSC_ENDPOINT,
     DEFAULT_ENDPOINT,
+    DEFAULT_HYPERLIQUID_ENDPOINT,
+    DEFAULT_KAIA_ENDPOINT,
+    DEFAULT_MONAD_ENDPOINT,
+    DEFAULT_NEAR_ENDPOINT,
+    DEFAULT_OPTIMISM_ENDPOINT,
+    DEFAULT_POLYGON_ENDPOINT,
+    DEFAULT_ROBINHOOD_ENDPOINT,
+    DEFAULT_SONEIUM_ENDPOINT,
+    DEFAULT_SUI_ENDPOINT,
     DEFAULT_TIMEOUT,
+    DEFAULT_TRON_ENDPOINT,
     DEFAULT_USER_ENDPOINT,
     ErpcClientConfig,
     ErpcCloudClientConfig,
     RpcEndpointConfig,
+    SuiGrpcWebEndpointConfig,
 )
 from .dex_catalog import (
     DEX_ALIASES,
@@ -117,6 +143,27 @@ from .errors import (
     ErpcTimeoutError,
     ErpcTransportError,
 )
+from .hyperliquid import HYPERLIQUID_RPC_METHODS, HyperliquidClient, HyperliquidRpcClient
+from .kaia import KAIA_RPC_METHODS, KaiaClient, KaiaRpcClient
+from .monad import MONAD_RPC_METHODS, MonadClient, MonadRpcClient
+from .near import (
+    NEAR_RPC_METHODS,
+    NearAccountView,
+    NearBlockHeader,
+    NearBlockId,
+    NearBlockReference,
+    NearBlockView,
+    NearClient,
+    NearFinality,
+    NearJsonValue,
+    NearNodeVersion,
+    NearPendingRequest,
+    NearRpcClient,
+    NearStatus,
+    NearSyncInfo,
+)
+from .optimism import OPTIMISM_RPC_METHODS, OptimismClient, OptimismRpcClient
+from .polygon import POLYGON_RPC_METHODS, PolygonClient, PolygonRpcClient
 from .rest import (
     AccountClient,
     CloudCatalogClient,
@@ -125,6 +172,7 @@ from .rest import (
     PriceClient,
     UsageClient,
 )
+from .robinhood import ROBINHOOD_RPC_METHODS, RobinhoodClient, RobinhoodRpcClient
 from .rpc import (
     AVALANCHE_AVAX_METHODS,
     AVALANCHE_INDEX_METHODS,
@@ -144,11 +192,22 @@ from .rpc import (
     PendingRpcRequest,
     RpcNamespace,
 )
+from .soneium import SONEIUM_RPC_METHODS, SoneiumClient, SoneiumRpcClient
 from .subscriptions import (
     EthereumSubscriptions,
     RpcSubscription,
     SolanaSubscriptions,
     WebSocketJsonRpcTransport,
+)
+from .sui import (
+    SUI_GRPC_WEB_CONTENT_TYPE,
+    SUI_GRPC_WEB_METHODS,
+    PendingSuiGrpcWebRequest,
+    SuiBalance,
+    SuiClient,
+    SuiGrpcWebClient,
+    SuiObjectSummary,
+    SuiServiceInfo,
 )
 from .swap import (
     SWAP_EXECUTION_ERROR_MESSAGES,
@@ -220,9 +279,10 @@ from .token_rankings import (
     list_token_rankings,
 )
 from .transport import HttpJsonRpcTransport
+from .tron import TRON_RPC_METHODS, TronClient, TronRpcClient
 from .types import *  # noqa: F403
 
-__version__ = "0.9.1"
+__version__ = "0.11.0"
 
 __all__ = [
     "AVALANCHE_AVAX_METHODS",
@@ -231,9 +291,28 @@ __all__ = [
     "AVALANCHE_P_CHAIN_METHODS",
     "AVALANCHE_PROPOSER_VM_METHODS",
     "AVALANCHE_X_CHAIN_METHODS",
+    "ARBITRUM_RPC_METHODS",
+    "ARC_RPC_METHODS",
+    "BASE_RPC_METHODS",
+    "BSC_RPC_METHODS",
+    "BITCOIN_RPC_METHODS",
     "DEFAULT_ACCOUNT_ENDPOINT",
+    "DEFAULT_ARBITRUM_ENDPOINT",
     "DEFAULT_AVALANCHE_ENDPOINT",
+    "DEFAULT_BASE_ENDPOINT",
+    "DEFAULT_BSC_ENDPOINT",
     "DEFAULT_ENDPOINT",
+    "DEFAULT_POLYGON_ENDPOINT",
+    "DEFAULT_OPTIMISM_ENDPOINT",
+    "DEFAULT_KAIA_ENDPOINT",
+    "DEFAULT_SONEIUM_ENDPOINT",
+    "DEFAULT_MONAD_ENDPOINT",
+    "DEFAULT_HYPERLIQUID_ENDPOINT",
+    "DEFAULT_ARC_ENDPOINT",
+    "DEFAULT_ROBINHOOD_ENDPOINT",
+    "DEFAULT_NEAR_ENDPOINT",
+    "DEFAULT_TRON_ENDPOINT",
+    "DEFAULT_SUI_ENDPOINT",
     "DEFAULT_TIMEOUT",
     "DEFAULT_USER_ENDPOINT",
     "DEX_ALIASES",
@@ -252,8 +331,12 @@ __all__ = [
     "SOLANA_LEADER_METHODS",
     "SOLANA_RPC_METHODS",
     "AccountClient",
+    "ArbitrumClient",
+    "ArbitrumRpcClient",
     "AvalancheClient",
     "AvalancheIndexClient",
+    "BaseClient",
+    "BaseRpcClient",
     "BRIDGE_CAPABILITIES_AS_OF_DATE",
     "BRIDGE_CAPABILITIES_CONTENT_DIGEST",
     "BRIDGE_CAPABILITIES_JSON",
@@ -262,11 +345,24 @@ __all__ = [
     "BridgeError",
     "BridgeErrorCode",
     "BridgeRequestOptions",
+    "BitcoinClient",
+    "BitcoinJsonValue",
+    "BitcoinPendingRequest",
+    "BitcoinRpcClient",
     "CloudCatalogClient",
     "CloudCreditClient",
     "CloudResourcesClient",
     "EthereumClient",
     "EthereumSubscriptions",
+    "HYPERLIQUID_RPC_METHODS",
+    "KAIA_RPC_METHODS",
+    "MONAD_RPC_METHODS",
+    "NEAR_RPC_METHODS",
+    "OPTIMISM_RPC_METHODS",
+    "POLYGON_RPC_METHODS",
+    "ROBINHOOD_RPC_METHODS",
+    "SONEIUM_RPC_METHODS",
+    "TRON_RPC_METHODS",
     "ErpcAbortedError",
     "ErpcBatchPolicyError",
     "ErpcClient",
@@ -282,6 +378,48 @@ __all__ = [
     "ErpcNotConfiguredError",
     "ErpcTimeoutError",
     "ErpcTransportError",
+    "ArcClient",
+    "ArcRpcClient",
+    "BscClient",
+    "BscRpcClient",
+    "HyperliquidClient",
+    "HyperliquidRpcClient",
+    "KaiaClient",
+    "KaiaRpcClient",
+    "MonadClient",
+    "MonadRpcClient",
+    "NearAccountView",
+    "NearBlockHeader",
+    "NearBlockId",
+    "NearBlockReference",
+    "NearBlockView",
+    "NearClient",
+    "NearFinality",
+    "NearJsonValue",
+    "NearNodeVersion",
+    "NearPendingRequest",
+    "NearRpcClient",
+    "NearStatus",
+    "NearSyncInfo",
+    "OptimismClient",
+    "OptimismRpcClient",
+    "PolygonClient",
+    "PolygonRpcClient",
+    "RobinhoodClient",
+    "RobinhoodRpcClient",
+    "SoneiumClient",
+    "SoneiumRpcClient",
+    "SuiBalance",
+    "SuiClient",
+    "SuiGrpcWebClient",
+    "SuiGrpcWebEndpointConfig",
+    "SuiObjectSummary",
+    "SuiServiceInfo",
+    "PendingSuiGrpcWebRequest",
+    "SUI_GRPC_WEB_CONTENT_TYPE",
+    "SUI_GRPC_WEB_METHODS",
+    "TronClient",
+    "TronRpcClient",
     "SWAP_EXECUTION_CAPABILITIES_AS_OF_DATE",
     "SWAP_EXECUTION_CAPABILITIES_CONTENT_DIGEST",
     "SWAP_EXECUTION_CAPABILITIES_JSON",

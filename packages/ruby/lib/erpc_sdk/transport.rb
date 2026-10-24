@@ -9,6 +9,7 @@ require "uri"
 
 module ERPC
   HttpResponse = Struct.new(:status, :body, keyword_init: true)
+  HttpStreamResponse = Struct.new(:status, :body, :close, keyword_init: true)
 
   class NetHttpAdapter
     def request(method:, url:, headers:, body: nil, timeout: DEFAULT_TIMEOUT)
@@ -42,6 +43,33 @@ module ERPC
       rescue IOError, EOFError, SocketError, SystemCallError, OpenSSL::SSL::SSLError
         raise TransportError, "Unable to reach ERPC", cause: nil
       end
+    end
+
+    # Execute a POST and yield the HTTP status plus an incremental body
+    # enumerator while Net::HTTP still owns the open response. Consumers must
+    # drain the enumerator inside the block; returning from the block closes
+    # the response and connection. This capability is intentionally additive;
+    # request and stream retain their released behavior.
+    def request_stream(method:, url:, headers:, body:, timeout: DEFAULT_TIMEOUT)
+      raise ArgumentError, "request_stream requires a block" unless block_given?
+
+      uri = URI.parse(url)
+      request = request_class(method).new(uri.request_uri, headers)
+      request.body = body unless body.nil?
+      result = nil
+      start(uri, timeout) do |http|
+        http.request(request) do |response|
+          chunks = Enumerator.new do |yielder|
+            response.read_body { |chunk| yielder << chunk }
+          end
+          result = yield(response.code.to_i, chunks, response.to_hash)
+        end
+      end
+      result
+    rescue Net::OpenTimeout, Net::ReadTimeout, Net::WriteTimeout
+      raise TimeoutError, timeout, cause: nil
+    rescue IOError, EOFError, SocketError, SystemCallError, OpenSSL::SSL::SSLError
+      raise TransportError, "Unable to reach ERPC", cause: nil
     end
 
     private

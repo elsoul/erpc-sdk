@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
-import { chmod, cp, mkdir, mkdtemp, readFile, rename, rm, stat, symlink, writeFile } from 'node:fs/promises'
+import { chmod, cp, mkdir, mkdtemp, readFile, readdir, rename, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -18,14 +18,20 @@ import {
   CURRENT_RUST_VERSION,
   RUST_011_CLIENT_MODULES,
   RUST_011_LICENSE_HASHES,
+  RUST_011_REUSE_SHA256,
+  RUST_011_REUSE_SIZE,
+  RUST_011_REUSE_SOURCE,
   RUST_011_REQUIRED_EXAMPLES,
   RUST_011_REQUIRED_TESTS,
   RUST_011_SUI_MEMBERS,
   RELEASE_SET_ARTIFACT_KINDS,
   RELEASE_SET_KIND,
   RELEASE_SET_PUBLIC_ASSET_ROLES,
+  RELEASE_SET_NON_RUST_LICENSE_PROFILE,
+  RELEASE_SET_NON_RUST_PROFILE,
   RELEASE_SET_SCHEMA_VERSION,
   buildReleaseSetPlan,
+  classifyReleaseSetPreflight,
   buildFoundationPlan,
   buildGoInventory,
   classifyRegistryResponse,
@@ -34,6 +40,7 @@ import {
   describeFoundationArtifacts,
   findLocalCargoPackage,
   parseReleaseArguments,
+  prepareReleaseSetBundle,
   readReleaseData,
   sha256Hex,
   validateReleaseData,
@@ -51,11 +58,14 @@ import {
   observePyPIRelease,
   observeRubyGemsRelease,
   observeGoModule,
+  observeGitHubRelease,
   observeRustArtifact,
   parseReleaseSetChecksums,
   releaseSetPlanDigest,
   sha256File,
   validateReleaseSetContext,
+  validateReleaseSetCIEvidence,
+  validateReleaseSetTemplateIdentity,
   validateReleaseSetPlan,
   validateReleaseSetPreparationBinding,
   validateReleaseSetPreparationMetadata,
@@ -436,6 +446,21 @@ test('bounded CI proof selects the newest exact-source attempt and rejects stale
   assert.throws(() => selectFoundationCIRun({ workflow, runs: { total_count: 1, workflow_runs: [{ ...successfulRuns.workflow_runs[1], event: 'pull_request' }] }, expected: { sourceCommit: sha } }), /ineligible|No eligible/)
 })
 
+test('schema2 preparation maps actual CI selection and proof into runtime plan identity', () => {
+  const workflow = { id: 77, path: '.github/workflows/ci.yml', url: 'https://api.github.com/repos/elsoul/erpc-sdk/actions/workflows/77' }
+  const run = { id: 101, run_attempt: 2, workflow_id: 77, path: '.github/workflows/ci.yml', repository: { full_name: 'elsoul/erpc-sdk', id: 1429568627 }, head_sha: sha, head_branch: 'main', event: 'push', status: 'completed', conclusion: 'success', created_at: '2026-10-22T00:01:00Z' }
+  const evidence = {
+    workflow,
+    runs: { total_count: 1, workflow_runs: [run] },
+    selection: { id: 101, runAttempt: 2, workflowId: 77, sourceCommit: sha, event: 'push', headBranch: 'main' },
+    recheck: { id: 101, run_attempt: 2, head_sha: sha, head_branch: 'main', status: 'completed', conclusion: 'success' },
+    jobs: { total_count: 1, jobs: [{ id: 202, name: 'required-ci', status: 'completed', conclusion: 'success', run_id: 101, run_attempt: 2, head_sha: sha, repository_id: 1429568627 }] },
+  }
+  const proof = validateReleaseSetCIEvidence(evidence, sha)
+  assert.deepEqual(proof, { workflowPath: '.github/workflows/ci.yml', sourceCommit: sha, runId: '101', runAttempt: '2', jobId: '202', requiredJob: 'required-ci', event: 'push', headBranch: 'main', status: 'completed', conclusion: 'success' })
+  assert.throws(() => validateReleaseSetCIEvidence(evidence, 'c'.repeat(40)), /No eligible|source mismatch/)
+})
+
 test('registry classification distinguishes absent, match, conflict, yanked, malformed, and HTTP failure', () => {
   const response = JSON.stringify({
     version: { crate: 'erpc-sdk', num: '0.10.0', checksum: hash, yanked: false },
@@ -510,20 +535,28 @@ test('checkpoint A ingests genuine future archives, binds context/API metadata, 
 
   const npmRoot = join(directory, 'npm-root')
   await mkdir(join(npmRoot, 'package', 'dist'), { recursive: true })
-  await writeFile(join(npmRoot, 'package', 'package.json'), JSON.stringify({ name: '@elsoul/erpc-sdk', version }))
-  await writeFile(join(npmRoot, 'package', 'LICENSE'), 'MIT\n')
+  await writeFile(join(npmRoot, 'package', 'package.json'), JSON.stringify({ name: '@elsoul/erpc-sdk', version, license: RELEASE_SET_NON_RUST_LICENSE_PROFILE }))
+  await cp(new URL('../packages/typescript/LICENSE', import.meta.url), join(npmRoot, 'package', 'LICENSE'))
+  await mkdir(join(npmRoot, 'package', 'LICENSES'), { recursive: true })
+  await cp(new URL('../packages/typescript/LICENSES/Apache-2.0.txt', import.meta.url), join(npmRoot, 'package', 'LICENSES', 'Apache-2.0.txt'))
+  await cp(new URL('../packages/typescript/LICENSES/BSD-3-Clause-Google-Protobuf.txt', import.meta.url), join(npmRoot, 'package', 'LICENSES', 'BSD-3-Clause-Google-Protobuf.txt'))
+  await cp(new URL('../packages/typescript/THIRD_PARTY_NOTICES.md', import.meta.url), join(npmRoot, 'package', 'THIRD_PARTY_NOTICES.md'))
   await writeFile(join(npmRoot, 'package', 'README.md'), '# SDK\n')
   await writeFile(join(npmRoot, 'package', 'dist', 'index.js'), 'module.exports = {}\n')
   const npmFile = join(bundle, `elsoul-erpc-sdk-${version}.tgz`)
   await execFileAsync('tar', ['-czf', npmFile, '-C', npmRoot, 'package'], { env: { ...process.env, COPYFILE_DISABLE: '1' } })
 
   const wheelFile = join(bundle, `erpc_sdk-${version}-py3-none-any.whl`)
-  await execFileAsync('python3', ['-c', 'import sys,zipfile; z=zipfile.ZipFile(sys.argv[1],"w"); z.writestr("erpc_sdk/__init__.py", "__version__ = \\\"0.11.0\\\"\\n"); z.writestr("erpc_sdk-0.11.0.dist-info/METADATA", "Name: erpc-sdk\\nVersion: 0.11.0\\n"); z.writestr("erpc_sdk-0.11.0.dist-info/LICENSE", "MIT\\n"); z.close()', wheelFile])
+  await execFileAsync('python3', ['-c', 'import sys,zipfile; wheel,license,apache,bsd,notice=sys.argv[1:]; z=zipfile.ZipFile(wheel,"w"); z.writestr("erpc_sdk/__init__.py", "__version__ = \\\"0.11.0\\\"\\n"); metadata="Metadata-Version: 2.4\\nName: erpc-sdk\\nVersion: 0.11.0\\nLicense-Expression: MIT AND Apache-2.0 AND BSD-3-Clause\\n" + "License-File: LICENSE\\nLicense-File: LICENSES/Apache-2.0.txt\\nLicense-File: LICENSES/BSD-3-Clause-Google-Protobuf.txt\\nLicense-File: THIRD_PARTY_NOTICES.md\\n"; z.writestr("erpc_sdk-0.11.0.dist-info/METADATA", metadata); z.write(license, "erpc_sdk-0.11.0.dist-info/LICENSE"); z.write(apache, "erpc_sdk-0.11.0.dist-info/LICENSES/Apache-2.0.txt"); z.write(bsd, "erpc_sdk-0.11.0.dist-info/LICENSES/BSD-3-Clause-Google-Protobuf.txt"); z.write(notice, "erpc_sdk-0.11.0.dist-info/THIRD_PARTY_NOTICES.md"); z.close()', wheelFile, join(root.pathname, 'packages/python/LICENSE'), join(npmRoot, 'package', 'LICENSES', 'Apache-2.0.txt'), join(npmRoot, 'package', 'LICENSES', 'BSD-3-Clause-Google-Protobuf.txt'), join(root.pathname, 'packages/python/THIRD_PARTY_NOTICES.md')])
 
   const sdistRoot = join(directory, 'sdist-root', `erpc_sdk-${version}`)
   await mkdir(sdistRoot, { recursive: true })
-  await writeFile(join(sdistRoot, 'PKG-INFO'), `Name: erpc-sdk\nVersion: ${version}\n`)
-  await writeFile(join(sdistRoot, 'LICENSE'), 'MIT\n')
+  await writeFile(join(sdistRoot, 'PKG-INFO'), `Metadata-Version: 2.4\nName: erpc-sdk\nVersion: ${version}\nLicense-Expression: MIT AND Apache-2.0 AND BSD-3-Clause\nLicense-File: LICENSE\nLicense-File: LICENSES/Apache-2.0.txt\nLicense-File: LICENSES/BSD-3-Clause-Google-Protobuf.txt\nLicense-File: THIRD_PARTY_NOTICES.md\n`)
+  await cp(new URL('../packages/python/LICENSE', import.meta.url), join(sdistRoot, 'LICENSE'))
+  await mkdir(join(sdistRoot, 'LICENSES'), { recursive: true })
+  await cp(join(npmRoot, 'package', 'LICENSES', 'Apache-2.0.txt'), join(sdistRoot, 'LICENSES', 'Apache-2.0.txt'))
+  await cp(join(npmRoot, 'package', 'LICENSES', 'BSD-3-Clause-Google-Protobuf.txt'), join(sdistRoot, 'LICENSES', 'BSD-3-Clause-Google-Protobuf.txt'))
+  await cp(new URL('../packages/python/THIRD_PARTY_NOTICES.md', import.meta.url), join(sdistRoot, 'THIRD_PARTY_NOTICES.md'))
   await writeFile(join(sdistRoot, 'erpc_sdk.py'), '__version__ = "0.11.0"\n')
   const sdistFile = join(bundle, `erpc_sdk-${version}.tar.gz`)
   await execFileAsync('tar', ['-czf', sdistFile, '-C', join(directory, 'sdist-root'), `erpc_sdk-${version}`], { env: { ...process.env, COPYFILE_DISABLE: '1' } })
@@ -531,16 +564,20 @@ test('checkpoint A ingests genuine future archives, binds context/API metadata, 
   const gemRoot = join(directory, 'gem-root')
   await mkdir(join(gemRoot, 'lib', 'erpc_sdk'), { recursive: true })
   await writeFile(join(gemRoot, 'lib', 'erpc_sdk.rb'), 'module ERPC; VERSION = "0.11.0"; end\n')
-  await writeFile(join(gemRoot, 'LICENSE'), 'MIT\n')
+  await cp(new URL('../packages/ruby/LICENSE', import.meta.url), join(gemRoot, 'LICENSE'))
+  await mkdir(join(gemRoot, 'LICENSES'), { recursive: true })
+  await cp(join(npmRoot, 'package', 'LICENSES', 'Apache-2.0.txt'), join(gemRoot, 'LICENSES', 'Apache-2.0.txt'))
+  await cp(join(npmRoot, 'package', 'LICENSES', 'BSD-3-Clause-Google-Protobuf.txt'), join(gemRoot, 'LICENSES', 'BSD-3-Clause-Google-Protobuf.txt'))
+  await cp(new URL('../packages/ruby/THIRD_PARTY_NOTICES.md', import.meta.url), join(gemRoot, 'THIRD_PARTY_NOTICES.md'))
   await writeFile(join(gemRoot, 'README.md'), '# SDK\n')
   await writeFile(join(gemRoot, 'erpc-sdk.gemspec'), `Gem::Specification.new do |spec|
   spec.name = 'erpc-sdk'
   spec.version = '0.11.0'
   spec.summary = 'checkpoint A fixture'
   spec.authors = ['fixture']
-  spec.files = Dir['lib/**/*.rb'].sort + %w[LICENSE README.md]
+  spec.files = Dir['lib/**/*.rb'].sort + %w[LICENSE README.md THIRD_PARTY_NOTICES.md LICENSES/Apache-2.0.txt LICENSES/BSD-3-Clause-Google-Protobuf.txt]
   spec.require_paths = ['lib']
-  spec.license = 'MIT'
+  spec.licenses = ['MIT', 'Apache-2.0', 'BSD-3-Clause']
 end
 `)
   await execFileAsync('gem', ['build', 'erpc-sdk.gemspec'], { cwd: gemRoot })
@@ -558,13 +595,19 @@ end
 
   const digest = async file => sha256Hex(await readFile(file))
   const artifacts = [
-    { kind: 'npm', filename: `elsoul-erpc-sdk-${version}.tgz`, name: '@elsoul/erpc-sdk', version, sha256: await digest(npmFile), files: ['package', 'package/dist', 'package/LICENSE', 'package/README.md', 'package/dist/index.js', 'package/package.json'] },
-    { kind: 'pypi-wheel', filename: `erpc_sdk-${version}-py3-none-any.whl`, name: 'erpc-sdk', version, sha256: await digest(wheelFile), files: ['erpc_sdk-0.11.0.dist-info/LICENSE', 'erpc_sdk-0.11.0.dist-info/METADATA', 'erpc_sdk/__init__.py'] },
-    { kind: 'pypi-sdist', filename: `erpc_sdk-${version}.tar.gz`, name: 'erpc-sdk', version, sha256: await digest(sdistFile), files: [`erpc_sdk-${version}`, `erpc_sdk-${version}/LICENSE`, `erpc_sdk-${version}/PKG-INFO`, `erpc_sdk-${version}/erpc_sdk.py`] },
-    { kind: 'rubygems', filename: `erpc-sdk-${version}.gem`, name: 'erpc-sdk', version, sha256: await digest(gemFile), files: ['LICENSE', 'README.md', 'lib/erpc_sdk.rb'] },
+    { kind: 'npm', filename: `elsoul-erpc-sdk-${version}.tgz`, name: '@elsoul/erpc-sdk', version, sha256: await digest(npmFile), files: ['package', 'package/dist', 'package/LICENSE', 'package/README.md', 'package/LICENSES', 'package/LICENSES/Apache-2.0.txt', 'package/LICENSES/BSD-3-Clause-Google-Protobuf.txt', 'package/THIRD_PARTY_NOTICES.md', 'package/dist/index.js', 'package/package.json'] },
+    { kind: 'pypi-wheel', filename: `erpc_sdk-${version}-py3-none-any.whl`, name: 'erpc-sdk', version, sha256: await digest(wheelFile), files: ['erpc_sdk-0.11.0.dist-info/LICENSE', 'erpc_sdk-0.11.0.dist-info/LICENSES/Apache-2.0.txt', 'erpc_sdk-0.11.0.dist-info/LICENSES/BSD-3-Clause-Google-Protobuf.txt', 'erpc_sdk-0.11.0.dist-info/THIRD_PARTY_NOTICES.md', 'erpc_sdk-0.11.0.dist-info/METADATA', 'erpc_sdk/__init__.py'] },
+    { kind: 'pypi-sdist', filename: `erpc_sdk-${version}.tar.gz`, name: 'erpc-sdk', version, sha256: await digest(sdistFile), files: [`erpc_sdk-${version}`, `erpc_sdk-${version}/LICENSE`, `erpc_sdk-${version}/LICENSES`, `erpc_sdk-${version}/LICENSES/Apache-2.0.txt`, `erpc_sdk-${version}/LICENSES/BSD-3-Clause-Google-Protobuf.txt`, `erpc_sdk-${version}/THIRD_PARTY_NOTICES.md`, `erpc_sdk-${version}/PKG-INFO`, `erpc_sdk-${version}/erpc_sdk.py`] },
+    { kind: 'rubygems', filename: `erpc-sdk-${version}.gem`, name: 'erpc-sdk', version, sha256: await digest(gemFile), files: ['LICENSE', 'README.md', 'THIRD_PARTY_NOTICES.md', 'LICENSES/Apache-2.0.txt', 'LICENSES/BSD-3-Clause-Google-Protobuf.txt', 'lib/erpc_sdk.rb'] },
   ]
   const rustSha = await digest(crateFile)
-  const inventoryFiles = [{ path: 'LICENSE', sha256: '5'.repeat(64) }, { path: 'go.mod', sha256: '6'.repeat(64) }]
+  const inventoryFiles = [
+    { path: 'LICENSE', sha256: '5'.repeat(64) },
+    { path: 'LICENSES/Apache-2.0.txt', sha256: '7'.repeat(64) },
+    { path: 'LICENSES/BSD-3-Clause-Google-Protobuf.txt', sha256: '8'.repeat(64) },
+    { path: 'THIRD_PARTY_NOTICES.md', sha256: '9'.repeat(64) },
+    { path: 'go.mod', sha256: '6'.repeat(64) },
+  ]
   const inventory = { files: inventoryFiles, inventorySha256: sha256Hex(canonicalJson(inventoryFiles)) }
   const publicAssets = [
     ...RELEASE_SET_ARTIFACT_KINDS.map(role => ({ role, filename: artifacts.find(artifact => artifact.kind === role).filename })),
@@ -582,8 +625,37 @@ end
     tags: { release: 'non-rust-v0.11.0', go: 'packages/go/v0.11.0', commit: sourceCommit },
     githubRelease: { title: 'SDK release set: non-Rust 0.11.0 / Rust 0.11.0', tag: 'non-rust-v0.11.0', body: '# Future release\n', bodySha256: sha256Hex('# Future release\n') },
     approval: { environments: { npm: 'npm', pypi: 'pypi', rubygems: 'rubygems', cratesIo: 'crates-io' }, effects: ['publish npm', 'publish PyPI', 'publish RubyGems', 'create tags', 'create GitHub Release'], publicAssets, bundleFiles: [...artifacts.map(artifact => artifact.filename), `erpc-sdk-${version}.crate`, 'release-set-plan.json', 'release-set-plan.sha256', 'release-body.md', 'go-inventory.json', 'checksums.txt'] },
-    licenseProfile: { nonRust: 'MIT', rust: 'MIT AND Apache-2.0' }, toolchain: { node: '24', python: '3.12', go: '1.22', ruby: '3.1', rust: '1.85.0' },
+    licenseProfile: { nonRust: RELEASE_SET_NON_RUST_LICENSE_PROFILE, rust: 'MIT AND Apache-2.0' }, toolchain: { node: '24', python: '3.12', go: '1.22', ruby: '3.1', rust: '1.85.0' },
   })
+  const wheelArtifact = artifacts.find(artifact => artifact.kind === 'pypi-wheel')
+  const sdistArtifact = artifacts.find(artifact => artifact.kind === 'pypi-sdist')
+  const rubyArtifact = artifacts.find(artifact => artifact.kind === 'rubygems')
+  const npmBody = JSON.stringify({ name: '@elsoul/erpc-sdk', version, dist: { tarball: `https://registry.npmjs.org/@elsoul/erpc-sdk/-/erpc-sdk-${version}.tgz`, integrity: `sha512-${Buffer.alloc(64, 0xaa).toString('base64')}` } })
+  const npmFullBody = JSON.stringify({ name: '@elsoul/erpc-sdk', versions: { [version]: JSON.parse(npmBody) } })
+  const npmMatchResponse = { status: 200, body: npmBody, fullStatus: 200, fullBody: npmFullBody, fullRecheckStatus: 200, fullRecheckBody: npmFullBody }
+  const npmAbsentResponse = { status: 404, body: '', fullStatus: 404, fullBody: '', fullRecheckStatus: 404, fullRecheckBody: '', absenceGate: true }
+  const npmFreshFullBody = JSON.stringify({ name: '@elsoul/erpc-sdk', versions: { '0.9.1': { name: '@elsoul/erpc-sdk', version: '0.9.1' } } })
+  const npmFreshVersionAbsentResponse = { status: 404, body: '', fullStatus: 200, fullBody: npmFreshFullBody, fullRecheckStatus: 200, fullRecheckBody: npmFreshFullBody, absenceGate: true }
+  const pypiBody = JSON.stringify({ info: { name: 'erpc-sdk', version }, urls: [
+    { filename: wheelArtifact.filename, url: `https://files.pythonhosted.org/packages/fixture/${wheelArtifact.filename}`, packagetype: 'bdist_wheel', yanked: false, digests: { sha256: wheelArtifact.sha256 } },
+    { filename: sdistArtifact.filename, url: `https://files.pythonhosted.org/packages/fixture/${sdistArtifact.filename}`, packagetype: 'sdist', yanked: false, digests: { sha256: sdistArtifact.sha256 } },
+  ] })
+  const rubyBody = JSON.stringify({ name: 'erpc-sdk', version, platform: 'ruby', sha: rubyArtifact.sha256, yanked: false })
+  const preflight = classifyReleaseSetPreflight({ plan, responses: { npm: npmMatchResponse, pypi: { status: 200, body: pypiBody }, rubygems: { status: 200, body: rubyBody } } })
+  assert.deepEqual(Object.fromEntries(Object.entries(preflight.registries).map(([registry, value]) => [registry, value.state])), { npm: 'match', pypi: 'match', rubygems: 'match' })
+  const absent = classifyReleaseSetPreflight({ plan, responses: { npm: npmAbsentResponse, pypi: { status: 404, body: '', absenceGate: true }, rubygems: { status: 404, body: '', absenceGate: true } } })
+  assert.deepEqual(Object.fromEntries(Object.entries(absent.registries).map(([registry, value]) => [registry, value.state])), { npm: 'absent', pypi: 'absent', rubygems: 'absent' })
+  const freshVersionAbsent = classifyReleaseSetPreflight({ plan, responses: { npm: npmFreshVersionAbsentResponse, pypi: { status: 404, body: '', absenceGate: true }, rubygems: { status: 404, body: '', absenceGate: true } } })
+  assert.equal(freshVersionAbsent.registries.npm.state, 'absent')
+  const partialPyPI = classifyReleaseSetPreflight({ plan, responses: { npm: npmAbsentResponse, pypi: { status: 200, body: JSON.stringify({ info: { name: 'erpc-sdk', version }, urls: JSON.parse(pypiBody).urls.slice(0, 1) }) }, rubygems: { status: 404, body: '', absenceGate: true } } })
+  assert.equal(partialPyPI.registries.pypi.state, 'partial')
+  assert.throws(() => classifyReleaseSetPreflight({ plan, responses: { npm: { ...npmMatchResponse, body: npmBody.replace(/sha512-[^"]+/, 'sha512-QQ==') }, pypi: { status: 404, body: '', absenceGate: true }, rubygems: { status: 404, body: '', absenceGate: true } } }), /preflight stopped/)
+  assert.throws(() => classifyReleaseSetPreflight({ plan, responses: { npm: npmAbsentResponse, pypi: { status: 404, body: '' }, rubygems: { status: 404, body: '', absenceGate: true } } }), /absence-gate/)
+  assert.throws(() => classifyReleaseSetPreflight({ plan, responses: { npm: npmAbsentResponse, pypi: { status: 404, body: '', absenceGate: true }, rubygems: { status: 200, body: JSON.stringify({ name: 'erpc-sdk', version, platform: 'ruby', sha: rubyArtifact.sha256, yanked: true }) } } }), /preflight stopped/)
+  const rubyOptional = classifyReleaseSetPreflight({ plan, responses: { npm: npmAbsentResponse, pypi: { status: 404, body: '', absenceGate: true }, rubygems: { status: 200, body: JSON.stringify({ name: 'erpc-sdk', version, platform: 'ruby', sha: rubyArtifact.sha256 }) } } })
+  assert.equal(rubyOptional.registries.rubygems.state, 'match')
+  assert.throws(() => classifyReleaseSetPreflight({ plan, responses: { npm: npmMatchResponse, pypi: { status: 200, body: JSON.stringify({ info: { name: 'erpc-sdk', version }, urls: [] }) }, rubygems: { status: 404, body: '', absenceGate: true } } }), /incomplete/)
+  assert.throws(() => classifyReleaseSetPreflight({ plan, responses: { npm: { status: 503, body: '', fullStatus: 503, fullBody: '' }, pypi: { status: 404, body: '', absenceGate: true }, rubygems: { status: 404, body: '', absenceGate: true } } }), /unknown/)
   const historicalReuse = structuredClone(plan)
   historicalReuse.versions.rustVersion = '0.10.0'
   historicalReuse.rust = { mode: 'reuse', version: '0.10.0', sourceCommit: FOUNDATION_RUST_SOURCE, sha256: FOUNDATION_RUST_SHA256, reuse: { registry: 'crates.io', downloadUrl: 'https://crates.io/api/v1/crates/erpc-sdk/0.10.0/download', sourceCommit: FOUNDATION_RUST_SOURCE, sha256: FOUNDATION_RUST_SHA256, yanked: false } }
@@ -605,6 +677,72 @@ end
   const checksumFiles = [...plan.approval.bundleFiles].filter(file => file !== 'checksums.txt')
   await writeFile(join(bundle, 'checksums.txt'), `${(await Promise.all(checksumFiles.map(async file => `${await digest(join(bundle, file))}  ./${file}`))).join('\n')}\n`)
   assert.deepEqual((await ingestReleaseSetBundle({ plan, artifactDirectory: bundle })).prepared.map(item => item.filename).sort(), plan.approval.bundleFiles.filter(file => !['release-set-plan.json', 'release-set-plan.sha256', 'release-body.md', 'go-inventory.json', 'checksums.txt'].includes(file)).sort())
+  const releaseWorkflow = await readFile(new URL('../.github/workflows/release.yml', import.meta.url), 'utf8')
+  const preflightBlock = extractWorkflowRunBlock(releaseWorkflow, 'Preflight all release-set registries before protected publisher fanout')
+  const preflightFixtureDir = join(directory, 'cp2-preflight-fixtures')
+  await mkdir(preflightFixtureDir)
+  const preflightBodies = {
+    npm: JSON.stringify({ name: '@elsoul/erpc-sdk', version, dist: { tarball: `https://registry.npmjs.org/@elsoul/erpc-sdk/-/erpc-sdk-${version}.tgz`, integrity: `sha512-${Buffer.alloc(64, 0xaa).toString('base64')}` } }),
+    'npm-full': JSON.stringify({ name: '@elsoul/erpc-sdk', versions: { [version]: { name: '@elsoul/erpc-sdk', version, dist: { tarball: `https://registry.npmjs.org/@elsoul/erpc-sdk/-/erpc-sdk-${version}.tgz`, integrity: `sha512-${Buffer.alloc(64, 0xaa).toString('base64')}` } } } }),
+    'npm-full-old': JSON.stringify({ name: '@elsoul/erpc-sdk', versions: { '0.9.1': { name: '@elsoul/erpc-sdk', version: '0.9.1' } } }),
+    'npm-full-target': JSON.stringify({ name: '@elsoul/erpc-sdk', versions: { [version]: { name: '@elsoul/erpc-sdk', version, dist: { tarball: `https://registry.npmjs.org/@elsoul/erpc-sdk/-/erpc-sdk-${version}.tgz`, integrity: `sha512-${Buffer.alloc(64, 0xaa).toString('base64')}` } } } }),
+    'npm-full-foreign': JSON.stringify({ name: 'foreign-sdk', versions: { '0.9.1': { name: 'foreign-sdk', version: '0.9.1' } } }),
+    pypi: JSON.stringify({ info: { name: 'erpc-sdk', version }, urls: artifacts.filter(artifact => artifact.kind.startsWith('pypi')).map(artifact => ({ filename: artifact.filename, url: `https://files.pythonhosted.org/packages/fixture/${artifact.filename}`, packagetype: artifact.kind === 'pypi-wheel' ? 'bdist_wheel' : 'sdist', yanked: false, digests: { sha256: artifact.sha256 } })) }),
+    rubygems: JSON.stringify({ name: 'erpc-sdk', version, platform: 'ruby', sha: artifacts.find(artifact => artifact.kind === 'rubygems').sha256, yanked: false }),
+  }
+  for (const [name, body] of Object.entries(preflightBodies)) await writeFile(join(preflightFixtureDir, `${name}.json`), body)
+  const preflightCalls = join(preflightFixtureDir, 'calls.log')
+  const preflightCurl = join(preflightFixtureDir, 'curl')
+  await writeFile(preflightCurl, String.raw`#!/usr/bin/env node
+import { appendFileSync, readFileSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+const args = process.argv.slice(2)
+const output = args[args.indexOf('--output') + 1]
+const url = args.at(-1)
+const name = url.includes('registry.npmjs.org') ? (url.endsWith('/0.11.0') ? 'npm' : 'npm-full') : url.includes('pypi.org') ? 'pypi' : 'rubygems'
+const mode = process.env.FAKE_CURL_MODE
+const status = mode === 'absent' ? '404' : mode === 'new-version' ? (name === 'npm' ? '404' : name === 'npm-full' ? '200' : '404') : mode === 'target-appears' ? (name === 'npm' ? '404' : name === 'npm-full' ? '200' : '404') : '200'
+const fixture = mode === 'new-version' && name === 'npm-full' ? 'npm-full-old' : name
+const countFile = join(process.env.FAKE_CURL_FIXTURE_DIR, name + '.count'); let count = 0; try { count = Number(readFileSync(countFile, 'utf8')) } catch {} count += 1; writeFileSync(countFile, String(count))
+const selectedFixture = (mode === 'target-appears' || mode === 'foreign-recheck' || mode === 'malformed-recheck') && name === 'npm-full' ? (count >= 2 ? (mode === 'target-appears' ? 'npm-full-target' : mode === 'foreign-recheck' ? 'npm-full-foreign' : null) : 'npm-full-old') : fixture
+const body = mode === 'conflict' && name === 'npm' ? '{}' : mode === 'malformed-recheck' && name === 'npm-full' && count >= 2 ? Buffer.from('{malformed') : readFileSync(join(process.env.FAKE_CURL_FIXTURE_DIR, selectedFixture + '.json'))
+writeFileSync(output, body)
+appendFileSync(process.env.FAKE_CURL_CALLS, name + '\n')
+process.stdout.write(status)
+`)
+  await chmod(preflightCurl, 0o755)
+  const runPreflight = async (name, mode, succeeds) => {
+    const output = join(preflightFixtureDir, `${name}.json`)
+    await rm(join(preflightFixtureDir, 'npm-full.count'), { force: true })
+    await rm(join(preflightFixtureDir, 'npm.count'), { force: true })
+    const environment = { ...process.env, PATH: `${preflightFixtureDir}:${process.env.PATH ?? ''}`, RUNNER_TEMP: preflightFixtureDir, PLAN_FILE: join(bundle, 'release-set-plan.json'), PREFLIGHT_INPUT_FILE: join(preflightFixtureDir, `${name}-input.json`), PREFLIGHT_OUTPUT_FILE: output, RELEASE_USER_AGENT, FAKE_CURL_MODE: mode, FAKE_CURL_FIXTURE_DIR: preflightFixtureDir, FAKE_CURL_CALLS: preflightCalls }
+    const result = execFileAsync('bash', ['-c', `set -euo pipefail\n${preflightBlock}`], { cwd: root.pathname, env: environment })
+    if (succeeds) await result
+    else await assert.rejects(result)
+    return output
+  }
+  const preflightMatch = JSON.parse(await readFile(await runPreflight('match', 'match', true), 'utf8'))
+  assert.deepEqual(Object.fromEntries(Object.entries(preflightMatch.registries).map(([registry, value]) => [registry, value.state])), { npm: 'match', pypi: 'match', rubygems: 'match' })
+  const preflightAbsent = JSON.parse(await readFile(await runPreflight('absent', 'absent', true), 'utf8'))
+  assert.deepEqual(Object.fromEntries(Object.entries(preflightAbsent.registries).map(([registry, value]) => [registry, value.state])), { npm: 'absent', pypi: 'absent', rubygems: 'absent' })
+  const preflightNewVersion = JSON.parse(await readFile(await runPreflight('new-version', 'new-version', true), 'utf8'))
+  assert.equal(preflightNewVersion.registries.npm.state, 'absent')
+  await runPreflight('target-appears', 'target-appears', false)
+  await runPreflight('foreign-recheck', 'foreign-recheck', false)
+  await runPreflight('malformed-recheck', 'malformed-recheck', false)
+  await runPreflight('conflict', 'conflict', false)
+  assert.equal((await readFile(preflightCalls, 'utf8')).trim().split(/\r?\n/).filter(Boolean).length, 56)
+  const npmPreflightBlock = extractWorkflowRunBlock(releaseWorkflow, 'Recheck exact npm target and local upload bytes')
+  const originalNpmBytes = await readFile(npmFile)
+  await writeFile(npmFile, Buffer.concat([originalNpmBytes, Buffer.from('tampered-local-package-byte')]))
+  const npmEffectFile = join(preflightFixtureDir, 'npm-effect.log')
+  const npmDouble = join(preflightFixtureDir, 'npm')
+  await writeFile(npmDouble, `#!/bin/sh\nprintf '%s\\n' "$*" >> "$NPM_EFFECT_FILE"\n`)
+  await chmod(npmDouble, 0o755)
+  const tamperEnv = { ...process.env, PATH: `${preflightFixtureDir}:${process.env.PATH ?? ''}`, RUNNER_TEMP: preflightFixtureDir, PLAN_FILE: join(bundle, 'release-set-plan.json'), BUNDLE_DIR: bundle, RELEASE_USER_AGENT: RELEASE_USER_AGENT, FAKE_CURL_MODE: 'absent', FAKE_CURL_FIXTURE_DIR: preflightFixtureDir, FAKE_CURL_CALLS: preflightCalls, NPM_EFFECT_FILE: npmEffectFile, GITHUB_OUTPUT: join(preflightFixtureDir, 'npm-output') }
+  await assert.rejects(execFileAsync('bash', ['-c', `set +e\n${npmPreflightBlock}\nstatus=$?\nif [ "$status" -eq 0 ]; then npm publish "$BUNDLE_DIR/elsoul-erpc-sdk-${version}.tgz"; fi\nexit "$status"`], { cwd: root.pathname, env: tamperEnv }))
+  await assert.rejects(() => readFile(npmEffectFile, 'utf8'), { code: 'ENOENT' })
+  await writeFile(npmFile, originalNpmBytes)
   const plain = join(directory, 'plain.tgz')
   await writeFile(plain, 'This is not an archive\n')
   const plainDigest = await digest(plain)
@@ -630,6 +768,97 @@ end
   await writeFile(join(bindingDirectory, 'release-set-binding.json'), JSON.stringify(binding))
   await writeFile(planFile, `${canonicalJson(plan)}\n`)
   await writeFile(bindingFile, JSON.stringify(binding))
+  const prepareEvidenceFile = join(directory, 'prepare-evidence.json')
+  const prepareEnv = { RELEASE_SET_PLAN_FILE: planFile, RELEASE_SET_PLAN_SHA256: releaseSetPlanDigest(plan), RELEASE_SET_ARTIFACT_DIR: bundle, RELEASE_SET_GO_ROOT: join(directory, 'go-fixture'), RELEASE_SET_PREPARED_EVIDENCE_FILE: prepareEvidenceFile, REPOSITORY: 'elsoul/erpc-sdk', REPOSITORY_ID: '1429568627', EVENT_NAME: 'workflow_dispatch', EVENT_REF: 'refs/heads/main', EVENT_SHA: sourceCommit, EXPECTED_COMMIT: sourceCommit, CHECKOUT_HEAD: sourceCommit, CHECKOUT_STATUS: '', WORKFLOW_REF: 'elsoul/erpc-sdk/.github/workflows/release.yml@refs/heads/main', WORKFLOW_SHA: sourceCommit }
+  await mkdir(prepareEnv.RELEASE_SET_GO_ROOT, { recursive: true })
+  const goLicenseTexts = { license: await readFile(join(root.pathname, 'packages/go/LICENSE')), apache: await readFile(join(root.pathname, 'packages/go/LICENSES/Apache-2.0.txt')), bsd: await readFile(join(root.pathname, 'packages/go/LICENSES/BSD-3-Clause-Google-Protobuf.txt')), notice: await readFile(join(root.pathname, 'packages/go/THIRD_PARTY_NOTICES.md')), goMod: await readFile(join(root.pathname, 'packages/go/go.mod')) }
+  for (const file of ['go.mod', 'LICENSE', 'LICENSES/Apache-2.0.txt', 'LICENSES/BSD-3-Clause-Google-Protobuf.txt', 'THIRD_PARTY_NOTICES.md']) {
+    const target = join(prepareEnv.RELEASE_SET_GO_ROOT, file); await mkdir(join(target, '..'), { recursive: true }); await writeFile(target, file === 'go.mod' ? goLicenseTexts.goMod : file.includes('LICENSES/Apache') ? goLicenseTexts.apache : file.includes('BSD') ? goLicenseTexts.bsd : file.includes('THIRD') ? goLicenseTexts.notice : goLicenseTexts.license)
+  }
+  await runVerifierCli(['--release-set-prepare'], prepareEnv)
+  assert.equal(JSON.parse(await readFile(prepareEvidenceFile, 'utf8')).prepared, true)
+
+  const templateBundle = join(directory, 'template-bundle')
+  await mkdir(templateBundle)
+  for (const filename of plan.approval.bundleFiles.filter(file => !['release-set-plan.json', 'release-set-plan.sha256', 'release-body.md', 'go-inventory.json', 'checksums.txt'].includes(file))) await cp(join(bundle, filename), join(templateBundle, filename))
+  const template = structuredClone(plan)
+  template.artifacts = template.artifacts.map(artifact => ({ ...artifact, sha256: 'a'.repeat(64), files: ['unmeasured-placeholder'] }))
+  template.go.inventory = { files: [{ path: 'LICENSE', sha256: 'a'.repeat(64) }, { path: 'go.mod', sha256: 'b'.repeat(64) }], inventorySha256: 'c'.repeat(64) }
+  const templateFile = join(directory, 'plan-template.json')
+  await writeFile(templateFile, `${JSON.stringify(template)}\n`)
+  const ciRun = { id: 701, run_attempt: 2, workflow_id: 77, path: '.github/workflows/ci.yml', repository: { full_name: 'elsoul/erpc-sdk', id: 1429568627 }, head_sha: sourceCommit, head_branch: 'main', event: 'push', status: 'completed', conclusion: 'success', created_at: '2026-10-22T00:02:00Z' }
+  const ciEvidence = { workflow: { id: 77, path: '.github/workflows/ci.yml', url: 'https://api.github.com/repos/elsoul/erpc-sdk/actions/workflows/77' }, runs: { total_count: 1, workflow_runs: [ciRun] }, selection: { id: 701, runAttempt: 2, workflowId: 77, sourceCommit, event: 'push', headBranch: 'main' }, recheck: { id: 701, run_attempt: 2, head_sha: sourceCommit, head_branch: 'main', status: 'completed', conclusion: 'success' }, jobs: { total_count: 1, jobs: [{ id: 702, name: 'required-ci', status: 'completed', conclusion: 'success', run_id: 701, run_attempt: 2, head_sha: sourceCommit, repository_id: 1429568627 }] } }
+  const ciEvidenceFile = join(directory, 'ci-evidence.json')
+  await writeFile(ciEvidenceFile, `${JSON.stringify(ciEvidence)}\n`)
+  const templatePlanFile = join(templateBundle, 'release-set-plan.json')
+  const templateEvidenceFile = join(directory, 'template-prepared.json')
+  const templateEnv = { ...prepareEnv, RELEASE_SET_PLAN_FILE: templatePlanFile, RELEASE_SET_PLAN_TEMPLATE_FILE: templateFile, RELEASE_SET_ARTIFACT_DIR: templateBundle, RELEASE_SET_CI_EVIDENCE_FILE: ciEvidenceFile, RELEASE_SET_PLAN_SHA256: undefined, RELEASE_SET_PREPARED_EVIDENCE_FILE: templateEvidenceFile }
+  delete templateEnv.RELEASE_SET_PLAN_SHA256
+  await runVerifierCli(['--release-set-prepare'], templateEnv)
+  const measuredTemplatePlan = JSON.parse(await readFile(templatePlanFile, 'utf8'))
+  assert.equal(JSON.parse(await readFile(templateEvidenceFile, 'utf8')).prepared, true)
+  assert.equal(measuredTemplatePlan.ciProof.runId, '701')
+
+  const secondVersion = '0.12.0'
+  const secondBundle = join(directory, 'template-bundle-0.12')
+  await mkdir(secondBundle)
+  const secondNames = {
+    npm: `elsoul-erpc-sdk-${secondVersion}.tgz`,
+    'pypi-wheel': `erpc_sdk-${secondVersion}-py3-none-any.whl`,
+    'pypi-sdist': `erpc_sdk-${secondVersion}.tar.gz`,
+    rubygems: `erpc-sdk-${secondVersion}.gem`,
+  }
+  const secondNpmRoot = join(directory, 'npm-root-0.12')
+  await cp(npmRoot, secondNpmRoot, { recursive: true })
+  await writeFile(join(secondNpmRoot, 'package', 'package.json'), JSON.stringify({ name: '@elsoul/erpc-sdk', version: secondVersion, license: RELEASE_SET_NON_RUST_LICENSE_PROFILE }))
+  await execFileAsync('tar', ['-czf', join(secondBundle, secondNames.npm), '-C', secondNpmRoot, 'package'], { env: { ...process.env, COPYFILE_DISABLE: '1' } })
+  await execFileAsync('python3', ['-c', 'import sys,zipfile; wheel,version,license,apache,bsd,notice=sys.argv[1:]; root=f"erpc_sdk-{version}.dist-info"; z=zipfile.ZipFile(wheel,"w"); z.writestr("erpc_sdk/__init__.py", f"__version__ = \\"{version}\\"\\n"); z.writestr(f"{root}/METADATA", f"Metadata-Version: 2.4\\nName: erpc-sdk\\nVersion: {version}\\nLicense-Expression: MIT AND Apache-2.0 AND BSD-3-Clause\\nLicense-File: LICENSE\\nLicense-File: LICENSES/Apache-2.0.txt\\nLicense-File: LICENSES/BSD-3-Clause-Google-Protobuf.txt\\nLicense-File: THIRD_PARTY_NOTICES.md\\n"); z.write(license, f"{root}/LICENSE"); z.write(apache, f"{root}/LICENSES/Apache-2.0.txt"); z.write(bsd, f"{root}/LICENSES/BSD-3-Clause-Google-Protobuf.txt"); z.write(notice, f"{root}/THIRD_PARTY_NOTICES.md"); z.close()', join(secondBundle, secondNames['pypi-wheel']), secondVersion, join(root.pathname, 'packages/python/LICENSE'), join(root.pathname, 'packages/python/LICENSES/Apache-2.0.txt'), join(root.pathname, 'packages/python/LICENSES/BSD-3-Clause-Google-Protobuf.txt'), join(root.pathname, 'packages/python/THIRD_PARTY_NOTICES.md')])
+  const secondSdistRoot = join(directory, 'sdist-root-0.12', `erpc_sdk-${secondVersion}`)
+  await mkdir(secondSdistRoot, { recursive: true })
+  await writeFile(join(secondSdistRoot, 'PKG-INFO'), `Metadata-Version: 2.4\nName: erpc-sdk\nVersion: ${secondVersion}\nLicense-Expression: MIT AND Apache-2.0 AND BSD-3-Clause\nLicense-File: LICENSE\nLicense-File: LICENSES/Apache-2.0.txt\nLicense-File: LICENSES/BSD-3-Clause-Google-Protobuf.txt\nLicense-File: THIRD_PARTY_NOTICES.md\n`)
+  await cp(new URL('../packages/python/LICENSE', import.meta.url), join(secondSdistRoot, 'LICENSE'))
+  await mkdir(join(secondSdistRoot, 'LICENSES'), { recursive: true })
+  await cp(new URL('../packages/python/LICENSES/Apache-2.0.txt', import.meta.url), join(secondSdistRoot, 'LICENSES/Apache-2.0.txt'))
+  await cp(new URL('../packages/python/LICENSES/BSD-3-Clause-Google-Protobuf.txt', import.meta.url), join(secondSdistRoot, 'LICENSES/BSD-3-Clause-Google-Protobuf.txt'))
+  await cp(new URL('../packages/python/THIRD_PARTY_NOTICES.md', import.meta.url), join(secondSdistRoot, 'THIRD_PARTY_NOTICES.md'))
+  await writeFile(join(secondSdistRoot, 'erpc_sdk.py'), `__version__ = "${secondVersion}"\n`)
+  await execFileAsync('tar', ['-czf', join(secondBundle, secondNames['pypi-sdist']), '-C', join(directory, 'sdist-root-0.12'), `erpc_sdk-${secondVersion}`], { env: { ...process.env, COPYFILE_DISABLE: '1' } })
+  const secondGemRoot = join(directory, 'gem-root-0.12')
+  await cp(gemRoot, secondGemRoot, { recursive: true })
+  await rm(join(secondGemRoot, `erpc-sdk-${version}.gem`), { force: true })
+  await writeFile(join(secondGemRoot, 'lib', 'erpc_sdk.rb'), 'module ERPC; VERSION = "0.12.0"; end\n')
+  const secondGemspec = (await readFile(join(secondGemRoot, 'erpc-sdk.gemspec'), 'utf8')).replaceAll(version, secondVersion)
+  await writeFile(join(secondGemRoot, 'erpc-sdk.gemspec'), secondGemspec)
+  await execFileAsync('gem', ['build', 'erpc-sdk.gemspec'], { cwd: secondGemRoot })
+  await cp(join(secondGemRoot, secondNames.rubygems), join(secondBundle, secondNames.rubygems))
+  const template2 = structuredClone(template)
+  template2.versions = { nonRustVersion: secondVersion, rustVersion: CURRENT_RUST_VERSION }
+  template2.artifacts = RELEASE_SET_ARTIFACT_KINDS.map(kind => ({ ...template.artifacts.find(artifact => artifact.kind === kind), kind, filename: secondNames[kind], version: secondVersion, name: kind === 'npm' ? '@elsoul/erpc-sdk' : 'erpc-sdk', sha256: 'a'.repeat(64), files: ['unmeasured-placeholder'] }))
+  template2.go = { ...template.go, version: `v${secondVersion}`, tag: `packages/go/v${secondVersion}`, sourceCommit, inventory: template.go.inventory }
+  template2.rust = { mode: 'reuse', version: CURRENT_RUST_VERSION, sourceCommit: RUST_011_REUSE_SOURCE, sha256: RUST_011_REUSE_SHA256, reuse: { registry: 'crates.io', downloadUrl: `https://crates.io/api/v1/crates/erpc-sdk/${CURRENT_RUST_VERSION}/download`, sourceCommit: RUST_011_REUSE_SOURCE, sha256: RUST_011_REUSE_SHA256, sizeInBytes: RUST_011_REUSE_SIZE, yanked: false } }
+  template2.licenseProfile = { nonRust: RELEASE_SET_NON_RUST_LICENSE_PROFILE, rust: 'MIT AND Apache-2.0' }
+  template2.tags = { release: `non-rust-v${secondVersion}`, go: `packages/go/v${secondVersion}`, commit: sourceCommit }
+  template2.githubRelease = { title: `SDK release set: non-Rust ${secondVersion} / Rust ${CURRENT_RUST_VERSION}`, tag: `non-rust-v${secondVersion}`, body: template.githubRelease.body, bodySha256: template.githubRelease.bodySha256, latest: true }
+  template2.approval.publicAssets = template.approval.publicAssets.filter(asset => asset.role !== 'rust-crate').map(asset => RELEASE_SET_ARTIFACT_KINDS.includes(asset.role) ? { ...asset, filename: secondNames[asset.role] } : asset)
+  template2.approval.bundleFiles = [...RELEASE_SET_ARTIFACT_KINDS.map(kind => secondNames[kind]), 'release-set-plan.json', 'release-set-plan.sha256', 'release-body.md', 'go-inventory.json', 'checksums.txt']
+  const template2File = join(directory, 'plan-template-0.12.json')
+  await writeFile(template2File, `${JSON.stringify(template2)}\n`)
+  const template2PlanFile = join(secondBundle, 'release-set-plan.json')
+  const template2EvidenceFile = join(directory, 'template-0.12-prepared.json')
+  const template2Env = { ...prepareEnv, RELEASE_SET_PLAN_FILE: template2PlanFile, RELEASE_SET_PLAN_TEMPLATE_FILE: template2File, RELEASE_SET_ARTIFACT_DIR: secondBundle, RELEASE_SET_CI_EVIDENCE_FILE: ciEvidenceFile, RELEASE_SET_PREPARED_EVIDENCE_FILE: template2EvidenceFile }
+  delete template2Env.RELEASE_SET_PLAN_SHA256
+  await runVerifierCli(['--release-set-prepare'], template2Env)
+  const measuredTemplate2Plan = JSON.parse(await readFile(template2PlanFile, 'utf8'))
+  assert.equal(measuredTemplate2Plan.versions.nonRustVersion, secondVersion)
+  assert.equal(measuredTemplate2Plan.rust.reuse.sourceCommit, RUST_011_REUSE_SOURCE)
+  const wrongDigestBundle = join(directory, 'wrong-digest-template-bundle')
+  await mkdir(wrongDigestBundle)
+  for (const filename of plan.approval.bundleFiles.filter(file => !['release-set-plan.json', 'release-set-plan.sha256', 'release-body.md', 'go-inventory.json', 'checksums.txt'].includes(file))) await cp(join(bundle, filename), join(wrongDigestBundle, filename))
+  const wrongTemplateFile = join(directory, 'wrong-digest-template.json')
+  await writeFile(wrongTemplateFile, `${JSON.stringify(template)}\n`)
+  await assert.rejects(runVerifierCli(['--release-set-prepare'], { ...templateEnv, RELEASE_SET_PLAN_FILE: join(wrongDigestBundle, 'release-set-plan.json'), RELEASE_SET_PLAN_TEMPLATE_FILE: wrongTemplateFile, RELEASE_SET_ARTIFACT_DIR: wrongDigestBundle, RELEASE_SET_PLAN_SHA256: '0'.repeat(64) }), /reviewed plan digest mismatch/)
+  assert.deepEqual((await readdir(wrongDigestBundle)).sort(), plan.approval.bundleFiles.filter(file => !['release-set-plan.json', 'release-set-plan.sha256', 'release-body.md', 'go-inventory.json', 'checksums.txt'].includes(file)).sort())
+  await assert.rejects(runVerifierCli(['--release-set-prepare'], { ...prepareEnv, RELEASE_SET_PLAN_SHA256: '0'.repeat(64) }), /reviewed plan digest mismatch/)
   await runVerifierCli(['--release-set-ingest'], { RELEASE_SET_PLAN_FILE: planFile, RELEASE_SET_PLAN_SHA256: releaseSetPlanDigest(plan), RELEASE_SET_BINDING_FILE: bindingFile, RELEASE_SET_ARTIFACT_DIR: bundle, RELEASE_SET_PREPARED_RUN_ID: '51', RELEASE_SET_PREPARED_RUN_ATTEMPT: '1', RELEASE_SET_PREPARED_ARTIFACT_ID: '52', RELEASE_SET_PREPARED_BINDING_ARTIFACT_ID: '53' })
   const bundleZip = join(directory, 'bundle.zip')
   const bindingZip = join(directory, 'binding.zip')
@@ -987,6 +1216,12 @@ exec ${JSON.stringify(pypiRealPython)} "$@"
   await writeFile(pypiMetadataFile, JSON.stringify(pypiMetadata(false)))
   await assert.rejects(runVerifierCli(['--release-set-pypi-observe'], { ...pypiBaseEnvironment, RELEASE_SET_PYPI_WORK_DIR: pypiPartialWork, RELEASE_SET_PYPI_OUTPUT_FILE: pypiPartialOutput }), /pypi-public-observation-incomplete/)
   await assert.rejects(() => readFile(pypiPartialOutput, 'utf8'), { code: 'ENOENT' })
+  const pypiPartialPreflightWork = join(directory, 'pypi-partial-preflight-work')
+  const pypiPartialPreflightOutput = join(directory, 'pypi-partial-preflight.json')
+  await mkdir(pypiPartialPreflightWork)
+  const pypiPartialPreflightResult = await runVerifierCli(['--release-set-pypi-observe'], { ...pypiBaseEnvironment, RELEASE_SET_PYPI_PREFLIGHT_ONLY: 'true', RELEASE_SET_PYPI_WORK_DIR: pypiPartialPreflightWork, RELEASE_SET_PYPI_OUTPUT_FILE: pypiPartialPreflightOutput })
+  assert.match(pypiPartialPreflightResult.stdout, /^pypi-public-observation-partial=/m)
+  assert.equal(JSON.parse(await readFile(pypiPartialPreflightOutput, 'utf8')).state, 'partial')
   const goCliGit = join(directory, 'go-cli-git-fixture')
   await writeFile(goCliGit, `#!/usr/bin/env node\nconsole.log('${sourceCommit}\\trefs/tags/packages/go/v0.11.0')\n`)
   await chmod(goCliGit, 0o755)
@@ -998,8 +1233,19 @@ exec ${JSON.stringify(pypiRealPython)} "$@"
   await writeFile(goCliOutput, JSON.stringify({ schemaVersion: 1, kind: 'go-public-observation', state: 'observed', complete: true }))
   await assert.rejects(runVerifierCli(['--release-set-go-observe'], { ...strictEnv, RELEASE_SET_GO_WORK_DIR: goCliWork, RELEASE_SET_GO_OUTPUT_FILE: goCliOutput, RELEASE_SET_GO_GIT: goCliGit, RELEASE_SET_GO_GO: '/usr/bin/false', RELEASE_SET_GO_PYTHON: goCliPython, RELEASE_SET_GO_OBSERVER_SOURCE: sourceCommit, RELEASE_SET_GO_OBSERVER_RUN_ID: '89201', RELEASE_SET_GO_OBSERVER_ATTEMPT: '1', RELEASE_SET_GO_OBSERVER_WORKFLOW: '.github/workflows/release.yml', GO_CLI_SOURCE: sourceCommit }), /go-observe-proxy-version-failed/)
   await assert.rejects(() => readFile(goCliOutput, 'utf8'), { code: 'ENOENT' })
+  const githubBarrierWork = join(directory, 'github-barrier-work'); const githubBarrierOutput = join(directory, 'github-barrier.json'); await mkdir(githubBarrierWork); await writeFile(githubBarrierOutput, JSON.stringify({ schemaVersion: 1, kind: 'github-public-observation', state: 'observed', complete: true }))
+  await assert.rejects(runVerifierCli(['--release-set-github-observe'], { ...strictEnv, RELEASE_SET_RUN_FILE: undefined, RELEASE_SET_GITHUB_WORK_DIR: githubBarrierWork, RELEASE_SET_GITHUB_OUTPUT_FILE: githubBarrierOutput, RELEASE_SET_GITHUB_DESCRIPTOR_FILE: join(directory, 'missing-github-descriptor.json'), RELEASE_SET_GITHUB_OBSERVER_SOURCE: sourceCommit, RELEASE_SET_GITHUB_OBSERVER_RUN_ID: '89201', RELEASE_SET_GITHUB_OBSERVER_ATTEMPT: '1', RELEASE_SET_GITHUB_OBSERVER_WORKFLOW: '.github/workflows/release.yml' }), /Missing RELEASE_SET_RUN_FILE/)
+  await assert.rejects(() => readFile(githubBarrierOutput, 'utf8'), { code: 'ENOENT' })
+  const githubCliBody = plan.githubRelease.body; const githubCliAssets = { 'go-proof.json': 'cli go proof', 'release-body.md': githubCliBody }
+  const githubCliDescriptor = { repository: 'elsoul/erpc-sdk', repositoryId: '1429568627', releaseTag: 'non-rust-v0.11.0', title: 'SDK release set: non-Rust 0.11.0 / Rust 0.11.0', bodySha256: sha256Hex(githubCliBody), sourceCommit, releaseId: '777', requirePublic: true, prerelease: false, assets: Object.entries(githubCliAssets).map(([filename, content], index) => ({ role: index === 0 ? 'go-proof' : 'release-body', filename, sha256: sha256Hex(content), sizeInBytes: Buffer.byteLength(content) })) }
+  const githubCliDescriptorFile = join(directory, 'github-cli-descriptor.json'); await writeFile(githubCliDescriptorFile, JSON.stringify(githubCliDescriptor))
+  const githubCliFixture = join(directory, 'github-cli-fetch-fixture.mjs')
+  await writeFile(githubCliFixture, `const body = ${JSON.stringify(githubCliBody)}; const assets = ${JSON.stringify(githubCliAssets)}; const source = ${JSON.stringify(sourceCommit)}; const release = { id: 777, tag_name: 'non-rust-v0.11.0', name: 'SDK release set: non-Rust 0.11.0 / Rust 0.11.0', body, draft: false, prerelease: false, target_commitish: source }; const records = [{ id: 7001, name: 'go-proof.json', digest: 'sha256:${sha256Hex(githubCliAssets['go-proof.json'])}' }, { id: 7002, name: 'release-body.md', digest: 'sha256:${sha256Hex(githubCliAssets['release-body.md'])}' }]; globalThis.fetch = async (url, options = {}) => { if (options.method && options.method !== 'GET') throw new Error('non-GET'); const value = String(url); if (value.includes('/releases?')) return new Response(JSON.stringify([release]), { status: 200 }); if (value.endsWith('/releases/777')) return new Response(JSON.stringify(release), { status: 200 }); if (value.endsWith('/releases/777/assets?per_page=100')) return new Response(JSON.stringify(records), { status: 200 }); if (value.endsWith('/releases/assets/7001')) return new Response(Buffer.from(assets['go-proof.json']), { status: 200 }); if (value.endsWith('/releases/assets/7002')) return new Response(Buffer.from(assets['release-body.md']), { status: 200 }); return new Response('missing', { status: 404 }); };\n`)
+  const githubCliWork = join(directory, 'github-cli-work'); const githubCliOutput = join(directory, 'github-cli-output.json'); await mkdir(githubCliWork); await writeFile(githubCliOutput, JSON.stringify({ schemaVersion: 1, kind: 'github-public-observation', state: 'observed', complete: true }))
+  await assert.rejects(runVerifierCli(['--release-set-github-observe'], { ...strictEnv, NODE_OPTIONS: `--import=${githubCliFixture}`, RELEASE_SET_GITHUB_WORK_DIR: githubCliWork, RELEASE_SET_GITHUB_OUTPUT_FILE: githubCliOutput, RELEASE_SET_GITHUB_DESCRIPTOR_FILE: githubCliDescriptorFile, RELEASE_SET_GITHUB_OBSERVER_SOURCE: sourceCommit, RELEASE_SET_GITHUB_OBSERVER_RUN_ID: '89201', RELEASE_SET_GITHUB_OBSERVER_ATTEMPT: '1', RELEASE_SET_GITHUB_OBSERVER_WORKFLOW: '.github/workflows/release.yml' }), /asset inventory/)
+  await assert.rejects(() => readFile(githubCliOutput, 'utf8'), { code: 'ENOENT' })
   const goCliPlan = structuredClone(plan)
-  const goCliFiles = { LICENSE: 'MIT\n', 'go.mod': `module ${goCliPlan.go.module}\n\ngo 1.22\n`, 'rpc.go': 'package erpc\n' }
+  const goCliFiles = { LICENSE: 'MIT\n', 'LICENSES/Apache-2.0.txt': 'Apache\n', 'LICENSES/BSD-3-Clause-Google-Protobuf.txt': 'BSD\n', 'THIRD_PARTY_NOTICES.md': 'notice\n', 'go.mod': `module ${goCliPlan.go.module}\n\ngo 1.22\n`, 'rpc.go': 'package erpc\n' }
   const goCliInventoryFiles = Object.entries(goCliFiles).map(([path, contents]) => ({ path, sha256: sha256Hex(contents) }))
   goCliPlan.go.inventory = { files: goCliInventoryFiles, inventorySha256: sha256Hex(canonicalJson(goCliInventoryFiles)) }
   const goCliPlanDirectory = join(directory, 'go-cli-plan-bundle')
@@ -1023,6 +1269,7 @@ exec ${JSON.stringify(pypiRealPython)} "$@"
   await writeFile(goCliBindingMetadataFile, JSON.stringify({ ...strictBindingMetadata, size_in_bytes: goCliBindingBytes.length, digest: `sha256:${sha256Hex(goCliBindingBytes)}` }))
   const goCliModuleRoot = join(directory, 'go-cli-module'); const goCliModulePrefix = `${goCliPlan.go.module}@${goCliPlan.go.version}`
   await mkdir(join(goCliModuleRoot, goCliModulePrefix), { recursive: true })
+  await mkdir(join(goCliModuleRoot, goCliModulePrefix, 'LICENSES'), { recursive: true })
   for (const [file, contents] of Object.entries(goCliFiles)) await writeFile(join(goCliModuleRoot, goCliModulePrefix, file), contents)
   const goCliModuleZip = join(directory, 'go-cli-module.zip')
   await execFileAsync('zip', ['-q', '-r', goCliModuleZip, goCliModulePrefix], { cwd: goCliModuleRoot })
@@ -1177,7 +1424,7 @@ test('B1 npm observer executes actual HTTP/process/crypto-policy/consumer paths 
   const archiveSha256 = sha256Hex(archiveBytes)
   const archiveSha512 = (await import('node:crypto')).createHash('sha512').update(archiveBytes).digest('hex')
   const integrity = `sha512-${(await import('node:crypto')).createHash('sha512').update(archiveBytes).digest('base64')}`
-  const descriptor = { kind: 'npm', filename: 'elsoul-erpc-sdk-0.9.1.tgz', name: '@elsoul/erpc-sdk', version: '0.9.1', sha256: archiveSha256, files: ['package', 'package/dist', 'package/LICENSE', 'package/README.md', 'package/dist/index.cjs', 'package/dist/index.mjs', 'package/package.json'] }
+  const descriptor = { kind: 'npm', filename: 'elsoul-erpc-sdk-0.9.1.tgz', name: '@elsoul/erpc-sdk', version: '0.9.1', profile: 'legacy', sha256: archiveSha256, files: ['package', 'package/dist', 'package/LICENSE', 'package/README.md', 'package/dist/index.cjs', 'package/dist/index.mjs', 'package/package.json'] }
   const metadata = { name: descriptor.name, version: descriptor.version, dist: { tarball: 'https://registry.npmjs.org/@elsoul/erpc-sdk/-/erpc-sdk-0.9.1.tgz', integrity } }
   const sourceCommit = '4'.repeat(40)
   const publisher = { repository: 'elsoul/erpc-sdk', repositoryId: '1429568627', sourceCommit, workflowPath: '.github/workflows/release.yml', ref: 'refs/heads/main', event: 'workflow_dispatch', environment: 'npm', publisherRunId: '39871872971', publisherAttempt: '1' }
@@ -1330,18 +1577,65 @@ test('B1 synthetic npm archive inspection covers two future versions from actual
   for (const version of ['0.11.0', '1.2.3']) {
     const packageRoot = join(directory, `root-${version}`)
     await mkdir(join(packageRoot, 'package', 'dist'), { recursive: true })
-    await writeFile(join(packageRoot, 'package', 'package.json'), JSON.stringify({ name: '@elsoul/erpc-sdk', version, main: 'dist/index.js' }))
-    await writeFile(join(packageRoot, 'package', 'LICENSE'), 'MIT\n')
+    await writeFile(join(packageRoot, 'package', 'package.json'), JSON.stringify({ name: '@elsoul/erpc-sdk', version, main: 'dist/index.js', license: RELEASE_SET_NON_RUST_LICENSE_PROFILE }))
+    await cp(new URL('../packages/typescript/LICENSE', import.meta.url), join(packageRoot, 'package', 'LICENSE'))
+    await mkdir(join(packageRoot, 'package', 'LICENSES'), { recursive: true })
+    await cp(new URL('../packages/typescript/LICENSES/Apache-2.0.txt', import.meta.url), join(packageRoot, 'package', 'LICENSES', 'Apache-2.0.txt'))
+    await cp(new URL('../packages/typescript/LICENSES/BSD-3-Clause-Google-Protobuf.txt', import.meta.url), join(packageRoot, 'package', 'LICENSES', 'BSD-3-Clause-Google-Protobuf.txt'))
+    await cp(new URL('../packages/typescript/THIRD_PARTY_NOTICES.md', import.meta.url), join(packageRoot, 'package', 'THIRD_PARTY_NOTICES.md'))
     await writeFile(join(packageRoot, 'package', 'README.md'), `# ${version}\n`)
     await writeFile(join(packageRoot, 'package', 'dist', 'index.js'), 'module.exports = {}\n')
     const archive = join(directory, `elsoul-erpc-sdk-${version}.tgz`)
     await execFileAsync('tar', ['-czf', archive, '-C', packageRoot, 'package'], { env: { ...process.env, COPYFILE_DISABLE: '1' } })
-    const files = ['package', 'package/dist', 'package/LICENSE', 'package/README.md', 'package/dist/index.js', 'package/package.json']
+    const files = ['package', 'package/dist', 'package/LICENSE', 'package/README.md', 'package/LICENSES', 'package/LICENSES/Apache-2.0.txt', 'package/LICENSES/BSD-3-Clause-Google-Protobuf.txt', 'package/THIRD_PARTY_NOTICES.md', 'package/dist/index.js', 'package/package.json']
     const descriptor = { kind: 'npm', filename: `elsoul-erpc-sdk-${version}.tgz`, name: '@elsoul/erpc-sdk', version, sha256: sha256Hex(await readFile(archive)), files }
     const inspected = await inspectReleaseSetArtifactBytes(descriptor, archive, 'a'.repeat(40))
     assert.equal(inspected.sha256, descriptor.sha256)
     assert.deepEqual(inspected.members.slice().sort(), files.slice().sort())
   }
+})
+
+test('future profile binds exact source bytes, Python metadata paths, and explicit Go mode', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'erpc-sdk-release-set-profile-'))
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  const npmRoot = join(directory, 'npm-root')
+  await mkdir(join(npmRoot, 'package', 'dist'), { recursive: true })
+  await writeFile(join(npmRoot, 'package', 'package.json'), JSON.stringify({ name: '@elsoul/erpc-sdk', version: '0.12.0', license: RELEASE_SET_NON_RUST_LICENSE_PROFILE }))
+  await cp(new URL('../packages/typescript/LICENSE', import.meta.url), join(npmRoot, 'package', 'LICENSE'))
+  await mkdir(join(npmRoot, 'package', 'LICENSES'), { recursive: true })
+  await cp(new URL('../packages/typescript/LICENSES/Apache-2.0.txt', import.meta.url), join(npmRoot, 'package', 'LICENSES', 'Apache-2.0.txt'))
+  await cp(new URL('../packages/typescript/LICENSES/BSD-3-Clause-Google-Protobuf.txt', import.meta.url), join(npmRoot, 'package', 'LICENSES', 'BSD-3-Clause-Google-Protobuf.txt'))
+  await cp(new URL('../packages/typescript/THIRD_PARTY_NOTICES.md', import.meta.url), join(npmRoot, 'package', 'THIRD_PARTY_NOTICES.md'))
+  await writeFile(join(npmRoot, 'package', 'README.md'), '# SDK\n')
+  await writeFile(join(npmRoot, 'package', 'dist', 'index.js'), 'module.exports = {}\n')
+  const npmFile = join(directory, 'elsoul-erpc-sdk-0.12.0.tgz')
+  const npmFiles = ['package', 'package/dist', 'package/LICENSE', 'package/README.md', 'package/LICENSES', 'package/LICENSES/Apache-2.0.txt', 'package/LICENSES/BSD-3-Clause-Google-Protobuf.txt', 'package/THIRD_PARTY_NOTICES.md', 'package/dist/index.js', 'package/package.json']
+  await execFileAsync('tar', ['-czf', npmFile, '-C', npmRoot, 'package'], { env: { ...process.env, COPYFILE_DISABLE: '1' } })
+  const npmDescriptor = { kind: 'npm', filename: 'elsoul-erpc-sdk-0.12.0.tgz', name: '@elsoul/erpc-sdk', version: '0.12.0', profile: RELEASE_SET_NON_RUST_PROFILE, sha256: await sha256File(npmFile), files: npmFiles }
+  assert.equal((await inspectReleaseSetArtifactBytes(npmDescriptor, npmFile, sha)).sourceCommit, sha)
+  await writeFile(join(npmRoot, 'package', 'LICENSE'), 'MIT License\n')
+  await writeFile(join(npmRoot, 'package', 'THIRD_PARTY_NOTICES.md'), 'aa9ba2c13b2a9348059b38110e64af39849a0377\nproto/sui/rpc/v2/ledger_service.proto\n')
+  await execFileAsync('tar', ['-czf', npmFile, '-C', npmRoot, 'package'], { env: { ...process.env, COPYFILE_DISABLE: '1' } })
+  const weakNpmDescriptor = { ...npmDescriptor, sha256: await sha256File(npmFile) }
+  await assert.rejects(() => inspectReleaseSetArtifactBytes(weakNpmDescriptor, npmFile, sha), /original MIT|provenance notice/)
+
+  const wheel = join(directory, 'erpc_sdk-0.12.0-py3-none-any.whl')
+  await execFileAsync('python3', ['-c', 'import sys,zipfile; wheel,license,apache,bsd,notice=sys.argv[1:]; z=zipfile.ZipFile(wheel,"w"); z.writestr("erpc_sdk/__init__.py", "__version__ = \\"0.12.0\\"\\n"); z.writestr("erpc_sdk-0.12.0.dist-info/METADATA", "Metadata-Version: 2.4\\nName: erpc-sdk\\nVersion: 0.12.0\\nLicense-Expression: MIT AND Apache-2.0 AND BSD-3-Clause\\nLicense-File: nonexistent-1\\nLicense-File: nonexistent-2\\nLicense-File: nonexistent-3\\nLicense-File: nonexistent-4\\n"); z.write(license, "erpc_sdk-0.12.0.dist-info/LICENSE"); z.write(apache, "erpc_sdk-0.12.0.dist-info/LICENSES/Apache-2.0.txt"); z.write(bsd, "erpc_sdk-0.12.0.dist-info/LICENSES/BSD-3-Clause-Google-Protobuf.txt"); z.write(notice, "erpc_sdk-0.12.0.dist-info/THIRD_PARTY_NOTICES.md"); z.close()', wheel, join(root.pathname, 'packages/python/LICENSE'), join(root.pathname, 'packages/python/LICENSES/Apache-2.0.txt'), join(root.pathname, 'packages/python/LICENSES/BSD-3-Clause-Google-Protobuf.txt'), join(root.pathname, 'packages/python/THIRD_PARTY_NOTICES.md')])
+  const wheelFiles = ['erpc_sdk/__init__.py', 'erpc_sdk-0.12.0.dist-info/METADATA', 'erpc_sdk-0.12.0.dist-info/LICENSE', 'erpc_sdk-0.12.0.dist-info/LICENSES/Apache-2.0.txt', 'erpc_sdk-0.12.0.dist-info/LICENSES/BSD-3-Clause-Google-Protobuf.txt', 'erpc_sdk-0.12.0.dist-info/THIRD_PARTY_NOTICES.md']
+  const weakWheelDescriptor = { kind: 'pypi-wheel', filename: 'erpc_sdk-0.12.0-py3-none-any.whl', name: 'erpc-sdk', version: '0.12.0', profile: RELEASE_SET_NON_RUST_PROFILE, sha256: await sha256File(wheel), files: wheelFiles }
+  await assert.rejects(() => inspectReleaseSetArtifactBytes(weakWheelDescriptor, wheel, sha), /License-File/)
+
+  const goRoot = join(directory, 'go-future')
+  await cp(new URL('../packages/go', import.meta.url), goRoot, { recursive: true })
+  assert.equal((await buildGoInventory(goRoot, { profile: 'future' })).files.some(file => file.path === 'LICENSES/Apache-2.0.txt'), true)
+  await writeFile(join(goRoot, 'LICENSE'), '')
+  await writeFile(join(goRoot, 'THIRD_PARTY_NOTICES.md'), 'aa9ba2c13b2a9348059b38110e64af39849a0377\nproto/sui/rpc/v2/ledger_service.proto\nproto/google/protobuf/timestamp.proto\n')
+  await assert.rejects(() => buildGoInventory(goRoot, { profile: 'future' }), /not bound to the current source/)
+  const historicalGo = join(directory, 'go-historical')
+  await mkdir(historicalGo)
+  await writeFile(join(historicalGo, 'LICENSE'), 'MIT\n')
+  await writeFile(join(historicalGo, 'go.mod'), 'module github.com/elsoul/erpc-sdk/packages/go\n\ngo 1.22\n')
+  assert.equal((await buildGoInventory(historicalGo)).files.length, 2)
 })
 
 test('B1 carries A3 recomputed ZIP/API binding, member-set, and symlink regressions', async t => {
@@ -1389,7 +1683,7 @@ test('B1 default subprocess timeout kills a child that ignores SIGTERM', async t
   const bytes = await readFile(archive)
   const sha256 = sha256Hex(bytes)
   const integrity = `sha512-${(await import('node:crypto')).createHash('sha512').update(bytes).digest('base64')}`
-  const descriptor = { kind: 'npm', filename: 'elsoul-erpc-sdk-1.2.3.tgz', name: '@elsoul/erpc-sdk', version: '1.2.3', sha256, files: ['package', 'package/dist', 'package/LICENSE', 'package/README.md', 'package/dist/index.js', 'package/package.json'] }
+  const descriptor = { kind: 'npm', filename: 'elsoul-erpc-sdk-1.2.3.tgz', name: '@elsoul/erpc-sdk', version: '1.2.3', profile: 'legacy', sha256, files: ['package', 'package/dist', 'package/LICENSE', 'package/README.md', 'package/dist/index.js', 'package/package.json'] }
   const metadata = { name: descriptor.name, version: descriptor.version, dist: { tarball: 'https://registry.npmjs.org/@elsoul/erpc-sdk/-/erpc-sdk-1.2.3.tgz', integrity } }
   const sourceCommit = '4'.repeat(40)
   const root = join(directory, 'work')
@@ -1440,8 +1734,8 @@ test('B2 PyPI observer executes wheel/sdist byte, attestation, partial, and cons
   await writeFile(join(sdistRoot, 'PKG-INFO'), 'Name: erpc-sdk\nVersion: 1.2.3\n'); await writeFile(join(sdistRoot, 'LICENSE'), 'MIT\n'); await writeFile(join(sdistRoot, 'erpc_sdk.py'), '__version__ = "1.2.3"\n')
   await execFileAsync('tar', ['-czf', sdist, '-C', join(directory, 'sdist-root'), 'erpc_sdk-1.2.3'], { env: { ...process.env, COPYFILE_DISABLE: '1' } })
   const wheelBytes = await readFile(wheel); const sdistBytes = await readFile(sdist); const wheelSha = sha256Hex(wheelBytes); const sdistSha = sha256Hex(sdistBytes)
-  const wheelDescriptor = { kind: 'pypi-wheel', filename: 'erpc_sdk-1.2.3-py3-none-any.whl', name: 'erpc-sdk', version: '1.2.3', sha256: wheelSha, files: ['erpc_sdk/__init__.py', 'erpc_sdk-1.2.3.dist-info/LICENSE', 'erpc_sdk-1.2.3.dist-info/METADATA'] }
-  const sdistDescriptor = { kind: 'pypi-sdist', filename: 'erpc_sdk-1.2.3.tar.gz', name: 'erpc-sdk', version: '1.2.3', sha256: sdistSha, files: ['erpc_sdk-1.2.3', 'erpc_sdk-1.2.3/LICENSE', 'erpc_sdk-1.2.3/PKG-INFO', 'erpc_sdk-1.2.3/erpc_sdk.py'] }
+  const wheelDescriptor = { kind: 'pypi-wheel', filename: 'erpc_sdk-1.2.3-py3-none-any.whl', name: 'erpc-sdk', version: '1.2.3', profile: 'legacy', sha256: wheelSha, files: ['erpc_sdk/__init__.py', 'erpc_sdk-1.2.3.dist-info/LICENSE', 'erpc_sdk-1.2.3.dist-info/METADATA'] }
+  const sdistDescriptor = { kind: 'pypi-sdist', filename: 'erpc_sdk-1.2.3.tar.gz', name: 'erpc-sdk', version: '1.2.3', profile: 'legacy', sha256: sdistSha, files: ['erpc_sdk-1.2.3', 'erpc_sdk-1.2.3/LICENSE', 'erpc_sdk-1.2.3/PKG-INFO', 'erpc_sdk-1.2.3/erpc_sdk.py'] }
   const base = 'https://files.pythonhosted.org/packages/test/'; const metadata = { info: { name: 'erpc-sdk', version: '1.2.3' }, urls: [{ filename: wheelDescriptor.filename, url: `${base}${wheelDescriptor.filename}`, packagetype: 'bdist_wheel', yanked: false, digests: { sha256: wheelSha } }, { filename: sdistDescriptor.filename, url: `${base}${sdistDescriptor.filename}`, packagetype: 'sdist', yanked: false, digests: { sha256: sdistSha } }] }
   const sourceCommit = '4'.repeat(40); const invocation = 'https://github.com/elsoul/erpc-sdk/actions/runs/39871872971/attempts/1'; const claims = { claims: Object.fromEntries([[8, 'https://token.actions.githubusercontent.com'], [9, 'https://github.com/elsoul/erpc-sdk/.github/workflows/release.yml@refs/heads/main'], [10, sourceCommit], [12, 'https://github.com/elsoul/erpc-sdk'], [13, sourceCommit], [14, 'refs/heads/main'], [15, '1429568627'], [18, 'https://github.com/elsoul/erpc-sdk/.github/workflows/release.yml@refs/heads/main'], [19, sourceCommit], [20, 'workflow_dispatch'], [21, invocation]].map(([key, value]) => [`1.3.6.1.4.1.57264.1.${key}`, value])), publisher: { kind: 'GitHub', repository: 'elsoul/erpc-sdk', workflow: 'release.yml', environment: 'pypi' } }
   let partialMode = false; let sdistOnly = false; let retryDownload = false; const retryStatuses = []; const request = async url => {
@@ -1504,7 +1798,7 @@ end
   const gemBytes = await readFile(gemFile)
   const gemSha = sha256Hex(gemBytes)
   const archiveFiles = (await inspectReleaseSetRubyGemBytes({ filePath: gemFile, name: 'erpc-sdk', version })).sort()
-  const descriptor = { kind: 'rubygems', filename: `erpc-sdk-${version}.gem`, name: 'erpc-sdk', version, sha256: gemSha, files: archiveFiles }
+  const descriptor = { kind: 'rubygems', filename: `erpc-sdk-${version}.gem`, name: 'erpc-sdk', version, profile: 'legacy', sha256: gemSha, files: archiveFiles }
   const sourceCommit = '4'.repeat(40)
   const metadataUrl = `https://rubygems.org/api/v2/rubygems/erpc-sdk/versions/${version}.json`
   const downloadUrl = `https://rubygems.org/downloads/erpc-sdk-${version}.gem`
@@ -1808,7 +2102,8 @@ test('B5 Go observer binds proxy/direct receipts, ZIP inventory, and command seq
   const makeFixture = async (version, name) => {
     const root = join(directory, name); const prefix = `${module}@${version}`; const moduleRoot = join(root, prefix)
     await mkdir(moduleRoot, { recursive: true })
-    const files = { 'go.mod': `module ${module}\n\ngo 1.22\n`, 'LICENSE': 'MIT\n', 'rpc.go': 'package erpc\n' }
+    const files = { 'go.mod': `module ${module}\n\ngo 1.22\n`, 'LICENSE': 'MIT\n', 'LICENSES/Apache-2.0.txt': 'Apache\n', 'LICENSES/BSD-3-Clause-Google-Protobuf.txt': 'BSD\n', 'THIRD_PARTY_NOTICES.md': 'notice\n', 'rpc.go': 'package erpc\n' }
+    await mkdir(join(moduleRoot, 'LICENSES'), { recursive: true })
     for (const [file, contents] of Object.entries(files)) await writeFile(join(moduleRoot, file), contents)
     const inventoryFiles = Object.entries(files).map(([path, contents]) => ({ path, sha256: sha256Hex(contents) })); const inventory = { files: inventoryFiles, inventorySha256: sha256Hex(canonicalJson(inventoryFiles)) }
     const zipPath = join(root, `${name}.zip`); await execFileAsync('zip', ['-q', '-r', zipPath, prefix], { cwd: root })
@@ -1920,6 +2215,152 @@ test('B5 Go observer binds proxy/direct receipts, ZIP inventory, and command seq
   const symlinkZip = join(directory, 'go-symlink.zip')
   await execFileAsync('python3', ['-c', 'import sys,zipfile; z=zipfile.ZipFile(sys.argv[1], "w"); i=zipfile.ZipInfo("github.com/elsoul/erpc-sdk/packages/go@v1.2.5/link"); i.create_system=3; i.external_attr=(0o120777 << 16); z.writestr(i, "rpc.go"); z.close()', symlinkZip])
   await runNegative('symlink-member', { zipPath: symlinkZip })
+})
+
+test('B6 GitHub observer reads paginated releases/assets and rejects races, unsafe IDs, redirects, and incomplete sets', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'erpc-sdk-b6-github-'))
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  const sourceCommit = '8'.repeat(40); const releaseTag = 'non-rust-v0.11.0'; const body = '# Approved release\n'
+  const bytes = { 'go-inventory.json': Buffer.from('go inventory bytes'), 'release-body.md': Buffer.from(body) }
+  const assets = [
+    { role: 'go-inventory', filename: 'go-inventory.json', sha256: sha256Hex(bytes['go-inventory.json']), sizeInBytes: bytes['go-inventory.json'].length },
+    { role: 'release-body', filename: 'release-body.md', sha256: sha256Hex(bytes['release-body.md']), sizeInBytes: bytes['release-body.md'].length },
+  ]
+  const descriptor = { repository: 'elsoul/erpc-sdk', repositoryId: '1429568627', releaseTag, title: 'SDK release set: non-Rust 0.11.0 / Rust 0.10.0', bodySha256: sha256Hex(body), sourceCommit, releaseId: '777', requirePublic: true, prerelease: false, assets }
+  const snapshotRoot = join(directory, 'snapshot-root'); await mkdir(snapshotRoot); await writeFile(join(snapshotRoot, 'proof.txt'), 'snapshot proof bytes')
+  const snapshotArchive = join(directory, 'snapshot.zip'); await execFileAsync('zip', ['-q', snapshotArchive, 'proof.txt'], { cwd: snapshotRoot })
+  const snapshotManifestBytes = Buffer.from(JSON.stringify({ sourceCommit, receipts: { 'proof.txt': sha256Hex('snapshot proof bytes') } }))
+  const snapshot = { manifestUrl: 'https://api.github.com/repos/elsoul/erpc-sdk/snapshot-manifest.json', manifestSha256: sha256Hex(snapshotManifestBytes), archiveUrl: 'https://api.github.com/repos/elsoul/erpc-sdk/actions/artifacts/990/zip', archiveId: '990', archiveSha256: sha256Hex(await readFile(snapshotArchive)), members: [{ path: 'proof.txt', sha256: sha256Hex('snapshot proof bytes') }] }
+  let mode = 'positive'; let tagReads = 0; let assetListCalls = 0; const methods = []; const downloadCounts = new Map(); const release = { id: 777, tag_name: releaseTag, name: descriptor.title, body, draft: false, prerelease: false, target_commitish: sourceCommit }
+  const server = createServer((request, response) => {
+    const authenticated = Boolean(request.headers.authorization)
+    const anonymous = !authenticated
+    methods.push({ method: request.method, url: request.url, authorizationPresent: authenticated, cookiePresent: Boolean(request.headers.cookie) })
+    const url = new URL(request.url, 'http://127.0.0.1')
+    const json = payload => { const bodyBytes = Buffer.from(JSON.stringify(payload)); response.writeHead(200, { 'content-type': 'application/vnd.github+json' }); response.end(bodyBytes) }
+    if (mode === 'auth-only' && anonymous) { response.writeHead(404); response.end('private'); return }
+    const visibleRelease = anonymous && mode === 'public-wrong-title' ? { ...release, name: 'wrong public title' } : anonymous && mode === 'public-wrong-source' ? { ...release, target_commitish: '9'.repeat(40) } : anonymous && mode === 'public-wrong-body' ? { ...release, body: '# Wrong public body\n' } : anonymous && mode === 'public-wrong-id' ? { ...release, id: 888 } : anonymous && mode === 'public-wrong-tag' ? { ...release, tag_name: 'wrong-public-tag' } : release
+    if (url.pathname === '/repos/elsoul/erpc-sdk/releases' && url.searchParams.get('page') !== '2') { if (mode === 'absent') { json([]); return }; response.writeHead(200, { 'content-type': 'application/vnd.github+json', link: `<${mode === 'foreign-link' ? 'https://foreign.invalid' : 'https://api.github.com'}/repos/elsoul/erpc-sdk/releases?per_page=100&page=2>; rel="next"` }); response.end(JSON.stringify([{ id: 700, tag_name: 'other-tag', name: 'other', body: '', draft: true, prerelease: false, target_commitish: sourceCommit }])); return }
+    if (url.pathname === '/repos/elsoul/erpc-sdk/releases' && url.searchParams.get('page') === '2') { const listed = mode === 'string-release-id' ? { ...visibleRelease, id: '777' } : mode === 'query-release-id' ? { ...visibleRelease, id: '777?unexpected=1' } : visibleRelease; json(mode === 'duplicate-release' ? [listed, listed] : [listed]); return }
+    if (url.pathname === '/repos/elsoul/erpc-sdk/releases/777') { const value = mode === 'draft' ? { ...visibleRelease, draft: true } : mode === 'missing-state' ? { ...visibleRelease, draft: undefined, prerelease: undefined } : visibleRelease; json(value); return }
+    if (url.pathname.includes('/git/ref/tags/')) { tagReads += 1; json({ ref: anonymous && mode === 'public-wrong-tag' ? 'refs/tags/wrong-public-tag' : `refs/tags/${releaseTag}`, object: { type: mode === 'tag-tree' ? 'tree' : 'commit', sha: mode === 'tag-moved' && tagReads > 1 ? '9'.repeat(40) : anonymous && mode === 'public-wrong-source' ? '9'.repeat(40) : sourceCommit } }); return }
+    if (url.pathname === '/repos/elsoul/erpc-sdk/snapshot-manifest.json') { json({ sourceCommit, receipts: { 'proof.txt': sha256Hex('snapshot proof bytes') } }); return }
+    if (url.pathname === '/repos/elsoul/erpc-sdk/actions/artifacts/990/zip') { readFile(snapshotArchive).then(bytes => { response.writeHead(200, { 'content-type': 'application/vnd.github+json' }); response.end(bytes) }); return }
+    if (url.pathname === '/repos/elsoul/erpc-sdk/releases/777/assets') {
+      assetListCalls += 1
+      const records = assets.map((asset, index) => ({ id: 7001 + index, name: asset.filename, digest: `sha256:${asset.sha256}`, size: asset.sizeInBytes }))
+      if (mode === 'missing-asset') records.pop()
+      if (mode === 'string-id') records[0].id = '777'
+      if (mode === 'unsafe-id') records[0].id = '9007199254740993'
+      if (mode === 'query-id') records[0].id = '777?unexpected=1'
+      if (mode === 'extra-name') records.push({ id: 7999, name: 'BAD\nUNTRUSTED_UPSTREAM_SECRET' })
+      if (mode === 'final-digest' && assetListCalls > 1) records[0].digest = `sha256:${'f'.repeat(64)}`
+      if (mode === 'final-size' && assetListCalls > 1) records[0].size += 1
+      json(records); return
+    }
+    const assetMatch = url.pathname.match(/^\/repos\/elsoul\/erpc-sdk\/releases\/assets\/(\d+)$/)
+    if (assetMatch) {
+      const id = Number(assetMatch[1]); const asset = assets[id - 7001]; const count = (downloadCounts.get(id) ?? 0) + 1; downloadCounts.set(id, count)
+      if (mode === 'unsafe-redirect' && count === 1) { response.writeHead(302, { location: 'https://evil.invalid/asset' }); response.end(); return }
+      const output = mode === 'changed-final' && count > 1 || anonymous && mode === 'public-changed-bytes' ? Buffer.concat([bytes[asset.filename], Buffer.from('changed')]) : bytes[asset.filename]
+      response.writeHead(200, { 'content-type': 'application/octet-stream' }); response.end(output); return
+    }
+    response.writeHead(404); response.end('missing')
+  })
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve)); t.after(() => server.close())
+  const port = server.address().port
+  const request = async (url, options) => { const local = await fetch(`http://127.0.0.1:${port}${new URL(url).pathname}${new URL(url).search}`, { method: options.method, headers: { ...options.headers, authorization: 'Bearer fixture-auth' }, redirect: 'manual' }); return { status: local.status, headers: Object.fromEntries(local.headers.entries()), body: Buffer.from(await local.arrayBuffer()) } }
+  const anonymousRequest = async (url, options) => { const local = await fetch(`http://127.0.0.1:${port}${new URL(url).pathname}${new URL(url).search}`, { method: options.method, headers: options.headers, redirect: 'manual' }); return { status: local.status, headers: Object.fromEntries(local.headers.entries()), body: Buffer.from(await local.arrayBuffer()) } }
+  const observe = input => observeGitHubRelease(input, { request, anonymousRequest })
+  const makeInput = name => ({ descriptor, snapshot, planSha256: 'a'.repeat(64), preparation: { sourceCommit, runId: '74153', runAttempt: '1', artifactId: '74171', bindingArtifactId: '74191', planSha256: 'a'.repeat(64) }, observer: { runId: '89201', runAttempt: '1', workflowPath: '.github/workflows/release.yml', sourceCommit }, workDir: join(directory, `${name}-work`), outputFile: join(directory, `${name}.json`) })
+  const noPriorDescriptor = { ...descriptor }; delete noPriorDescriptor.releaseId
+  const dynamicNoPriorDescriptor = { ...noPriorDescriptor, assets: noPriorDescriptor.assets.map((asset, index) => index === 0 ? { ...asset, role: 'go-proof' } : asset) }
+  const runCase = async (name, expectedFailure = false) => { downloadCounts.clear(); assetListCalls = 0; tagReads = 0; const input = makeInput(name); await mkdir(input.workDir); await writeFile(input.outputFile, JSON.stringify({ schemaVersion: 1, kind: 'github-public-observation', state: 'observed', complete: true })); const result = observe(input); if (expectedFailure) await assert.rejects(result); else return result }
+  const positive = await runCase('positive'); assert.equal(positive.state, 'matching-public'); assert.equal(positive.complete, true); assert.equal(positive.assets.length, 2); assert.equal(positive.publicRead.complete, true); assert.equal(positive.publicRead.anonymous, true); assert.equal(JSON.parse(await readFile(join(directory, 'positive.json'), 'utf8')).complete, true)
+  assert.ok(methods.every(item => item.method === 'GET')); assert.ok(methods.some(item => item.authorizationPresent)); assert.ok(methods.some(item => !item.authorizationPresent)); assert.ok(methods.filter(item => !item.authorizationPresent).every(item => !item.cookiePresent)); assert.ok(methods.filter(item => !item.authorizationPresent).every(item => !item.url.includes('token=')))
+  mode = 'auth-only'; const authOnly = await runCase('auth-only'); assert.equal(authOnly.state, 'matching-public'); assert.equal(authOnly.complete, false); assert.equal(authOnly.publicRead.complete, false); assert.equal(authOnly.publicRead.reason, 'public-release-list-unavailable'); await assert.rejects(() => readFile(join(directory, 'auth-only.json'), 'utf8'), { code: 'ENOENT' }); mode = 'positive'
+  const suppliedFlagInput = makeInput('supplied-public-flag'); suppliedFlagInput.publicRead = { releaseUrl: 'https://api.github.com/repos/elsoul/erpc-sdk/releases/777?token=untrusted', assets: [] }; await mkdir(suppliedFlagInput.workDir); await writeFile(suppliedFlagInput.outputFile, JSON.stringify({ schemaVersion: 1, kind: 'github-public-observation', state: 'observed', complete: true })); const suppliedFlag = await observeGitHubRelease(suppliedFlagInput, { request }); assert.equal(suppliedFlag.complete, false); assert.equal(suppliedFlag.publicRead.complete, false); assert.equal(suppliedFlag.publicRead.reason, 'anonymous-read-unavailable'); await assert.rejects(() => readFile(suppliedFlagInput.outputFile, 'utf8'), { code: 'ENOENT' })
+  const suppliedUrlInput = makeInput('supplied-public-url'); suppliedUrlInput.publicRead = { releaseUrl: 'https://evil.invalid/private?token=untrusted', assets: [{ filename: 'go-proof.json', url: 'https://evil.invalid/asset?token=untrusted' }] }; await mkdir(suppliedUrlInput.workDir); await writeFile(suppliedUrlInput.outputFile, JSON.stringify({ schemaVersion: 1, kind: 'github-public-observation', state: 'observed', complete: true })); const suppliedUrl = await observe(suppliedUrlInput); assert.equal(suppliedUrl.complete, true); assert.equal(suppliedUrl.publicRead.complete, true); assert.equal(methods.some(item => item.url.includes('evil.invalid') || item.url.includes('token=')), false); assert.equal(JSON.parse(await readFile(suppliedUrlInput.outputFile, 'utf8')).complete, true)
+  const reusedCapabilityInput = makeInput('reused-auth-capability'); reusedCapabilityInput.publicRead = { releaseUrl: 'https://api.github.com/repos/elsoul/erpc-sdk/releases/777', assets: [] }; await mkdir(reusedCapabilityInput.workDir); await writeFile(reusedCapabilityInput.outputFile, JSON.stringify({ schemaVersion: 1, kind: 'github-public-observation', state: 'observed', complete: true })); const reusedCapability = await observeGitHubRelease(reusedCapabilityInput, { request, anonymousRequest: request }); assert.equal(reusedCapability.complete, false); assert.equal(reusedCapability.publicRead.complete, false); assert.equal(reusedCapability.publicRead.reason, 'anonymous-read-unavailable'); await assert.rejects(() => readFile(reusedCapabilityInput.outputFile, 'utf8'), { code: 'ENOENT' })
+  for (const publicMode of ['public-wrong-title', 'public-wrong-source', 'public-wrong-body', 'public-wrong-id', 'public-wrong-tag']) {
+    mode = publicMode
+    if (publicMode === 'public-wrong-id' || publicMode === 'public-wrong-tag') {
+      const result = await runCase(publicMode); assert.equal(result.complete, false); assert.equal(result.publicRead.complete, false); await assert.rejects(() => readFile(join(directory, `${publicMode}.json`), 'utf8'), { code: 'ENOENT' })
+    } else await assert.rejects(() => runCase(publicMode), error => { assert.doesNotMatch(error.message, /token|Bearer|UNTRUSTED/); return true })
+  }
+  mode = 'public-changed-bytes'; await assert.rejects(() => runCase('public-changed-bytes'), /public asset .* bytes mismatch/); mode = 'positive'
+  mode = 'absent'; const absentInput = makeInput('expected-prior-disappeared'); await mkdir(absentInput.workDir); await writeFile(absentInput.outputFile, JSON.stringify({ schemaVersion: 1, kind: 'github-public-observation', state: 'observed', complete: true })); const absentRequestsBefore = methods.length; const absent = await observe(absentInput); assert.equal(absent.state, 'conflict'); assert.equal(absent.complete, false); assert.equal(methods.slice(absentRequestsBefore).some(item => item.url.endsWith('/releases/777')), false); await assert.rejects(() => readFile(absentInput.outputFile, 'utf8'), { code: 'ENOENT' }); mode = 'positive'
+  const pendingInput = { ...makeInput('dynamic-pending'), requireSnapshot: true }; await mkdir(pendingInput.workDir); await writeFile(pendingInput.outputFile, JSON.stringify({ schemaVersion: 1, kind: 'github-public-observation', state: 'observed', complete: true })); const pending = await observe(pendingInput);
+  assert.equal(pending.state, 'incomplete'); assert.equal(pending.complete, false); await assert.rejects(() => readFile(pendingInput.outputFile, 'utf8'), { code: 'ENOENT' })
+  for (const flag of [undefined, false]) {
+    const dynamicInput = { ...makeInput(`dynamic-flag-${flag ?? 'omitted'}`), descriptor: { ...descriptor, assets: descriptor.assets.map((asset, index) => index === 0 ? { ...asset, role: 'go-proof' } : asset) } }
+    if (flag !== undefined) dynamicInput.requireSnapshot = flag
+    await mkdir(dynamicInput.workDir); await writeFile(dynamicInput.outputFile, JSON.stringify({ schemaVersion: 1, kind: 'github-public-observation', state: 'observed', complete: true })); const dynamicResult = await observe(dynamicInput);
+    assert.equal(dynamicResult.state, 'incomplete'); assert.equal(dynamicResult.complete, false); await assert.rejects(() => readFile(dynamicInput.outputFile, 'utf8'), { code: 'ENOENT' })
+  }
+  const discoveryInput = { ...makeInput('no-prior-discovery'), descriptor: dynamicNoPriorDescriptor }; await mkdir(discoveryInput.workDir); await writeFile(discoveryInput.outputFile, JSON.stringify({ schemaVersion: 1, kind: 'github-public-observation', state: 'observed', complete: true })); const discovery = await observe(discoveryInput); assert.equal(discovery.state, 'incomplete'); assert.equal(discovery.complete, false); await assert.rejects(() => readFile(discoveryInput.outputFile, 'utf8'), { code: 'ENOENT' })
+  mode = 'absent'; const noPriorAbsentInput = { ...makeInput('no-prior-absence'), descriptor: noPriorDescriptor }; await mkdir(noPriorAbsentInput.workDir); await writeFile(noPriorAbsentInput.outputFile, JSON.stringify({ schemaVersion: 1, kind: 'github-public-observation', state: 'observed', complete: true })); const noPriorAbsent = await observe(noPriorAbsentInput); assert.equal(noPriorAbsent.state, 'absent'); assert.equal(noPriorAbsent.complete, false); await assert.rejects(() => readFile(noPriorAbsentInput.outputFile, 'utf8'), { code: 'ENOENT' }); mode = 'positive'
+  mode = 'draft'; const draft = await runCase('draft'); assert.equal(draft.state, 'matching-draft'); assert.equal(draft.complete, false)
+  mode = 'missing-asset'; const partial = await runCase('missing-asset'); assert.equal(partial.state, 'matching-public'); assert.equal(partial.complete, false); assert.deepEqual(partial.missingAssets, ['release-body.md']); assert.equal(partial.publicRead.complete, false); assert.deepEqual(partial.publicRead.missingAssets, ['release-body.md'])
+  mode = 'changed-final'; await runCase('changed-final', true)
+  mode = 'duplicate-release'; await runCase('duplicate-release', true)
+  mode = 'unsafe-id'; await runCase('unsafe-id', true)
+  mode = 'unsafe-redirect'; await runCase('unsafe-redirect', true)
+  mode = 'missing-state'; await runCase('missing-state', true)
+  mode = 'tag-moved'; await runCase('tag-moved', true)
+  mode = 'tag-tree'; await runCase('tag-tree', true)
+  mode = 'foreign-link'; await runCase('foreign-link', true)
+  for (const idMode of ['string-release-id', 'query-release-id']) { mode = idMode; const before = methods.length; const malformedInput = { ...makeInput(idMode), descriptor: noPriorDescriptor }; await mkdir(malformedInput.workDir); await writeFile(malformedInput.outputFile, JSON.stringify({ schemaVersion: 1, kind: 'github-public-observation', state: 'observed', complete: true })); await assert.rejects(() => observe(malformedInput), /github-observe-release-ID-invalid/); assert.equal(methods.slice(before).some(item => item.url.endsWith('/releases/777')), false); await assert.rejects(() => readFile(malformedInput.outputFile, 'utf8'), { code: 'ENOENT' }) }
+  mode = 'final-digest'; await runCase('final-digest', true)
+  mode = 'final-size'; await runCase('final-size', true)
+  mode = 'extra-name'; const redactionInput = makeInput('extra-name'); await mkdir(redactionInput.workDir); await writeFile(redactionInput.outputFile, JSON.stringify({ schemaVersion: 1, kind: 'github-public-observation', state: 'observed', complete: true })); await assert.rejects(() => observe(redactionInput), error => { assert.doesNotMatch(error.message, /BAD|UNTRUSTED_UPSTREAM_SECRET|\n/); return true }); await assert.rejects(() => readFile(redactionInput.outputFile, 'utf8'), { code: 'ENOENT' })
+})
+
+test('B6b anonymous public evidence requires the full approved asset inventory', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'erpc-sdk-b6b-inventory-'))
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  const sourceCommit = '7'.repeat(40); const releaseTag = 'non-rust-v0.11.0'; const body = '# Full approved release\n'
+  const filenames = Array.from({ length: 14 }, (_, index) => `approved-asset-${String(index + 1).padStart(2, '0')}.bin`)
+  const roles = ['go-proof', 'release-body', 'npm-proof', 'pypi-proof', 'rubygems-proof', 'rust-proof', 'tag-proof', 'release-set-proof-manifest', 'go-inventory', 'npm-artifact', 'pypi-wheel', 'pypi-sdist', 'rubygems-gem', 'rust-crate']
+  const bytes = Object.fromEntries(filenames.map((filename, index) => [filename, Buffer.from(index === 1 ? body : `approved bytes ${index + 1}\n`)]))
+  const assets = filenames.map((filename, index) => ({ role: roles[index], filename, sha256: sha256Hex(bytes[filename]), sizeInBytes: bytes[filename].length }))
+  const descriptor = { repository: 'elsoul/erpc-sdk', repositoryId: '1429568627', releaseTag, title: 'SDK release set: non-Rust 0.11.0 / Rust 0.10.0', bodySha256: sha256Hex(body), sourceCommit, releaseId: '777', requirePublic: true, prerelease: false, assets }
+  const release = { id: 777, tag_name: releaseTag, name: descriptor.title, body, draft: false, prerelease: false, target_commitish: sourceCommit }
+  const records = assets.map((asset, index) => ({ id: 8101 + index, name: asset.filename, digest: `sha256:${asset.sha256}`, size: asset.sizeInBytes }))
+  let mode = 'full'; const requests = []; const downloadCounts = new Map()
+  const server = createServer((request, response) => {
+    const authenticated = Boolean(request.headers.authorization)
+    requests.push({ method: request.method, url: request.url, authenticated, cookie: Boolean(request.headers.cookie) })
+    const url = new URL(request.url, 'http://127.0.0.1')
+    const json = payload => { response.writeHead(200, { 'content-type': 'application/vnd.github+json' }); response.end(JSON.stringify(payload)) }
+    if (url.pathname === '/repos/elsoul/erpc-sdk/releases') return json([release])
+    if (url.pathname === '/repos/elsoul/erpc-sdk/releases/777') return json(release)
+    if (url.pathname.includes('/git/ref/tags/')) return json({ ref: `refs/tags/${releaseTag}`, object: { type: 'commit', sha: sourceCommit } })
+    if (url.pathname === '/repos/elsoul/erpc-sdk/releases/777/assets') {
+      const visible = mode === 'empty' ? [] : mode === 'partial' ? records.slice(0, -1) : records
+      return json(visible)
+    }
+    const assetMatch = url.pathname.match(/^\/repos\/elsoul\/erpc-sdk\/releases\/assets\/(\d+)$/)
+    if (assetMatch) {
+      const id = Number(assetMatch[1]); const asset = assets[id - 8101]; const count = (downloadCounts.get(id) ?? 0) + 1; downloadCounts.set(id, count)
+      if (!asset) { response.writeHead(404); response.end('missing'); return }
+      response.writeHead(200, { 'content-type': 'application/octet-stream' }); response.end(bytes[asset.filename]); return
+    }
+    response.writeHead(404); response.end('missing')
+  })
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve)); t.after(() => server.close())
+  const port = server.address().port
+  const request = async (url, options) => { const local = await fetch(`http://127.0.0.1:${port}${new URL(url).pathname}${new URL(url).search}`, { method: options.method, headers: { ...options.headers, authorization: 'Bearer fixture-auth', cookie: 'fixture-cookie' }, redirect: 'manual' }); return { status: local.status, headers: Object.fromEntries(local.headers.entries()), body: Buffer.from(await local.arrayBuffer()) } }
+  const anonymousRequest = async (url, options) => { const local = await fetch(`http://127.0.0.1:${port}${new URL(url).pathname}${new URL(url).search}`, { method: options.method, headers: options.headers, redirect: 'manual' }); return { status: local.status, headers: Object.fromEntries(local.headers.entries()), body: Buffer.from(await local.arrayBuffer()) } }
+  const runCase = async name => {
+    requests.length = 0; downloadCounts.clear(); const workDir = join(directory, `${name}-work`); const outputFile = join(directory, `${name}.json`); await mkdir(workDir); await writeFile(outputFile, JSON.stringify({ schemaVersion: 1, kind: 'github-public-observation', state: 'observed', complete: true }))
+    const result = await observeGitHubRelease({ descriptor, planSha256: 'b'.repeat(64), preparation: { sourceCommit, runId: '74153', runAttempt: '1', artifactId: '74171', bindingArtifactId: '74191', planSha256: 'b'.repeat(64) }, observer: { runId: '89201', runAttempt: '1', workflowPath: '.github/workflows/release.yml', sourceCommit }, workDir, outputFile }, { request, anonymousRequest })
+    await assert.rejects(() => readFile(outputFile, 'utf8'), { code: 'ENOENT' })
+    return { result, trace: [...requests] }
+  }
+  const full = await runCase('full'); assert.equal(full.result.complete, false); assert.equal(full.result.publicRead.complete, true); assert.equal(full.result.publicRead.assets.length, 14); assert.ok(full.trace.some(item => item.authenticated)); assert.ok(full.trace.some(item => !item.authenticated)); assert.ok(full.trace.every(item => item.method === 'GET')); assert.ok(full.trace.filter(item => !item.authenticated).every(item => !item.cookie))
+  mode = 'partial'; const partial = await runCase('partial'); assert.equal(partial.result.complete, false); assert.equal(partial.result.publicRead.complete, false); assert.deepEqual(partial.result.publicRead.missingAssets, [filenames.at(-1)]); assert.deepEqual(partial.result.publicRead.observedMissingAssets, [filenames.at(-1)]); assert.deepEqual(partial.result.publicRead.publicMissingAssets, [filenames.at(-1)])
+  mode = 'empty'; const empty = await runCase('empty'); assert.equal(empty.result.complete, false); assert.equal(empty.result.publicRead.complete, false); assert.deepEqual(empty.result.publicRead.missingAssets, filenames); assert.deepEqual(empty.result.publicRead.observedMissingAssets, filenames); assert.deepEqual(empty.result.publicRead.publicMissingAssets, filenames)
 })
 
 test('foundation proof aggregate binds observed receipts, auth paths, and attestation claims', async t => {
@@ -2328,6 +2769,8 @@ test('every internal verifier mode rejects extra, duplicate, and conflicting CLI
   await mkdir(rustModeEnvironment.RELEASE_SET_RUST_WORK_DIR, { recursive: true })
   const goModeEnvironment = { RELEASE_SET_GO_OUTPUT_FILE: '/tmp/erpc-sdk-go-mode-test.json', RELEASE_SET_GO_WORK_DIR: '/tmp/erpc-sdk-go-mode-test-work' }
   await mkdir(goModeEnvironment.RELEASE_SET_GO_WORK_DIR, { recursive: true })
+  const githubModeEnvironment = { RELEASE_SET_GITHUB_OUTPUT_FILE: '/tmp/erpc-sdk-github-mode-test.json', RELEASE_SET_GITHUB_WORK_DIR: '/tmp/erpc-sdk-github-mode-test-work' }
+  await mkdir(githubModeEnvironment.RELEASE_SET_GITHUB_WORK_DIR, { recursive: true })
   const cases = [
     [['--workflow-guard', '--unknown'], workflowEnvironment],
     [['--workflow-guard', '--scope', 'all'], workflowEnvironment],
@@ -2348,6 +2791,10 @@ test('every internal verifier mode rejects extra, duplicate, and conflicting CLI
     [['--foundation-proof-verify', '--unknown'], {}],
     [['--foundation-registry', '--unknown'], {}],
     [['--foundation-pypi-proof', '--unknown'], {}],
+    [['--release-set-ci-select', '--unknown'], {}],
+    [['--release-set-ci-proof', '--unknown'], {}],
+    [['--release-set-preflight', '--unknown'], {}],
+    [['--release-set-prepare-guard', '--unknown'], {}],
     [['--release-set-npm-observe', '--unknown'], npmModeEnvironment],
     [['--release-set-npm-observe', '--release-set-npm-observe'], npmModeEnvironment],
     [['--release-set-pypi-observe', '--unknown'], pypiModeEnvironment],
@@ -2358,6 +2805,8 @@ test('every internal verifier mode rejects extra, duplicate, and conflicting CLI
     [['--release-set-rust-observe', '--release-set-rust-observe'], rustModeEnvironment],
     [['--release-set-go-observe', '--unknown'], goModeEnvironment],
     [['--release-set-go-observe', '--release-set-go-observe'], goModeEnvironment],
+    [['--release-set-github-observe', '--unknown'], githubModeEnvironment],
+    [['--release-set-github-observe', '--release-set-github-observe'], githubModeEnvironment],
   ]
   for (const [arguments_, environment] of cases) {
     await assert.rejects(
@@ -3046,12 +3495,242 @@ test('CI invokes split release cohorts and runs release behavior tests', async (
   assert.ok(ci.includes(rubyVerifierLine))
 })
 
-test('checkpoint A leaves future orchestration unavailable and preserves baseline action pins', async () => {
+test('schema2 release-set workflow is manual, pinned, and keeps legacy foundation modes', async () => {
   const workflow = await readFile(new URL('../.github/workflows/release.yml', import.meta.url), 'utf8')
-  const baseline = (await execFileAsync('git', ['show', 'b42b8b397354f940d2edbf52fd76f15519661c77:.github/workflows/release.yml'], { cwd: root.pathname })).stdout
-  assert.equal(workflow, baseline)
-  assert.doesNotMatch(workflow, /release-set-(?:prepare|publish|observe)/)
+  assert.match(workflow, /release_set_mode/)
+  assert.match(workflow, /release_set_plan_json/)
+  assert.match(workflow, /release_set_plan_template_json/)
+  assert.match(workflow, /- finalize/)
+  assert.match(workflow, /--release-set-prepare/)
+  assert.match(workflow, /--release-set-ci-select/)
+  assert.match(workflow, /--release-set-ci-proof/)
+  assert.match(workflow, /--release-set-prepare-guard/)
+  assert.match(workflow, /bundle install --jobs 4 --retry 3 && bundle exec rake/)
+  assert.match(workflow, /RELEASE_SET_PLAN_SHA256: \$\{\{ inputs\.release_set_plan_sha256 \}\}/)
+  const prepareStart = workflow.indexOf('  release-set-prepare:')
+  const materializeStart = workflow.indexOf('- name: Materialize schema2 JSON inputs before guards', prepareStart)
+  const buildStart = workflow.indexOf('- name: Build measured package archives', prepareStart)
+  const guardStart = workflow.indexOf('--release-set-prepare-guard', prepareStart)
+  assert.ok(prepareStart >= 0 && materializeStart > prepareStart && guardStart > materializeStart && buildStart > guardStart)
+  const materializeBlock = extractWorkflowRunBlock(workflow, 'Materialize schema2 JSON inputs before guards')
+  assert.match(materializeBlock, /JSON\.parse\(raw\)/)
+  assert.match(materializeBlock, /RELEASE_SET_PLAN_TEMPLATE_FILE/)
+  assert.match(materializeBlock, /RELEASE_SET_PLAN_FILE/)
+  assert.doesNotMatch(materializeBlock, /\$\{\{\s*inputs\.release_set_plan_(?:template_)?file\s*\}\}/)
+  assert.match(workflow, /plan_sha256=%s\\n.*RELEASE_SET_PLAN_DIGEST_OUTPUT.*GITHUB_OUTPUT/s)
+  assert.match(workflow, /release-set-proof-receipts-\$\{\{ github\.run_id \}\}-\$\{\{ github\.run_attempt \}\}/)
   for (const match of workflow.matchAll(/uses:\s+[^@\s]+@([^\s]+)/g)) assert.match(match[1], /^[0-9a-f]{40}$/)
+})
+
+test('schema2 CP2 publish consumes the authenticated bundle and observes every protected registry', async () => {
+  const workflow = await readFile(new URL('../.github/workflows/release.yml', import.meta.url), 'utf8')
+  const publishStart = workflow.indexOf('  release-set-publish:')
+  const observeStart = workflow.indexOf('  release-set-observe:', publishStart)
+  const publishBlock = workflow.slice(publishStart, observeStart)
+  assert.match(publishBlock, /RELEASE_SET_PLAN_FILE: \$\{\{ runner\.temp \}\}\/release-set-bundle\/release-set-plan\.json/)
+  assert.match(publishBlock, /--release-set-verify/)
+  assert.match(publishBlock, /--release-set-preflight/)
+  assert.match(publishBlock, /Prove every matching target before protected publisher fanout/)
+  assert.match(publishBlock, /--release-set-npm-observe/)
+  assert.match(publishBlock, /--release-set-pypi-observe/)
+  assert.match(publishBlock, /--release-set-rubygems-observe/)
+  assert.match(publishBlock, /release-set-verified-preparation-\$\{\{ github\.run_id \}\}-\$\{\{ github\.run_attempt \}\}/)
+  assert.doesNotMatch(publishBlock, /inputs\.release_set_plan_file/)
+  for (const [job, observer] of [['release-set-publish-npm', '--release-set-npm-observe'], ['release-set-publish-pypi', '--release-set-pypi-observe'], ['release-set-publish-rubygems', '--release-set-rubygems-observe']]) {
+    const start = workflow.indexOf(`  ${job}:`)
+    const end = workflow.indexOf('\n  release-set-', start + 3)
+    const block = workflow.slice(start, end === -1 ? workflow.length : end)
+    assert.match(block, new RegExp(observer.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
+    assert.match(block, /continue-on-error: true/)
+    assert.match(block, /if: always\(\)/)
+    assert.match(block, /release-set-(?:npm|pypi|rubygems)-proof-/)
+    assert.match(block, /release-set-(?:npm|pypi|rubygems)-publication-/)
+    assert.match(block, /path: \$\{\{ runner\.temp \}\}\/release-set-(?:npm|pypi|rubygems)-receipt\/(?:npm|pypi|rubygems)-proof\.json/)
+    assert.doesNotMatch(block, /release-set-proof-(?:npm|pypi|rubygems)-/)
+    assert.doesNotMatch(block, /inputs\.release_set_plan_file/)
+  }
+  const autoStart = workflow.indexOf('  release-set-finalize-auto:')
+  const autoEnd = workflow.indexOf('\n  release-set-observe:', autoStart)
+  assert.ok(autoStart >= 0 && autoEnd > autoStart)
+  const autoBlock = workflow.slice(autoStart, autoEnd)
+  assert.match(autoBlock, /needs:[\s\S]*release-set-publish-npm[\s\S]*release-set-publish-pypi[\s\S]*release-set-publish-rubygems/)
+  assert.match(autoBlock, /--release-set-rust-observe/)
+  assert.match(autoBlock, /--release-set-go-observe/)
+  assert.match(autoBlock, /--release-set-receipts-observe/)
+  assert.match(autoBlock, /--release-set-snapshot-observe/)
+  assert.match(autoBlock, /--release-set-assemble/)
+  assert.match(autoBlock, /release-set-proof-manifest-\$\{\{ github\.run_id \}\}-\$\{\{ github\.run_attempt \}\}/)
+  assert.match(autoBlock, /--release-set-github-observe/)
+  assert.match(autoBlock, /--request POST[\s\S]*releases\/\$release_id\/assets/)
+  assert.match(autoBlock, /gh api --method PATCH/)
+  assert.match(autoBlock, /draft: false/)
+  assert.match(autoBlock, /uploads\.github\.com/)
+  assert.doesNotMatch(autoBlock, /--request POST "\$api\/releases\/\$release_id\/assets/)
+  assert.doesNotMatch(autoBlock, /prepared:\s*false/)
+  assert.match(autoBlock, /actions\/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53/)
+  assert.doesNotMatch(autoBlock, /actions\/download-artifact@018cc2cf5baa6db3ef3c5f8a56951fffe632ef53/)
+  const reconcileBlock = extractWorkflowRunBlock(workflow, 'Reconcile draft, verify every existing asset, and publish once')
+  assert.match(reconcileBlock, /RELEASE_SET_CHECKPOINT_MANIFEST_OUTPUT_FILE=/)
+  assert.match(reconcileBlock, /historical-manifest-work/)
+  assert.match(reconcileBlock, /historical-checkpoint-work/)
+  assert.match(reconcileBlock, /RELEASE_SET_CHECKPOINT_RECEIPT_OUTPUT_DIR=/)
+  assert.match(reconcileBlock, /authenticated checkpoint/)
+  assert.doesNotMatch(reconcileBlock, /unzip[^\n]*checkpoint_zip/)
+  const verifier = await readFile(new URL('./verify-release.mjs', import.meta.url), 'utf8')
+  assert.match(verifier, /checkpointManifestBytes/)
+  assert.match(verifier, /const githubApplyReleaseSetDynamicHashes =/)
+  assert.match(verifier, /supplied manifest differs from authenticated source lineage/)
+})
+
+test('CP2 extracted production steps execute receipt branches and reject unsafe preparation members', async t => {
+  const workflow = await readFile(new URL('../.github/workflows/release.yml', import.meta.url), 'utf8')
+  const directory = await mkdtemp(join(tmpdir(), 'erpc-sdk-cp2-step-harness-'))
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  const stepNames = [
+    'Preflight all release-set registries before protected publisher fanout',
+    'Prove every matching target before protected publisher fanout',
+    'Build authenticated protected-publisher handoff',
+    'Recheck exact npm target and local upload bytes',
+    'Build original npm publisher context',
+    'Authenticate original npm publisher run context',
+    'Observe npm public bytes, provenance, and consumers',
+    'Record npm publication outcome',
+    'Clean npm credential workspace',
+    'Recheck PyPI files and stage only verified missing bytes',
+    'Build original per-file PyPI publisher contexts',
+    'Authenticate original PyPI publisher run contexts',
+    'Verify existing PyPI files before missing-file authentication',
+    'Observe PyPI files, attestations, and consumers',
+    'Record PyPI publication outcome',
+    'Clean PyPI credential and staging workspace',
+    'Recheck exact RubyGems target and local upload bytes',
+    'Clean RubyGems credentials before observer consumers',
+    'Observe RubyGems bytes and isolated Ruby consumers',
+    'Record RubyGems publication outcome and cleanup status',
+    'Verify preparation and materialize receipt workspace',
+    'Authenticate original package receipt ZIPs before tag effects',
+    'Observe exact immutable Rust reuse',
+    'Preflight and create only exact release and Go refs',
+    'Observe public Go proxy and direct module bytes',
+    'Bind all actual receipt and snapshot artifact IDs',
+    'Authenticate current snapshot and receipt ZIPs before draft creation',
+    'Build authenticated canonical manifest before draft creation',
+    'Build exact Release asset descriptor from prepared bytes',
+    'Reconcile draft, verify every existing asset, and publish once',
+    'Run authenticated and anonymous full-A GitHub Release proof',
+  ]
+  for (const name of stepNames) {
+    const block = extractWorkflowRunBlock(workflow, name)
+    const script = join(directory, `${name.replaceAll(/[^a-z0-9]+/gi, '-').toLowerCase()}.sh`)
+    await writeFile(script, `set -euo pipefail\n${block}\n`)
+    await execFileAsync('bash', ['-n', script])
+  }
+  const barrierBlock = extractWorkflowRunBlock(workflow, 'Prove every matching target before protected publisher fanout')
+  const barrierRoot = join(directory, 'barrier-control'); await mkdir(barrierRoot, { recursive: true })
+  const barrierPlan = join(barrierRoot, 'plan.json'); const barrierPreflight = join(barrierRoot, 'preflight.json')
+  await writeFile(barrierPlan, '{}\n'); await writeFile(barrierPreflight, JSON.stringify({ registries: { npm: { state: 'absent' }, pypi: { state: 'absent' }, rubygems: { state: 'absent' } } }))
+  await execFileAsync('bash', ['-c', `set -euo pipefail\n${barrierBlock}`], { cwd: root.pathname, env: { ...process.env, RUNNER_TEMP: barrierRoot, PLAN_FILE: barrierPlan, PREFLIGHT_FILE: barrierPreflight, BARRIER_DIR: barrierRoot, RELEASE_SET_PLAN_SHA256: 'a'.repeat(64), EXPECTED_COMMIT: '4'.repeat(40), REPOSITORY: 'elsoul/erpc-sdk', REPOSITORY_ID: '1429568627', EVENT_NAME: 'workflow_dispatch', EVENT_REF: 'refs/heads/main', EVENT_SHA: '4'.repeat(40), WORKFLOW_REF: 'elsoul/erpc-sdk/.github/workflows/release.yml', WORKFLOW_SHA: '4'.repeat(40), PREPARED_RUN_ID: '1', PREPARED_RUN_ATTEMPT: '1', PREPARED_ARTIFACT_ID: '2', PREPARED_BINDING_ARTIFACT_ID: '3', BARRIER_RUBY31: process.execPath, BARRIER_RUBY34: process.execPath, RELEASE_USER_AGENT } })
+
+  const runOutcome = async ({ name, family, success, cleanupOutcome = 'success' }) => {
+    const rootDir = await mkdtemp(join(directory, `${family}-outcome-`))
+    const outputDir = join(rootDir, 'publication'); const receiptDir = join(rootDir, 'receipt'); const observer = join(rootDir, `${family}-proof.json`)
+    await mkdir(outputDir)
+    if (success) await writeFile(observer, JSON.stringify({ schemaVersion: 1, kind: `${family}-public-observation`, state: 'observed', complete: true }))
+    if (family === 'rubygems') await writeFile(join(rootDir, 'rubygems-credential-seen'), 'false\n')
+    const env = {
+      ...process.env,
+      RUNNER_TEMP: rootDir,
+      OUTPUT_DIR: outputDir,
+      RECEIPT_DIR: receiptDir,
+      OBSERVER_FILE: observer,
+      PREFLIGHT_STATE: 'absent',
+      MISSING: 'true',
+      UPLOAD_OUTCOME: success ? 'success' : 'skipped',
+      OBSERVER_OUTCOME: success ? 'success' : 'skipped',
+      AUTH_OUTCOME: success ? 'success' : 'skipped',
+      CLEANUP_OUTCOME: cleanupOutcome,
+      EXPECTED_COMMIT: '4'.repeat(40),
+      CREDENTIAL_SEEN: 'false',
+    }
+    const block = extractWorkflowRunBlock(workflow, name)
+    await execFileAsync('bash', ['-c', `set -euo pipefail\n${block}`], { cwd: root.pathname, env })
+    const publication = JSON.parse(await readFile(join(outputDir, 'publication.json'), 'utf8'))
+    assert.equal(publication.auth.requested, success)
+    assert.equal(publication.observer.receiptPresent, success)
+    if (family === 'rubygems') assert.equal(publication.cleanup.envCleared, cleanupOutcome === 'success')
+    if (success) {
+      const receipt = join(receiptDir, `${family}-proof.json`)
+      assert.equal((await readdir(receiptDir)).length, 1)
+      assert.equal((await readFile(receipt, 'utf8')).length > 0, true)
+    } else {
+      await assert.rejects(() => stat(receiptDir), { code: 'ENOENT' })
+    }
+  }
+  await runOutcome({ name: 'Record npm publication outcome', family: 'npm', success: false })
+  await runOutcome({ name: 'Record npm publication outcome', family: 'npm', success: true })
+  await runOutcome({ name: 'Record PyPI publication outcome', family: 'pypi', success: false })
+  await runOutcome({ name: 'Record PyPI publication outcome', family: 'pypi', success: true })
+  await runOutcome({ name: 'Record RubyGems publication outcome and cleanup status', family: 'rubygems', success: false })
+  await runOutcome({ name: 'Record RubyGems publication outcome and cleanup status', family: 'rubygems', success: true })
+  await runOutcome({ name: 'Record RubyGems publication outcome and cleanup status', family: 'rubygems', success: false, cleanupOutcome: 'failure' })
+
+  const runContextProbe = async ({ stepName, publisher, currentId, currentAttempt, apiId, apiAttempt, apiStatus, apiConclusion, succeeds }) => {
+    const rootDir = await mkdtemp(join(directory, 'publisher-context-')); const publisherFile = join(rootDir, 'publishers.json'); const contextDir = join(rootDir, 'contexts'); const gh = join(rootDir, 'gh')
+    await mkdir(contextDir); await writeFile(publisherFile, JSON.stringify(publisher))
+    await writeFile(gh, `#!/usr/bin/env node\nprocess.stdout.write(JSON.stringify({id:Number(process.env.API_ID),run_attempt:Number(process.env.API_ATTEMPT),status:process.env.API_STATUS,conclusion:process.env.API_CONCLUSION || null,head_sha:process.env.EXPECTED_COMMIT,head_branch:'main',event:'workflow_dispatch',path:'.github/workflows/release.yml',repository:{id:1429568627,full_name:'elsoul/erpc-sdk'}}))\n`); await chmod(gh, 0o755)
+    const block = extractWorkflowRunBlock(workflow, stepName)
+    const env = { ...process.env, PATH: `${rootDir}:${process.env.PATH ?? ''}`, PUBLISHER_FILE: publisherFile, PUBLISHERS_FILE: publisherFile, CONTEXT_DIR: contextDir, GH_TOKEN: 'fixture', REPOSITORY: 'elsoul/erpc-sdk', EXPECTED_COMMIT: '4'.repeat(40), GITHUB_RUN_ID: String(currentId), GITHUB_RUN_ATTEMPT: String(currentAttempt), API_ID: String(apiId), API_ATTEMPT: String(apiAttempt), API_STATUS: apiStatus, API_CONCLUSION: apiConclusion ?? '' }
+    const result = execFileAsync('bash', ['-c', `set -euo pipefail\n${block}`], { cwd: root.pathname, env })
+    if (succeeds) await result
+    else await assert.rejects(result)
+  }
+  await runContextProbe({ stepName: 'Authenticate original npm publisher run context', publisher: { publisherRunId: '92001', publisherAttempt: '2' }, currentId: 92001, currentAttempt: 2, apiId: 92001, apiAttempt: 2, apiStatus: 'in_progress', succeeds: true })
+  await runContextProbe({ stepName: 'Authenticate original npm publisher run context', publisher: { publisherRunId: '92001', publisherAttempt: '1' }, currentId: 92001, currentAttempt: 2, apiId: 92001, apiAttempt: 1, apiStatus: 'completed', apiConclusion: 'failure', succeeds: true })
+  await runContextProbe({ stepName: 'Authenticate original npm publisher run context', publisher: { publisherRunId: '80001', publisherAttempt: '1' }, currentId: 92001, currentAttempt: 2, apiId: 80001, apiAttempt: 1, apiStatus: 'in_progress', succeeds: false })
+  await runContextProbe({ stepName: 'Authenticate original PyPI publisher run contexts', publisher: { file: { publisherRunId: '92001', publisherAttempt: '1' } }, currentId: 92001, currentAttempt: 2, apiId: 92001, apiAttempt: 1, apiStatus: 'completed', apiConclusion: 'failure', succeeds: true })
+
+  const pypiBarrierValidationMatch = barrierBlock.match(/node --input-type=module - "\$BARRIER_DIR\/\$run_id-\$attempt\.json" "\$EXPECTED_COMMIT" "\$run_id" "\$attempt" <<'NODE'\n([\s\S]*?)\nNODE/)
+  assert.ok(pypiBarrierValidationMatch, 'global PyPI barrier context validator must remain extractable')
+  const pypiBarrierValidationFile = join(directory, 'pypi-barrier-context-validation.mjs')
+  await writeFile(pypiBarrierValidationFile, `${pypiBarrierValidationMatch[1]}\n`)
+  const runBarrierContextProbe = async ({ requestedId, requestedAttempt, returnedId, returnedAttempt, status, conclusion, succeeds }) => {
+    const runFile = join(directory, `pypi-barrier-${requestedId}-${requestedAttempt}-${returnedId}-${returnedAttempt}.json`)
+    await writeFile(runFile, JSON.stringify({ id: returnedId, run_attempt: returnedAttempt, status, conclusion, head_sha: '4'.repeat(40), head_branch: 'main', event: 'workflow_dispatch', path: '.github/workflows/release.yml', repository: { id: 1429568627 } }))
+    const result = execFileAsync(process.execPath, [pypiBarrierValidationFile, runFile, '4'.repeat(40), String(requestedId), String(requestedAttempt)], { env: { ...process.env, GITHUB_RUN_ID: '92001', GITHUB_RUN_ATTEMPT: '2' } })
+    if (succeeds) await result
+    else await assert.rejects(result)
+  }
+  await runBarrierContextProbe({ requestedId: '80001', requestedAttempt: '1', returnedId: '99999', returnedAttempt: '7', status: 'completed', conclusion: 'success', succeeds: false })
+  await runBarrierContextProbe({ requestedId: '92001', requestedAttempt: '1', returnedId: '92001', returnedAttempt: '1', status: 'completed', conclusion: 'failure', succeeds: true })
+  await runBarrierContextProbe({ requestedId: '80001', requestedAttempt: '1', returnedId: '80001', returnedAttempt: '1', status: 'in_progress', conclusion: null, succeeds: false })
+
+  const publishBlock = extractWorkflowRunBlock(workflow, 'Download and authenticate exact allocated preparation artifacts')
+  const safetyStart = publishBlock.indexOf('python - "$RUNNER_TEMP/release-set-zips/bundle.zip"')
+  const safetyEnd = publishBlock.indexOf('unzip -q "$RUNNER_TEMP/release-set-zips/bundle.zip"', safetyStart)
+  assert.ok(safetyStart >= 0 && safetyEnd > safetyStart)
+  const safetyBlock = publishBlock.slice(safetyStart, safetyEnd)
+  const zipRoot = join(directory, 'release-set-zips'); const bundleRoot = join(directory, 'safe-bundle'); const bindingRoot = join(directory, 'safe-binding')
+  await mkdir(zipRoot); await mkdir(bundleRoot); await mkdir(bindingRoot)
+  await writeFile(join(bundleRoot, 'release-set-plan.json'), '{}\n'); await writeFile(join(bindingRoot, 'release-set-binding.json'), '{}\n')
+  await execFileAsync('zip', ['-q', join(zipRoot, 'bundle.zip'), 'release-set-plan.json'], { cwd: bundleRoot })
+  await execFileAsync('zip', ['-q', join(zipRoot, 'binding.zip'), 'release-set-binding.json'], { cwd: bindingRoot })
+  await symlink((await execFileAsync('which', ['python3'])).stdout.trim(), join(directory, 'python'))
+  const safetyEnv = { ...process.env, PATH: `${directory}:${process.env.PATH ?? ''}`, RUNNER_TEMP: directory }
+  await execFileAsync('bash', ['-c', `set -euo pipefail\n${safetyBlock}`], { cwd: root.pathname, env: safetyEnv })
+  await execFileAsync('python3', ['-c', 'import sys,zipfile; z=zipfile.ZipFile(sys.argv[1],"w"); i=zipfile.ZipInfo("link"); i.create_system=3; i.external_attr=(0o120777 << 16); z.writestr(i,"secret"); z.close()', join(zipRoot, 'binding.zip')])
+  await assert.rejects(execFileAsync('bash', ['-c', `set -euo pipefail\n${safetyBlock}`], { cwd: root.pathname, env: safetyEnv }))
+  const gemBlock = extractWorkflowRunBlock(workflow, 'Publish the exact reviewed gem once')
+  const gemRoot = join(directory, 'gem-push-fixture'); await mkdir(gemRoot); await writeFile(join(gemRoot, 'release-set-plan.json'), JSON.stringify({ artifacts: [{ kind: 'rubygems', filename: 'erpc-sdk-0.11.0.gem' }] })); await writeFile(join(gemRoot, 'erpc-sdk-0.11.0.gem'), 'fixture-gem')
+  const gemCalls = join(gemRoot, 'calls.log'); const fakeGem = join(gemRoot, 'gem'); await writeFile(fakeGem, `#!/bin/sh\nprintf '%s\\n' "$*" >> "$GEM_EFFECT_FILE"\n`); await chmod(fakeGem, 0o755)
+  const runGem = async (authOutcome, shouldRun) => {
+    const env = { ...process.env, PATH: `${gemRoot}:${process.env.PATH ?? ''}`, PLAN_FILE: join(gemRoot, 'release-set-plan.json'), BUNDLE_DIR: gemRoot, GEM_EFFECT_FILE: gemCalls, STATE: 'absent', AUTH_OUTCOME: authOutcome }
+    const command = `set -euo pipefail\nif [ "$AUTH_OUTCOME" = success ] && [ "$STATE" = absent ]; then\n${gemBlock}\nfi`
+    await execFileAsync('bash', ['-c', command], { cwd: root.pathname, env })
+    if (shouldRun) assert.equal((await readFile(gemCalls, 'utf8')).trim().split(/\r?\n/).filter(Boolean).length, 1)
+    else await assert.rejects(() => readFile(gemCalls, 'utf8'), { code: 'ENOENT' })
+  }
+  await runGem('failure', false)
+  await runGem('success', true)
 })
 
 test('recovery workflow is manual, M-bound, read-only for registries, and keeps the fifteen-asset boundary', async () => {

@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 import { execFile as execFileCallback, spawn } from 'node:child_process'
+import { closeSync } from 'node:fs'
 import { lstat, mkdir, mkdtemp, readdir, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { join, resolve, sep } from 'node:path'
 import { tmpdir } from 'node:os'
@@ -45,6 +46,44 @@ export const FOUNDATION_ARTIFACT_FILENAMES = Object.freeze({
 // immutable helpers; these constants apply only to the current 0.11 source
 // and archive checks.
 export const RUST_011_LICENSE_PROFILE = 'MIT AND Apache-2.0'
+export const RUST_011_REUSE_SOURCE = '4877b32a32ffb6b82a6620040fe77fc2e73f4386'
+export const RUST_011_REUSE_SHA256 = 'fe3e0e224a60921531d09442ecbe68ab9a34ae3ebed7821ab02a309b8b66f7f6'
+export const RUST_011_REUSE_SIZE = 254463
+export const RELEASE_SET_NON_RUST_LICENSE_PROFILE = 'MIT AND Apache-2.0 AND BSD-3-Clause'
+export const RELEASE_SET_NON_RUST_PROFILE = 'future-non-rust'
+export const RELEASE_SET_NON_RUST_LICENSE_FILES = Object.freeze([
+  'LICENSE',
+  'LICENSES/Apache-2.0.txt',
+  'LICENSES/BSD-3-Clause-Google-Protobuf.txt',
+  'THIRD_PARTY_NOTICES.md',
+])
+const RELEASE_SET_PROFILE_SOURCE_FILES = Object.freeze({
+  npm: Object.freeze({
+    license: 'packages/typescript/LICENSE',
+    apache: 'packages/typescript/LICENSES/Apache-2.0.txt',
+    bsd: 'packages/typescript/LICENSES/BSD-3-Clause-Google-Protobuf.txt',
+    notice: 'packages/typescript/THIRD_PARTY_NOTICES.md',
+  }),
+  pypi: Object.freeze({
+    license: 'packages/python/LICENSE',
+    apache: 'packages/python/LICENSES/Apache-2.0.txt',
+    bsd: 'packages/python/LICENSES/BSD-3-Clause-Google-Protobuf.txt',
+    notice: 'packages/python/THIRD_PARTY_NOTICES.md',
+  }),
+  rubygems: Object.freeze({
+    license: 'packages/ruby/LICENSE',
+    apache: 'packages/ruby/LICENSES/Apache-2.0.txt',
+    bsd: 'packages/ruby/LICENSES/BSD-3-Clause-Google-Protobuf.txt',
+    notice: 'packages/ruby/THIRD_PARTY_NOTICES.md',
+  }),
+  go: Object.freeze({
+    license: 'packages/go/LICENSE',
+    apache: 'packages/go/LICENSES/Apache-2.0.txt',
+    bsd: 'packages/go/LICENSES/BSD-3-Clause-Google-Protobuf.txt',
+    notice: 'packages/go/THIRD_PARTY_NOTICES.md',
+    goMod: 'packages/go/go.mod',
+  }),
+})
 export const RUST_011_LICENSE_HASHES = Object.freeze({
   'LICENSE': 'c58b88798da8b5b47cec99517d7f7ae22864ea48dba348754f4eae7edd00da6c',
   'LICENSES/Apache-2.0.txt': 'c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4',
@@ -192,6 +231,15 @@ export const RELEASE_SET_PUBLIC_ASSET_ROLES = Object.freeze([
   'release-body',
   'go-inventory',
 ])
+export const RELEASE_SET_RECEIPT_FILENAMES = Object.freeze([
+  'npm-proof.json', 'pypi-proof.json', 'rubygems-proof.json',
+  'rust-proof.json', 'tag-proof.json', 'go-proof.json',
+])
+export const RELEASE_SET_RECEIPT_ARTIFACT_ROLES = Object.freeze({
+  'npm-proof.json': 'npm-proof', 'pypi-proof.json': 'pypi-proof',
+  'rubygems-proof.json': 'rubygems-proof', 'rust-proof.json': 'rust-proof',
+  'tag-proof.json': 'tag-proof', 'go-proof.json': 'go-proof',
+})
 
 const STABLE_VERSION = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/
 const COMMIT_SHA = /^[0-9a-f]{40}$/
@@ -554,7 +602,7 @@ const validateNonRust = (data, expectedVersion) => {
     'Unexpected Go module path',
   )
   requireEqual(data.rubyName, 'erpc-sdk', 'Unexpected RubyGems package name')
-  requireEqual(data.packageJson.license, 'MIT', 'Unexpected npm package license')
+  requireEqual(data.packageJson.license, RELEASE_SET_NON_RUST_LICENSE_PROFILE, 'Unexpected npm package license')
   if (!STABLE_VERSION.test(packageVersion ?? '')) {
     fail('Unexpected npm package version')
   }
@@ -597,7 +645,7 @@ const validateNonRust = (data, expectedVersion) => {
   if (!/^requires-python = ">=3\.11"$/m.test(data.pythonManifest)) {
     fail('Unexpected minimum Python version')
   }
-  if (!/^license = \{ file = "LICENSE" \}$/m.test(data.pythonManifest)) {
+  if (!/^license = "MIT AND Apache-2\.0 AND BSD-3-Clause"$/m.test(data.pythonManifest) && !/^license = \{ file = "LICENSE" \}$/m.test(data.pythonManifest)) {
     fail('Unexpected Python package license')
   }
   if (
@@ -613,7 +661,7 @@ const validateNonRust = (data, expectedVersion) => {
   if (!/^\s*spec\.required_ruby_version = ">= 3\.1"$/m.test(data.rubyManifest)) {
     fail('Unexpected minimum Ruby version')
   }
-  if (!/^\s*spec\.license = "MIT"$/m.test(data.rubyManifest)) {
+  if (!/^\s*spec\.licenses = \["MIT", "Apache-2\.0", "BSD-3-Clause"\]$/m.test(data.rubyManifest) && !/^\s*spec\.license = "MIT"$/m.test(data.rubyManifest)) {
     fail('Unexpected Ruby gem license')
   }
   if (
@@ -726,7 +774,7 @@ const foundationArtifactMap = artifacts => {
   return Object.fromEntries(validated.map(artifact => [artifact.kind, artifact]))
 }
 
-const validateGoInventory = inventory => {
+const validateGoInventory = (inventory, mixedProfile = false) => {
   if (!inventory || !Array.isArray(inventory.files) || inventory.files.length === 0) {
     fail('Go inventory is empty')
   }
@@ -735,8 +783,9 @@ const validateGoInventory = inventory => {
     sha256: requireArchiveSha(file.sha256, `Go inventory SHA-256 for ${file.path}`),
   }))
   if (new Set(files.map(file => file.path)).size !== files.length) fail('Go inventory contains duplicate paths')
-  if (!files.some(file => file.path === 'go.mod') || !files.some(file => file.path === 'LICENSE')) {
-    fail('Go inventory must include go.mod and LICENSE')
+  const requiredPaths = mixedProfile ? ['go.mod', 'LICENSE', 'LICENSES/Apache-2.0.txt', 'LICENSES/BSD-3-Clause-Google-Protobuf.txt', 'THIRD_PARTY_NOTICES.md'] : ['go.mod', 'LICENSE']
+  for (const required of requiredPaths) {
+    if (!files.some(file => file.path === required)) fail(`Go inventory must include ${required}`)
   }
   const inventoryDigest = sha256Hex(canonicalJson(files))
   if (inventory.inventorySha256 !== inventoryDigest) fail('Go inventory digest does not match its files')
@@ -1088,9 +1137,23 @@ const collectFiles = async (root, current = root) => {
   return files
 }
 
-export async function buildGoInventory(goRoot) {
+export async function buildGoInventory(goRoot, options = {}) {
+  const profile = options === true || options?.profile === 'future' || options?.mixedProfile === true ? 'future' : 'historical'
   const files = (await collectFiles(resolve(goRoot))).sort((a, b) => a.path.localeCompare(b.path))
-  return validateGoInventory({ files, inventorySha256: sha256Hex(canonicalJson(files)) })
+  const required = profile === 'future'
+    ? ['LICENSE', ...RELEASE_SET_NON_RUST_LICENSE_FILES.filter(file => file !== 'LICENSE'), 'go.mod']
+    : ['LICENSE', 'go.mod']
+  for (const path of required) if (!files.some(file => file.path === path)) fail(`Go inventory is missing ${path}`)
+  if (profile === 'future') {
+    const sourceRoot = resolve(join(REPOSITORY_ROOT, 'packages/go'))
+    const sourceFiles = RELEASE_SET_PROFILE_SOURCE_FILES.go
+    for (const [key, relative] of Object.entries(sourceFiles)) {
+      const sourceSha = await sha256File(join(sourceRoot, relative.slice('packages/go/'.length)))
+      const inventoryPath = key === 'license' ? 'LICENSE' : key === 'apache' ? 'LICENSES/Apache-2.0.txt' : key === 'bsd' ? 'LICENSES/BSD-3-Clause-Google-Protobuf.txt' : key === 'notice' ? 'THIRD_PARTY_NOTICES.md' : 'go.mod'
+      requireEqual(files.find(file => file.path === inventoryPath)?.sha256, sourceSha, `Go inventory ${inventoryPath} is not bound to the current source`)
+    }
+  }
+  return validateGoInventory({ files, inventorySha256: sha256Hex(canonicalJson(files)) }, profile === 'future')
 }
 
 export async function verifyFoundationBundle({ plan, artifactDirectory }) {
@@ -2120,17 +2183,19 @@ export function parseReleaseSetChecksums(source) {
 }
 
 const releaseSetValidateArtifact = (descriptor, expectedVersion) => {
-  releaseSetKeys(descriptor, ['kind', 'filename', 'name', 'version', 'sha256', 'files'], 'Release-set artifact')
+  releaseSetKeys(descriptor, ['kind', 'filename', 'name', 'version', 'sha256', 'files', 'profile'], 'Release-set artifact')
   if (!RELEASE_SET_ARTIFACT_KINDS.includes(descriptor.kind)) fail(`Unknown release-set artifact kind ${descriptor.kind}`)
   releaseSetVersion(expectedVersion, 'Release-set non-Rust version')
   requireEqual(descriptor.version, expectedVersion, `${descriptor.kind} release-set version mismatch`)
   requireEqual(descriptor.filename, releaseSetArtifactFilename(descriptor.kind, expectedVersion), `${descriptor.kind} release-set filename mismatch`)
   requireEqual(descriptor.name, releaseSetArtifactName(descriptor.kind), `${descriptor.kind} release-set identity mismatch`)
   requireArchiveSha(descriptor.sha256, `${descriptor.kind} release-set archive SHA-256`)
+  const profile = descriptor.profile ?? RELEASE_SET_NON_RUST_PROFILE
+  requireEqual(profile, RELEASE_SET_NON_RUST_PROFILE, `${descriptor.kind} release-set profile mismatch`)
   if (!Array.isArray(descriptor.files) || descriptor.files.length === 0) fail(`${descriptor.kind} release-set member list is empty`)
   const files = descriptor.files.map(member => safeRelativePath(member))
   if (new Set(files).size !== files.length) fail(`${descriptor.kind} release-set member list contains duplicates`)
-  return { ...descriptor, files }
+  return { ...descriptor, files, profile }
 }
 
 const releaseSetValidateRust = (rust, planSourceCommit) => {
@@ -2143,7 +2208,7 @@ const releaseSetValidateRust = (rust, planSourceCommit) => {
     requireSha(rust.sourceCommit, 'Rust reuse source commit')
     requireEqual(rust.sourceCommit, rust.reuse?.sourceCommit, 'Rust reuse top-level/source intent mismatch')
     requireEqual(rust.sha256, rust.reuse?.sha256, 'Rust reuse top-level/checksum intent mismatch')
-    releaseSetKeys(rust.reuse, ['registry', 'downloadUrl', 'sourceCommit', 'sha256', 'yanked'], 'Rust reuse intent')
+    releaseSetKeys(rust.reuse, ['registry', 'downloadUrl', 'sourceCommit', 'sha256', 'sizeInBytes', 'yanked'], 'Rust reuse intent')
     requireEqual(rust.reuse.registry, 'crates.io', 'Rust reuse registry mismatch')
     requireEqual(rust.reuse.downloadUrl, `https://crates.io/api/v1/crates/${CRATE_NAME}/${rust.version}/download`, 'Rust reuse download URL mismatch')
     requireSha(rust.reuse.sourceCommit, 'Rust reuse source commit')
@@ -2153,6 +2218,10 @@ const releaseSetValidateRust = (rust, planSourceCommit) => {
     if (rust.version === RUST_VERSION) {
       requireEqual(rust.reuse.sourceCommit, FOUNDATION_RUST_SOURCE, 'Historical Rust reuse source mismatch')
       requireEqual(rust.reuse.sha256, FOUNDATION_RUST_SHA256, 'Historical Rust reuse checksum mismatch')
+    } else if (rust.version === CURRENT_RUST_VERSION) {
+      requireEqual(rust.reuse.sourceCommit, RUST_011_REUSE_SOURCE, 'Rust 0.11 reuse source mismatch')
+      requireEqual(rust.reuse.sha256, RUST_011_REUSE_SHA256, 'Rust 0.11 reuse checksum mismatch')
+      requireEqual(rust.reuse.sizeInBytes, RUST_011_REUSE_SIZE, 'Rust 0.11 reuse archive size mismatch')
     }
     return { ...rust }
   }
@@ -2210,7 +2279,7 @@ export function validateReleaseSetPlan(plan) {
   requireEqual(plan.go.version, `v${plan.versions.nonRustVersion}`, 'Release-set Go version mismatch')
   requireEqual(plan.go.tag, `packages/go/v${plan.versions.nonRustVersion}`, 'Release-set Go tag mismatch')
   requireEqual(plan.go.sourceCommit, plan.sourceCommit, 'Release-set Go source mismatch')
-  const goInventory = validateGoInventory(plan.go.inventory)
+  const goInventory = validateGoInventory(plan.go.inventory, true)
   const rust = releaseSetValidateRust(plan.rust, plan.sourceCommit)
   requireEqual(rust.version, plan.versions.rustVersion, 'Release-set Rust version mismatch')
   releaseSetKeys(plan.ciProof, ['workflowPath', 'sourceCommit', 'runId', 'runAttempt', 'jobId', 'requiredJob', 'event', 'headBranch', 'status', 'conclusion'], 'Release-set CI proof')
@@ -2226,15 +2295,17 @@ export function validateReleaseSetPlan(plan) {
   requireEqual(plan.tags.release, `non-rust-v${plan.versions.nonRustVersion}`, 'Release-set release tag mismatch')
   requireEqual(plan.tags.go, `packages/go/v${plan.versions.nonRustVersion}`, 'Release-set Go tag mismatch')
   requireEqual(plan.tags.commit, plan.sourceCommit, 'Release-set tag source mismatch')
-  releaseSetKeys(plan.githubRelease, ['title', 'tag', 'body', 'bodySha256'], 'Release-set Release descriptor')
+  releaseSetKeys(plan.githubRelease, ['title', 'tag', 'body', 'bodySha256', 'latest'], 'Release-set Release descriptor')
   requireEqual(plan.githubRelease.title, `SDK release set: non-Rust ${plan.versions.nonRustVersion} / Rust ${plan.versions.rustVersion}`, 'Release-set Release title mismatch')
   requireEqual(plan.githubRelease.tag, plan.tags.release, 'Release-set Release tag mismatch')
   releaseSetString(plan.githubRelease.body, 'Release-set Release body')
   requireEqual(plan.githubRelease.bodySha256, sha256Hex(plan.githubRelease.body), 'Release-set Release body hash mismatch')
+  if (plan.githubRelease.latest !== undefined && typeof plan.githubRelease.latest !== 'boolean') fail('Release-set Latest designation must be boolean')
   releaseSetKeys(plan.licenseProfile, ['nonRust', 'rust'], 'Release-set license profile')
-  requireEqual(plan.licenseProfile.nonRust, 'MIT', 'Release-set non-Rust license mismatch')
+  requireEqual(plan.licenseProfile.nonRust, RELEASE_SET_NON_RUST_LICENSE_PROFILE, 'Release-set non-Rust license profile mismatch')
   releaseSetString(plan.licenseProfile.rust, 'Release-set Rust license profile')
-  requireEqual(plan.licenseProfile.rust, rust.mode === 'reuse' ? 'MIT' : 'MIT AND Apache-2.0', 'Release-set Rust license profile does not match mode')
+  const expectedRustLicense = rust.mode === 'reuse' && rust.version === RUST_VERSION ? 'MIT' : RUST_011_LICENSE_PROFILE
+  requireEqual(plan.licenseProfile.rust, expectedRustLicense, 'Release-set Rust license profile does not match the bound artifact')
   releaseSetKeys(plan.toolchain, ['node', 'python', 'go', 'ruby', 'rust'], 'Release-set toolchain')
   const requiredToolchain = { node: '24', python: '3.12', go: '1.22', ruby: '3.1', rust: '1.85.0' }
   for (const [tool, value] of Object.entries(requiredToolchain)) requireEqual(plan.toolchain[tool], value, `Release-set ${tool} toolchain mismatch`)
@@ -2272,6 +2343,230 @@ export function validateReleaseSetPlan(plan) {
 export function buildReleaseSetPlan(input) {
   releaseSetObject(input, 'Release-set plan input')
   return validateReleaseSetPlan({ ...input, schemaVersion: RELEASE_SET_SCHEMA_VERSION, kind: RELEASE_SET_KIND })
+}
+
+/** Validate the live dispatch/checkout identity before any package command runs. */
+export function validateReleaseSetRuntimeContext(context) {
+  releaseSetKeys(context, ['repository', 'repositoryId', 'eventName', 'eventRef', 'eventSha', 'expectedCommit', 'checkoutHead', 'checkoutStatus', 'workflowRef', 'workflowSha'], 'Release-set execution context')
+  requireEqual(context.repository, EXPECTED_REPOSITORY, 'Release-set execution repository mismatch')
+  requireEqual(String(context.repositoryId), EXPECTED_REPOSITORY_ID, 'Release-set execution repository ID mismatch')
+  requireEqual(context.eventName, 'workflow_dispatch', 'Release-set execution must be manually dispatched')
+  requireEqual(context.eventRef, 'refs/heads/main', 'Release-set execution must run on main')
+  requireSha(context.expectedCommit, 'Release-set expected commit')
+  requireSha(context.eventSha, 'Release-set event commit')
+  requireSha(context.checkoutHead, 'Release-set checkout HEAD')
+  requireEqual(context.expectedCommit, context.eventSha, 'Release-set expected commit/event SHA mismatch')
+  requireEqual(context.expectedCommit, context.checkoutHead, 'Release-set expected commit/checkout mismatch')
+  requireEqual(context.checkoutStatus, '', 'Release-set checkout must be clean')
+  requireEqual(context.workflowRef, `${EXPECTED_REPOSITORY}/${RELEASE_SET_WORKFLOW}@refs/heads/main`, 'Release-set workflow ref mismatch')
+  requireSha(context.workflowSha, 'Release-set workflow SHA')
+  requireEqual(context.workflowSha, context.expectedCommit, 'Release-set workflow SHA mismatch')
+  return context
+}
+
+/** Validate only template identity; archive hashes/members are filled from measured bytes later. */
+export function validateReleaseSetTemplateIdentity(template, context) {
+  const normalizedContext = validateReleaseSetRuntimeContext(context)
+  releaseSetObject(template, 'Release-set plan template')
+  const requireOptionalEqual = (value, expected, label) => {
+    if (value !== undefined) requireEqual(value, expected, label)
+  }
+  for (const [value, expected, label] of [
+    [template.repository, EXPECTED_REPOSITORY, 'Release-set template repository'],
+    [String(template.repositoryId), EXPECTED_REPOSITORY_ID, 'Release-set template repository ID'],
+    [template.workflowPath, RELEASE_SET_WORKFLOW, 'Release-set template workflow path'],
+    [template.ciWorkflowPath, RELEASE_SET_CI_WORKFLOW, 'Release-set template CI workflow path'],
+  ]) requireEqual(value, expected, label)
+  for (const [value, expected, label] of [
+    [template.sourceCommit, normalizedContext.expectedCommit, 'Release-set template source'],
+    [template.controlCommit, normalizedContext.expectedCommit, 'Release-set template control commit'],
+    [template.workflowRevision, normalizedContext.expectedCommit, 'Release-set template workflow revision'],
+    [template.checkoutHead, normalizedContext.expectedCommit, 'Release-set template checkout head'],
+    [template.checkoutStatus, '', 'Release-set template checkout status'],
+    [template.event?.name, 'workflow_dispatch', 'Release-set template event'],
+    [template.event?.ref, 'refs/heads/main', 'Release-set template event ref'],
+    [template.event?.sha, normalizedContext.expectedCommit, 'Release-set template event SHA'],
+    [template.go?.sourceCommit, normalizedContext.expectedCommit, 'Release-set template Go source'],
+    [template.tags?.commit, normalizedContext.expectedCommit, 'Release-set template tag source'],
+    [template.ciProof?.sourceCommit, normalizedContext.expectedCommit, 'Release-set template CI source'],
+  ]) requireOptionalEqual(value, expected, label)
+  releaseSetVersion(template.versions?.nonRustVersion, 'Release-set template non-Rust version')
+  releaseSetVersion(template.versions?.rustVersion, 'Release-set template Rust version')
+  if (template.versions.nonRustVersion === FOUNDATION_VERSION) fail('Release-set template cannot target the historical foundation version')
+  if (!Array.isArray(template.artifacts) || template.artifacts.length !== RELEASE_SET_ARTIFACT_KINDS.length) fail('Release-set template artifact set is incomplete')
+  for (const artifact of template.artifacts) {
+    releaseSetObject(artifact, 'Release-set template artifact')
+    if (!RELEASE_SET_ARTIFACT_KINDS.includes(artifact.kind)) fail(`Unknown release-set template artifact kind ${artifact.kind}`)
+    requireEqual(artifact.filename, releaseSetArtifactFilename(artifact.kind, template.versions.nonRustVersion), `${artifact.kind} release-set template filename mismatch`)
+    requireEqual(artifact.name, releaseSetArtifactName(artifact.kind), `${artifact.kind} release-set template identity mismatch`)
+    requireEqual(artifact.version, template.versions.nonRustVersion, `${artifact.kind} release-set template version mismatch`)
+  }
+  return template
+}
+
+/**
+ * Classify the finite read-only registry preflight used before protected
+ * publisher fanout. This operation only authenticates package identity and
+ * prepared digests; the package observers still perform the full public-byte,
+ * attestation, and consumer proof after any upload or reuse decision.
+ */
+export function classifyReleaseSetPreflight({ plan, responses }) {
+  const normalized = validateReleaseSetPlan(plan)
+  releaseSetKeys(responses, ['npm', 'pypi', 'rubygems'], 'Release-set preflight responses')
+  const version = normalized.versions.nonRustVersion
+  const artifacts = Object.fromEntries(normalized.artifacts.map(artifact => [artifact.kind, artifact]))
+  const parseResponse = (name, response) => {
+    releaseSetKeys(response, ['status', 'body', 'absenceGate', 'fullStatus', 'fullBody', 'fullRecheckStatus', 'fullRecheckBody'], `Release-set ${name} preflight response`)
+    const status = Number(response.status)
+    if (!Number.isInteger(status) || status < 100 || status > 599) return { state: 'malformed', status: response.status }
+    if (status === 404 && response.absenceGate !== true) return { state: 'unknown', status, reason: 'absence-gate-missing' }
+    let payload
+    if (status === 200) {
+      try { payload = JSON.parse(response.body) } catch { return { state: 'malformed', status } }
+    }
+    return { status, payload, absenceGate: response.absenceGate }
+  }
+
+  const npmResponse = parseResponse('npm', responses.npm)
+  const npmFullResponse = parseResponse('npm-full', { status: responses.npm.fullStatus, body: responses.npm.fullBody, absenceGate: responses.npm.absenceGate })
+  const npmFullRecheckResponse = parseResponse('npm-full-recheck', { status: responses.npm.fullRecheckStatus, body: responses.npm.fullRecheckBody, absenceGate: responses.npm.absenceGate })
+  const npmFullPackument = npmFullResponse.payload
+  const npmFullRecheckPackument = npmFullRecheckResponse.payload
+  const npmFullTarget = npmFullPackument?.versions?.[version]
+  const npmFullRecheckTarget = npmFullRecheckPackument?.versions?.[version]
+  const npmFullPayload = npmFullTarget === undefined
+    ? undefined
+    : { ...npmFullTarget, name: npmFullPackument.name ?? npmFullTarget.name }
+  const npmIntegrity = value => {
+    if (typeof value !== 'string' || !value.startsWith('sha512-')) return false
+    const encoded = value.slice('sha512-'.length)
+    if (!/^[A-Za-z0-9+/]+={0,2}$/.test(encoded)) return false
+    try { return Buffer.from(encoded, 'base64').length === 64 && Buffer.from(encoded, 'base64').toString('base64') === encoded } catch { return false }
+  }
+  const npmComparable = payload => ({ name: payload?.name, version: payload?.version, tarball: payload?.dist?.tarball, integrity: payload?.dist?.integrity })
+  let npm
+  if (npmResponse.state !== undefined && npmResponse.state !== 'unknown' && npmResponse.state !== 'malformed') npm = { state: npmResponse.state, status: npmResponse.status, reason: npmResponse.reason }
+  else if (npmResponse.status === 404) {
+    const fullIsCanonical = npmFullResponse.status === 200 && npmFullPackument?.name === '@elsoul/erpc-sdk' && npmFullPackument?.versions !== null && typeof npmFullPackument?.versions === 'object' && !Array.isArray(npmFullPackument.versions)
+    if (npmFullResponse.status === 404 && npmResponse.absenceGate === true) npm = { state: 'absent', status: npmResponse.status }
+    else if (fullIsCanonical && npmFullRecheckResponse.status === 200 && npmFullRecheckPackument?.name === '@elsoul/erpc-sdk' && npmFullRecheckPackument?.versions !== null && typeof npmFullRecheckPackument?.versions === 'object' && !Array.isArray(npmFullRecheckPackument.versions) && npmResponse.absenceGate === true && npmFullTarget === undefined && npmFullRecheckTarget === undefined) npm = { state: 'absent', status: npmResponse.status, scope: 'target-version', fullBodySha256: sha256Hex(responses.npm.fullBody), fullRecheckBodySha256: sha256Hex(responses.npm.fullRecheckBody) }
+    else npm = { state: 'conflict', status: npmResponse.status, reason: 'npm exact/full absence is inconsistent' }
+  }
+  else if (npmResponse.status !== 200) npm = { state: 'unknown', status: npmResponse.status }
+  else if (npmFullResponse.status !== 200 || npmFullRecheckResponse.status !== 200 || npmResponse.payload?.name !== '@elsoul/erpc-sdk' || npmResponse.payload.version !== version || npmResponse.payload.dist?.tarball !== npmTarballUrl(version) || !npmIntegrity(npmResponse.payload.dist?.integrity) || npmFullPackument?.name !== '@elsoul/erpc-sdk' || npmFullPackument?.versions === null || typeof npmFullPackument?.versions !== 'object' || Array.isArray(npmFullPackument.versions) || npmFullRecheckPackument?.name !== '@elsoul/erpc-sdk' || npmFullRecheckPackument?.versions === null || typeof npmFullRecheckPackument.versions !== 'object' || Array.isArray(npmFullRecheckPackument.versions) || npmFullPayload?.name !== '@elsoul/erpc-sdk' || npmFullPayload.version !== version || npmFullPayload.dist?.tarball !== npmTarballUrl(version) || !npmIntegrity(npmFullPayload.dist?.integrity) || npmFullRecheckTarget === undefined || npmFullRecheckTarget.name !== '@elsoul/erpc-sdk' || npmFullRecheckTarget.version !== version || npmFullRecheckTarget.dist?.tarball !== npmTarballUrl(version) || !npmIntegrity(npmFullRecheckTarget.dist?.integrity) || canonicalJson(npmComparable(npmResponse.payload)) !== canonicalJson(npmComparable(npmFullPayload)) || canonicalJson(npmComparable(npmFullPayload)) !== canonicalJson(npmComparable({ ...npmFullRecheckTarget, name: npmFullRecheckPackument.name ?? npmFullRecheckTarget.name }))) npm = { state: 'conflict', status: npmResponse.status, reason: 'npm exact/full metadata mismatch' }
+  else npm = { state: 'match', status: npmResponse.status, bodySha256: sha256Hex(responses.npm.body), fullBodySha256: sha256Hex(responses.npm.fullBody), tarball: npmResponse.payload.dist.tarball, integrity: npmResponse.payload.dist.integrity }
+
+  const pypiResponse = parseResponse('pypi', responses.pypi)
+  const expectedPyPI = new Map(['pypi-wheel', 'pypi-sdist'].map(kind => [artifacts[kind].filename, artifacts[kind]]))
+  let pypi
+  if (pypiResponse.status === 404) pypi = pypiResponse.absenceGate === true ? { state: 'absent', status: pypiResponse.status, files: [] } : { state: 'unknown', status: pypiResponse.status, reason: 'absence-gate-missing' }
+  else if (pypiResponse.status !== 200) pypi = { state: 'unknown', status: pypiResponse.status }
+  else if (pypiResponse.payload?.info?.name !== 'erpc-sdk' || pypiResponse.payload.info.version !== version || !Array.isArray(pypiResponse.payload.urls)) pypi = { state: 'conflict', status: pypiResponse.status }
+  else {
+    const seen = new Set()
+    const files = []
+    let invalid = false
+    for (const file of pypiResponse.payload.urls) {
+      const descriptor = expectedPyPI.get(file?.filename)
+      if (descriptor === undefined || seen.has(file.filename)) { invalid = true; continue }
+      seen.add(file.filename)
+      const expectedType = descriptor.kind === 'pypi-wheel' ? 'bdist_wheel' : 'sdist'
+      if (file.yanked !== false || file.packagetype !== expectedType || pypiCanonicalFileUrl(file.url) === null || file.digests?.sha256 !== descriptor.sha256) invalid = true
+      files.push({ filename: file.filename, kind: descriptor.kind, sha256: file.digests?.sha256, url: file.url, packagetype: file.packagetype, yanked: file.yanked })
+    }
+    if (invalid) pypi = { state: 'conflict', status: pypiResponse.status, files }
+    else if (files.length === 0) pypi = { state: 'incomplete', status: pypiResponse.status, files }
+    else pypi = { state: files.length === expectedPyPI.size ? 'match' : 'partial', status: pypiResponse.status, files: files.sort((left, right) => left.filename.localeCompare(right.filename)) }
+  }
+
+  const rubyResponse = parseResponse('rubygems', responses.rubygems)
+  const rubyArtifact = artifacts.rubygems
+  let rubygems
+  if (rubyResponse.status === 404) rubygems = rubyResponse.absenceGate === true ? { state: 'absent', status: rubyResponse.status } : { state: 'unknown', status: rubyResponse.status, reason: 'absence-gate-missing' }
+  else if (rubyResponse.status !== 200) rubygems = { state: 'unknown', status: rubyResponse.status }
+  else if (rubyResponse.payload?.name !== 'erpc-sdk' || rubyResponse.payload.version !== version || rubyResponse.payload.platform !== 'ruby' || rubyResponse.payload.sha !== rubyArtifact.sha256 || (rubyResponse.payload.yanked !== undefined && rubyResponse.payload.yanked !== false)) rubygems = { state: 'conflict', status: rubyResponse.status }
+  else rubygems = { state: 'match', status: rubyResponse.status, sha256: rubyResponse.payload.sha }
+
+  const result = { schemaVersion: 1, kind: 'erpc-sdk-release-set-preflight', sourceCommit: normalized.sourceCommit, planSha256: releaseSetPlanDigest(normalized), registries: { npm, pypi, rubygems }, observedAt: new Date().toISOString() }
+  const invalidStates = Object.entries(result.registries).filter(([, state]) => !['absent', 'match', 'partial'].includes(state.state))
+  if (invalidStates.length > 0) fail(`Release-set preflight stopped in ${invalidStates.map(([registry, state]) => `${registry}:${state.state}${state.reason ? `:${state.reason}` : ''}`).join(',')}`)
+  return result
+}
+
+/** Reuse the accepted CI selection/proof helpers and convert their evidence to schema2 fields. */
+export function validateReleaseSetCIEvidence(evidence, expectedSourceCommit) {
+  requireSha(expectedSourceCommit, 'Release-set CI expected source')
+  releaseSetKeys(evidence, ['workflow', 'runs', 'selection', 'recheck', 'jobs'], 'Release-set CI evidence')
+  const validated = validateFoundationCIProof({
+    workflow: evidence.workflow,
+    runs: evidence.runs,
+    selection: evidence.selection,
+    recheck: evidence.recheck,
+    jobs: evidence.jobs,
+    expected: { sourceCommit: expectedSourceCommit },
+  })
+  return {
+    workflowPath: RELEASE_SET_CI_WORKFLOW,
+    sourceCommit: expectedSourceCommit,
+    runId: String(validated.id),
+    runAttempt: String(validated.runAttempt),
+    jobId: String(validated.requiredJobId),
+    requiredJob: validated.requiredJobName,
+    event: validated.event,
+    headBranch: validated.headBranch,
+    status: validated.requiredJobStatus,
+    conclusion: validated.requiredJobConclusion,
+  }
+}
+
+/** Build a schema2 plan and all fixed sidecars from measured archive/Go bytes. */
+export async function prepareReleaseSetBundle({ template, artifactDirectory, goRoot, planFile, context, ciEvidence, reviewedPlanSha256 }) {
+  if (context !== undefined) validateReleaseSetTemplateIdentity(template, context)
+  if (context !== undefined && ciEvidence === undefined) fail('Release-set preparation requires actual CI evidence')
+  const input = structuredClone(template)
+  const runtimeSource = context?.expectedCommit ?? input.sourceCommit
+  const runtimeCiProof = ciEvidence === undefined ? input.ciProof : validateReleaseSetCIEvidence(ciEvidence, runtimeSource)
+  if (context !== undefined) {
+    input.sourceCommit = runtimeSource
+    input.controlCommit = runtimeSource
+    input.workflowRevision = runtimeSource
+    input.event = { name: context.eventName, ref: context.eventRef, sha: context.eventSha }
+    input.checkoutHead = context.checkoutHead
+    input.checkoutStatus = context.checkoutStatus
+    input.ciProof = runtimeCiProof
+    input.go = { ...input.go, sourceCommit: runtimeSource }
+    input.tags = { ...input.tags, commit: runtimeSource }
+  }
+  const version = input.versions?.nonRustVersion
+  releaseSetVersion(version, 'Release-set non-Rust version')
+  const artifacts = []
+  for (const kind of RELEASE_SET_ARTIFACT_KINDS) {
+    const templateArtifact = input.artifacts?.find(item => item.kind === kind)
+    if (templateArtifact === undefined) fail(`Release-set template is missing ${kind}`)
+    const filename = releaseSetArtifactFilename(kind, version)
+    const filePath = join(artifactDirectory, filename)
+    const descriptor = { ...templateArtifact, kind, filename, name: releaseSetArtifactName(kind), version, profile: RELEASE_SET_NON_RUST_PROFILE, sha256: await sha256File(filePath), files: await releaseSetReadMetadata(filePath, kind, version, releaseSetArtifactName(kind)) }
+    const inspected = await inspectReleaseSetArtifactBytes(descriptor, filePath, runtimeSource)
+    artifacts.push({ ...descriptor, files: inspected.members })
+  }
+  const goInventory = await buildGoInventory(goRoot, { profile: 'future' })
+  const plan = buildReleaseSetPlan({ ...input, artifacts, go: { ...input.go, inventory: goInventory } })
+  if (context !== undefined) validateReleaseSetContext(context, plan)
+  const planSha256 = releaseSetPlanDigest(plan)
+  if (reviewedPlanSha256 !== undefined) {
+    requireArchiveSha(reviewedPlanSha256, 'Release-set reviewed plan digest')
+    requireEqual(reviewedPlanSha256, planSha256, 'Release-set reviewed plan digest mismatch')
+  }
+  await writeFile(join(artifactDirectory, 'release-set-plan.json'), `${canonicalJson(plan)}\n`)
+  await writeFile(join(artifactDirectory, 'release-set-plan.sha256'), `${releaseSetPlanDigest(plan)}\n`)
+  await writeFile(join(artifactDirectory, 'release-body.md'), plan.githubRelease.body)
+  await writeFile(join(artifactDirectory, 'go-inventory.json'), `${canonicalJson(plan.go.inventory)}\n`)
+  const checksumFiles = releaseSetExpectedBundleFiles(plan).filter(file => file !== 'checksums.txt')
+  const checksums = []
+  for (const filename of checksumFiles) checksums.push(`${await sha256File(join(artifactDirectory, filename))}  ./${filename}`)
+  await writeFile(join(artifactDirectory, 'checksums.txt'), `${checksums.join('\n')}\n`)
+  await writeFile(planFile, `${canonicalJson(plan)}\n`)
+  return plan
 }
 
 export const releaseSetPlanDigest = plan => sha256Hex(canonicalJson(validateReleaseSetPlan(plan)))
@@ -2350,6 +2645,93 @@ const releaseSetReadMetadata = async (filePath, kind, version, name, execution =
   return members
 }
 
+const releaseSetLicenseMember = (members, suffix, label) => {
+  const matches = members.filter(member => member === suffix || member.endsWith(`/${suffix}`))
+  if (matches.length !== 1) fail(`${label} is missing or ambiguous`)
+  return matches[0]
+}
+
+const releaseSetLicenseText = async (filePath, kind, member, execution = {}) => {
+  if (kind === 'pypi-wheel') return Buffer.from(await commandBuffer('unzip', ['-p', filePath, member], execution)).toString('utf8')
+  if (kind === 'rubygems') {
+    const temporaryDirectory = await mkdtemp(join(tmpdir(), 'erpc-sdk-release-set-profile-'))
+    try {
+      const dataPath = join(temporaryDirectory, 'data.tar.gz')
+      await writeFile(dataPath, await commandBuffer('tar', ['-xOf', filePath, 'data.tar.gz'], execution))
+      return Buffer.from(await commandBuffer('tar', ['-xOf', dataPath, member], execution)).toString('utf8')
+    } finally { await rm(temporaryDirectory, { recursive: true, force: true }) }
+  }
+  return Buffer.from(await commandBuffer('tar', ['-xOf', filePath, member], execution)).toString('utf8')
+}
+
+const releaseSetProfileMembers = ({ kind, members, metadata, label }) => {
+  if (kind === 'npm') {
+    const expected = new Map([
+      ['license', 'package/LICENSE'],
+      ['apache', 'package/LICENSES/Apache-2.0.txt'],
+      ['bsd', 'package/LICENSES/BSD-3-Clause-Google-Protobuf.txt'],
+      ['notice', 'package/THIRD_PARTY_NOTICES.md'],
+    ])
+    for (const [key, member] of expected) if (!members.includes(member)) fail(`${label} is missing ${member}`)
+    return Object.fromEntries(expected)
+  }
+  if (kind === 'rubygems') {
+    const expected = new Map([
+      ['license', 'LICENSE'],
+      ['apache', 'LICENSES/Apache-2.0.txt'],
+      ['bsd', 'LICENSES/BSD-3-Clause-Google-Protobuf.txt'],
+      ['notice', 'THIRD_PARTY_NOTICES.md'],
+    ])
+    for (const [key, member] of expected) if (!members.includes(member)) fail(`${label} is missing ${member}`)
+    return Object.fromEntries(expected)
+  }
+  if (!Array.isArray(metadata?.licenseFiles) || metadata.licenseFiles.length !== RELEASE_SET_NON_RUST_LICENSE_FILES.length || new Set(metadata.licenseFiles).size !== metadata.licenseFiles.length || canonicalJson([...metadata.licenseFiles].sort()) !== canonicalJson([...RELEASE_SET_NON_RUST_LICENSE_FILES].sort())) fail(`${label} Python License-File entries are not the exact approved set`)
+  const metadataMember = metadata.metadataMember
+  const prefix = metadataMember?.replace(/\/(?:METADATA|PKG-INFO)$/, '')
+  if (!prefix) fail(`${label} Python metadata member root is missing`)
+  const resolved = {}
+  for (const value of RELEASE_SET_NON_RUST_LICENSE_FILES) {
+    const basename = value.slice(value.lastIndexOf('/') + 1)
+    const candidates = kind === 'pypi-wheel'
+      ? [`${prefix}/${value}`, `${prefix}/licenses/${value}`, `${prefix}/licenses/${basename}`]
+      : [`${prefix}/${value}`]
+    const matches = [...new Set(candidates.filter(candidate => members.includes(candidate)))]
+    if (matches.length !== 1) fail(`${label} Python License-File ${value} does not map to exactly one archive member`)
+    resolved[value === 'LICENSE' ? 'license' : value.startsWith('LICENSES/Apache') ? 'apache' : value.startsWith('LICENSES/BSD') ? 'bsd' : 'notice'] = matches[0]
+  }
+  return resolved
+}
+
+const releaseSetProfileSourceHashes = async kind => {
+  const source = RELEASE_SET_PROFILE_SOURCE_FILES[kind === 'pypi-wheel' || kind === 'pypi-sdist' ? 'pypi' : kind]
+  if (!source) fail(`No source-bound release-set profile exists for ${kind}`)
+  const hashes = {}
+  for (const [key, relative] of Object.entries(source)) hashes[key] = await sha256File(join(REPOSITORY_ROOT, relative))
+  return hashes
+}
+
+const validateReleaseSetMixedLicenseProfile = async ({ filePath, kind, version, members, metadata, expectedSourceCommit, execution = {} }) => {
+  requireSha(expectedSourceCommit, `${kind} profile source commit`)
+  if (execution.profileMode === 'legacy') return undefined
+  const label = `${kind} mixed-license profile`
+  if (kind === 'npm' && metadata?.license !== RELEASE_SET_NON_RUST_LICENSE_PROFILE) fail(`${label} package expression mismatch`)
+  if (kind === 'rubygems' && canonicalJson(metadata?.licenses) !== canonicalJson(['MIT', 'Apache-2.0', 'BSD-3-Clause'])) fail(`${label} gem license array mismatch`)
+  const profileMembers = releaseSetProfileMembers({ kind, members, metadata, label })
+  const sourceHashes = await releaseSetProfileSourceHashes(kind)
+  const license = await releaseSetLicenseText(filePath, kind, profileMembers.license, execution)
+  const apache = await releaseSetLicenseText(filePath, kind, profileMembers.apache, execution)
+  const bsd = await releaseSetLicenseText(filePath, kind, profileMembers.bsd, execution)
+  const notice = await releaseSetLicenseText(filePath, kind, profileMembers.notice, execution)
+  requireEqual(sha256Hex(license), sourceHashes.license, `${label} original MIT text hash mismatch`)
+  requireEqual(sha256Hex(apache), sourceHashes.apache, `${label} Apache text hash mismatch`)
+  requireEqual(sha256Hex(bsd), sourceHashes.bsd, `${label} Google BSD text hash mismatch`)
+  requireEqual(sha256Hex(notice), sourceHashes.notice, `${label} full provenance notice hash mismatch`)
+  if (kind === 'pypi-wheel' || kind === 'pypi-sdist') {
+    if (metadata === undefined || metadata.version !== '2.4' || metadata.licenseExpression !== RELEASE_SET_NON_RUST_LICENSE_PROFILE) fail(`${label} Python metadata license evidence is incomplete`)
+  }
+  return { sourceCommit: expectedSourceCommit, license: sourceHashes.license, apache: sourceHashes.apache, bsd: sourceHashes.bsd, notice: sourceHashes.notice, members: profileMembers }
+}
+
 const releaseSetInspectRustArchive = async (filePath, version, expectedCommit, execution = {}) => {
   const members = await archiveEntries(filePath, 'tar', execution)
   const root = `${CRATE_NAME}-${version}`
@@ -2372,16 +2754,25 @@ export async function inspectReleaseSetRustArchiveBytes({ filePath, version, sou
   return releaseSetInspectRustArchive(filePath, version, sourceCommit, execution)
 }
 
-export async function inspectReleaseSetRubyGemBytes({ filePath, name, version }) {
-  return releaseSetReadMetadata(filePath, 'rubygems', version, name)
+export async function inspectReleaseSetRubyGemBytes({ filePath, name, version, execution = {} }) {
+  return releaseSetReadMetadata(filePath, 'rubygems', version, name, execution)
 }
 
 /** Read and validate genuine prepared archive bytes; plaintext files fail closed. */
 export async function inspectReleaseSetArtifactBytes(descriptor, filePath, expectedSourceCommit, execution = {}) {
   if (await sha256File(filePath) !== descriptor.sha256) fail(`Prepared artifact bytes do not match ${descriptor.filename}`)
   const members = await releaseSetReadMetadata(filePath, descriptor.kind, descriptor.version, descriptor.name, execution)
+  let profileMetadata
+  if (descriptor.kind === 'npm') profileMetadata = { ...JSON.parse(await archiveText(filePath, 'package/package.json', false, execution)), profile: descriptor.profile }
+  if (descriptor.kind === 'pypi-wheel' || descriptor.kind === 'pypi-sdist') {
+    const metadataMember = members.find(member => descriptor.kind === 'pypi-wheel' ? /\.dist-info\/METADATA$/.test(member) : /(?:^|\/)PKG-INFO$/.test(member))
+    const text = await releaseSetLicenseText(filePath, descriptor.kind, metadataMember, execution)
+    profileMetadata = { profile: descriptor.profile, metadataMember, version: metadataValue(text, 'Metadata-Version'), licenseExpression: metadataValue(text, 'License-Expression'), licenseFiles: [...text.matchAll(/^License-File:\s*(.+)$/gm)].map(match => match[1].trim()) }
+  }
+  if (descriptor.kind === 'rubygems') profileMetadata = { ...JSON.parse(await commandText('ruby', ['-rrubygems/package', '-rjson', '-e', 'spec = Gem::Package.new(ARGV.fetch(0)).spec; puts JSON.generate({"licenses" => spec.licenses})', filePath], execution)), profile: descriptor.profile }
+  await validateReleaseSetMixedLicenseProfile({ filePath, kind: descriptor.kind, version: descriptor.version, members, metadata: profileMetadata, expectedSourceCommit, execution })
   releaseSetMemberSet(members, descriptor.files, descriptor.kind)
-  return { filename: descriptor.filename, sha256: descriptor.sha256, members }
+  return { filename: descriptor.filename, sha256: descriptor.sha256, members, sourceCommit: expectedSourceCommit }
 }
 
 /** Verify the complete prepared bundle and return prepared-byte evidence only. */
@@ -2704,7 +3095,7 @@ const npmInvoke = async (run, command, arguments_, options, stage, deadlineContr
 
 const npmStrictInput = input => {
   releaseSetKeys(input, ['descriptor', 'planSha256', 'preparation', 'publisher', 'observer', 'workDir', 'outputFile', 'toolPaths'], 'npm observer input')
-  releaseSetKeys(input.descriptor, ['kind', 'filename', 'name', 'version', 'sha256', 'files'], 'npm observer descriptor')
+  releaseSetKeys(input.descriptor, ['kind', 'filename', 'name', 'version', 'sha256', 'files', 'profile'], 'npm observer descriptor')
   requireEqual(input.descriptor.kind, 'npm', 'npm observer descriptor kind mismatch')
   requireEqual(input.descriptor.name, '@elsoul/erpc-sdk', 'npm observer package identity mismatch')
   releaseSetVersion(input.descriptor.version, 'npm observer version')
@@ -2845,6 +3236,7 @@ export async function observeNpmRelease(input, adapters = {}) {
   await inspectReleaseSetArtifactBytes(input.descriptor, archivePath, input.publisher.sourceCommit, {
     execFile: archiveExecutor,
     commandMap: { python3: input.toolPaths.python },
+    profileMode: input.descriptor.profile === 'legacy' ? 'legacy' : 'future',
   })
 
   const auditDirectory = await mkdtemp(join(workDir, 'audit-consumer-'))
@@ -2983,7 +3375,7 @@ const pypiStrictInput = input => {
   releaseSetKeys(input.descriptors, ['pypi-wheel', 'pypi-sdist'], 'PyPI observer descriptors')
   for (const kind of pypiExpectedKinds) {
     const descriptor = input.descriptors[kind]
-    releaseSetKeys(descriptor, ['kind', 'filename', 'name', 'version', 'sha256', 'files'], `PyPI observer ${kind} descriptor`)
+    releaseSetKeys(descriptor, ['kind', 'filename', 'name', 'version', 'sha256', 'files', 'profile'], `PyPI observer ${kind} descriptor`)
     requireEqual(descriptor.kind, kind, `PyPI observer ${kind} kind mismatch`)
     requireEqual(descriptor.name, 'erpc-sdk', `PyPI observer ${kind} name mismatch`)
     releaseSetVersion(descriptor.version, `PyPI observer ${kind} version`)
@@ -3080,7 +3472,7 @@ export async function observePyPIRelease(input, adapters = {}) {
       npmCheckDeadline(now, deadline)
     }
     const bytes = npmResponseBody(response); const observedSha256 = sha256Hex(bytes); requireEqual(observedSha256, file.digests.sha256, `PyPI ${file.filename} downloaded digest mismatch`); requireEqual(observedSha256, file.descriptor.sha256, `PyPI ${file.filename} prepared digest mismatch`)
-    const archivePath = join(workDir, file.filename); await writeFile(archivePath, bytes); await inspectReleaseSetArtifactBytes(file.descriptor, archivePath, publisher.sourceCommit, { execFile: archiveExecutor, commandMap: { python3: input.toolPaths.python } })
+    const archivePath = join(workDir, file.filename); await writeFile(archivePath, bytes); await inspectReleaseSetArtifactBytes(file.descriptor, archivePath, publisher.sourceCommit, { execFile: archiveExecutor, commandMap: { python3: input.toolPaths.python }, profileMode: file.descriptor.profile === 'legacy' ? 'legacy' : 'future' })
     const provenanceUrl = pypiProvenanceUrl(version, file.filename)
     let provenanceResponse
     while (true) {
@@ -3350,7 +3742,7 @@ const rubyConsumerProof = async (result, runtime, version, gemHome) => {
 
 const rubyStrictInput = input => {
   releaseSetKeys(input, ['descriptor', 'planSha256', 'preparation', 'observer', 'workDir', 'outputFile', 'toolPaths'], 'RubyGems observer input')
-  releaseSetKeys(input.descriptor, ['kind', 'filename', 'name', 'version', 'sha256', 'files'], 'RubyGems observer descriptor')
+  releaseSetKeys(input.descriptor, ['kind', 'filename', 'name', 'version', 'sha256', 'files', 'profile'], 'RubyGems observer descriptor')
   requireEqual(input.descriptor.kind, 'rubygems', 'RubyGems observer descriptor kind mismatch')
   requireEqual(input.descriptor.name, 'erpc-sdk', 'RubyGems observer package identity mismatch')
   releaseSetVersion(input.descriptor.version, 'RubyGems observer version')
@@ -3463,7 +3855,7 @@ export async function observeRubyGemsRelease(input, adapters = {}) {
     rubyCheckDeadline(now, deadline)
     return result
   }
-  const archiveEvidence = await inspectReleaseSetArtifactBytes(input.descriptor, gemPath, input.preparation.sourceCommit, { execFile: archiveExecutor, commandMap: { ruby: input.toolPaths.ruby34 } })
+  const archiveEvidence = await inspectReleaseSetArtifactBytes(input.descriptor, gemPath, input.preparation.sourceCommit, { execFile: archiveExecutor, commandMap: { ruby: input.toolPaths.ruby34 }, profileMode: input.descriptor.profile === 'legacy' ? 'legacy' : 'future' })
   const consumers = {}
   for (const runtime of runtimes) {
     const isolated = runtimeRoots.get(runtime.key)
@@ -3517,12 +3909,17 @@ const rustObserverDescriptor = descriptor => {
   const filename = `${CRATE_NAME}-${descriptor.version}.crate`
   if (descriptor.mode === 'reuse') {
     if (descriptor.archive !== undefined || descriptor.prepared !== undefined) fail('Rust reuse observer descriptor contains publish fields')
-    releaseSetKeys(descriptor.reuse, ['registry', 'downloadUrl', 'sourceCommit', 'sha256', 'yanked'], 'Rust observer reuse')
+    releaseSetKeys(descriptor.reuse, ['registry', 'downloadUrl', 'sourceCommit', 'sha256', 'sizeInBytes', 'yanked'], 'Rust observer reuse')
     requireEqual(descriptor.reuse.registry, 'crates.io', 'Rust observer reuse registry mismatch')
     requireEqual(descriptor.reuse.downloadUrl, cratesIoDownloadUrl(descriptor.version), 'Rust observer reuse URL mismatch')
     requireEqual(descriptor.reuse.sourceCommit, descriptor.sourceCommit, 'Rust observer reuse source mismatch')
     requireEqual(descriptor.reuse.sha256, descriptor.sha256, 'Rust observer reuse checksum mismatch')
     requireEqual(descriptor.reuse.yanked, false, 'Rust observer reuse is yanked')
+    if (descriptor.version === CURRENT_RUST_VERSION) {
+      requireEqual(descriptor.sourceCommit, RUST_011_REUSE_SOURCE, 'Rust observer 0.11 reuse source mismatch')
+      requireEqual(descriptor.sha256, RUST_011_REUSE_SHA256, 'Rust observer 0.11 reuse checksum mismatch')
+      requireEqual(descriptor.reuse.sizeInBytes, RUST_011_REUSE_SIZE, 'Rust observer 0.11 reuse size mismatch')
+    }
   } else {
     if (descriptor.reuse !== undefined) fail('Rust publish observer descriptor contains reuse fields')
     releaseSetKeys(descriptor.archive, ['filename', 'sha256'], 'Rust observer archive')
@@ -3817,15 +4214,16 @@ const goObserverReceipt = (receipt, descriptor, expectedCommit, root, label) => 
 }
 
 const goObserverZipEvidence = async (zipPath, descriptor, root, execution) => {
-  const members = await archiveEntries(zipPath, 'zip', execution)
+  const records = await archiveMemberRecords(zipPath, 'zip', execution)
   const prefix = `${descriptor.module}@${descriptor.version}/`
   const expected = Object.fromEntries(descriptor.inventory.files.map(file => [file.path, file.sha256]))
   const seen = new Map()
-  for (const member of members) {
+  for (const record of records) {
+    const member = record.name
     if (member === prefix.slice(0, -1)) continue
     if (!member.startsWith(prefix)) fail('Go module ZIP has an unexpected root')
     const relative = member.slice(prefix.length)
-    if (!relative || relative.endsWith('/')) continue
+    if (record.type === 'directory' || !relative) continue
     if (seen.has(relative) || expected[relative] === undefined) fail('Go module ZIP member set mismatch')
     const bytes = await commandBuffer('unzip', ['-p', zipPath, member], execution)
     const digest = sha256Hex(bytes)
@@ -3958,7 +4356,997 @@ export async function observeGoModule(input, adapters = {}) {
   return receipt
 }
 
-/** Authenticate Actions run/artifact metadata before any later bundle use. */
+const githubApiOrigin = 'https://api.github.com'
+const githubAllowedRedirectHosts = new Set(['api.github.com', 'github.com', 'objects.githubusercontent.com'])
+const githubDynamicProofRoles = new Set(['go-proof', 'npm-proof', 'pypi-proof', 'rubygems-proof', 'rust-proof', 'tag-proof', 'release-set-proof-manifest'])
+const githubRedirectHostAllowed = hostname => githubAllowedRedirectHosts.has(hostname) || (hostname.endsWith('.blob.core.windows.net') && hostname.length > '.blob.core.windows.net'.length)
+
+const releaseSetReceiptRole = filename => {
+  if (!RELEASE_SET_RECEIPT_FILENAMES.includes(filename)) fail(`Unknown release-set receipt filename ${filename}`)
+  return RELEASE_SET_RECEIPT_ARTIFACT_ROLES[filename]
+}
+
+const releaseSetReceiptArtifactName = (filename, runId, runAttempt) =>
+  `release-set-${releaseSetReceiptRole(filename)}-${runId}-${runAttempt}`
+
+const releaseSetSnapshotArtifactName = (runId, runAttempt) =>
+  `release-set-proof-receipts-${runId}-${runAttempt}`
+
+const releaseSetCheckpointArtifactName = (runId, runAttempt) =>
+  `release-set-proof-manifest-${runId}-${runAttempt}`
+
+const releaseSetRunIdentity = (value, label = 'Release-set producer') => {
+  releaseSetKeys(value, ['repository', 'repositoryId', 'workflowPath', 'sourceCommit', 'runId', 'runAttempt', 'ref', 'event'], label)
+  requireEqual(value.repository, EXPECTED_REPOSITORY, `${label} repository mismatch`)
+  requireEqual(String(value.repositoryId), EXPECTED_REPOSITORY_ID, `${label} repository ID mismatch`)
+  requireEqual(value.workflowPath, RELEASE_SET_WORKFLOW, `${label} workflow mismatch`)
+  requireSha(value.sourceCommit, `${label} source commit`)
+  requireFuturePositiveId(value.runId, `${label} run ID`)
+  requireFuturePositiveId(value.runAttempt, `${label} attempt`)
+  requireEqual(value.ref, 'refs/heads/main', `${label} ref mismatch`)
+  requireEqual(value.event, 'workflow_dispatch', `${label} event mismatch`)
+  return { ...value, repositoryId: String(value.repositoryId), runId: String(value.runId), runAttempt: String(value.runAttempt) }
+}
+
+const releaseSetArtifactBinding = (value, label = 'Release-set artifact binding') => {
+  releaseSetKeys(value, ['artifactId', 'artifactName', 'sha256', 'sizeInBytes', 'producer'], label)
+  const artifactId = requireFuturePositiveId(value.artifactId, `${label} ID`)
+  releaseSetString(value.artifactName, `${label} name`)
+  const sha256 = requireArchiveSha(value.sha256, `${label} SHA-256`)
+  if (!Number.isSafeInteger(value.sizeInBytes) || value.sizeInBytes <= 0) fail(`${label} size is invalid`)
+  const producer = releaseSetRunIdentity(value.producer, `${label} producer`)
+  return { artifactId, artifactName: value.artifactName, sha256, sizeInBytes: value.sizeInBytes, producer }
+}
+
+const releaseSetPreparationTuple = (value, label = 'Release-set preparation') => {
+  releaseSetKeys(value, ['sourceCommit', 'runId', 'runAttempt', 'artifactId', 'bindingArtifactId', 'planSha256'], label)
+  requireSha(value.sourceCommit, `${label} source commit`)
+  for (const [field, text] of [['runId', 'run ID'], ['runAttempt', 'attempt'], ['artifactId', 'artifact ID'], ['bindingArtifactId', 'binding artifact ID']]) requireFuturePositiveId(value[field], `${label} ${text}`)
+  requireArchiveSha(value.planSha256, `${label} plan SHA-256`)
+  return { ...value, runId: String(value.runId), runAttempt: String(value.runAttempt), artifactId: String(value.artifactId), bindingArtifactId: String(value.bindingArtifactId) }
+}
+
+const releaseSetManifestKeys = [
+  'schemaVersion', 'kind', 'repository', 'repositoryId', 'sourceCommit', 'versions',
+  'planSha256', 'preparation', 'snapshot', 'receipts', 'receiptArtifacts', 'state',
+]
+
+const releaseSetTagRead = (value, label) => {
+  releaseSetKeys(value, ['ref', 'type', 'sha', 'recheck'], label)
+  requireEqual(value.type, 'commit', `${label} type mismatch`)
+  requireSha(value.sha, `${label} commit`)
+  releaseSetKeys(value.recheck, ['ref', 'type', 'sha'], `${label} recheck`)
+  requireEqual(value.recheck.ref, value.ref, `${label} recheck ref mismatch`)
+  requireEqual(value.recheck.type, 'commit', `${label} recheck type mismatch`)
+  requireEqual(value.recheck.sha, value.sha, `${label} recheck commit mismatch`)
+  return value
+}
+
+const releaseSetValidateRunRecord = (run, identity, { current = false } = {}) => {
+  const expected = releaseSetRunIdentity(identity, 'Release-set run identity')
+  requireEqual(run?.id, Number(expected.runId), 'Release-set run ID mismatch')
+  requireEqual(run?.run_attempt, Number(expected.runAttempt), 'Release-set run attempt mismatch')
+  requireEqual(run?.repository?.full_name, EXPECTED_REPOSITORY, 'Release-set run repository mismatch')
+  requireEqual(String(run?.repository?.id), EXPECTED_REPOSITORY_ID, 'Release-set run repository ID mismatch')
+  requireEqual(run?.head_sha, expected.sourceCommit, 'Release-set run source mismatch')
+  requireEqual(run?.head_branch, 'main', 'Release-set run branch mismatch')
+  requireEqual(run?.event, 'workflow_dispatch', 'Release-set run event mismatch')
+  if (run?.path !== undefined) requireEqual(run.path, RELEASE_SET_WORKFLOW, 'Release-set run workflow mismatch')
+  if (run?.status === 'completed') {
+    if (!['success', 'failure', 'cancelled', 'timed_out', 'action_required', 'skipped'].includes(run.conclusion)) fail('Release-set terminal run conclusion is invalid')
+  } else if (current && run?.status === 'in_progress' && run?.conclusion == null) {
+    // The current immutable source artifact may be observed while its producer is running.
+  } else {
+    fail('Release-set producer run is active or incomplete')
+  }
+  return { id: Number(expected.runId), runAttempt: Number(expected.runAttempt), status: run.status, conclusion: run.conclusion ?? null }
+}
+
+const releaseSetAssertBindingIdentity = (binding, expected) => {
+  const normalized = releaseSetArtifactBinding(binding)
+  requireEqual(normalized.artifactId, String(expected.artifactId), 'Release-set artifact binding ID mismatch')
+  requireEqual(normalized.artifactName, expected.artifactName, 'Release-set artifact binding name mismatch')
+  requireEqual(normalized.sha256, expected.sha256, 'Release-set artifact binding digest mismatch')
+  requireEqual(normalized.sizeInBytes, expected.sizeInBytes, 'Release-set artifact binding size mismatch')
+  requireEqual(canonicalJson(normalized.producer), canonicalJson(releaseSetRunIdentity(expected.producer, 'Release-set expected producer')), 'Release-set artifact producer mismatch')
+  return normalized
+}
+
+/** Read only the explicitly inherited descriptor used by the completion job. */
+export async function readReleaseSetGithubReadTokenFd(fdValue = process.env.RELEASE_SET_GITHUB_READ_TOKEN_FD) {
+  if (typeof fdValue !== 'string' || !/^(?:[3-9]|[1-9][0-9]{1,9})$/.test(fdValue)) fail('Release-set GitHub read capability FD is invalid')
+  const fd = Number(fdValue)
+  if (!Number.isSafeInteger(fd) || fd < 3 || fd > 2147483647) fail('Release-set GitHub read capability FD is invalid')
+  const path = `/dev/fd/${fd}`
+  let content
+  let timeoutId
+  const controller = new AbortController()
+  try {
+    content = await Promise.race([
+      readFile(path, { encoding: 'utf8', signal: controller.signal }),
+      new Promise((_, reject) => { timeoutId = setTimeout(() => { controller.abort(); reject(new Error('capability-timeout')) }, 5_000) }),
+    ])
+  } catch {
+    fail('Release-set GitHub read capability is unavailable')
+  } finally {
+    if (timeoutId !== undefined) clearTimeout(timeoutId)
+    try { closeSync(fd) } catch {}
+  }
+  const token = String(content).replace(/\n$/, '')
+  if (token.length === 0 || token.length > 8192 || /[^\x21-\x7e]/.test(token) || /\s/.test(token)) fail('Release-set GitHub read capability is malformed')
+  return token
+}
+
+const githubCapabilityRequest = (request, token) => async (url, options = {}) => {
+  const parsed = (() => { try { return new URL(url) } catch { return undefined } })()
+  const canonical = parsed?.protocol === 'https:' && parsed.origin === githubApiOrigin && parsed.pathname.startsWith(`/repos/${EXPECTED_REPOSITORY}/`)
+  if (options.method !== undefined && options.method !== 'GET') fail('Release-set GitHub observer allows GET only')
+  const headers = { ...(options.headers ?? {}) }
+  if (canonical) headers.authorization = `Bearer ${token}`
+  else delete headers.authorization
+  return request(url, { ...options, method: 'GET', headers })
+}
+
+const releaseSetObserverIdentity = (observer, sourceCommit) => {
+  releaseSetKeys(observer, ['runId', 'runAttempt', 'workflowPath', 'sourceCommit', 'repository', 'repositoryId', 'ref', 'event'], 'Release-set current observer')
+  const identity = {
+    repository: observer.repository ?? EXPECTED_REPOSITORY,
+    repositoryId: observer.repositoryId ?? EXPECTED_REPOSITORY_ID,
+    workflowPath: observer.workflowPath,
+    sourceCommit: observer.sourceCommit ?? sourceCommit,
+    runId: observer.runId,
+    runAttempt: observer.runAttempt,
+    ref: observer.ref ?? 'refs/heads/main',
+    event: observer.event ?? 'workflow_dispatch',
+  }
+  return releaseSetRunIdentity(identity, 'Release-set current observer')
+}
+
+const githubObserverApiJson = async (request, url, deadlineControl, stage) => {
+  const response = await githubObserverRequest(request, url, deadlineControl, stage)
+  if (response.status !== 200) fail(`github-observe-${stage}-http-${response.status}`)
+  return githubObserverJson(response, stage)
+}
+
+const githubArtifactZipBytes = async (request, artifactId, deadlineControl, stage) => {
+  const initial = `${githubApiOrigin}/repos/${EXPECTED_REPOSITORY}/actions/artifacts/${artifactId}/zip`
+  let current = initial
+  const redirects = []
+  for (let index = 0; index < 4; index += 1) {
+    const response = await githubObserverRequest(request, current, deadlineControl, `${stage}-${index + 1}`, 'application/vnd.github+json')
+    if (response.status === 200) return { bytes: npmResponseBody(response), redirects }
+    if (![301, 302, 303, 307, 308].includes(response.status)) fail(`github-observe-${stage}-http-${response.status}`)
+    const location = response.headers?.location ?? response.headers?.Location
+    let target
+    try { target = new URL(location, current) } catch { fail(`github-observe-${stage}-redirect-invalid`) }
+    const currentOrigin = new URL(current).origin
+    if (target.protocol !== 'https:' || (!githubRedirectHostAllowed(target.hostname) && target.origin !== currentOrigin) || redirects.includes(target.href)) fail(`github-observe-${stage}-redirect-unsafe`)
+    redirects.push(target.href)
+    current = target.href
+  }
+  fail(`github-observe-${stage}-redirect-limit`)
+}
+
+const githubArtifactMetadata = async (request, binding, deadlineControl, expectedProducer, stage) => {
+  const checked = releaseSetArtifactBinding(binding, `Release-set ${stage} binding`)
+  const url = `${githubApiOrigin}/repos/${EXPECTED_REPOSITORY}/actions/artifacts/${checked.artifactId}`
+  const metadata = await githubObserverApiJson(request, url, deadlineControl, `${stage}-metadata`)
+  requireEqual(metadata?.id, Number(checked.artifactId), `Release-set ${stage} returned artifact ID mismatch`)
+  requireEqual(metadata?.name, checked.artifactName, `Release-set ${stage} returned artifact name mismatch`)
+  requireEqual(metadata?.expired, false, `Release-set ${stage} artifact is expired`)
+  if (!Number.isSafeInteger(metadata?.size_in_bytes) || metadata.size_in_bytes <= 0) fail(`Release-set ${stage} artifact size is invalid`)
+  requireEqual(metadata.size_in_bytes, checked.sizeInBytes, `Release-set ${stage} artifact size mismatch`)
+  requireEqual(metadata?.digest, `sha256:${checked.sha256}`, `Release-set ${stage} artifact digest mismatch`)
+  requireEqual(metadata?.archive_download_url, `${githubApiOrigin}/repos/${EXPECTED_REPOSITORY}/actions/artifacts/${checked.artifactId}/zip`, `Release-set ${stage} artifact URL mismatch`)
+  requireEqual(metadata?.workflow_run?.id, Number(checked.producer.runId), `Release-set ${stage} producer run mismatch`)
+  requireEqual(String(metadata?.workflow_run?.repository_id), EXPECTED_REPOSITORY_ID, `Release-set ${stage} producer repository mismatch`)
+  if (metadata?.workflow_run?.head_repository_id !== undefined) requireEqual(String(metadata.workflow_run.head_repository_id), EXPECTED_REPOSITORY_ID, `Release-set ${stage} producer source repository mismatch`)
+  requireEqual(metadata?.workflow_run?.head_sha, checked.producer.sourceCommit, `Release-set ${stage} producer source mismatch`)
+  requireEqual(metadata?.workflow_run?.head_branch, 'main', `Release-set ${stage} producer branch mismatch`)
+  if (metadata?.workflow_run?.path !== undefined) requireEqual(metadata.workflow_run.path, RELEASE_SET_WORKFLOW, `Release-set ${stage} producer workflow mismatch`)
+  if (expectedProducer !== undefined) requireEqual(canonicalJson(checked.producer), canonicalJson(releaseSetRunIdentity(expectedProducer, `Release-set ${stage} expected producer`)), `Release-set ${stage} producer identity mismatch`)
+  return { binding: checked, metadata }
+}
+
+const githubArtifactMembers = async (zipBytes, workDir, expectedNames, stage) => {
+  const zipFile = join(workDir, `${stage}-${process.pid}-${Math.random().toString(16).slice(2)}.zip`)
+  await writeFile(zipFile, zipBytes, { flag: 'wx' })
+  const members = await archiveMemberRecords(zipFile, 'zip')
+  const expected = [...expectedNames]
+  if (members.length !== expected.length || members.some(member => member.type !== 'file') || members.some(member => !expected.includes(member.name)) || new Set(members.map(member => member.name)).size !== members.length) fail(`Release-set ${stage} ZIP members do not match the exact receipt layout`)
+  const bytes = new Map()
+  for (const member of members) bytes.set(member.name, await commandBuffer('unzip', ['-p', zipFile, member.name]))
+  return { zipFile, members: members.map(member => member.name).sort(), bytes }
+}
+
+const releaseSetReceiptObserver = (value, label, plan) => {
+  releaseSetKeys(value, ['runId', 'runAttempt', 'workflowPath', 'sourceCommit'], label)
+  requireFuturePositiveId(value.runId, `${label} run ID`)
+  requireFuturePositiveId(value.runAttempt, `${label} attempt`)
+  requireEqual(value.workflowPath, RELEASE_SET_WORKFLOW, `${label} workflow mismatch`)
+  requireEqual(value.sourceCommit, plan.sourceCommit, `${label} source mismatch`)
+  return { repository: EXPECTED_REPOSITORY, repositoryId: EXPECTED_REPOSITORY_ID, workflowPath: RELEASE_SET_WORKFLOW, sourceCommit: value.sourceCommit, runId: String(value.runId), runAttempt: String(value.runAttempt), ref: 'refs/heads/main', event: 'workflow_dispatch' }
+}
+
+const releaseSetReceiptCommon = (receipt, kind, plan, preparation) => {
+  releaseSetObject(receipt, `${kind} release receipt`)
+  for (const key of ['schemaVersion', 'kind', 'state', 'repository', 'repositoryId', 'planSha256', 'preparation', 'observer', 'auth', 'observedAt']) if (!Object.hasOwn(receipt, key)) fail(`${kind} release receipt is missing ${key}`)
+  requireEqual(receipt.schemaVersion, 1, `${kind} receipt schema mismatch`)
+  requireEqual(receipt.kind, kind, `${kind} receipt kind mismatch`)
+  requireEqual(receipt.state, 'observed', `${kind} receipt state is incomplete`)
+  requireEqual(receipt.repository, EXPECTED_REPOSITORY, `${kind} receipt repository mismatch`)
+  requireEqual(String(receipt.repositoryId), EXPECTED_REPOSITORY_ID, `${kind} receipt repository ID mismatch`)
+  requireEqual(receipt.planSha256, releaseSetPlanDigest(plan), `${kind} receipt plan mismatch`)
+  const checkedPreparation = releaseSetPreparationTuple(receipt.preparation, `${kind} receipt preparation`)
+  requireEqual(canonicalJson(checkedPreparation), canonicalJson(releaseSetPreparationTuple(preparation, `${kind} expected preparation`)), `${kind} receipt preparation mismatch`)
+  const observer = releaseSetReceiptObserver(receipt.observer, `${kind} receipt observer`, plan)
+  releaseSetKeys(receipt.auth, ['requested', 'uploadAttempted'], `${kind} receipt auth`)
+  requireEqual(receipt.auth.requested, false, `${kind} receipt requested credentials`)
+  requireEqual(receipt.auth.uploadAttempted, false, `${kind} receipt attempted an upload`)
+  if (typeof receipt.observedAt !== 'string' || Number.isNaN(Date.parse(receipt.observedAt))) fail(`${kind} receipt timestamp is invalid`)
+  return { observer, preparation: checkedPreparation }
+}
+
+const releaseSetExpectedGoInventory = plan => Object.fromEntries(plan.go.inventory.files.map(file => [file.path, file.sha256]))
+
+const releaseSetValidateReceipt = (receipt, filename, { plan, preparation }) => {
+  const artifactByKind = Object.fromEntries(plan.artifacts.map(artifact => [artifact.kind, artifact]))
+  if (filename === 'npm-proof.json') {
+    releaseSetKeys(receipt, ['schemaVersion', 'kind', 'state', 'repository', 'repositoryId', 'planSha256', 'preparation', 'observer', 'auth', 'observedAt', 'descriptor', 'registry', 'publisher', 'provenance', 'toolVersions', 'consumer'], 'npm receipt')
+    releaseSetReceiptCommon(receipt, 'npm-public-observation', plan, preparation)
+    releaseSetKeys(receipt.descriptor, ['kind', 'filename', 'name', 'version', 'expectedSha256', 'observedSha256', 'observedSRI'], 'npm receipt descriptor')
+    const expected = artifactByKind.npm
+    requireEqual(receipt.descriptor.kind, expected.kind, 'npm receipt descriptor kind mismatch')
+    requireEqual(receipt.descriptor.filename, expected.filename, 'npm receipt descriptor filename mismatch')
+    requireEqual(receipt.descriptor.name, expected.name, 'npm receipt descriptor name mismatch')
+    requireEqual(receipt.descriptor.version, expected.version, 'npm receipt descriptor version mismatch')
+    requireEqual(receipt.descriptor.expectedSha256, expected.sha256, 'npm receipt prepared digest mismatch')
+    requireEqual(receipt.descriptor.observedSha256, expected.sha256, 'npm receipt observed digest mismatch')
+    releaseSetKeys(receipt.publisher, ['repository', 'repositoryId', 'sourceCommit', 'workflowPath', 'ref', 'event', 'environment', 'publisherRunId', 'publisherAttempt', 'invocation'], 'npm receipt publisher')
+    requireEqual(receipt.publisher.repository, EXPECTED_REPOSITORY, 'npm receipt publisher repository mismatch')
+    requireEqual(String(receipt.publisher.repositoryId), EXPECTED_REPOSITORY_ID, 'npm receipt publisher repository ID mismatch')
+    requireEqual(receipt.publisher.sourceCommit, plan.sourceCommit, 'npm receipt publisher source mismatch')
+    requireEqual(receipt.publisher.workflowPath, RELEASE_SET_WORKFLOW, 'npm receipt publisher workflow mismatch')
+    requireEqual(receipt.publisher.ref, 'refs/heads/main', 'npm receipt publisher ref mismatch')
+    requireEqual(receipt.publisher.event, 'workflow_dispatch', 'npm receipt publisher event mismatch')
+    requireEqual(receipt.publisher.environment, 'npm', 'npm receipt publisher environment mismatch')
+    requireFuturePositiveId(receipt.publisher.publisherRunId, 'npm receipt publisher run ID')
+    requireFuturePositiveId(receipt.publisher.publisherAttempt, 'npm receipt publisher attempt')
+    requireEqual(receipt.provenance?.invocation, receipt.publisher.invocation, 'npm receipt invocation mismatch')
+    requireEqual(receipt.provenance?.certificateClaims?.['1.3.6.1.4.1.57264.1.13'], plan.sourceCommit, 'npm receipt provenance source mismatch')
+    requireEqual(receipt.provenance?.certificateClaims?.['1.3.6.1.4.1.57264.1.20'], 'workflow_dispatch', 'npm receipt provenance event mismatch')
+    requireEqual(receipt.provenance?.certificateClaims?.['1.3.6.1.4.1.57264.1.21'], receipt.publisher.invocation, 'npm receipt provenance invocation mismatch')
+    if (receipt.consumer?.audit?.exitCode !== 0 || receipt.consumer?.audit?.invalid !== 0 || receipt.consumer?.audit?.missing !== 0 || !(receipt.consumer?.audit?.verifiedTargetCount > 0) || receipt.consumer?.smoke?.exitCodes?.install !== 0 || receipt.consumer?.smoke?.exitCodes?.require !== 0 || receipt.consumer?.smoke?.exitCodes?.import !== 0) fail('npm receipt consumer proof is incomplete')
+  } else if (filename === 'pypi-proof.json') {
+    releaseSetKeys(receipt, ['schemaVersion', 'kind', 'state', 'complete', 'repository', 'repositoryId', 'planSha256', 'preparation', 'observer', 'auth', 'observedAt', 'version', 'publishers', 'metadata', 'files', 'consumers'], 'PyPI receipt')
+    releaseSetReceiptCommon(receipt, 'pypi-public-observation', plan, preparation)
+    requireEqual(receipt.complete, true, 'PyPI receipt is incomplete')
+    requireEqual(receipt.version, plan.versions.nonRustVersion, 'PyPI receipt version mismatch')
+    const expectedFiles = new Map(plan.artifacts.filter(artifact => artifact.kind.startsWith('pypi')).map(artifact => [artifact.filename, artifact]))
+    if (!Array.isArray(receipt.files) || receipt.files.length !== expectedFiles.size || !receipt.publishers || typeof receipt.publishers !== 'object') fail('PyPI receipt file set is incomplete')
+    const seen = new Set()
+    for (const file of receipt.files) {
+      releaseSetKeys(file, ['filename', 'kind', 'url', 'sha256', 'provenanceUrl', 'certificateClaims', 'environmentClaimsPresent', 'subject', 'publisher'], 'PyPI receipt file')
+      if (seen.has(file.filename) || !expectedFiles.has(file.filename)) fail('PyPI receipt file set is invalid')
+      seen.add(file.filename)
+      requireEqual(file.sha256, expectedFiles.get(file.filename).sha256, `PyPI receipt ${file.filename} digest mismatch`)
+      requireEqual(receipt.publishers[file.filename] !== undefined, true, `PyPI receipt ${file.filename} publisher missing`)
+      requireEqual(canonicalJson(file.publisher), canonicalJson(receipt.publishers[file.filename]), `PyPI receipt ${file.filename} publisher mismatch`)
+    }
+    if (seen.size !== expectedFiles.size || receipt.consumers?.wheel?.exitCode !== 0 || receipt.consumers?.sdist?.exitCode !== 0) fail('PyPI receipt consumer proof is incomplete')
+  } else if (filename === 'rubygems-proof.json') {
+    releaseSetKeys(receipt, ['schemaVersion', 'kind', 'state', 'complete', 'repository', 'repositoryId', 'planSha256', 'preparation', 'observer', 'auth', 'observedAt', 'version', 'metadata', 'download', 'archive', 'consumers'], 'RubyGems receipt')
+    releaseSetReceiptCommon(receipt, 'rubygems-public-observation', plan, preparation)
+    requireEqual(receipt.complete, true, 'RubyGems receipt is incomplete')
+    requireEqual(receipt.version, plan.versions.nonRustVersion, 'RubyGems receipt version mismatch')
+    const expected = artifactByKind.rubygems
+    requireEqual(receipt.archive?.filename, expected.filename, 'RubyGems receipt filename mismatch')
+    requireEqual(receipt.archive?.sha256, expected.sha256, 'RubyGems receipt digest mismatch')
+    if (!Array.isArray(receipt.archive?.members)) fail('RubyGems receipt member evidence is missing')
+    releaseSetMemberSet(receipt.archive.members, expected.files, 'RubyGems receipt archive')
+    for (const runtime of ['ruby31', 'ruby34']) {
+      const proof = receipt.consumers?.[runtime]
+      if (proof?.exitCode !== 0 || proof.base64Version !== '0.2.0' || proof.digestKeccakVersion !== '0.0.7' || !Array.isArray(proof.nativeExtensionFiles) || proof.nativeExtensionFiles.length === 0) fail(`RubyGems receipt ${runtime} consumer proof is incomplete`)
+    }
+  } else if (filename === 'rust-proof.json') {
+    releaseSetKeys(receipt, ['schemaVersion', 'kind', 'state', 'complete', 'repository', 'repositoryId', 'planSha256', 'preparation', 'observer', 'auth', 'observedAt', 'registry', 'mode', 'version', 'metadata', 'download', 'archive'], 'Rust receipt')
+    releaseSetReceiptCommon(receipt, 'rust-artifact-observation', plan, preparation)
+    requireEqual(receipt.complete, true, 'Rust receipt is incomplete')
+    requireEqual(receipt.registry, 'crates.io', 'Rust receipt registry mismatch')
+    requireEqual(receipt.mode, plan.rust.mode, 'Rust receipt mode mismatch')
+    requireEqual(receipt.version, plan.rust.version, 'Rust receipt version mismatch')
+    requireEqual(receipt.metadata?.checksum, plan.rust.sha256, 'Rust receipt metadata checksum mismatch')
+    requireEqual(receipt.metadata?.yanked, false, 'Rust receipt yanked state mismatch')
+    requireEqual(receipt.download?.sha256, plan.rust.sha256, 'Rust receipt download digest mismatch')
+    requireEqual(receipt.archive?.sha256, plan.rust.sha256, 'Rust receipt archive digest mismatch')
+    if (plan.rust.reuse?.sizeInBytes !== undefined) requireEqual(receipt.download?.sizeInBytes, plan.rust.reuse.sizeInBytes, 'Rust receipt download size mismatch')
+    if (plan.rust.mode === 'reuse') requireEqual(receipt.archive?.sourceCommit, plan.rust.sourceCommit, 'Rust receipt reuse source mismatch')
+  } else if (filename === 'tag-proof.json') {
+    releaseSetKeys(receipt, ['schemaVersion', 'kind', 'state', 'complete', 'repository', 'repositoryId', 'planSha256', 'preparation', 'observer', 'auth', 'observedAt', 'tags'], 'Tag receipt')
+    releaseSetReceiptCommon(receipt, 'tag-public-observation', plan, preparation)
+    requireEqual(receipt.complete, true, 'Tag receipt is incomplete')
+    releaseSetTagRead(receipt.tags?.release, 'Release tag receipt')
+    releaseSetTagRead(receipt.tags?.go, 'Go tag receipt')
+    requireEqual(receipt.tags.release.ref, `refs/tags/${plan.tags.release}`, 'Release tag receipt ref mismatch')
+    requireEqual(receipt.tags.go.ref, `refs/tags/${plan.tags.go}`, 'Go tag receipt ref mismatch')
+    requireEqual(receipt.tags.release.sha, plan.sourceCommit, 'Release tag receipt source mismatch')
+    requireEqual(receipt.tags.go.sha, plan.sourceCommit, 'Go tag receipt source mismatch')
+  } else if (filename === 'go-proof.json') {
+    releaseSetKeys(receipt, ['schemaVersion', 'kind', 'state', 'complete', 'repository', 'repositoryId', 'registry', 'module', 'version', 'tag', 'sourceCommit', 'planSha256', 'preparation', 'observer', 'tooling', 'proxy', 'direct', 'auth', 'observedAt'], 'Go receipt')
+    releaseSetReceiptCommon(receipt, 'go-public-observation', plan, preparation)
+    requireEqual(receipt.complete, true, 'Go receipt is incomplete')
+    requireEqual(receipt.module, plan.go.module, 'Go receipt module mismatch')
+    requireEqual(receipt.version, plan.go.version, 'Go receipt version mismatch')
+    requireEqual(receipt.sourceCommit, plan.sourceCommit, 'Go receipt source mismatch')
+    const expectedInventory = releaseSetExpectedGoInventory(plan)
+    for (const label of ['proxy', 'direct']) {
+      const branch = receipt[label]
+      if (branch?.consumerExitCode !== 0 || !branch?.origin || branch.origin.Hash !== plan.sourceCommit || branch.origin.Ref !== `refs/tags/${plan.go.tag}` || branch.origin.Subdir !== 'packages/go') fail(`Go receipt ${label} proof is incomplete`)
+      requireEqual(canonicalJson(branch.inventory), canonicalJson(expectedInventory), `Go receipt ${label} inventory mismatch`)
+      if (branch.sum !== undefined && receipt.proxy?.sum !== undefined) requireEqual(branch.sum, receipt.proxy.sum, `Go receipt ${label} checksum mismatch`)
+    }
+    requireEqual(canonicalJson(receipt.proxy.inventory), canonicalJson(receipt.direct.inventory), 'Go receipt proxy/direct inventory mismatch')
+  } else fail(`Unknown release-set receipt ${filename}`)
+  return receipt
+}
+
+export function validateReleaseSetProofReceipts({ plan, preparation, receipts, receiptBytes }) {
+  const normalized = validateReleaseSetPlan(plan)
+  const checkedPreparation = releaseSetPreparationTuple(preparation, 'Release-set proof preparation')
+  if (!receipts || typeof receipts !== 'object' || Array.isArray(receipts)) fail('Release-set proof receipts are missing')
+  const names = Object.keys(receipts).sort()
+  if (names.length !== RELEASE_SET_RECEIPT_FILENAMES.length || names.some((name, index) => name !== [...RELEASE_SET_RECEIPT_FILENAMES].sort()[index])) fail('Release-set proof receipt set is incomplete')
+  const digests = {}
+  const normalizedReceipts = {}
+  for (const filename of RELEASE_SET_RECEIPT_FILENAMES) {
+    const value = receipts[filename]
+    const bytes = receiptBytes?.[filename] ?? Buffer.from(`${canonicalJson(value)}\n`)
+    if (!Buffer.isBuffer(bytes)) fail(`Release-set ${filename} raw bytes are invalid`)
+    let parsed = value
+    if (parsed === undefined) { try { parsed = JSON.parse(bytes.toString('utf8')) } catch { fail(`Release-set ${filename} JSON is invalid`) } }
+    releaseSetValidateReceipt(parsed, filename, { plan: normalized, preparation: checkedPreparation })
+    digests[filename] = sha256Hex(bytes)
+    normalizedReceipts[filename] = parsed
+  }
+  return { receipts: normalizedReceipts, receiptDigests: Object.fromEntries(Object.entries(digests).sort()), preparation: checkedPreparation }
+}
+
+export function validateReleaseSetProofManifest(manifest, { plan, preparation } = {}) {
+  releaseSetKeys(manifest, releaseSetManifestKeys, 'Release-set proof manifest')
+  const normalized = validateReleaseSetPlan(plan)
+  requireEqual(manifest.schemaVersion, 2, 'Release-set proof manifest schema mismatch')
+  requireEqual(manifest.kind, 'erpc-sdk-release-set-proof-manifest', 'Release-set proof manifest kind mismatch')
+  requireEqual(manifest.repository, EXPECTED_REPOSITORY, 'Release-set proof manifest repository mismatch')
+  requireEqual(String(manifest.repositoryId), EXPECTED_REPOSITORY_ID, 'Release-set proof manifest repository ID mismatch')
+  requireEqual(manifest.sourceCommit, normalized.sourceCommit, 'Release-set proof manifest source mismatch')
+  releaseSetKeys(manifest.versions, ['nonRustVersion', 'rustVersion'], 'Release-set proof manifest versions')
+  requireEqual(manifest.versions.nonRustVersion, normalized.versions.nonRustVersion, 'Release-set proof manifest non-Rust version mismatch')
+  requireEqual(manifest.versions.rustVersion, normalized.versions.rustVersion, 'Release-set proof manifest Rust version mismatch')
+  requireEqual(manifest.planSha256, releaseSetPlanDigest(normalized), 'Release-set proof manifest plan mismatch')
+  const checkedPreparation = releaseSetPreparationTuple(manifest.preparation, 'Release-set proof manifest preparation')
+  if (preparation !== undefined) requireEqual(canonicalJson(checkedPreparation), canonicalJson(releaseSetPreparationTuple(preparation, 'Expected release-set preparation')), 'Release-set proof manifest preparation mismatch')
+  const snapshot = releaseSetArtifactBinding(manifest.snapshot, 'Release-set proof snapshot')
+  requireEqual(snapshot.artifactName, releaseSetSnapshotArtifactName(snapshot.producer.runId, snapshot.producer.runAttempt), 'Release-set proof snapshot name mismatch')
+  if (manifest.state !== 'complete') fail('Release-set proof manifest state is incomplete')
+  const receiptNames = Object.keys(manifest.receipts ?? {}).sort()
+  const expectedNames = [...RELEASE_SET_RECEIPT_FILENAMES].sort()
+  if (receiptNames.length !== expectedNames.length || receiptNames.some((name, index) => name !== expectedNames[index])) fail('Release-set proof manifest receipt set is incomplete')
+  const artifactNames = Object.keys(manifest.receiptArtifacts ?? {}).sort()
+  if (artifactNames.length !== expectedNames.length || artifactNames.some((name, index) => name !== expectedNames[index])) fail('Release-set proof manifest receipt artifact set is incomplete')
+  const receiptDigests = {}
+  const receiptArtifacts = {}
+  for (const filename of RELEASE_SET_RECEIPT_FILENAMES) {
+    receiptDigests[filename] = requireArchiveSha(manifest.receipts[filename], `Release-set proof ${filename} digest`)
+    const binding = releaseSetArtifactBinding(manifest.receiptArtifacts[filename], `Release-set proof ${filename} artifact`)
+    requireEqual(binding.artifactName, releaseSetReceiptArtifactName(filename, binding.producer.runId, binding.producer.runAttempt), `Release-set proof ${filename} artifact name mismatch`)
+    receiptArtifacts[filename] = binding
+  }
+  return { ...manifest, repositoryId: EXPECTED_REPOSITORY_ID, preparation: checkedPreparation, snapshot, receipts: Object.fromEntries(Object.entries(receiptDigests).sort()), receiptArtifacts: Object.fromEntries(Object.entries(receiptArtifacts).sort()) }
+}
+
+export function buildReleaseSetProofManifest({ plan, preparation, snapshot, receipts, receiptBytes, receiptArtifacts }) {
+  const normalized = validateReleaseSetPlan(plan)
+  const checked = validateReleaseSetProofReceipts({ plan: normalized, preparation, receipts, receiptBytes })
+  const snapshotBinding = releaseSetArtifactBinding(snapshot, 'Release-set proof snapshot')
+  requireEqual(snapshotBinding.artifactName, releaseSetSnapshotArtifactName(snapshotBinding.producer.runId, snapshotBinding.producer.runAttempt), 'Release-set proof snapshot name mismatch')
+  if (!receiptArtifacts || typeof receiptArtifacts !== 'object' || Array.isArray(receiptArtifacts)) fail('Release-set proof receipt artifact bindings are missing')
+  const actualBindings = {}
+  for (const filename of RELEASE_SET_RECEIPT_FILENAMES) {
+    actualBindings[filename] = releaseSetArtifactBinding(receiptArtifacts[filename], `Release-set proof ${filename} artifact`)
+    requireEqual(actualBindings[filename].artifactName, releaseSetReceiptArtifactName(filename, actualBindings[filename].producer.runId, actualBindings[filename].producer.runAttempt), `Release-set proof ${filename} artifact name mismatch`)
+  }
+  const manifest = {
+    schemaVersion: 2,
+    kind: 'erpc-sdk-release-set-proof-manifest',
+    repository: EXPECTED_REPOSITORY,
+    repositoryId: EXPECTED_REPOSITORY_ID,
+    sourceCommit: normalized.sourceCommit,
+    versions: { nonRustVersion: normalized.versions.nonRustVersion, rustVersion: normalized.versions.rustVersion },
+    planSha256: releaseSetPlanDigest(normalized),
+    preparation: checked.preparation,
+    snapshot: snapshotBinding,
+    receipts: checked.receiptDigests,
+    receiptArtifacts: Object.fromEntries(Object.entries(actualBindings).sort()),
+    state: 'complete',
+  }
+  return validateReleaseSetProofManifest(manifest, { plan: normalized, preparation: checked.preparation })
+}
+
+const githubRunAttempt = async (request, producer, deadlineControl, stage, current = false) => {
+  const identity = releaseSetRunIdentity(producer, `${stage} expected producer`)
+  const url = `${githubApiOrigin}/repos/${EXPECTED_REPOSITORY}/actions/runs/${identity.runId}/attempts/${identity.runAttempt}`
+  const run = await githubObserverApiJson(request, url, deadlineControl, `${stage}-run`)
+  return releaseSetValidateRunRecord(run, identity, { current })
+}
+
+const githubObserveReleaseSetArtifact = async ({ request, binding, expectedProducer, deadlineControl, workDir, expectedMembers, stage, current = false }) => {
+  const checked = releaseSetArtifactBinding(binding, `Release-set ${stage} binding`)
+  await githubRunAttempt(request, checked.producer, deadlineControl, stage, current)
+  const actual = await githubArtifactMetadata(request, checked, deadlineControl, expectedProducer, stage)
+  const zip = await githubArtifactZipBytes(request, checked.artifactId, deadlineControl, stage)
+  requireEqual(sha256Hex(zip.bytes), checked.sha256, `Release-set ${stage} raw ZIP digest mismatch`)
+  requireEqual(zip.bytes.length, checked.sizeInBytes, `Release-set ${stage} raw ZIP size mismatch`)
+  const extracted = await githubArtifactMembers(zip.bytes, workDir, expectedMembers, stage)
+  const actualBinding = { ...checked, sha256: sha256Hex(zip.bytes), sizeInBytes: zip.bytes.length }
+  return { binding: actualBinding, metadata: actual.metadata, zip, extracted }
+}
+
+/** Authenticate a bounded subset of original one-member receipt artifacts before tag or Release effects. */
+export async function observeReleaseSetReceiptArtifacts({ plan, preparation, receiptArtifacts, filenames, observer, workDir, request, now = () => performance.now(), currentProducer = true }) {
+  const normalized = validateReleaseSetPlan(plan)
+  const checkedPreparation = releaseSetPreparationTuple(preparation, 'Release-set receipt preparation')
+  const names = filenames === undefined ? ['npm-proof.json', 'pypi-proof.json', 'rubygems-proof.json'] : [...filenames]
+  releaseSetKeys(receiptArtifacts, names, 'Release-set receipt artifact map')
+  const root = npmSafePath(workDir, 'Release-set receipt work directory')
+  if ((await readdir(root, { withFileTypes: true })).length !== 0) fail('Release-set receipt work directory is not fresh')
+  const observerIdentity = releaseSetObserverIdentity(observer, normalized.sourceCommit)
+  const deadlineControl = { now, deadline: now() + 600_000 }
+  const receipts = {}; const receiptBytes = {}; const actualBindings = {}; const observedRuns = new Map()
+  for (const filename of names) {
+    const binding = releaseSetArtifactBinding(receiptArtifacts[filename], `Release-set ${filename} binding`)
+    const sameCurrent = binding.producer.runId === observerIdentity.runId && binding.producer.runAttempt === observerIdentity.runAttempt
+    const producerKey = binding.producer.runId + '/' + binding.producer.runAttempt
+    if (!observedRuns.has(producerKey)) observedRuns.set(producerKey, await githubRunAttempt(request, binding.producer, deadlineControl, `release-set-${releaseSetReceiptRole(filename)}`, currentProducer && sameCurrent))
+    const observed = await githubObserveReleaseSetArtifact({ request, binding, expectedProducer: binding.producer, deadlineControl, workDir: root, expectedMembers: [filename], stage: `receipt-${releaseSetReceiptRole(filename)}`, current: currentProducer && sameCurrent })
+    const bytes = observed.extracted.bytes.get(filename)
+    let receipt
+    try { receipt = JSON.parse(bytes.toString('utf8')) } catch { fail(`Release-set ${filename} receipt JSON is invalid`) }
+    releaseSetValidateReceipt(receipt, filename, { plan: normalized, preparation: checkedPreparation })
+    receipts[filename] = receipt; receiptBytes[filename] = bytes; actualBindings[filename] = observed.binding
+  }
+  return { receipts, receiptBytes, receiptArtifacts: actualBindings, producerRuns: Object.fromEntries(observedRuns) }
+}
+
+const releaseSetSelector = selector => {
+  releaseSetKeys(selector, ['mode', 'snapshot', 'receiptArtifacts', 'checkpoint'], 'Release-set proof selector')
+  if (!['current', 'preserved-manifest', 'preserved-checkpoint'].includes(selector.mode)) fail('Release-set proof selector mode is invalid')
+  if (selector.mode === 'current') {
+    if (selector.snapshot === undefined || selector.receiptArtifacts === undefined || selector.checkpoint !== undefined) fail('Current release-set selector requires snapshot and receipt artifacts')
+    releaseSetArtifactBinding(selector.snapshot, 'Release-set current snapshot')
+  } else if (selector.mode === 'preserved-checkpoint') {
+    if (selector.checkpoint === undefined || selector.snapshot !== undefined || selector.receiptArtifacts !== undefined) fail('Preserved checkpoint selector requires only checkpoint')
+    releaseSetArtifactBinding(selector.checkpoint, 'Release-set manifest checkpoint')
+  } else if (selector.snapshot !== undefined || selector.receiptArtifacts !== undefined || selector.checkpoint !== undefined) fail('Preserved manifest selector cannot carry source bindings')
+  return selector
+}
+
+/** Authenticate the six source receipts and the immutable receipt-only snapshot. */
+export async function observeReleaseSetProofSnapshot({ plan, preparation, selector, observer, workDir, request, now = () => performance.now(), currentProducer = true }) {
+  const normalized = validateReleaseSetPlan(plan)
+  const checkedPreparation = releaseSetPreparationTuple(preparation, 'Release-set snapshot preparation')
+  const checkedSelector = releaseSetSelector(selector)
+  const root = npmSafePath(workDir, 'Release-set snapshot work directory')
+  if ((await readdir(root, { withFileTypes: true })).length !== 0) fail('Release-set snapshot work directory is not fresh')
+  const deadlineControl = { now, deadline: now() + 600_000 }
+  if (checkedSelector.mode === 'preserved-manifest') fail('Preserved manifest selector is verified by the Release observer')
+  const producerIdentity = checkedSelector.mode === 'current'
+    ? releaseSetRunIdentity(checkedSelector.snapshot.producer, 'Release-set snapshot producer')
+    : releaseSetRunIdentity(checkedSelector.checkpoint.producer, 'Release-set checkpoint producer')
+  if (observer !== undefined && checkedSelector.mode === 'current') {
+    const currentIdentity = releaseSetObserverIdentity(observer, normalized.sourceCommit)
+    requireEqual(canonicalJson(currentIdentity), canonicalJson(producerIdentity), 'Release-set current snapshot producer is not the current observer')
+  }
+  const sourceBindings = checkedSelector.mode === 'current' ? checkedSelector.receiptArtifacts : undefined
+  const snapshotBinding = checkedSelector.mode === 'current' ? checkedSelector.snapshot : undefined
+  if (checkedSelector.mode === 'preserved-checkpoint') {
+    const checkpoint = await githubObserveReleaseSetArtifact({ request, binding: checkedSelector.checkpoint, deadlineControl, workDir: root, expectedMembers: ['release-set-proof-manifest.json'], stage: 'manifest-checkpoint', current: false })
+    const bytes = checkpoint.extracted.bytes.get('release-set-proof-manifest.json')
+    let manifest
+    try { manifest = JSON.parse(bytes.toString('utf8')) } catch { fail('Release-set checkpoint manifest JSON is invalid') }
+    const validated = validateReleaseSetProofManifest(manifest, { plan: normalized, preparation: checkedPreparation })
+    const nestedRoot = join(root, 'checkpoint-lineage')
+    await mkdir(nestedRoot)
+    const nested = await observeReleaseSetProofSnapshot({ plan: normalized, preparation: checkedPreparation, selector: { mode: 'current', snapshot: validated.snapshot, receiptArtifacts: validated.receiptArtifacts }, observer: undefined, workDir: nestedRoot, request, now, currentProducer: false })
+    requireEqual(canonicalJson(nested.manifest), canonicalJson(validated), 'Release-set checkpoint manifest lineage changed')
+    return { ...nested, checkpointManifestBytes: bytes }
+  }
+  releaseSetKeys(sourceBindings, RELEASE_SET_RECEIPT_FILENAMES, 'Release-set source receipt artifact map')
+  await githubRunAttempt(request, producerIdentity, deadlineControl, 'release-set-snapshot', currentProducer)
+  const snapshotExpectedName = releaseSetSnapshotArtifactName(producerIdentity.runId, producerIdentity.runAttempt)
+  requireEqual(snapshotBinding.artifactName, snapshotExpectedName, 'Release-set snapshot artifact name mismatch')
+  const snapshot = await githubObserveReleaseSetArtifact({ request, binding: snapshotBinding, expectedProducer: producerIdentity, deadlineControl, workDir: root, expectedMembers: [...RELEASE_SET_RECEIPT_FILENAMES], stage: 'proof-snapshot', current: currentProducer })
+  const receipts = {}
+  const receiptBytes = {}
+  const actualReceiptBindings = {}
+  const observedProducerRuns = new Map()
+  for (const filename of RELEASE_SET_RECEIPT_FILENAMES) {
+    const binding = releaseSetArtifactBinding(sourceBindings[filename], `Release-set ${filename} binding`)
+    const expectedName = releaseSetReceiptArtifactName(filename, binding.producer.runId, binding.producer.runAttempt)
+    requireEqual(binding.artifactName, expectedName, `Release-set ${filename} artifact name mismatch`)
+    const sameCurrent = binding.producer.runId === producerIdentity.runId && binding.producer.runAttempt === producerIdentity.runAttempt
+    if (!observedProducerRuns.has(`${binding.producer.runId}/${binding.producer.runAttempt}`)) {
+      observedProducerRuns.set(`${binding.producer.runId}/${binding.producer.runAttempt}`, await githubRunAttempt(request, binding.producer, deadlineControl, `release-set-${releaseSetReceiptRole(filename)}`, currentProducer && sameCurrent))
+    }
+    const observed = await githubObserveReleaseSetArtifact({ request, binding, expectedProducer: binding.producer, deadlineControl, workDir: root, expectedMembers: [filename], stage: `receipt-${releaseSetReceiptRole(filename)}`, current: currentProducer && sameCurrent })
+    const bytes = observed.extracted.bytes.get(filename)
+    const snapshotBytes = snapshot.extracted.bytes.get(filename)
+    requireEqual(Buffer.compare(bytes, snapshotBytes), 0, `Release-set ${filename} differs from snapshot receipt bytes`)
+    try { receipts[filename] = JSON.parse(bytes.toString('utf8')) } catch { fail(`Release-set ${filename} receipt JSON is invalid`) }
+    receiptBytes[filename] = bytes
+    actualReceiptBindings[filename] = observed.binding
+  }
+  const checkedReceipts = validateReleaseSetProofReceipts({ plan: normalized, preparation: checkedPreparation, receipts, receiptBytes })
+  for (const filename of RELEASE_SET_RECEIPT_FILENAMES) {
+    const receiptObserver = releaseSetReceiptObserver(checkedReceipts.receipts[filename].observer, `Release-set ${filename} receipt observer`, normalized)
+    requireEqual(canonicalJson(receiptObserver), canonicalJson(actualReceiptBindings[filename].producer), `Release-set ${filename} producer lineage mismatch`)
+  }
+  const manifest = buildReleaseSetProofManifest({ plan: normalized, preparation: checkedPreparation, snapshot: snapshot.binding, receipts: checkedReceipts.receipts, receiptBytes, receiptArtifacts: actualReceiptBindings })
+  return { selector: checkedSelector, snapshot: snapshot.binding, receiptArtifacts: actualReceiptBindings, receipts: checkedReceipts.receipts, receiptBytes, receiptDigests: checkedReceipts.receiptDigests, manifest, producerRuns: Object.fromEntries(observedProducerRuns) }
+}
+
+/** Bind a caller descriptor to the authenticated preparation plan and bytes before GitHub reads. */
+
+const githubObserverAsset = asset => {
+  releaseSetKeys(asset, ['role', 'filename', 'sha256', 'sizeInBytes'], 'GitHub observer asset')
+  if (typeof asset.role !== 'string' || asset.role.length === 0) fail('GitHub observer asset role is invalid')
+  safeRelativePath(asset.filename)
+  requireArchiveSha(asset.sha256, `GitHub observer ${asset.role} SHA-256`)
+  if (!Number.isSafeInteger(asset.sizeInBytes) || asset.sizeInBytes <= 0) fail(`GitHub observer ${asset.role} size is invalid`)
+  return asset
+}
+
+const githubObserverDescriptor = descriptor => {
+  releaseSetKeys(descriptor, ['repository', 'repositoryId', 'releaseTag', 'title', 'bodySha256', 'sourceCommit', 'assets', 'releaseId', 'requirePublic', 'prerelease', 'latest'], 'GitHub observer descriptor')
+  requireEqual(descriptor.repository, EXPECTED_REPOSITORY, 'GitHub observer repository mismatch')
+  requireEqual(String(descriptor.repositoryId), EXPECTED_REPOSITORY_ID, 'GitHub observer repository ID mismatch')
+  if (typeof descriptor.releaseTag !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(descriptor.releaseTag)) fail('GitHub observer release tag is invalid')
+  releaseSetString(descriptor.title, 'GitHub observer release title')
+  requireArchiveSha(descriptor.bodySha256, 'GitHub observer release body SHA-256')
+  requireSha(descriptor.sourceCommit, 'GitHub observer source commit')
+  if (descriptor.prerelease !== false) fail('GitHub observer prerelease intent must be false')
+  if (descriptor.latest !== undefined && typeof descriptor.latest !== 'boolean') fail('GitHub observer Latest intent must be boolean')
+  if (!Array.isArray(descriptor.assets) || descriptor.assets.length === 0) fail('GitHub observer asset set is empty')
+  const assets = descriptor.assets.map(githubObserverAsset)
+  if (new Set(assets.map(asset => asset.role)).size !== assets.length || new Set(assets.map(asset => asset.filename)).size !== assets.length) fail('GitHub observer asset roles or filenames are duplicated')
+  if (descriptor.releaseId !== undefined) requireFuturePositiveId(descriptor.releaseId, 'GitHub observer release ID')
+  if (descriptor.requirePublic !== undefined && typeof descriptor.requirePublic !== 'boolean') fail('GitHub observer requirePublic must be boolean')
+  return { ...descriptor, assets }
+}
+
+const githubObserverInput = input => {
+  releaseSetKeys(input, ['plan', 'descriptor', 'planSha256', 'preparation', 'observer', 'workDir', 'outputFile', 'snapshot', 'publicRead', 'requireSnapshot'], 'GitHub observer input')
+  const descriptor = githubObserverDescriptor(input.descriptor)
+  if (input.plan !== undefined) validateReleaseSetPlan(input.plan)
+  if (input.planSha256 !== undefined) requireArchiveSha(input.planSha256, 'GitHub observer plan SHA-256')
+  if (input.preparation !== undefined) {
+    releaseSetKeys(input.preparation, ['sourceCommit', 'runId', 'runAttempt', 'artifactId', 'bindingArtifactId', 'planSha256'], 'GitHub observer preparation')
+    requireSha(input.preparation.sourceCommit, 'GitHub observer preparation source')
+    for (const [value, label] of [[input.preparation.runId, 'GitHub observer preparation run ID'], [input.preparation.runAttempt, 'GitHub observer preparation attempt'], [input.preparation.artifactId, 'GitHub observer preparation artifact ID'], [input.preparation.bindingArtifactId, 'GitHub observer preparation binding artifact ID']]) requireFuturePositiveId(value, label)
+    requireArchiveSha(input.preparation.planSha256, 'GitHub observer preparation plan SHA-256')
+    if (input.planSha256 !== undefined) requireEqual(input.preparation.planSha256, input.planSha256, 'GitHub observer preparation plan mismatch')
+  }
+  releaseSetKeys(input.observer, ['runId', 'runAttempt', 'workflowPath', 'sourceCommit'], 'GitHub observer context')
+  requireFuturePositiveId(input.observer.runId, 'GitHub observer run ID')
+  requireFuturePositiveId(input.observer.runAttempt, 'GitHub observer attempt')
+  requireEqual(input.observer.workflowPath, RELEASE_SET_WORKFLOW, 'GitHub observer workflow mismatch')
+  requireSha(input.observer.sourceCommit, 'GitHub observer source')
+  if (input.snapshot !== undefined && input.plan !== undefined && input.snapshot.mode !== undefined) releaseSetSelector(input.snapshot)
+  return { ...input, descriptor, requireSnapshot: input.requireSnapshot === true || descriptor.assets.some(asset => githubDynamicProofRoles.has(asset.role)) }
+}
+
+/** Bind a caller descriptor to the authenticated preparation plan and bytes before GitHub reads. */
+export async function validateGitHubReleaseDescriptor({ plan, descriptor, artifactDirectory }) {
+  const normalized = validateReleaseSetPlan(plan)
+  const checked = githubObserverDescriptor(descriptor)
+  requireEqual(checked.repository, normalized.repository, 'GitHub observer descriptor repository does not match plan')
+  requireEqual(String(checked.repositoryId), String(normalized.repositoryId), 'GitHub observer descriptor repository ID does not match plan')
+  requireEqual(checked.releaseTag, normalized.tags.release, 'GitHub observer descriptor tag does not match plan')
+  requireEqual(checked.title, normalized.githubRelease.title, 'GitHub observer descriptor title does not match plan')
+  requireEqual(checked.bodySha256, normalized.githubRelease.bodySha256, 'GitHub observer descriptor body does not match plan')
+  requireEqual(checked.sourceCommit, normalized.sourceCommit, 'GitHub observer descriptor source does not match plan')
+  requireEqual(checked.latest ?? false, normalized.githubRelease.latest ?? false, 'GitHub observer Latest intent does not match plan')
+  const expectedAssets = new Map(normalized.approval.publicAssets.map(asset => [asset.role, asset.filename]))
+  const actualAssets = new Map(checked.assets.map(asset => [asset.role, asset.filename]))
+  if (expectedAssets.size !== actualAssets.size || [...expectedAssets].some(([role, filename]) => actualAssets.get(role) !== filename)) fail('GitHub observer descriptor asset inventory does not match plan')
+  const staticFiles = new Map(normalized.artifacts.map(artifact => [artifact.kind, { filename: artifact.filename, sha256: artifact.sha256 }]))
+  if (normalized.rust.mode === 'publish') staticFiles.set('rust-crate', { filename: normalized.rust.archive.filename, sha256: normalized.rust.sha256 })
+  staticFiles.set('release-body', { filename: 'release-body.md', sha256: sha256Hex(normalized.githubRelease.body) })
+  staticFiles.set('go-inventory', { filename: 'go-inventory.json', sha256: sha256Hex(`${canonicalJson(normalized.go.inventory)}\n`) })
+  const dynamicRoles = []
+  for (const asset of checked.assets) {
+    const staticFile = staticFiles.get(asset.role)
+    if (!staticFile) { dynamicRoles.push(asset.role); continue }
+    requireEqual(asset.filename, staticFile.filename, `GitHub observer static ${asset.role} filename mismatch`)
+    const preparedPath = join(await realpath(artifactDirectory), staticFile.filename)
+    const preparedStat = await stat(preparedPath)
+    requireEqual(await sha256File(preparedPath), staticFile.sha256, `GitHub observer prepared ${asset.role} bytes mismatch`)
+    requireEqual(asset.sha256, staticFile.sha256, `GitHub observer descriptor ${asset.role} hash mismatch`)
+    requireEqual(asset.sizeInBytes, preparedStat.size, `GitHub observer descriptor ${asset.role} size mismatch`)
+  }
+  return { descriptor: checked, dynamicRoles }
+}
+
+const githubApplyReleaseSetDynamicHashes = (descriptor, evidence) => {
+  const checked = githubObserverDescriptor(descriptor)
+  if (!evidence || typeof evidence !== 'object') fail('GitHub observer release-set evidence is missing')
+  const receiptBytes = evidence.receiptBytes ?? {}
+  const manifestBytes = Buffer.from(`${canonicalJson(evidence.manifest)}\n`)
+  const assets = checked.assets.map(asset => {
+    let bytes
+    if (asset.role === 'release-set-proof-manifest') bytes = manifestBytes
+    else if (githubDynamicProofRoles.has(asset.role)) bytes = receiptBytes[asset.filename]
+    if (bytes === undefined) return asset
+    if (!Buffer.isBuffer(bytes)) fail(`GitHub observer dynamic ${asset.role} bytes are invalid`)
+    return { ...asset, sha256: sha256Hex(bytes), sizeInBytes: bytes.length }
+  })
+  return { descriptor: { ...checked, assets } }
+}
+
+const githubObserverSnapshot = async (snapshot, request, deadlineControl, workDir) => {
+  releaseSetKeys(snapshot, ['manifestUrl', 'manifestSha256', 'archiveUrl', 'archiveId', 'archiveSha256', 'members'], 'GitHub observer snapshot')
+  if (typeof snapshot.manifestUrl !== 'string' || !snapshot.manifestUrl.startsWith(`${githubApiOrigin}/`)) fail('GitHub observer snapshot manifest URL is invalid')
+  if (typeof snapshot.archiveUrl !== 'string' || !snapshot.archiveUrl.startsWith(`${githubApiOrigin}/repos/${EXPECTED_REPOSITORY}/actions/artifacts/`)) fail('GitHub observer snapshot archive URL is invalid')
+  requireFuturePositiveId(snapshot.archiveId, 'GitHub observer snapshot archive ID')
+  requireArchiveSha(snapshot.manifestSha256, 'GitHub observer snapshot manifest SHA-256')
+  requireArchiveSha(snapshot.archiveSha256, 'GitHub observer snapshot archive SHA-256')
+  if (!Array.isArray(snapshot.members) || snapshot.members.length === 0) fail('GitHub observer snapshot members are empty')
+  const manifestResponse = await githubObserverRequest(request, snapshot.manifestUrl, deadlineControl, 'snapshot-manifest')
+  if (manifestResponse.status !== 200) fail(`github-observe-snapshot-manifest-http-${manifestResponse.status}`)
+  const manifestBytes = npmResponseBody(manifestResponse); requireEqual(sha256Hex(manifestBytes), snapshot.manifestSha256, 'GitHub observer snapshot manifest bytes mismatch')
+  let manifest
+  try { manifest = JSON.parse(manifestBytes.toString('utf8')) } catch { fail('github-observe-snapshot-manifest-json-invalid') }
+  if (manifest?.sourceCommit !== undefined) requireSha(manifest.sourceCommit, 'GitHub observer snapshot source commit')
+  const archiveResponse = await githubObserverRequest(request, snapshot.archiveUrl, deadlineControl, 'snapshot-archive', 'application/vnd.github+json')
+  if (archiveResponse.status !== 200) fail(`github-observe-snapshot-archive-http-${archiveResponse.status}`)
+  const archiveBytes = npmResponseBody(archiveResponse); requireEqual(sha256Hex(archiveBytes), snapshot.archiveSha256, 'GitHub observer snapshot archive bytes mismatch')
+  const archivePath = join(workDir, 'github-proof-snapshot.zip'); await writeFile(archivePath, archiveBytes, { flag: 'wx' })
+  const members = await archiveEntries(archivePath, 'zip')
+  const expected = new Map(snapshot.members.map(member => { releaseSetKeys(member, ['path', 'sha256'], 'GitHub observer snapshot member'); return [safeRelativePath(member.path), requireArchiveSha(member.sha256, `GitHub observer snapshot member ${member.path}`)] }))
+  for (const [member, expectedSha] of expected) requireEqual(manifest?.receipts?.[member], expectedSha, `GitHub observer snapshot manifest ${member} binding mismatch`)
+  if (new Set(expected.keys()).size !== expected.size || members.length !== expected.size || members.some(member => !expected.has(member))) fail('GitHub observer snapshot member set mismatch')
+  for (const [member, expectedSha] of expected) requireEqual(sha256Hex(await commandBuffer('unzip', ['-p', archivePath, member])), expectedSha, `GitHub observer snapshot member ${member} mismatch`)
+  return { manifestSha256: snapshot.manifestSha256, archiveId: Number(snapshot.archiveId), archiveSha256: snapshot.archiveSha256, members: [...expected.keys()].sort() }
+}
+
+const githubObserverHeaders = Object.freeze({ 'user-agent': RELEASE_USER_AGENT, accept: 'application/vnd.github+json' })
+const githubAnonymousHeaders = Object.freeze({ 'user-agent': RELEASE_USER_AGENT, accept: 'application/vnd.github+json' })
+
+const githubAnonymousDefaultRequest = async (url, options = {}) => {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? 20_000)
+  try {
+    const response = await fetch(url, { method: 'GET', headers: options.headers ?? {}, redirect: 'manual', signal: controller.signal })
+    return { status: response.status, headers: Object.fromEntries(response.headers.entries()), body: Buffer.from(await response.arrayBuffer()) }
+  } catch {
+    fail('github-observe-anonymous-http-failed')
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+const githubObserverRequest = async (request, url, deadlineControl, stage, accept = 'application/vnd.github+json', baseHeaders = githubObserverHeaders) => {
+  let response
+  try { response = await request(url, { method: 'GET', headers: { ...baseHeaders, accept }, timeoutMs: Math.min(60_000, npmDeadlineRemaining(deadlineControl.now, deadlineControl.deadline)), deadline: deadlineControl.deadline }) } catch { fail(`github-observe-${stage}-http-failed`) }
+  npmCheckDeadline(deadlineControl.now, deadlineControl.deadline)
+  if (!response || !Number.isInteger(response.status)) fail(`github-observe-${stage}-response-invalid`)
+  return response
+}
+
+const githubObserverEffectiveLatest = async (request, descriptor, observedRelease, deadlineControl, stage, requestHelper = githubObserverRequest) => {
+  const response = await requestHelper(request, `${githubApiOrigin}/repos/${descriptor.repository}/releases/latest`, deadlineControl, stage)
+  if (response.status === 404) return false
+  if (response.status !== 200) fail(`github-observe-${stage}-http-${response.status}`)
+  const latest = githubObserverJson(response, `${stage}-json`)
+  if (!Number.isSafeInteger(latest?.id) || latest.id <= 0) fail(`github-observe-${stage}-id-invalid`)
+  return latest.id === observedRelease.id
+}
+
+const githubObserverAnonymousRequest = (request, url, deadlineControl, stage, accept = 'application/vnd.github+json') => githubObserverRequest(request, url, deadlineControl, stage, accept, githubAnonymousHeaders)
+
+const githubObserverJson = (response, stage) => {
+  try { return JSON.parse(npmResponseBody(response).toString('utf8')) } catch { fail(`github-observe-${stage}-json-invalid`) }
+}
+
+const githubObserverPages = async (request, firstUrl, deadlineControl, stage, requestHelper = githubObserverRequest) => {
+  const pages = []
+  let url = firstUrl
+  for (let page = 0; page < 100; page += 1) {
+    const response = await requestHelper(request, url, deadlineControl, `${stage}-page-${page + 1}`)
+    if (response.status !== 200) fail(`github-observe-${stage}-http-${response.status}`)
+    const payload = githubObserverJson(response, `${stage}-page-${page + 1}`)
+    if (!Array.isArray(payload)) fail(`github-observe-${stage}-page-invalid`)
+    pages.push(...payload)
+    const link = response.headers?.link ?? response.headers?.Link
+    const next = typeof link === 'string' ? link.split(',').map(value => value.match(/<([^>]+)>;\s*rel="?next"?/i)?.[1]).find(Boolean) : undefined
+    if (next) {
+      let nextUrl
+      try { nextUrl = new URL(next, url) } catch { fail(`github-observe-${stage}-pagination-invalid`) }
+      const first = new URL(firstUrl)
+      if (nextUrl.origin !== first.origin || nextUrl.pathname !== first.pathname || nextUrl.username || nextUrl.password || nextUrl.hash) fail(`github-observe-${stage}-pagination-invalid`)
+      const allowed = new Set(['page', 'per_page'])
+      if ([...nextUrl.searchParams.keys()].some(key => !allowed.has(key)) || nextUrl.searchParams.get('per_page') !== '100' || !/^[1-9][0-9]*$/.test(nextUrl.searchParams.get('page') ?? '')) fail(`github-observe-${stage}-pagination-invalid`)
+      url = nextUrl.href; continue
+    }
+    if (payload.length < 100) return pages
+    const separator = firstUrl.includes('?') ? '&' : '?'
+    url = `${firstUrl}${separator}page=${page + 2}`
+  }
+  fail(`github-observe-${stage}-pagination-unbounded`)
+}
+
+const githubObserverAssetMap = (records, descriptor) => {
+  if (!Array.isArray(records)) fail('GitHub observer asset response is invalid')
+  const expected = new Map(descriptor.assets.map(asset => [asset.filename, asset]))
+  const actual = new Map()
+  const ids = new Set()
+  for (const record of records) {
+    if (!Number.isSafeInteger(record?.id) || record.id <= 0 || typeof record.name !== 'string' || actual.has(record.name)) fail('GitHub observer asset identity is invalid')
+    if (!expected.has(record.name)) fail('GitHub observer asset set contains an unexpected member')
+    if (ids.has(record.id)) fail('GitHub observer asset IDs are duplicated')
+    ids.add(record.id)
+    if (record.digest !== undefined && typeof record.digest !== 'string') fail('GitHub observer asset digest is invalid')
+    if (record.size !== undefined && (!Number.isSafeInteger(record.size) || record.size < 0)) fail('GitHub observer asset size is invalid')
+    actual.set(record.name, { id: record.id, name: record.name, expected: expected.get(record.name), apiDigest: record.digest, apiSize: record.size })
+  }
+  return { expected, actual }
+}
+
+const githubObserverRelease = (release, descriptor) => {
+  if (!Number.isSafeInteger(release?.id) || release.id <= 0) fail('GitHub observer release ID is invalid')
+  requireEqual(release.id, Number(descriptor.releaseId), 'GitHub observer release ID mismatch')
+  requireEqual(release.tag_name, descriptor.releaseTag, 'GitHub observer release tag mismatch')
+  requireEqual(release.name, descriptor.title, 'GitHub observer release title mismatch')
+  requireEqual(sha256Hex(String(release.body ?? '')), descriptor.bodySha256, 'GitHub observer release body mismatch')
+  if (typeof release.draft !== 'boolean' || typeof release.prerelease !== 'boolean') fail('GitHub observer release state is invalid')
+  if (release.prerelease !== false) fail('GitHub observer release prerelease state is invalid')
+  if (release.target_commitish !== descriptor.sourceCommit && release.target_commitish !== descriptor.releaseTag) fail('GitHub observer release source mismatch')
+  return { id: release.id, tag: release.tag_name, title: release.name, bodySha256: sha256Hex(String(release.body ?? '')), draft: release.draft === true, prerelease: release.prerelease === true, latest: release.latest ?? release.make_latest ?? release.is_latest, targetCommitish: release.target_commitish }
+}
+
+const githubObserverNamedTagSource = async (request, descriptor, tagName, deadlineControl, stage, requestHelper = githubObserverRequest) => {
+  const tagUrl = `${githubApiOrigin}/repos/${descriptor.repository}/git/ref/tags/${encodeURIComponent(tagName)}`
+  const response = await requestHelper(request, tagUrl, deadlineControl, stage)
+  if (response.status !== 200) fail(`github-observe-${stage}-http-${response.status}`)
+  const payload = githubObserverJson(response, stage)
+  requireEqual(payload?.ref, `refs/tags/${tagName}`, `GitHub observer ${stage} tag ref mismatch`)
+  requireEqual(payload?.object?.type, 'commit', `GitHub observer ${stage} tag type mismatch`)
+  requireEqual(payload?.object?.sha, descriptor.sourceCommit, `GitHub observer ${stage} tag source mismatch`)
+  return { ref: payload.ref, type: payload.object.type, sha: payload.object.sha }
+}
+
+const githubObserverTagSource = async (request, descriptor, deadlineControl, stage, requestHelper = githubObserverRequest) => githubObserverNamedTagSource(request, descriptor, descriptor.releaseTag, deadlineControl, stage, requestHelper)
+
+const githubObserverRedirectBytes = async (request, url, deadlineControl, stage, requestHelper = githubObserverRequest) => {
+  let current = url
+  const redirects = []
+  for (let count = 0; count < 4; count += 1) {
+    const response = await requestHelper(request, current, deadlineControl, `${stage}-${count + 1}`, 'application/octet-stream')
+    if (response.status === 200) return { response, redirects }
+    if (![301, 302, 303, 307, 308].includes(response.status)) fail(`github-observe-${stage}-http-${response.status}`)
+    const location = response.headers?.location ?? response.headers?.Location
+    let target
+    try { target = new URL(location, current) } catch { fail(`github-observe-${stage}-redirect-invalid`) }
+    if (target.protocol !== 'https:' || (!githubRedirectHostAllowed(target.hostname) && target.origin !== new URL(current).origin) || redirects.includes(target.href)) fail(`github-observe-${stage}-redirect-unsafe`)
+    redirects.push(target.href); current = target.href
+  }
+  fail(`github-observe-${stage}-redirect-limit`)
+}
+
+const githubObserverPublicRead = async (publicRead, descriptor, observedRelease, observedAssets, anonymousRequest, deadlineControl) => {
+  const publicDescriptor = { ...descriptor, releaseId: observedRelease.id }
+  let releases
+  try {
+    releases = await githubObserverPages(anonymousRequest, `${githubApiOrigin}/repos/${descriptor.repository}/releases?per_page=100`, deadlineControl, 'public-release-list', githubObserverAnonymousRequest)
+  } catch (error) {
+    if (String(error?.message ?? error).includes('npm-observe-deadline-exceeded')) throw error
+    return { complete: false, reason: 'public-release-list-unavailable', anonymous: true }
+  }
+  const matches = releases.filter(item => item?.tag_name === descriptor.releaseTag)
+  if (matches.length !== 1) return { complete: false, reason: matches.length === 0 ? 'public-release-absent' : 'public-release-ambiguous', anonymous: true }
+  const listed = matches[0]
+  if (!Number.isSafeInteger(listed.id) || listed.id <= 0 || listed.id !== observedRelease.id) return { complete: false, reason: 'public-release-id-mismatch', anonymous: true }
+  const releaseUrl = `${githubApiOrigin}/repos/${descriptor.repository}/releases/${listed.id}`
+  const releaseResponse = await githubObserverAnonymousRequest(anonymousRequest, releaseUrl, deadlineControl, 'public-release')
+  if (releaseResponse.status !== 200) return { complete: false, reason: 'public-release-unavailable', anonymous: true }
+  const release = githubObserverRelease(githubObserverJson(releaseResponse, 'public-release'), publicDescriptor)
+  if (release.draft || release.prerelease) return { complete: false, reason: 'public-release-not-publishable', anonymous: true }
+  const tagSource = await githubObserverTagSource(anonymousRequest, publicDescriptor, deadlineControl, 'public-tag-source', githubObserverAnonymousRequest)
+  const initialAssets = githubObserverAssetMap(await githubObserverPages(anonymousRequest, `${githubApiOrigin}/repos/${descriptor.repository}/releases/${listed.id}/assets?per_page=100`, deadlineControl, 'public-asset-list', githubObserverAnonymousRequest), publicDescriptor)
+  const expectedAssets = new Map(descriptor.assets.map(asset => [asset.filename, asset]))
+  const observedByName = new Map(observedAssets.map(asset => [asset.filename, asset]))
+  const observedMissingAssets = [...expectedAssets.keys()].filter(filename => !observedByName.has(filename))
+  const publicMissingAssets = [...expectedAssets.keys()].filter(filename => !initialAssets.actual.has(filename))
+  if (observedMissingAssets.length > 0 || publicMissingAssets.length > 0) return { complete: false, reason: 'public-assets-incomplete', anonymous: true, missingAssets: [...new Set([...observedMissingAssets, ...publicMissingAssets])].sort(), observedMissingAssets, publicMissingAssets }
+  if (initialAssets.actual.size !== expectedAssets.size || [...expectedAssets].some(([filename, asset]) => {
+    const observed = observedByName.get(filename)
+    const record = initialAssets.actual.get(filename)
+    return !observed || !record || record.id !== observed.id || observed.sha256 !== asset.sha256 || observed.sizeInBytes !== asset.sizeInBytes || record.apiDigest !== `sha256:${asset.sha256}` || record.apiSize !== asset.sizeInBytes
+  })) return { complete: false, reason: 'public-asset-metadata-mismatch', anonymous: true }
+  const publicAssets = []
+  for (const [filename, expected] of expectedAssets) {
+    const record = initialAssets.actual.get(filename)
+    const downloaded = await githubObserverRedirectBytes(anonymousRequest, `${githubApiOrigin}/repos/${descriptor.repository}/releases/assets/${record.id}`, deadlineControl, `public-asset-${record.id}`, githubObserverAnonymousRequest)
+    const bytes = npmResponseBody(downloaded.response)
+    const observedSha256 = sha256Hex(bytes)
+    requireEqual(observedSha256, expected.sha256, `GitHub observer public asset ${filename} bytes mismatch`)
+    requireEqual(bytes.length, expected.sizeInBytes, `GitHub observer public asset ${filename} size mismatch`)
+    requireEqual(record.apiDigest, `sha256:${observedSha256}`, `GitHub observer public asset ${filename} API digest mismatch`)
+    requireEqual(record.apiSize, bytes.length, `GitHub observer public asset ${filename} API size mismatch`)
+    publicAssets.push({ filename, id: record.id, sha256: observedSha256, sizeInBytes: bytes.length })
+  }
+  const finalAssets = githubObserverAssetMap(await githubObserverPages(anonymousRequest, `${githubApiOrigin}/repos/${descriptor.repository}/releases/${listed.id}/assets?per_page=100`, deadlineControl, 'public-asset-final-list', githubObserverAnonymousRequest), publicDescriptor)
+  if (finalAssets.actual.size !== initialAssets.actual.size || [...initialAssets.actual.entries()].some(([filename, item]) => {
+    const final = finalAssets.actual.get(filename)
+    return !final || final.id !== item.id || final.apiDigest !== item.apiDigest || final.apiSize !== item.apiSize
+  })) return { complete: false, reason: 'public-asset-metadata-changed', anonymous: true }
+  for (const asset of publicAssets) {
+    const finalRecord = finalAssets.actual.get(asset.filename)
+    const finalDownload = await githubObserverRedirectBytes(anonymousRequest, `${githubApiOrigin}/repos/${descriptor.repository}/releases/assets/${finalRecord.id}`, deadlineControl, `public-asset-final-${finalRecord.id}`, githubObserverAnonymousRequest)
+    const finalBytes = npmResponseBody(finalDownload.response)
+    requireEqual(sha256Hex(finalBytes), asset.sha256, `GitHub observer public asset ${asset.filename} changed after reread`)
+    requireEqual(finalBytes.length, asset.sizeInBytes, `GitHub observer public asset ${asset.filename} final size mismatch`)
+    requireEqual(finalRecord.apiSize, finalBytes.length, `GitHub observer public asset ${asset.filename} final API size mismatch`)
+  }
+  const finalReleaseResponse = await githubObserverAnonymousRequest(anonymousRequest, releaseUrl, deadlineControl, 'public-release-final-reread')
+  if (finalReleaseResponse.status !== 200) return { complete: false, reason: 'public-release-final-unavailable', anonymous: true }
+  const finalRelease = githubObserverRelease(githubObserverJson(finalReleaseResponse, 'public-release-final-reread'), publicDescriptor)
+  if (finalRelease.id !== release.id || finalRelease.tag !== release.tag || finalRelease.title !== release.title || finalRelease.bodySha256 !== release.bodySha256 || finalRelease.targetCommitish !== release.targetCommitish || finalRelease.draft !== release.draft || finalRelease.prerelease !== release.prerelease || finalRelease.latest !== release.latest) return { complete: false, reason: 'public-release-changed', anonymous: true }
+  const finalTagSource = await githubObserverTagSource(anonymousRequest, publicDescriptor, deadlineControl, 'public-tag-final', githubObserverAnonymousRequest)
+  if (finalTagSource.sha !== tagSource.sha || finalTagSource.ref !== tagSource.ref || finalTagSource.type !== tagSource.type) return { complete: false, reason: 'public-tag-changed', anonymous: true }
+  const effectiveLatest = await githubObserverEffectiveLatest(anonymousRequest, publicDescriptor, finalRelease, deadlineControl, 'public-effective-latest', githubObserverAnonymousRequest)
+  if (effectiveLatest !== (publicDescriptor.latest === true)) return { complete: false, reason: 'public-latest-mismatch', anonymous: true }
+  return { complete: true, anonymous: true, release: { id: release.id, tag: release.tag, title: release.title, bodySha256: release.bodySha256, targetCommitish: release.targetCommitish }, assets: publicAssets.sort((a, b) => a.filename.localeCompare(b.filename)), requestedByCaller: publicRead !== undefined }
+}
+
+
+/** Observe an existing GitHub release and assets through GET-only operations. */
+export async function observeGitHubRelease(input, adapters = {}) {
+  const outputFile = await npmInvalidateOutput(input?.outputFile, input?.workDir, 'GitHub observer output file', 'github-public-observation')
+  const normalized = githubObserverInput(input)
+  const baseRequest = adapters.request ?? npmDefaultRequest
+  const anonymousRequest = adapters.anonymousRequest
+  const request = adapters.githubReadToken === undefined ? baseRequest : githubCapabilityRequest(baseRequest, adapters.githubReadToken)
+  const now = adapters.now ?? (() => performance.now())
+  const workDir = npmSafePath(input.workDir, 'GitHub observer work directory')
+  if ((await readdir(workDir, { withFileTypes: true })).length !== 0) fail('github-observe-work-directory-not-fresh')
+  const deadlineControl = { now, deadline: now() + 600_000 }
+  let snapshotEvidence
+  let legacySnapshot
+  if (normalized.plan === undefined && normalized.snapshot !== undefined) {
+    legacySnapshot = await githubObserverSnapshot(normalized.snapshot, request, deadlineControl, workDir)
+  }
+  if (normalized.plan !== undefined && normalized.snapshot !== undefined && normalized.snapshot.mode !== 'preserved-manifest') {
+    if (normalized.plan === undefined) fail('Release-set GitHub observer requires the validated plan for snapshot lineage')
+    snapshotEvidence = await observeReleaseSetProofSnapshot({
+      plan: normalized.plan,
+      preparation: normalized.preparation,
+      selector: normalized.snapshot,
+      observer: normalized.observer,
+      workDir,
+      request,
+      now,
+      currentProducer: normalized.snapshot.mode === 'current',
+    })
+    normalized.descriptor = githubApplyReleaseSetDynamicHashes(normalized.descriptor, snapshotEvidence).descriptor
+  }
+  const repositoryPath = `/repos/${normalized.descriptor.repository}`
+  const releaseListUrl = `${githubApiOrigin}${repositoryPath}/releases?per_page=100`
+  const releases = await githubObserverPages(request, releaseListUrl, deadlineControl, 'release-list')
+  const matches = releases.filter(release => release?.tag_name === normalized.descriptor.releaseTag)
+  if (matches.length === 0) {
+    if (normalized.descriptor.releaseId !== undefined) return { schemaVersion: 1, kind: 'github-public-observation', state: 'conflict', complete: false, reason: 'expected-release-id-not-found', repository: EXPECTED_REPOSITORY, repositoryId: EXPECTED_REPOSITORY_ID, tag: normalized.descriptor.releaseTag, sourceCommit: normalized.descriptor.sourceCommit, planSha256: input.planSha256, auth: { requested: false, uploadAttempted: false } }
+    return { schemaVersion: 1, kind: 'github-public-observation', state: 'absent', complete: false, repository: EXPECTED_REPOSITORY, repositoryId: EXPECTED_REPOSITORY_ID, tag: normalized.descriptor.releaseTag, sourceCommit: normalized.descriptor.sourceCommit, planSha256: input.planSha256, auth: { requested: false, uploadAttempted: false } }
+  }
+  if (matches.length !== 1) fail('github-observe-release-match-ambiguous')
+  const listedId = matches[0]?.id
+  if (!Number.isSafeInteger(listedId) || listedId <= 0) fail('github-observe-release-ID-invalid')
+  if (normalized.descriptor.releaseId !== undefined) requireEqual(listedId, Number(normalized.descriptor.releaseId), 'GitHub observer listed release ID mismatch')
+  const releaseUrl = `${githubApiOrigin}${repositoryPath}/releases/${listedId}`
+  const releaseResponse = await githubObserverRequest(request, releaseUrl, deadlineControl, 'release-reread')
+  if (releaseResponse.status !== 200) fail(`github-observe-release-reread-http-${releaseResponse.status}`)
+  const releasePayload = githubObserverJson(releaseResponse, 'release-reread')
+  const release = githubObserverRelease(releasePayload, { ...normalized.descriptor, releaseId: listedId })
+  const tagSource = await githubObserverTagSource(request, normalized.descriptor, deadlineControl, 'tag-source')
+  const goTagSource = normalized.plan === undefined
+    ? undefined
+    : await githubObserverNamedTagSource(request, normalized.descriptor, normalized.plan.tags.go, deadlineControl, 'go-tag-source')
+  if (release.targetCommitish !== normalized.descriptor.sourceCommit && release.targetCommitish !== normalized.descriptor.releaseTag) fail('GitHub observer source mismatch')
+  const assetsUrl = `${githubApiOrigin}${repositoryPath}/releases/${listedId}/assets?per_page=100`
+  if (normalized.snapshot?.mode === 'preserved-manifest') {
+    if (normalized.plan === undefined || normalized.preparation === undefined) fail('Preserved manifest observation requires the validated plan and preparation')
+    const listedAssets = await githubObserverPages(request, assetsUrl, deadlineControl, 'manifest-asset-list')
+    const manifestRecords = listedAssets.filter(record => record?.name === 'release-set-proof-manifest.json')
+    if (manifestRecords.length !== 1 || !Number.isSafeInteger(manifestRecords[0]?.id) || manifestRecords[0].id <= 0) return { schemaVersion: 1, kind: 'github-public-observation', state: 'incomplete', complete: false, reason: 'manifest-asset-missing', repository: EXPECTED_REPOSITORY, repositoryId: EXPECTED_REPOSITORY_ID, tag: normalized.descriptor.releaseTag, sourceCommit: normalized.descriptor.sourceCommit, planSha256: input.planSha256, auth: { requested: false, uploadAttempted: false } }
+    const manifestDownload = await githubObserverRedirectBytes(request, `${githubApiOrigin}${repositoryPath}/releases/assets/${manifestRecords[0].id}`, deadlineControl, 'manifest-asset')
+    const manifestBytes = npmResponseBody(manifestDownload.response)
+    if (manifestRecords[0].digest !== undefined) requireEqual(manifestRecords[0].digest, `sha256:${sha256Hex(manifestBytes)}`, 'Release-set public manifest API digest mismatch')
+    if (manifestRecords[0].size !== undefined) requireEqual(manifestRecords[0].size, manifestBytes.length, 'Release-set public manifest API size mismatch')
+    let manifest
+    try { manifest = JSON.parse(manifestBytes.toString('utf8')) } catch { fail('Release-set public manifest JSON is invalid') }
+    const validatedManifest = validateReleaseSetProofManifest(manifest, { plan: normalized.plan, preparation: normalized.preparation })
+    const nested = await observeReleaseSetProofSnapshot({ plan: normalized.plan, preparation: normalized.preparation, selector: { mode: 'current', snapshot: validatedManifest.snapshot, receiptArtifacts: validatedManifest.receiptArtifacts }, workDir, request, now, currentProducer: false })
+    requireEqual(Buffer.compare(Buffer.from(`${canonicalJson(nested.manifest)}\n`), manifestBytes), 0, 'Release-set public manifest bytes changed')
+    snapshotEvidence = nested
+    normalized.descriptor = githubApplyReleaseSetDynamicHashes(normalized.descriptor, snapshotEvidence).descriptor
+  }
+  const snapshot = snapshotEvidence === undefined ? legacySnapshot : {
+    mode: snapshotEvidence.selector.mode,
+    artifactId: snapshotEvidence.snapshot.artifactId,
+    artifactName: snapshotEvidence.snapshot.artifactName,
+    sha256: snapshotEvidence.snapshot.sha256,
+    sizeInBytes: snapshotEvidence.snapshot.sizeInBytes,
+    manifestSha256: sha256Hex(Buffer.from(`${canonicalJson(snapshotEvidence.manifest)}\n`)),
+  }
+  const initialAssets = githubObserverAssetMap(await githubObserverPages(request, assetsUrl, deadlineControl, 'asset-list'), normalized.descriptor)
+  const missing = normalized.descriptor.assets.filter(asset => !initialAssets.actual.has(asset.filename)).map(asset => asset.filename)
+  const observation = { release, assets: [], missing }
+  if (initialAssets.actual.size !== normalized.descriptor.assets.length && missing.length === 0) fail('github-observe-asset-set-ambiguous')
+  for (const descriptorAsset of normalized.descriptor.assets) {
+    const record = initialAssets.actual.get(descriptorAsset.filename)
+    if (!record) continue
+    const downloadUrl = `${githubApiOrigin}${repositoryPath}/releases/assets/${record.id}`
+    const downloaded = await githubObserverRedirectBytes(request, downloadUrl, deadlineControl, `asset-${record.id}`)
+    const bytes = npmResponseBody(downloaded.response)
+    const observedSha256 = sha256Hex(bytes)
+    requireEqual(observedSha256, descriptorAsset.sha256, `GitHub observer asset ${descriptorAsset.filename} bytes mismatch`)
+    requireEqual(bytes.length, descriptorAsset.sizeInBytes, `GitHub observer asset ${descriptorAsset.filename} size mismatch`)
+    if (record.apiDigest !== undefined) requireEqual(record.apiDigest, `sha256:${observedSha256}`, `GitHub observer asset ${descriptorAsset.filename} API digest mismatch`)
+    if (record.apiSize !== undefined) requireEqual(record.apiSize, bytes.length, `GitHub observer asset ${descriptorAsset.filename} API size mismatch`)
+    observation.assets.push({ role: descriptorAsset.role, filename: descriptorAsset.filename, id: record.id, sha256: observedSha256, sizeInBytes: bytes.length })
+  }
+  const finalAssets = githubObserverAssetMap(await githubObserverPages(request, assetsUrl, deadlineControl, 'asset-final-list'), normalized.descriptor)
+  if (finalAssets.actual.size !== initialAssets.actual.size || [...finalAssets.actual.entries()].some(([name, item]) => {
+    const initial = initialAssets.actual.get(name)
+    return initial?.id !== item.id || initial?.apiDigest !== item.apiDigest || initial?.apiSize !== item.apiSize
+  })) fail('github-observe-asset-identity-changed')
+  for (const observed of observation.assets) {
+    const finalRecord = finalAssets.actual.get(observed.filename)
+    const finalDownload = await githubObserverRedirectBytes(request, `${githubApiOrigin}${repositoryPath}/releases/assets/${finalRecord.id}`, deadlineControl, `asset-final-${finalRecord.id}`)
+    const finalBytes = npmResponseBody(finalDownload.response)
+    requireEqual(sha256Hex(finalBytes), observed.sha256, `GitHub observer asset ${observed.filename} changed after reread`)
+    requireEqual(finalBytes.length, observed.sizeInBytes, `GitHub observer asset ${observed.filename} final size mismatch`)
+    if (finalRecord.apiSize !== undefined) requireEqual(finalRecord.apiSize, finalBytes.length, `GitHub observer asset ${observed.filename} final API size mismatch`)
+  }
+  const finalReleaseResponse = await githubObserverRequest(request, releaseUrl, deadlineControl, 'release-final-reread')
+  if (finalReleaseResponse.status !== 200) fail(`github-observe-release-final-http-${finalReleaseResponse.status}`)
+  const finalRelease = githubObserverRelease(githubObserverJson(finalReleaseResponse, 'release-final-reread'), { ...normalized.descriptor, releaseId: listedId })
+  const finalTagSource = await githubObserverTagSource(request, normalized.descriptor, deadlineControl, 'tag-final')
+  const finalGoTagSource = goTagSource === undefined
+    ? undefined
+    : await githubObserverNamedTagSource(request, normalized.descriptor, normalized.plan.tags.go, deadlineControl, 'go-tag-final')
+  if (finalTagSource.sha !== tagSource.sha || finalTagSource.ref !== tagSource.ref || finalTagSource.type !== tagSource.type) fail('github-observe-tag-changed')
+  if (goTagSource !== undefined && (finalGoTagSource.sha !== goTagSource.sha || finalGoTagSource.ref !== goTagSource.ref || finalGoTagSource.type !== goTagSource.type)) fail('github-observe-go-tag-changed')
+  if (finalRelease.bodySha256 !== release.bodySha256 || finalRelease.targetCommitish !== release.targetCommitish || finalRelease.draft !== release.draft || finalRelease.latest !== release.latest) fail('github-observe-release-changed')
+  const effectiveLatest = await githubObserverEffectiveLatest(request, normalized.descriptor, finalRelease, deadlineControl, 'effective-latest')
+  if (effectiveLatest !== (normalized.descriptor.latest === true)) fail('github-observe-effective-latest-mismatch')
+  const snapshotRequired = (normalized.plan === undefined ? normalized.requireSnapshot === true : normalized.snapshot === undefined && normalized.requireSnapshot === true)
+  const state = snapshotRequired ? 'incomplete' : release.draft ? 'matching-draft' : 'matching-public'
+  const publicRequested = normalized.descriptor.requirePublic === true || input.publicRead !== undefined
+  const publicRead = publicRequested
+    ? typeof anonymousRequest === 'function' && anonymousRequest !== baseRequest
+      ? await githubObserverPublicRead(input.publicRead ?? {}, normalized.descriptor, release, observation.assets, anonymousRequest, deadlineControl)
+      : { complete: false, anonymous: true, reason: 'anonymous-read-unavailable' }
+    : undefined
+  const complete = (snapshotEvidence !== undefined || legacySnapshot !== undefined || normalized.plan === undefined) && !snapshotRequired && !release.draft && missing.length === 0 && observation.assets.length === normalized.descriptor.assets.length && (publicRead?.anonymous === true && publicRead?.complete === true)
+  const receipt = { schemaVersion: 1, kind: 'github-public-observation', state, complete, snapshotRequired, repository: EXPECTED_REPOSITORY, repositoryId: EXPECTED_REPOSITORY_ID, release, assets: observation.assets.sort((a, b) => a.filename.localeCompare(b.filename)), missingAssets: missing, snapshot, publicRead, planSha256: input.planSha256, preparation: input.preparation, observer: input.observer, auth: { requested: false, uploadAttempted: false }, observedAt: new Date().toISOString() }
+  if (!complete) return receipt
+  const temporaryOutput = `${outputFile}.tmp-${process.pid}-${Math.random().toString(16).slice(2)}`
+  npmCheckDeadline(now, deadlineControl.deadline)
+  await writeFile(temporaryOutput, `${canonicalJson(receipt)}\n`, { flag: 'wx' })
+  try { npmCheckDeadline(now, deadlineControl.deadline); await rename(temporaryOutput, outputFile); npmCheckDeadline(now, deadlineControl.deadline) } catch (error) { await rm(temporaryOutput, { force: true }).catch(() => {}); await rm(outputFile, { force: true }).catch(() => {}); throw error }
+  return receipt
+}
+
 export function validateReleaseSetPreparationMetadata({ plan, run, artifact, bindingArtifact, expected }) {
   const normalized = validateReleaseSetPlan(plan)
   const runId = requireFuturePositiveId(expected.runId, 'Release-set preparation run ID')
@@ -4002,6 +5390,7 @@ export function validateReleaseSetPreparationMetadata({ plan, run, artifact, bin
   return { runId: Number(runId), runAttempt: Number(runAttempt), artifactId: Number(artifactId), bindingArtifactId: Number(bindingArtifactId), sourceCommit: normalized.sourceCommit }
 }
 
+
 const env = name => {
   const value = process.env[name]
   if (value === undefined) fail(`Missing ${name}`)
@@ -4014,7 +5403,76 @@ const requireExactInternalMode = (arguments_, mode) => {
   }
 }
 
+const releaseSetExecutionContextFromEnv = () => ({
+  repository: env('REPOSITORY'),
+  repositoryId: env('REPOSITORY_ID'),
+  eventName: env('EVENT_NAME'),
+  eventRef: env('EVENT_REF'),
+  eventSha: env('EVENT_SHA'),
+  expectedCommit: env('EXPECTED_COMMIT'),
+  checkoutHead: env('CHECKOUT_HEAD'),
+  checkoutStatus: env('CHECKOUT_STATUS'),
+  workflowRef: env('WORKFLOW_REF'),
+  workflowSha: env('WORKFLOW_SHA'),
+})
+
+const optionalReleaseSetEnv = name => process.env[name] === undefined || process.env[name] === '' ? undefined : process.env[name]
+
 const run = async arguments_ => {
+  if (arguments_[0] === '--release-set-ci-select') {
+    requireExactInternalMode(arguments_, '--release-set-ci-select')
+    const selection = selectFoundationCIRun({
+      workflow: JSON.parse(await readFile(env('RELEASE_SET_CI_WORKFLOW_FILE'), 'utf8')),
+      runs: JSON.parse(await readFile(env('RELEASE_SET_CI_RUNS_FILE'), 'utf8')),
+      expected: { sourceCommit: env('EXPECTED_COMMIT') },
+    })
+    await writeFile(env('RELEASE_SET_CI_SELECTION_FILE'), `${canonicalJson(selection)}\n`)
+    console.log(`release-set-ci-selection=${canonicalJson(selection)}`)
+    return
+  }
+
+  if (arguments_[0] === '--release-set-ci-proof') {
+    requireExactInternalMode(arguments_, '--release-set-ci-proof')
+    const evidence = validateReleaseSetCIEvidence({
+      workflow: JSON.parse(await readFile(env('RELEASE_SET_CI_WORKFLOW_FILE'), 'utf8')),
+      runs: JSON.parse(await readFile(env('RELEASE_SET_CI_RUNS_FILE'), 'utf8')),
+      selection: JSON.parse(await readFile(env('RELEASE_SET_CI_SELECTION_FILE'), 'utf8')),
+      recheck: JSON.parse(await readFile(env('RELEASE_SET_CI_RECHECK_FILE'), 'utf8')),
+      jobs: JSON.parse(await readFile(env('RELEASE_SET_CI_JOBS_FILE'), 'utf8')),
+    }, env('EXPECTED_COMMIT'))
+    await writeFile(env('RELEASE_SET_CI_EVIDENCE_FILE'), `${canonicalJson({
+      workflow: JSON.parse(await readFile(env('RELEASE_SET_CI_WORKFLOW_FILE'), 'utf8')),
+      runs: JSON.parse(await readFile(env('RELEASE_SET_CI_RUNS_FILE'), 'utf8')),
+      selection: JSON.parse(await readFile(env('RELEASE_SET_CI_SELECTION_FILE'), 'utf8')),
+      recheck: JSON.parse(await readFile(env('RELEASE_SET_CI_RECHECK_FILE'), 'utf8')),
+      jobs: JSON.parse(await readFile(env('RELEASE_SET_CI_JOBS_FILE'), 'utf8')),
+    })}\n`)
+    console.log(`release-set-ci-proof=${canonicalJson(evidence)}`)
+    return
+  }
+
+  if (arguments_[0] === '--release-set-prepare-guard') {
+    requireExactInternalMode(arguments_, '--release-set-prepare-guard')
+    const context = releaseSetExecutionContextFromEnv()
+    const template = JSON.parse(await readFile(env('RELEASE_SET_PLAN_TEMPLATE_FILE'), 'utf8'))
+    validateReleaseSetTemplateIdentity(template, context)
+    if (process.env.RELEASE_SET_CI_EVIDENCE_FILE === undefined) fail('Release-set preparation requires actual CI evidence')
+    validateReleaseSetCIEvidence(JSON.parse(await readFile(process.env.RELEASE_SET_CI_EVIDENCE_FILE, 'utf8')), context.expectedCommit)
+    if (optionalReleaseSetEnv('RELEASE_SET_PLAN_SHA256') !== undefined) requireArchiveSha(optionalReleaseSetEnv('RELEASE_SET_PLAN_SHA256'), 'Release-set reviewed plan digest')
+    console.log('release-set-prepare-guard-passed')
+    return
+  }
+
+  if (arguments_[0] === '--release-set-preflight') {
+    requireExactInternalMode(arguments_, '--release-set-preflight')
+    const plan = JSON.parse(await readFile(env('RELEASE_SET_PLAN_FILE'), 'utf8'))
+    const responses = JSON.parse(await readFile(env('RELEASE_SET_PREFLIGHT_INPUT_FILE'), 'utf8'))
+    const result = classifyReleaseSetPreflight({ plan, responses })
+    await writeFile(env('RELEASE_SET_PREFLIGHT_OUTPUT_FILE'), `${canonicalJson(result)}\n`)
+    console.log(`release-set-preflight=${sha256Hex(canonicalJson(result))}`)
+    return
+  }
+
   if (arguments_[0] === '--release-set-context') {
     requireExactInternalMode(arguments_, '--release-set-context')
     const plan = JSON.parse(await readFile(env('RELEASE_SET_PLAN_FILE'), 'utf8'))
@@ -4037,7 +5495,55 @@ const run = async arguments_ => {
   if (arguments_[0] === '--release-set-validate') {
     requireExactInternalMode(arguments_, '--release-set-validate')
     const plan = JSON.parse(await readFile(env('RELEASE_SET_PLAN_FILE'), 'utf8'))
-    console.log(`release-set-plan=${releaseSetPlanDigest(plan)}`)
+    const digest = releaseSetPlanDigest(plan)
+    if (optionalReleaseSetEnv('RELEASE_SET_PLAN_SHA256') !== undefined) requireEqual(optionalReleaseSetEnv('RELEASE_SET_PLAN_SHA256'), digest, 'Release-set reviewed plan digest mismatch')
+    console.log(`release-set-plan=${digest}`)
+    return
+  }
+
+  if (arguments_[0] === '--release-set-prepare') {
+    requireExactInternalMode(arguments_, '--release-set-prepare')
+    const artifactDirectory = env('RELEASE_SET_ARTIFACT_DIR')
+    const planFile = env('RELEASE_SET_PLAN_FILE')
+    const context = releaseSetExecutionContextFromEnv()
+    let plan
+    if (process.env.RELEASE_SET_PLAN_TEMPLATE_FILE !== undefined) {
+      plan = await prepareReleaseSetBundle({
+        template: JSON.parse(await readFile(process.env.RELEASE_SET_PLAN_TEMPLATE_FILE, 'utf8')),
+        artifactDirectory,
+        goRoot: env('RELEASE_SET_GO_ROOT'),
+        planFile,
+        context,
+        ciEvidence: process.env.RELEASE_SET_CI_EVIDENCE_FILE === undefined ? undefined : JSON.parse(await readFile(process.env.RELEASE_SET_CI_EVIDENCE_FILE, 'utf8')),
+        reviewedPlanSha256: optionalReleaseSetEnv('RELEASE_SET_PLAN_SHA256'),
+      })
+    } else plan = validateReleaseSetPlan(JSON.parse(await readFile(planFile, 'utf8')))
+    validateReleaseSetContext(context, plan)
+    const planSha256 = releaseSetPlanDigest(plan)
+    if (optionalReleaseSetEnv('RELEASE_SET_PLAN_SHA256') !== undefined) requireEqual(optionalReleaseSetEnv('RELEASE_SET_PLAN_SHA256'), planSha256, 'Release-set reviewed plan digest mismatch')
+    const result = { ...(await ingestReleaseSetBundle({ plan, artifactDirectory })), planSha256, prepared: true }
+    if (process.env.RELEASE_SET_PREPARED_EVIDENCE_FILE !== undefined) await writeFile(process.env.RELEASE_SET_PREPARED_EVIDENCE_FILE, `${canonicalJson(result)}\n`)
+    if (process.env.RELEASE_SET_PLAN_DIGEST_OUTPUT !== undefined) await writeFile(process.env.RELEASE_SET_PLAN_DIGEST_OUTPUT, `${planSha256}\n`)
+    console.log(`release-set-prepare=${result.planSha256}`)
+    return
+  }
+
+  if (arguments_[0] === '--release-set-assemble') {
+    requireExactInternalMode(arguments_, '--release-set-assemble')
+    const plan = validateReleaseSetPlan(JSON.parse(await readFile(env('RELEASE_SET_PLAN_FILE'), 'utf8')))
+    const preparation = JSON.parse(await readFile(env('RELEASE_SET_PREPARATION_FILE'), 'utf8'))
+    const snapshot = JSON.parse(await readFile(env('RELEASE_SET_SNAPSHOT_BINDING_FILE'), 'utf8'))
+    const receiptArtifacts = JSON.parse(await readFile(env('RELEASE_SET_RECEIPT_ARTIFACTS_FILE'), 'utf8'))
+    const receipts = {}
+    const receiptBytes = {}
+    for (const filename of RELEASE_SET_RECEIPT_FILENAMES) {
+      receiptBytes[filename] = await readFile(join(env('RELEASE_SET_RECEIPTS_DIR'), filename))
+      try { receipts[filename] = JSON.parse(receiptBytes[filename].toString('utf8')) } catch { fail(`Release-set ${filename} receipt JSON is invalid`) }
+    }
+    const manifest = buildReleaseSetProofManifest({ plan, preparation, snapshot, receipts, receiptBytes, receiptArtifacts })
+    const outputFile = env('RELEASE_SET_MANIFEST_FILE')
+    await writeFile(outputFile, `${canonicalJson(manifest)}\n`, { flag: 'wx' })
+    console.log(`release-set-manifest=${sha256Hex(`${canonicalJson(manifest)}\n`)}`)
     return
   }
 
@@ -4168,6 +5674,11 @@ const run = async arguments_ => {
     const observerSource = env('RELEASE_SET_PYPI_OBSERVER_SOURCE'); requireEqual(observerSource, context.eventSha, 'PyPI observer source must bind to execution context')
     const publishers = JSON.parse(await readFile(env('RELEASE_SET_PYPI_PUBLISHERS_FILE'), 'utf8'))
     const receipt = await observePyPIRelease({ descriptors: { 'pypi-wheel': plan.artifacts.find(artifact => artifact.kind === 'pypi-wheel'), 'pypi-sdist': plan.artifacts.find(artifact => artifact.kind === 'pypi-sdist') }, planSha256, preparation: { sourceCommit: preparation.context.sourceCommit, runId: binding.runId, runAttempt: binding.runAttempt, artifactId: binding.artifactId, bindingArtifactId: preparation.metadata.bindingArtifactId, planSha256: binding.planSha256 }, publishers, observer: { runId: env('RELEASE_SET_PYPI_OBSERVER_RUN_ID'), runAttempt: env('RELEASE_SET_PYPI_OBSERVER_ATTEMPT'), workflowPath: env('RELEASE_SET_PYPI_OBSERVER_WORKFLOW'), sourceCommit: observerSource }, workDir: env('RELEASE_SET_PYPI_WORK_DIR'), outputFile, toolPaths: { python: env('RELEASE_SET_PYPI_PYTHON') } })
+    if (receipt.state === 'partial' && optionalReleaseSetEnv('RELEASE_SET_PYPI_PREFLIGHT_ONLY') === 'true') {
+      await writeFile(outputFile, `${canonicalJson(receipt)}\n`)
+      console.log(`pypi-public-observation-partial=${sha256Hex(canonicalJson(receipt))}`)
+      return
+    }
     if (receipt.state !== 'observed' || receipt.complete !== true) fail('pypi-public-observation-incomplete')
     console.log(`pypi-public-observation=${sha256Hex(canonicalJson(receipt))}`)
     return
@@ -4224,6 +5735,103 @@ const run = async arguments_ => {
     const receipt = await observeGoModule({ descriptor: plan.go, planSha256, preparation: { sourceCommit: preparation.context.sourceCommit, runId: binding.runId, runAttempt: binding.runAttempt, artifactId: binding.artifactId, bindingArtifactId: preparation.metadata.bindingArtifactId, planSha256: binding.planSha256 }, observer: { runId: env('RELEASE_SET_GO_OBSERVER_RUN_ID'), runAttempt: env('RELEASE_SET_GO_OBSERVER_ATTEMPT'), workflowPath: env('RELEASE_SET_GO_OBSERVER_WORKFLOW'), sourceCommit: observerSource }, workDir: env('RELEASE_SET_GO_WORK_DIR'), outputFile, toolPaths: { go: env('RELEASE_SET_GO_GO'), git: env('RELEASE_SET_GO_GIT'), python3: env('RELEASE_SET_GO_PYTHON') } })
     if (receipt.state !== 'observed' || receipt.complete !== true) fail('go-public-observation-incomplete')
     console.log(`go-public-observation=${sha256Hex(canonicalJson(receipt))}`)
+    return
+  }
+
+  if (arguments_[0] === '--release-set-receipts-observe') {
+    requireExactInternalMode(arguments_, '--release-set-receipts-observe')
+    const plan = validateReleaseSetPlan(JSON.parse(await readFile(env('RELEASE_SET_PLAN_FILE'), 'utf8')))
+    const planSha256 = env('RELEASE_SET_PLAN_SHA256'); requireEqual(releaseSetPlanDigest(plan), planSha256, 'Release-set receipt observer plan digest mismatch')
+    const context = releaseSetExecutionContextFromEnv(); validateReleaseSetContext(context, plan)
+    const preparedExpected = { runId: env('RELEASE_SET_PREPARED_RUN_ID'), runAttempt: env('RELEASE_SET_PREPARED_RUN_ATTEMPT'), artifactId: env('RELEASE_SET_PREPARED_ARTIFACT_ID'), bindingArtifactId: env('RELEASE_SET_PREPARED_BINDING_ARTIFACT_ID'), sourceCommit: plan.sourceCommit, bundleName: 'release-set-bundle-' + plan.sourceCommit, bindingName: 'release-set-binding-' + env('RELEASE_SET_PREPARED_RUN_ID') + '-' + env('RELEASE_SET_PREPARED_RUN_ATTEMPT') }
+    const binding = JSON.parse(await readFile(env('RELEASE_SET_BINDING_FILE'), 'utf8'))
+    const preparation = await verifyReleaseSetPreparation({ plan, context, run: JSON.parse(await readFile(env('RELEASE_SET_RUN_FILE'), 'utf8')), artifact: JSON.parse(await readFile(env('RELEASE_SET_ARTIFACT_METADATA_FILE'), 'utf8')), bindingArtifact: JSON.parse(await readFile(env('RELEASE_SET_BINDING_METADATA_FILE'), 'utf8')), binding, bundleZip: env('RELEASE_SET_BUNDLE_ZIP_FILE'), bindingZip: env('RELEASE_SET_BINDING_ZIP_FILE'), artifactDirectory: env('RELEASE_SET_ARTIFACT_DIR'), bindingDirectory: env('RELEASE_SET_BINDING_DIR'), expected: preparedExpected })
+    const names = env('RELEASE_SET_RECEIPT_NAMES').split(',').map(value => value.trim()).filter(Boolean)
+    const receiptArtifacts = JSON.parse(await readFile(env('RELEASE_SET_RECEIPT_ARTIFACTS_FILE'), 'utf8'))
+    const token = await readReleaseSetGithubReadTokenFd(process.env.RELEASE_SET_RECEIPT_READ_TOKEN_FD)
+    const result = await observeReleaseSetReceiptArtifacts({ plan, preparation: { sourceCommit: preparation.context.sourceCommit, runId: binding.runId, runAttempt: binding.runAttempt, artifactId: binding.artifactId, bindingArtifactId: preparation.metadata.bindingArtifactId, planSha256: binding.planSha256 }, receiptArtifacts, filenames: names, observer: { runId: env('RELEASE_SET_RECEIPT_OBSERVER_RUN_ID'), runAttempt: env('RELEASE_SET_RECEIPT_OBSERVER_ATTEMPT'), workflowPath: env('RELEASE_SET_RECEIPT_OBSERVER_WORKFLOW'), sourceCommit: env('RELEASE_SET_RECEIPT_OBSERVER_SOURCE') }, workDir: env('RELEASE_SET_RECEIPT_WORK_DIR'), request: githubCapabilityRequest(npmDefaultRequest, token) })
+    await writeFile(env('RELEASE_SET_RECEIPTS_OBSERVATION_FILE'), canonicalJson({ schemaVersion: 1, kind: 'release-set-receipts-observation', state: 'observed', complete: true, receiptDigests: Object.fromEntries(Object.entries(result.receiptBytes).map(([name, bytes]) => [name, sha256Hex(bytes)])) }) + '\n')
+    console.log('release-set-receipts-observation=' + sha256Hex(canonicalJson(result.receipts)))
+    return
+  }
+
+  if (arguments_[0] === '--release-set-snapshot-observe') {
+    requireExactInternalMode(arguments_, '--release-set-snapshot-observe')
+    const plan = validateReleaseSetPlan(JSON.parse(await readFile(env('RELEASE_SET_PLAN_FILE'), 'utf8')))
+    const planSha256 = env('RELEASE_SET_PLAN_SHA256'); requireEqual(releaseSetPlanDigest(plan), planSha256, 'Release-set snapshot observer plan digest mismatch')
+    const context = releaseSetExecutionContextFromEnv(); validateReleaseSetContext(context, plan)
+    const preparedExpected = { runId: env('RELEASE_SET_PREPARED_RUN_ID'), runAttempt: env('RELEASE_SET_PREPARED_RUN_ATTEMPT'), artifactId: env('RELEASE_SET_PREPARED_ARTIFACT_ID'), bindingArtifactId: env('RELEASE_SET_PREPARED_BINDING_ARTIFACT_ID'), sourceCommit: plan.sourceCommit, bundleName: 'release-set-bundle-' + plan.sourceCommit, bindingName: 'release-set-binding-' + env('RELEASE_SET_PREPARED_RUN_ID') + '-' + env('RELEASE_SET_PREPARED_RUN_ATTEMPT') }
+    const binding = JSON.parse(await readFile(env('RELEASE_SET_BINDING_FILE'), 'utf8'))
+    const preparation = await verifyReleaseSetPreparation({ plan, context, run: JSON.parse(await readFile(env('RELEASE_SET_RUN_FILE'), 'utf8')), artifact: JSON.parse(await readFile(env('RELEASE_SET_ARTIFACT_METADATA_FILE'), 'utf8')), bindingArtifact: JSON.parse(await readFile(env('RELEASE_SET_BINDING_METADATA_FILE'), 'utf8')), binding, bundleZip: env('RELEASE_SET_BUNDLE_ZIP_FILE'), bindingZip: env('RELEASE_SET_BINDING_ZIP_FILE'), artifactDirectory: env('RELEASE_SET_ARTIFACT_DIR'), bindingDirectory: env('RELEASE_SET_BINDING_DIR'), expected: preparedExpected })
+    const snapshot = JSON.parse(await readFile(env('RELEASE_SET_SNAPSHOT_BINDING_FILE'), 'utf8'))
+    const receiptArtifacts = JSON.parse(await readFile(env('RELEASE_SET_RECEIPT_ARTIFACTS_FILE'), 'utf8'))
+    const token = await readReleaseSetGithubReadTokenFd(process.env.RELEASE_SET_SNAPSHOT_READ_TOKEN_FD)
+    const result = await observeReleaseSetProofSnapshot({ plan, preparation: { sourceCommit: preparation.context.sourceCommit, runId: binding.runId, runAttempt: binding.runAttempt, artifactId: binding.artifactId, bindingArtifactId: preparation.metadata.bindingArtifactId, planSha256: binding.planSha256 }, selector: { mode: 'current', snapshot, receiptArtifacts }, observer: { runId: env('RELEASE_SET_SNAPSHOT_OBSERVER_RUN_ID'), runAttempt: env('RELEASE_SET_SNAPSHOT_OBSERVER_ATTEMPT'), workflowPath: env('RELEASE_SET_SNAPSHOT_OBSERVER_WORKFLOW'), sourceCommit: env('RELEASE_SET_SNAPSHOT_OBSERVER_SOURCE') }, workDir: env('RELEASE_SET_SNAPSHOT_WORK_DIR'), request: githubCapabilityRequest(npmDefaultRequest, token), currentProducer: true })
+    await writeFile(env('RELEASE_SET_SNAPSHOT_OBSERVATION_FILE'), canonicalJson(result.manifest) + '\n')
+    console.log('release-set-snapshot-observation=' + sha256Hex(canonicalJson(result.manifest)))
+    return
+  }
+
+  if (arguments_[0] === '--release-set-manifest-observe') {
+    requireExactInternalMode(arguments_, '--release-set-manifest-observe')
+    const plan = validateReleaseSetPlan(JSON.parse(await readFile(env('RELEASE_SET_PLAN_FILE'), 'utf8')))
+    const planSha256 = env('RELEASE_SET_PLAN_SHA256'); requireEqual(releaseSetPlanDigest(plan), planSha256, 'Release-set manifest observer plan digest mismatch')
+    const context = releaseSetExecutionContextFromEnv(); validateReleaseSetContext(context, plan)
+    const preparedExpected = { runId: env('RELEASE_SET_PREPARED_RUN_ID'), runAttempt: env('RELEASE_SET_PREPARED_RUN_ATTEMPT'), artifactId: env('RELEASE_SET_PREPARED_ARTIFACT_ID'), bindingArtifactId: env('RELEASE_SET_PREPARED_BINDING_ARTIFACT_ID'), sourceCommit: plan.sourceCommit, bundleName: 'release-set-bundle-' + plan.sourceCommit, bindingName: 'release-set-binding-' + env('RELEASE_SET_PREPARED_RUN_ID') + '-' + env('RELEASE_SET_PREPARED_RUN_ATTEMPT') }
+    const binding = JSON.parse(await readFile(env('RELEASE_SET_BINDING_FILE'), 'utf8'))
+    const preparation = await verifyReleaseSetPreparation({ plan, context, run: JSON.parse(await readFile(env('RELEASE_SET_RUN_FILE'), 'utf8')), artifact: JSON.parse(await readFile(env('RELEASE_SET_ARTIFACT_METADATA_FILE'), 'utf8')), bindingArtifact: JSON.parse(await readFile(env('RELEASE_SET_BINDING_METADATA_FILE'), 'utf8')), binding, bundleZip: env('RELEASE_SET_BUNDLE_ZIP_FILE'), bindingZip: env('RELEASE_SET_BINDING_ZIP_FILE'), artifactDirectory: env('RELEASE_SET_ARTIFACT_DIR'), bindingDirectory: env('RELEASE_SET_BINDING_DIR'), expected: preparedExpected })
+    const manifestBytes = await readFile(env('RELEASE_SET_MANIFEST_FILE')); const manifest = (() => { try { return JSON.parse(manifestBytes.toString('utf8')) } catch { fail('Release-set supplied manifest JSON is invalid') } })(); const validated = validateReleaseSetProofManifest(manifest, { plan, preparation: { sourceCommit: preparation.context.sourceCommit, runId: binding.runId, runAttempt: binding.runAttempt, artifactId: binding.artifactId, bindingArtifactId: preparation.metadata.bindingArtifactId, planSha256: binding.planSha256 } })
+    const token = await readReleaseSetGithubReadTokenFd(process.env.RELEASE_SET_MANIFEST_READ_TOKEN_FD)
+    const result = await observeReleaseSetProofSnapshot({ plan, preparation: { sourceCommit: preparation.context.sourceCommit, runId: binding.runId, runAttempt: binding.runAttempt, artifactId: binding.artifactId, bindingArtifactId: preparation.metadata.bindingArtifactId, planSha256: binding.planSha256 }, selector: { mode: 'current', snapshot: validated.snapshot, receiptArtifacts: validated.receiptArtifacts }, observer: undefined, workDir: env('RELEASE_SET_MANIFEST_WORK_DIR'), request: githubCapabilityRequest(npmDefaultRequest, token), currentProducer: false })
+    requireEqual(Buffer.compare(manifestBytes, Buffer.from(`${canonicalJson(result.manifest)}\n`)), 0, 'Release-set supplied manifest differs from authenticated source lineage')
+    await writeFile(env('RELEASE_SET_MANIFEST_OBSERVATION_FILE'), canonicalJson(result.manifest) + '\n')
+    console.log('release-set-manifest-observation=' + sha256Hex(canonicalJson(result.manifest)))
+    return
+  }
+
+  if (arguments_[0] === '--release-set-checkpoint-observe') {
+    requireExactInternalMode(arguments_, '--release-set-checkpoint-observe')
+    const plan = validateReleaseSetPlan(JSON.parse(await readFile(env('RELEASE_SET_PLAN_FILE'), 'utf8')))
+    const planSha256 = env('RELEASE_SET_PLAN_SHA256'); requireEqual(releaseSetPlanDigest(plan), planSha256, 'Release-set checkpoint observer plan digest mismatch')
+    const context = releaseSetExecutionContextFromEnv(); validateReleaseSetContext(context, plan)
+    const preparedExpected = { runId: env('RELEASE_SET_PREPARED_RUN_ID'), runAttempt: env('RELEASE_SET_PREPARED_RUN_ATTEMPT'), artifactId: env('RELEASE_SET_PREPARED_ARTIFACT_ID'), bindingArtifactId: env('RELEASE_SET_PREPARED_BINDING_ARTIFACT_ID'), sourceCommit: plan.sourceCommit, bundleName: 'release-set-bundle-' + plan.sourceCommit, bindingName: 'release-set-binding-' + env('RELEASE_SET_PREPARED_RUN_ID') + '-' + env('RELEASE_SET_PREPARED_RUN_ATTEMPT') }
+    const binding = JSON.parse(await readFile(env('RELEASE_SET_BINDING_FILE'), 'utf8'))
+    const preparation = await verifyReleaseSetPreparation({ plan, context, run: JSON.parse(await readFile(env('RELEASE_SET_RUN_FILE'), 'utf8')), artifact: JSON.parse(await readFile(env('RELEASE_SET_ARTIFACT_METADATA_FILE'), 'utf8')), bindingArtifact: JSON.parse(await readFile(env('RELEASE_SET_BINDING_METADATA_FILE'), 'utf8')), binding, bundleZip: env('RELEASE_SET_BUNDLE_ZIP_FILE'), bindingZip: env('RELEASE_SET_BINDING_ZIP_FILE'), artifactDirectory: env('RELEASE_SET_ARTIFACT_DIR'), bindingDirectory: env('RELEASE_SET_BINDING_DIR'), expected: preparedExpected })
+    const checkpoint = JSON.parse(await readFile(env('RELEASE_SET_CHECKPOINT_BINDING_FILE'), 'utf8')); const token = await readReleaseSetGithubReadTokenFd(process.env.RELEASE_SET_CHECKPOINT_READ_TOKEN_FD)
+    const result = await observeReleaseSetProofSnapshot({ plan, preparation: { sourceCommit: preparation.context.sourceCommit, runId: binding.runId, runAttempt: binding.runAttempt, artifactId: binding.artifactId, bindingArtifactId: preparation.metadata.bindingArtifactId, planSha256: binding.planSha256 }, selector: { mode: 'preserved-checkpoint', checkpoint }, observer: undefined, workDir: env('RELEASE_SET_CHECKPOINT_WORK_DIR'), request: githubCapabilityRequest(npmDefaultRequest, token), currentProducer: false })
+    if (!Buffer.isBuffer(result.checkpointManifestBytes)) fail('Release-set checkpoint observer did not return authenticated manifest bytes')
+    await writeFile(env('RELEASE_SET_CHECKPOINT_MANIFEST_OUTPUT_FILE'), result.checkpointManifestBytes)
+    const receiptOutputDir = npmSafePath(env('RELEASE_SET_CHECKPOINT_RECEIPT_OUTPUT_DIR'), 'Release-set checkpoint receipt output directory')
+    if ((await readdir(receiptOutputDir, { withFileTypes: true })).length !== 0) fail('Release-set checkpoint receipt output directory is not fresh')
+    for (const [filename, bytes] of Object.entries(result.receiptBytes ?? {})) {
+      if (!RELEASE_SET_RECEIPT_FILENAMES.includes(filename) || !Buffer.isBuffer(bytes)) fail('Release-set checkpoint authenticated receipt bytes are invalid')
+      await writeFile(join(receiptOutputDir, filename), bytes, { flag: 'wx' })
+    }
+    await writeFile(env('RELEASE_SET_CHECKPOINT_OBSERVATION_FILE'), canonicalJson(result.manifest) + '\n')
+    console.log('release-set-checkpoint-observation=' + sha256Hex(canonicalJson(result.manifest)))
+    return
+  }
+
+  if (arguments_[0] === '--release-set-github-observe') {
+    const outputFile = await npmInvalidateOutput(process.env.RELEASE_SET_GITHUB_OUTPUT_FILE, process.env.RELEASE_SET_GITHUB_WORK_DIR, 'GitHub observer output file', 'github-public-observation')
+    requireExactInternalMode(arguments_, '--release-set-github-observe')
+    const plan = validateReleaseSetPlan(JSON.parse(await readFile(env('RELEASE_SET_PLAN_FILE'), 'utf8')))
+    const planSha256 = env('RELEASE_SET_PLAN_SHA256'); requireEqual(releaseSetPlanDigest(plan), planSha256, 'GitHub observer plan digest mismatch')
+    const context = { repository: env('REPOSITORY'), repositoryId: env('REPOSITORY_ID'), eventName: env('EVENT_NAME'), eventRef: env('EVENT_REF'), eventSha: env('EVENT_SHA'), expectedCommit: env('EXPECTED_COMMIT'), checkoutHead: env('CHECKOUT_HEAD'), checkoutStatus: env('CHECKOUT_STATUS'), workflowRef: env('WORKFLOW_REF'), workflowSha: env('WORKFLOW_SHA') }
+    validateReleaseSetContext(context, plan)
+    const preparedExpected = { runId: env('RELEASE_SET_PREPARED_RUN_ID'), runAttempt: env('RELEASE_SET_PREPARED_RUN_ATTEMPT'), artifactId: env('RELEASE_SET_PREPARED_ARTIFACT_ID'), bindingArtifactId: env('RELEASE_SET_PREPARED_BINDING_ARTIFACT_ID'), sourceCommit: plan.sourceCommit, bundleName: `release-set-bundle-${plan.sourceCommit}`, bindingName: `release-set-binding-${env('RELEASE_SET_PREPARED_RUN_ID')}-${env('RELEASE_SET_PREPARED_RUN_ATTEMPT')}` }
+    const binding = JSON.parse(await readFile(env('RELEASE_SET_BINDING_FILE'), 'utf8'))
+    const preparation = await verifyReleaseSetPreparation({ plan, context, run: JSON.parse(await readFile(env('RELEASE_SET_RUN_FILE'), 'utf8')), artifact: JSON.parse(await readFile(env('RELEASE_SET_ARTIFACT_METADATA_FILE'), 'utf8')), bindingArtifact: JSON.parse(await readFile(env('RELEASE_SET_BINDING_METADATA_FILE'), 'utf8')), binding, bundleZip: env('RELEASE_SET_BUNDLE_ZIP_FILE'), bindingZip: env('RELEASE_SET_BINDING_ZIP_FILE'), artifactDirectory: env('RELEASE_SET_ARTIFACT_DIR'), bindingDirectory: env('RELEASE_SET_BINDING_DIR'), expected: preparedExpected })
+    const descriptorFile = JSON.parse(await readFile(env('RELEASE_SET_GITHUB_DESCRIPTOR_FILE'), 'utf8')); const snapshot = descriptorFile.snapshot ?? (process.env.RELEASE_SET_GITHUB_SNAPSHOT_FILE === undefined ? undefined : JSON.parse(await readFile(process.env.RELEASE_SET_GITHUB_SNAPSHOT_FILE, 'utf8'))); const { snapshot: _snapshot, ...descriptor } = descriptorFile
+    const boundDescriptor = await validateGitHubReleaseDescriptor({ plan, descriptor, artifactDirectory: env('RELEASE_SET_ARTIFACT_DIR') })
+    const observerSource = env('RELEASE_SET_GITHUB_OBSERVER_SOURCE'); requireEqual(observerSource, context.eventSha, 'GitHub observer source must bind to execution context')
+    if (process.env.GITHUB_RUN_ID !== undefined) requireEqual(String(process.env.GITHUB_RUN_ID), String(process.env.RELEASE_SET_GITHUB_OBSERVER_RUN_ID), 'GitHub observer run ID is not the current execution')
+    if (process.env.GITHUB_RUN_ATTEMPT !== undefined) requireEqual(String(process.env.GITHUB_RUN_ATTEMPT), String(process.env.RELEASE_SET_GITHUB_OBSERVER_ATTEMPT), 'GitHub observer attempt is not the current execution')
+    const token = await readReleaseSetGithubReadTokenFd()
+    const publicRead = process.env.RELEASE_SET_GITHUB_PUBLIC_READ_FILE === undefined ? undefined : JSON.parse(await readFile(process.env.RELEASE_SET_GITHUB_PUBLIC_READ_FILE, 'utf8'))
+    const receipt = await observeGitHubRelease({ plan, descriptor: boundDescriptor.descriptor, planSha256, preparation: { sourceCommit: preparation.context.sourceCommit, runId: binding.runId, runAttempt: binding.runAttempt, artifactId: binding.artifactId, bindingArtifactId: preparation.metadata.bindingArtifactId, planSha256: binding.planSha256 }, observer: { runId: env('RELEASE_SET_GITHUB_OBSERVER_RUN_ID'), runAttempt: env('RELEASE_SET_GITHUB_OBSERVER_ATTEMPT'), workflowPath: env('RELEASE_SET_GITHUB_OBSERVER_WORKFLOW'), sourceCommit: observerSource }, workDir: env('RELEASE_SET_GITHUB_WORK_DIR'), outputFile, snapshot, publicRead }, { githubReadToken: token, anonymousRequest: githubAnonymousDefaultRequest })
+    if (receipt.state !== 'matching-public' || receipt.complete !== true || receipt.publicRead?.anonymous !== true || receipt.publicRead?.complete !== true) fail('github-public-observation-incomplete')
+    console.log(`github-public-observation=${sha256Hex(canonicalJson(receipt))}`)
     return
   }
 

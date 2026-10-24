@@ -26,7 +26,10 @@ export interface HttpTransportConfig {
   readonly fetch: typeof globalThis.fetch
   readonly headers: Readonly<Record<string, string>>
   readonly maxBatchSize?: number
+  readonly redirect?: RequestRedirect
+  readonly strictResponse?: boolean
   readonly timeoutMs: number
+  readonly diagnosticEndpoint?: string
   readonly unavailableNamespace?: string
 }
 
@@ -111,7 +114,9 @@ export class HttpJsonRpcTransport {
   readonly #requestEndpoint: URL
   readonly #fetch: typeof globalThis.fetch
   readonly #headers: Readonly<Record<string, string>>
+  readonly #redirect: RequestRedirect | undefined
   readonly #redactionVariants: readonly string[]
+  readonly #strictResponse: boolean
   readonly #timeoutMs: number
   readonly #unavailableNamespace: string | undefined
   #nextId = 1
@@ -122,6 +127,8 @@ export class HttpJsonRpcTransport {
     this.#requestEndpoint = new URL(config.endpoint)
     this.#fetch = config.fetch
     this.#headers = config.headers
+    this.#redirect = config.redirect
+    this.#strictResponse = config.strictResponse ?? false
     this.#redactionVariants = this.#direct
       ? directRedactionVariants(this.#requestEndpoint, this.#headers)
       : []
@@ -140,7 +147,7 @@ export class HttpJsonRpcTransport {
       endpoint.search = ''
       endpoint.hash = ''
     }
-    this.endpoint = endpoint.toString()
+    this.endpoint = config.diagnosticEndpoint ?? endpoint.toString()
   }
 
   async request<TResult>(
@@ -252,6 +259,9 @@ export class HttpJsonRpcTransport {
     options: RpcSendOptions,
   ): Promise<unknown> {
     this.#ensureConfigured()
+    if (this.#strictResponse && options.signal?.aborted) {
+      throw new ErpcAbortedError()
+    }
 
     const url = new URL(this.#requestEndpoint)
     if (!this.#direct) url.searchParams.set('api-key', this.#apiKey)
@@ -268,6 +278,7 @@ export class HttpJsonRpcTransport {
             },
         body: JSON.stringify(body),
         signal: controlled.signal,
+        ...(this.#redirect === undefined ? {} : { redirect: this.#redirect }),
         ...(this.#direct
           ? {
               credentials: 'omit' as const,
@@ -306,7 +317,18 @@ export class HttpJsonRpcTransport {
         ),
       )
     }
+    if (
+      this.#strictResponse &&
+      'error' in response &&
+      response.error !== null &&
+      response.error !== undefined
+    ) {
+      throw new ErpcInvalidResponseError()
+    }
     if (!('result' in response)) throw new ErpcInvalidResponseError()
+    if (this.#strictResponse && typeof response.result !== 'string') {
+      throw new ErpcInvalidResponseError()
+    }
     return (response as unknown as JsonRpcResponse<TResult> & { result: TResult })
       .result
   }

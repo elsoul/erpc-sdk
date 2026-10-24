@@ -9,7 +9,7 @@
   <a href="https://pypi.org/project/erpc-sdk/"><img src="https://img.shields.io/pypi/v/erpc-sdk.svg" alt="PyPI" /></a>
   <a href="https://pkg.go.dev/github.com/elsoul/erpc-sdk/packages/go"><img src="https://pkg.go.dev/badge/github.com/elsoul/erpc-sdk/packages/go.svg" alt="Go Reference" /></a>
   <a href="https://rubygems.org/gems/erpc-sdk"><img src="https://img.shields.io/gem/v/erpc-sdk.svg" alt="RubyGems" /></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="license" /></a>
+  <a href="#license"><img src="https://img.shields.io/badge/licenses-components-informational.svg" alt="Component licenses" /></a>
 </p>
 
 <p align="center">
@@ -17,19 +17,22 @@
   Built for Developers. Ready for AI Agents.</strong>
 </p>
 
-The published non-Rust line is TypeScript, Python, Go, and Ruby `0.9.1`. Rust
-`0.11.0` is published as a separate Rust-only release. Its crate covers 18
-chain families/mainnets, listed below. The four published non-Rust packages
-retain their package-specific scopes; Rust-only APIs below do not imply
-five-language parity.
+The current public non-Rust line is TypeScript, Python, Go, and Ruby `0.9.1`.
+Rust `0.11.0` is published as a separate Rust-only release. The `0.11.0`
+source candidate extends the bounded read-only chain namespace matrix to all
+five languages; the four non-Rust candidate packages are not yet published.
+Current public package versions remain the versions in the table below.
 
 Across the published lines, the SDK provides eRPC-backed standard
 Solana, Ethereum, and Avalanche access, catalog and service APIs, and the
 language-specific direct-RPC controls described in the package guides. The Rust
 `0.11.0` crate adds bounded read-only clients for the later chain families and a
-limited Sui binary gRPC-Web surface. Bitcoin Core HTTP JSON-RPC remains a
-Rust-only surface for this release line. These statements preserve the separate
-configured-RPC/local swap behavior and bridge boundaries documented below.
+limited Sui binary gRPC-Web surface. The source candidate carries corresponding
+bounded read facades for the four non-Rust languages, including named Bitcoin
+Core HTTP JSON-RPC reads. Rust retains its legacy generic raw/request/batch
+superset; the four new facades use sealed named reads. These statements
+preserve the separate configured-RPC/local swap behavior and bridge boundaries
+documented below.
 
 ## Packages
 
@@ -45,6 +48,28 @@ The package links and live badges point to registry or module status. The four
 non-Rust packages are published at `0.9.1`; the Rust package is published at
 `0.11.0` with a separate Rust-only API surface.
 
+### Source candidate read matrix
+
+The `0.11.0` source candidate defines one bounded read-only matrix across
+18 chain families and 20 canonical network rows. Solana includes mainnet,
+devnet, and testnet rows; devnet and testnet use caller-supplied direct test
+endpoints. Avalanche remains one C/P/X family. This table describes API scope;
+it does not change the public release status shown above.
+
+| Language | Source candidate version | Read coverage |
+| --- | --- | --- |
+| TypeScript | `0.11.0` source candidate | 18 families / 20 network rows |
+| Python | `0.11.0` source candidate | 18 families / 20 network rows |
+| Go | `0.11.0` source candidate | 18 families / 20 network rows |
+| Ruby | `0.11.0` source candidate | 18 families / 20 network rows |
+| Rust | `0.11.0` public release | 18 families / 20 network rows |
+
+The source candidate exposes read-only chain namespaces, configured direct RPC
+where documented, and the bounded Sui gRPC-Web reads. It does not establish
+full API parity, live provider verification, signing, sending, swaps, or
+bridging. Rust retains its legacy Bitcoin decoder and generic raw/request/batch
+surface; the four new facades expose the bounded named-read boundary.
+
 ## Install
 
 TypeScript:
@@ -56,8 +81,10 @@ npm install @elsoul/erpc-sdk
 # or: bun add @elsoul/erpc-sdk
 ```
 
-The TypeScript package includes ESM, CommonJS, and TypeScript declarations. Its
-runtime dependencies are `@noble/curves` and `@noble/hashes`.
+The TypeScript package includes ESM, CommonJS, and TypeScript declarations. The
+`0.11.0` source candidate uses `@noble/curves`, `@noble/hashes`, and
+`lossless-json@4.3.3` for its bounded numeric JSON path; the currently public
+`0.9.1` package remains the published artifact shown in the table above.
 
 Rust:
 
@@ -1013,19 +1040,32 @@ enter shell history. Never commit credentials.
 
 ## Release model
 
-Publishing is initiated by a human-pushed version tag. The release workflow is
-configured for registry Trusted Publishing and provenance. Merging a change
-never publishes a package. See the
+A human manually dispatches release preparation from `main`. After reviewed
+preparation and publish steps pass all package proofs, the workflow creates the
+exact version tags and GitHub Release automatically. Merging a change never
+publishes a package. See the
 [release process](docs/RELEASING.md) for initial setup and release steps.
 
 ## License
 
-The repository root remains [MIT](LICENSE). The Rust package uses
-`MIT AND Apache-2.0`: original Rust SDK source is covered by
-[`packages/rust/LICENSE`](packages/rust/LICENSE), while the adapted Sui
-projection carries the adjacent
+The repository's original SDK source remains under [MIT](LICENSE). The
+published Rust `0.11.0` package uses `MIT AND Apache-2.0`: original Rust SDK
+source is covered by [`packages/rust/LICENSE`](packages/rust/LICENSE), while
+the adapted Sui projection carries
 [`packages/rust/LICENSES/Apache-2.0.txt`](packages/rust/LICENSES/Apache-2.0.txt)
-text and provenance recorded in
+and the provenance recorded in
 [`packages/rust/THIRD_PARTY_NOTICES.md`](packages/rust/THIRD_PARTY_NOTICES.md).
-The root MIT badge describes the repository root and does not imply that every
-Rust source file is MIT-only.
+
+The four `0.11.0` source-candidate packages use the aggregate expression
+`MIT AND Apache-2.0 AND BSD-3-Clause` for the original SDK, the adapted
+Mysten Sui schema projection, and Google's Timestamp projection. Their
+component notices and exact license texts are included in:
+
+- [TypeScript third-party notices](packages/typescript/THIRD_PARTY_NOTICES.md), [Apache-2.0 text](packages/typescript/LICENSES/Apache-2.0.txt), and [Google BSD-3-Clause text](packages/typescript/LICENSES/BSD-3-Clause-Google-Protobuf.txt)
+- [Python third-party notices](packages/python/THIRD_PARTY_NOTICES.md), [Apache-2.0 text](packages/python/LICENSES/Apache-2.0.txt), and [Google BSD-3-Clause text](packages/python/LICENSES/BSD-3-Clause-Google-Protobuf.txt)
+- [Go third-party notices](packages/go/THIRD_PARTY_NOTICES.md), [Apache-2.0 text](packages/go/LICENSES/Apache-2.0.txt), and [Google BSD-3-Clause text](packages/go/LICENSES/BSD-3-Clause-Google-Protobuf.txt)
+- [Ruby third-party notices](packages/ruby/THIRD_PARTY_NOTICES.md), [Apache-2.0 text](packages/ruby/LICENSES/Apache-2.0.txt), and [Google BSD-3-Clause text](packages/ruby/LICENSES/BSD-3-Clause-Google-Protobuf.txt)
+
+The current public non-Rust packages remain `0.9.1` until their reviewed
+`0.11.0` source candidate is released. These notices describe source and
+component provenance; they do not certify legal compliance or CE conformity.

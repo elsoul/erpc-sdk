@@ -6,16 +6,18 @@ WebSocket subscriptions, price REST and server-sent events, account usage, and
 scoped Cloud reads.
 
 ```bash
-# After PyPI lists 0.9.1:
-python -m pip install erpc-sdk==0.9.1
-# For local validation, use the public 0.9.0 package or this source checkout.
+# Install version 0.11.0 when it is listed among the available package versions:
+python -m pip install erpc-sdk==0.11.0
+# For a local source checkout instead:
+# python -m pip install -e .
 ```
 
 Python 3.11 or newer is required.
 
-This source/release cohort targets `0.9.1`; check the
-[PyPI release metadata](https://pypi.org/pypi/erpc-sdk/json) for current
-package availability.
+This guide documents `erpc-sdk` version `0.11.0`. Check the
+[PyPI release metadata](https://pypi.org/pypi/erpc-sdk/json) for currently
+available versions before choosing a package install. Historical package
+guidance since `0.9.0` remains historical documentation.
 
 ## Quick start
 
@@ -36,6 +38,66 @@ async def main() -> None:
 
 asyncio.run(main())
 ```
+
+## Bitcoin, Base, and Arbitrum read clients
+
+The `0.11.0` source client exposes explicit read-only facades for Bitcoin,
+Base, and Arbitrum. Bitcoin uses the configured shared ERPC endpoint at
+`/bitcoin` with Bearer authentication; Base and Arbitrum use their configured
+hosted roots with `api-key` query authentication.
+
+```python
+from erpc_sdk import ErpcClient, ErpcClientConfig, RpcEndpointConfig
+
+
+config = ErpcClientConfig(
+    api_key="erpc-key",
+    bitcoin_rpc=RpcEndpointConfig("https://bitcoin.example/rpc"),
+)
+
+async with ErpcClient(config) as erpc:
+    height = await erpc.bitcoin.rpc.get_block_count().send()
+    chain_id = await erpc.base.rpc.eth_chain_id().send()
+    arbitrum_chain_id = await erpc.arbitrum.rpc.eth_chain_id().send()
+```
+
+Each facade contains only its named read methods and `endpoint` diagnostic.
+Bitcoin generic numeric values retain exact `int` and `Decimal` values, while
+`get_block_count()` returns a bounded unsigned 64-bit `int`. Direct Bitcoin,
+Base, or Arbitrum endpoints can be supplied with `RpcEndpointConfig`; these
+three overrides are HTTP-only and preserve their complete request target and
+scoped headers.
+
+## Remaining sealed chain reads
+
+The same client exposes sealed three-read EVM facades for Polygon, BSC,
+Optimism, Kaia, Soneium, Monad, Hyperliquid HyperEVM, Arc, Robinhood Chain
+Public Mainnet, and TRON. Each facade provides `eth_chain_id`,
+`eth_get_balance`, `eth_call`, and `endpoint`; TRON keeps its configured
+provider root and does not convert addresses.
+
+NEAR provides typed `status`, `block`, and `view_account` reads. Select exactly
+one finality or block ID with `NearBlockReference`:
+
+```python
+from erpc_sdk import ErpcClient, ErpcClientConfig, NearBlockReference
+
+async with ErpcClient(ErpcClientConfig("erpc-key")) as erpc:
+    status = await erpc.near.rpc.status().send()
+    account = await erpc.near.rpc.view_account(
+        "alice.near", NearBlockReference.final()
+    ).send()
+```
+
+Sui is a bounded, dependency-free gRPC-Web client with exactly
+`get_service_info`, `get_object`, and `get_balance` under `client.sui.grpc`.
+It uses streamed 1 MiB request, 8 MiB response, and 8 KiB trailer limits.
+
+The Sui source projection carries Apache-2.0 and Google's BSD-3-Clause terms
+alongside the original MIT package source. See
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md),
+[`LICENSES/Apache-2.0.txt`](LICENSES/Apache-2.0.txt), and
+[`LICENSES/BSD-3-Clause-Google-Protobuf.txt`](LICENSES/BSD-3-Clause-Google-Protobuf.txt).
 
 ## Direct RPC endpoints (introduced in 0.8.0)
 

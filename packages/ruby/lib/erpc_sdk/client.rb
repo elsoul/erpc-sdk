@@ -23,7 +23,9 @@ module ERPC
   )
 
   class Client
-    attr_reader :solana, :ethereum, :avalanche, :price, :account, :usage, :swap
+    attr_reader :solana, :ethereum, :avalanche, :price, :account, :usage, :swap,
+                :bitcoin, :base, :arbitrum, :polygon, :bsc, :optimism, :kaia,
+                :soneium, :monad, :hyperliquid, :arc, :robinhood, :tron, :near, :sui
 
     def initialize(config, http_adapter: nil, websocket_factory: nil)
       adapter = http_adapter || NetHttpAdapter.new
@@ -303,6 +305,97 @@ module ERPC
           )
         end
       )
+      if defined?(BITCOIN_TRANSPORT_FACTS)
+        @bitcoin = BitcoinClient.new(
+          BitcoinHttpTransport.new(
+            facts: BITCOIN_TRANSPORT_FACTS,
+            api_key: config.api_key,
+            endpoint: config.endpoint,
+            direct_endpoint: config.bitcoin_rpc,
+            headers: config.headers,
+            timeout: config.timeout,
+            adapter: adapter,
+            namespace: "bitcoin.rpc"
+          )
+        )
+        @base = BaseClient.new(
+          SealedEvmHttpTransport.new(
+            facts: BASE_TRANSPORT_FACTS,
+            api_key: config.api_key,
+            endpoint: config.base_endpoint,
+            direct_endpoint: config.base_rpc,
+            headers: config.headers,
+            timeout: config.timeout,
+            adapter: adapter,
+            namespace: "base.rpc"
+          )
+        )
+        @arbitrum = ArbitrumClient.new(
+          SealedEvmHttpTransport.new(
+            facts: ARBITRUM_TRANSPORT_FACTS,
+            api_key: config.api_key,
+            endpoint: config.arbitrum_endpoint,
+            direct_endpoint: config.arbitrum_rpc,
+            headers: config.headers,
+            timeout: config.timeout,
+            adapter: adapter,
+            namespace: "arbitrum.rpc"
+          )
+        )
+        @polygon = sealed_client(config, POLYGON_TRANSPORT_FACTS, config.polygon_rpc,
+                                 config.polygon_endpoint, "polygon.rpc", PolygonClient, adapter)
+        @bsc = sealed_client(config, BSC_TRANSPORT_FACTS, config.bsc_rpc,
+                             config.bsc_endpoint, "bsc.rpc", BscClient, adapter)
+        @optimism = sealed_client(config, OPTIMISM_TRANSPORT_FACTS, config.optimism_rpc,
+                                  config.optimism_endpoint, "optimism.rpc", OptimismClient, adapter)
+        @kaia = sealed_client(config, KAIA_TRANSPORT_FACTS, config.kaia_rpc,
+                              config.kaia_endpoint, "kaia.rpc", KaiaClient, adapter)
+        @soneium = sealed_client(config, SONEIUM_TRANSPORT_FACTS, config.soneium_rpc,
+                                 config.soneium_endpoint, "soneium.rpc", SoneiumClient, adapter)
+        @monad = sealed_client(config, MONAD_TRANSPORT_FACTS, config.monad_rpc,
+                               config.monad_endpoint, "monad.rpc", MonadClient, adapter)
+        @hyperliquid = sealed_client(config, HYPERLIQUID_TRANSPORT_FACTS, config.hyperliquid_rpc,
+                                     config.hyperliquid_endpoint, "hyperliquid.rpc", HyperliquidClient, adapter)
+        @arc = sealed_client(config, ARC_TRANSPORT_FACTS, config.arc_rpc,
+                             config.arc_endpoint, "arc.rpc", ArcClient, adapter)
+        @robinhood = sealed_client(config, ROBINHOOD_TRANSPORT_FACTS, config.robinhood_rpc,
+                                   config.robinhood_endpoint, "robinhood.rpc", RobinhoodClient, adapter)
+        @tron = sealed_client(config, TRON_TRANSPORT_FACTS, config.tron_rpc,
+                              config.tron_endpoint, "tron.rpc", TronClient, adapter)
+        @near = NearClient.new(
+          NearHttpTransport.new(
+            facts: NEAR_TRANSPORT_FACTS,
+            api_key: config.api_key,
+            endpoint: config.near_endpoint,
+            direct_endpoint: config.near_rpc,
+            headers: config.headers,
+            timeout: config.timeout,
+            adapter: adapter,
+            namespace: "near.rpc"
+          )
+        )
+        @sui = SuiClient.new(
+          SuiGrpcWebTransport.new(
+            facts: SUI_TRANSPORT_FACTS,
+            api_key: config.api_key,
+            endpoint: config.sui_endpoint,
+            direct_endpoint: config.sui_grpc_web,
+            headers: config.headers,
+            timeout: config.timeout,
+            adapter: adapter,
+            namespace: "sui.grpc"
+          )
+        )
+      else
+        # The bootstrap tree may run before the repaired generated projection
+        # is present. The released namespaces remain fully constructible in
+        # that phase; the new surfaces activate when their private projection
+        # is loaded.
+        @bitcoin = @base = @arbitrum = @polygon = @bsc = @optimism = @kaia = @soneium = @monad = nil
+        @hyperliquid = @arc = @robinhood = @tron = nil
+        @near = nil
+        @sui = nil
+      end
       @closed = false
     end
 
@@ -317,6 +410,21 @@ module ERPC
     end
 
     private
+
+    def sealed_client(config, facts, override, endpoint, namespace, client_class, adapter)
+      client_class.new(
+        SealedEvmHttpTransport.new(
+          facts: facts,
+          api_key: config.api_key,
+          endpoint: endpoint,
+          direct_endpoint: override,
+          headers: config.headers,
+          timeout: config.timeout,
+          adapter: adapter,
+          namespace: namespace
+        )
+      )
+    end
 
     def avalanche_namespace(transport, methods, prefix)
       RpcNamespace.new(

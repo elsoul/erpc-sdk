@@ -9,7 +9,7 @@ Gem::Specification.new do |spec|
   spec.summary = "Multi-network Ruby SDK for ERPC"
   spec.description = "Ruby client for ERPC Solana, Ethereum, and Avalanche RPC, REST, streams, subscriptions, and Cloud reads."
   spec.homepage = "https://erpc.global"
-  spec.license = "MIT"
+  spec.licenses = ["MIT", "Apache-2.0", "BSD-3-Clause"]
   spec.required_ruby_version = ">= 3.1"
 
   spec.metadata = {
@@ -21,10 +21,16 @@ Gem::Specification.new do |spec|
     "rubygems_mfa_required" => "true"
   }
 
-  spec.files = Dir.chdir(__dir__) { Dir["lib/**/*.rb"].sort + %w[LICENSE README.md] }
+  spec.files = Dir.chdir(__dir__) do
+    Dir["lib/**/*.rb"].sort + %w[
+      LICENSE README.md THIRD_PARTY_NOTICES.md
+      LICENSES/Apache-2.0.txt LICENSES/BSD-3-Clause-Google-Protobuf.txt
+    ]
+  end
   spec.require_paths = ["lib"]
 
   spec.add_runtime_dependency "base64", "= 0.2.0"
+  spec.add_runtime_dependency "bigdecimal", "= 4.1.3"
   spec.add_runtime_dependency "digest-keccak", "= 0.0.7"
 
   spec.add_development_dependency "minitest", ">= 5.18", "< 6"

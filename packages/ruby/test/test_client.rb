@@ -741,4 +741,36 @@ class ClientTest < Minitest::Test
   ensure
     erpc&.close
   end
+
+  def test_integrates_generated_bitcoin_base_and_arbitrum_facades
+    adapter = FakeHttpAdapter.new do |request|
+      body = JSON.parse(request.fetch(:body))
+      ERPC::HttpResponse.new(
+        status: 200,
+        body: JSON.generate("jsonrpc" => "2.0", "id" => body.fetch("id"), "result" => "0x2105")
+      )
+    end
+    adapter.stream_chunks = [
+      JSON.generate("jsonrpc" => "2.0", "id" => 1, "result" => 7)
+    ]
+    erpc = ERPC::Client.new(ERPC::ClientConfig.new(api_key: "integration-key"), http_adapter: adapter)
+
+    assert_equal "https://edge.erpc.global/", erpc.bitcoin.rpc.endpoint
+    assert_equal "https://base.erpc.global/", erpc.base.rpc.endpoint
+    assert_equal "https://arbitrum.erpc.global/", erpc.arbitrum.rpc.endpoint
+    pending = erpc.bitcoin.rpc.get_block_count
+    assert_equal 0, adapter.requests.length
+    assert_equal 7, pending.send
+    assert_equal "0x2105", erpc.base.rpc.eth_chain_id.send
+    assert_equal "0x2105", erpc.arbitrum.rpc.eth_chain_id.send
+
+    bitcoin_request, base_request, arbitrum_request = adapter.requests
+    assert_equal "https://edge.erpc.global/bitcoin", bitcoin_request.fetch(:url)
+    assert_equal "Bearer integration-key", bitcoin_request.fetch(:headers).fetch("authorization")
+    refute bitcoin_request.fetch(:url).include?("api-key")
+    assert_equal "https://base.erpc.global/?api-key=integration-key", base_request.fetch(:url)
+    assert_equal "https://arbitrum.erpc.global/?api-key=integration-key", arbitrum_request.fetch(:url)
+  ensure
+    erpc&.close
+  end
 end

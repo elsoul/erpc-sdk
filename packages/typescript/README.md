@@ -1,24 +1,23 @@
 # `@elsoul/erpc-sdk`
 
 Official type-safe TypeScript client for [ERPC](https://erpc.global). Use one
-client and an API key for Base, Solana, Ethereum, Avalanche C/P/X chains, price
-data, indexed data, leader and validator data, analytics, subscriptions, and
-account information. Base is exposed as a read-only JSON-RPC facade; caller-owned
-direct endpoints can be selected for Base, Solana, Ethereum, and Avalanche
-C-Chain JSON-RPC.
+client and an API key for Base, Bitcoin, Arbitrum, Solana, Ethereum, Avalanche
+C/P/X chains, price data, indexed data, leader and validator data, analytics,
+subscriptions, and account information. Base, Bitcoin, and Arbitrum are exposed
+as read-only JSON-RPC facades; caller-owned direct endpoints can be selected for
+those facades and the existing Solana, Ethereum, and Avalanche C-Chain JSON-RPC.
 
-The Base facade documented below has been available since `0.9.0`. This
-source/release cohort targets `0.9.1`; check the
+This guide describes version `0.11.0`. Check the
 [npm registry versions](https://registry.npmjs.org/%40elsoul%2Ferpc-sdk) for
-current package availability.
+published package availability before installing.
 
 ## Install
 
 ```bash
-# After the npm registry lists 0.9.1:
-npm install @elsoul/erpc-sdk@0.9.1
-# or: pnpm add @elsoul/erpc-sdk@0.9.1
-# For local validation, use the public 0.9.0 package or this source checkout.
+# Check the npm registry for availability before installing:
+npm install @elsoul/erpc-sdk@0.11.0
+# or: pnpm add @elsoul/erpc-sdk@0.11.0
+# For source validation, use this checkout and its configured local checks.
 ```
 
 The package includes its ESM, CommonJS, and TypeScript declarations. Node.js 20
@@ -97,13 +96,36 @@ const erpc = createErpcClient({
 })
 ```
 
-`solanaRpc`, `ethereumRpc`, `avalancheCRpc`, and `baseRpc` select direct Solana,
-Ethereum, Avalanche C-Chain, and Base JSON-RPC transports. `baseRpc` accepts
-only an HTTP URL and scoped HTTP headers because the Base facade has no
+`solanaRpc`, `ethereumRpc`, `avalancheCRpc`, `baseRpc`, `bitcoinRpc`, and
+`arbitrumRpc` select direct Solana, Ethereum, Avalanche C-Chain, Base, Bitcoin,
+and Arbitrum JSON-RPC transports. The Base, Bitcoin, and Arbitrum overrides
+accept only an HTTP URL and scoped HTTP headers because those facades have no
 WebSocket or subscription surface. Without an API key, non-overridden chains
 and ERPC REST, native, and index services fail locally. The
 `RpcEndpointConfig.headers` field applies to direct HTTP requests only; those
 headers are never sent on WSS connections.
+
+Bitcoin uses the resolved shared eRPC endpoint plus `/bitcoin` with Bearer
+authentication and no `api-key` query. Its facade has exactly twelve named read
+methods and keeps generic numeric results lossless through the SDK-owned
+`BitcoinJsonNumber` type; `getBlockCount()` returns `bigint`.
+
+Arbitrum exposes only `eth_chainId`, `eth_getBalance`, and `eth_call`. Its hosted
+route uses the finite chain path `https://edge.erpc.global/arbitrum`, while direct
+endpoint getters expose the origin and root slash as diagnostics. Hosted Base
+uses `https://base.erpc.global/`; direct Base requests follow the same origin-only
+diagnostic rule. Both hosted and direct Base/Arbitrum requests surface redirects
+as HTTP errors and make one attempt. An unconfigured Arbitrum facade reports an
+empty endpoint and fails before I/O.
+
+```ts
+const erpc = createErpcClient({ apiKey: process.env.ERPC_API_KEY! })
+
+const bitcoinHeight = await erpc.bitcoin.rpc.getBlockCount().send()
+const arbitrumChainId = await erpc.arbitrum.rpc.eth_chainId().send()
+console.log({ bitcoinHeight, arbitrumChainId })
+erpc.close()
+```
 
 ## Base read-only RPC (available since `0.9.0`)
 
@@ -448,8 +470,8 @@ signs, submits, broadcasts, or claims settlement. The caller owns wallet
 custody and all signing and ERPC broadcast steps described in the
 [TypeScript signing and broadcast guide](https://github.com/elsoul/erpc-sdk/blob/main/packages/typescript/docs/signing-and-broadcast.md).
 
-These local methods and native USDC routes are included in the public `0.9.0`
-baseline and the source/release cohort targets `0.9.1`. The bridge API remains
+These local methods and native USDC routes were introduced in the public `0.9.0`
+baseline. The bridge API remains
 an explicit standalone EURC/native-USDC adapter with optional external provider
 dependencies and configured source-RPC requirements, while normal swaps
 continue to use configured RPC and local logic.
@@ -564,6 +586,35 @@ const result = await erpc.solana.rpc
 - [Roadmap](https://github.com/elsoul/erpc-sdk/blob/main/ROADMAP.md)
 - [Security policy](https://github.com/elsoul/erpc-sdk/blob/main/SECURITY.md)
 
+## Additional read-only chain facades
+
+The package also exposes sealed, HTTP-only read clients for Polygon PoS, BNB
+Smart Chain, OP Mainnet, Kaia, Soneium, Monad, Hyperliquid HyperEVM, Arc,
+Robinhood Chain Public Mainnet, and TRON. Each facade contains only
+`eth_chainId`, `eth_getBalance`, `eth_call`, and `endpoint`; it has no raw,
+request, batch, subscription, signing, broadcast, swap, or bridge surface.
+Hosted defaults are selected from the generated RPC contract. Caller-owned
+`<chain>Rpc` endpoint overrides preserve their complete HTTP target and send
+only endpoint-scoped headers.
+
+NEAR is exposed as `erpc.near.rpc` with typed `status`, `block`, and fixed
+`viewAccount` reads. Block selectors use one named `finality` or `blockId`
+object, u64 fields are `bigint`, monetary and nanosecond strings remain wire
+strings, and unknown numeric fields retain the immutable SDK-owned
+`NearJsonNumber` representation.
+
+Sui is exposed as `erpc.sui.grpc` with exactly `getServiceInfo`, `getObject`,
+and `getBalance`. These calls use the bounded binary gRPC-Web protocol and a
+dependency-free private codec. Sui u64/i64 values are `bigint`; the endpoint
+configuration is `suiGrpcWeb: { baseUrl, headers }` and appends only the three
+approved service paths.
+
 ## License
 
-[MIT](https://github.com/elsoul/erpc-sdk/blob/main/LICENSE)
+The package combines original ERPC SDK source under [MIT](https://github.com/elsoul/erpc-sdk/blob/main/LICENSE)
+with the adapted Sui projection under [Apache-2.0](./LICENSES/Apache-2.0.txt)
+and the private Timestamp projection under
+[BSD-3-Clause](./LICENSES/BSD-3-Clause-Google-Protobuf.txt). The aggregate
+package expression is `MIT AND Apache-2.0 AND BSD-3-Clause`; see
+[THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md) for source pins and the
+component mapping.

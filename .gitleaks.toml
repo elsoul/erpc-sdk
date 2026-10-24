@@ -148,3 +148,11 @@ condition = "AND"
 regexTarget = "match"
 paths = ['''^registry/evidence/discovery-ranking-review-2026-09-16\.json$''']
 regexes = ['''^(?:generate-token-rankings|token-catalog|token-rankings)\.mjs": "[0-9a-f]{64}"$''']
+
+# Numeric lexeme digests in the reviewed RPC fixture are public integrity
+# metadata. Keep this exception local to the exact field match and exact path.
+[[rules.allowlists]]
+condition = "AND"
+regexTarget = "match"
+paths = ['''^registry/fixtures/rpc-chain-contract-cases\.json$''']
+regexes = ['''^rawTokenSha256": "[0-9a-f]{64}"$''']

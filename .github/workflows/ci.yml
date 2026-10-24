@@ -834,6 +834,10 @@ jobs:
           test "${#GEM_PACKAGES[@]}" -eq 1
           GEM_PACKAGE="$(realpath "${GEM_PACKAGES[0]}")"
           test -f "$GEM_PACKAGE"
+          EXPECTED_SDK_VERSION="$(ruby -e 'source = File.read("lib/erpc_sdk/version.rb"); match = source.match(/^\s*VERSION\s*=\s*"([^"]+)"$/); abort "missing source SDK version" unless match; puts match[1]' )"
+          GEM_SDK_VERSION="$(ruby -rrubygems/package -e 'puts Gem::Package.new(ARGV.fetch(0)).spec.version.to_s' "$GEM_PACKAGE")"
+          test "$GEM_SDK_VERSION" = "$EXPECTED_SDK_VERSION"
+          export EXPECTED_SDK_VERSION
           GEM_HOME="$(mktemp -d "$RUNNER_TEMP/ruby34-gem-home.XXXXXX")"
           GEM_PATH="$GEM_HOME"
           export GEM_HOME GEM_PATH
@@ -860,7 +864,7 @@ jobs:
           sdk_spec = Gem.loaded_specs.fetch("erpc-sdk")
           base64_spec = Gem.loaded_specs.fetch("base64")
           digest_spec = Gem.loaded_specs.fetch("digest-keccak")
-          abort "SDK version mismatch" unless ERPC::VERSION == "0.9.1"
+          abort "SDK version mismatch" unless ERPC::VERSION == ENV.fetch("EXPECTED_SDK_VERSION")
           abort "base64 version mismatch" unless base64_spec.version == Gem::Version.new("0.2.0")
           abort "digest-keccak version mismatch" unless digest_spec.version == Gem::Version.new("0.0.7")
 

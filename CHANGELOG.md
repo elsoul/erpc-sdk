@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Prepare a future non-Rust `0.11.0` cohort for 18 families and 20 network
+  pairs through named read facades for Bitcoin, new EVM families, NEAR, TRON,
+  and Sui, with direct-RPC configuration and bounded lossless-number
+  handling. Reuse the immutable Rust `0.11.0` release, then use short-lived
+  trusted publishing for the four package flows and aggregate a GitHub
+  Release only after every public proof succeeds. This cohort is not yet
+  published.
+
+## 0.9.1 — 2026-10-23 (non-Rust)
+
 - Add a main-only, manually dispatched release foundation for the first
   non-Rust `0.9.1` cohort. Preparation builds and hashes exact npm, PyPI, and
   RubyGems artifacts, freezes the Go inventory, verifies the existing Rust

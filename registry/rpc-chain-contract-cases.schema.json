@@ -1,0 +1,2286 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://erpc-sdk.dev/registry/rpc-chain-contract-cases.schema.json",
+  "title": "RPC chain contract cases",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "fixtureKind",
+    "contractVersion",
+    "contractDigest",
+    "fixtureDigest",
+    "cases",
+    "suiGrpcWeb",
+    "oracleGoldens",
+    "lifecycleSchedules"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "fixtureKind": {
+      "const": "rpc-chain-contract-cases"
+    },
+    "contractVersion": {
+      "const": "1.0.0"
+    },
+    "contractDigest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "fixtureDigest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/case"
+      }
+    },
+    "suiGrpcWeb": {
+      "$ref": "#/$defs/suiGrpcWeb"
+    },
+    "oracleGoldens": {
+      "type": "array",
+      "minItems": 56,
+      "maxItems": 56,
+      "items": {
+        "$ref": "#/$defs/oracleGolden"
+      }
+    },
+    "lifecycleSchedules": {
+      "type": "array",
+      "minItems": 8,
+      "maxItems": 8,
+      "items": {
+        "$ref": "#/$defs/lifecycleSchedule"
+      }
+    }
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "text": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[^\\u0000\\r\\n].*$"
+    },
+    "headers": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[a-z0-9-]+$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/text"
+      }
+    },
+    "setup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "apiKey",
+        "endpoint",
+        "headers"
+      ],
+      "properties": {
+        "mode": {
+          "enum": [
+            "hosted",
+            "direct",
+            "unconfigured",
+            "none"
+          ]
+        },
+        "apiKey": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "endpoint": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "headers": {
+          "$ref": "#/$defs/headers"
+        }
+      }
+    },
+    "operation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "publicOperation",
+        "wireOperation",
+        "params"
+      ],
+      "properties": {
+        "publicOperation": {
+          "$ref": "#/$defs/text"
+        },
+        "wireOperation": {
+          "$ref": "#/$defs/text"
+        },
+        "params": {
+          "type": ["array", "object"]
+        },
+        "publicOperations": {
+          "type": "object",
+          "minProperties": 5,
+          "maxProperties": 5,
+          "additionalProperties": {
+            "$ref": "#/$defs/text"
+          }
+        }
+      }
+    },
+    "exchangeRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "method",
+        "target",
+        "headers",
+        "body",
+        "bodyEncoding",
+        "bodySha256"
+      ],
+      "properties": {
+        "method": {
+          "const": "POST"
+        },
+        "target": {
+          "$ref": "#/$defs/text"
+        },
+        "headers": {
+          "$ref": "#/$defs/headers"
+        },
+        "body": {
+          "$ref": "#/$defs/text"
+        },
+          "bodyEncoding": {
+            "enum": [
+              "json",
+              "hex",
+              "descriptor"
+            ]
+          },
+        "bodySha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "exchangeResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "headers",
+        "body",
+        "bodyEncoding"
+      ],
+      "properties": {
+        "status": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 599
+        },
+        "headers": {
+          "$ref": "#/$defs/headers"
+        },
+        "body": {
+          "$ref": "#/$defs/text"
+        },
+        "bodyEncoding": {
+          "enum": [
+            "json",
+            "hex",
+            "descriptor"
+          ]
+        }
+      }
+    },
+    "mockExchange": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "request",
+        "response"
+      ],
+      "properties": {
+        "request": {
+          "$ref": "#/$defs/exchangeRequest"
+        },
+        "response": {
+          "$ref": "#/$defs/exchangeResponse"
+        }
+      }
+    },
+    "numberTuple": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "sign",
+        "coefficient",
+        "exponent10"
+      ],
+      "properties": {
+        "path": {
+          "$ref": "#/$defs/text"
+        },
+        "sign": {
+          "enum": [
+            -1,
+            0,
+            1
+          ]
+        },
+        "coefficient": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]*|[1-9][0-9]*[0-9])$"
+        },
+        "exponent10": {
+          "type": "string",
+          "pattern": "^-?(0|[1-9][0-9]*)$"
+        }
+      }
+    },
+    "expected": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "outcome",
+        "trace",
+        "endpointDiagnostic",
+        "ioCount",
+        "surface",
+        "numericTuples",
+        "binary"
+      ],
+      "properties": {
+        "outcome": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "success",
+                "error",
+                "not-applicable"
+              ]
+            },
+            "value": {},
+            "category": {
+              "$ref": "#/$defs/text"
+            },
+            "message": {
+              "$ref": "#/$defs/text"
+            }
+          }
+        },
+        "trace": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "ioKind",
+            "method",
+            "target",
+            "headers",
+            "bodySha256",
+            "attempts"
+          ],
+          "properties": {
+            "ioKind": {
+              "enum": [
+                "performed",
+                "none"
+              ]
+            },
+            "method": {
+              "$ref": "#/$defs/text"
+            },
+            "target": {
+              "$ref": "#/$defs/text"
+            },
+            "headers": {
+              "$ref": "#/$defs/headers"
+            },
+            "bodySha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "attempts": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1
+            }
+          }
+        },
+        "endpointDiagnostic": {
+          "type": "string"
+        },
+        "ioCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "surface": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "allowed",
+            "forbidden"
+          ],
+          "properties": {
+            "allowed": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/text"
+              }
+            },
+            "forbidden": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/text"
+              }
+            }
+          }
+        },
+        "numericTuples": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/numberTuple"
+          }
+        },
+        "binary": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": false,
+          "required": [
+            "encoding",
+            "decodedLength",
+            "sha256"
+          ],
+          "properties": {
+            "encoding": {
+              "enum": [
+                "base64",
+                "hex"
+              ]
+            },
+            "decodedLength": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        }
+      }
+    },
+    "case": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "caseId",
+        "cohort",
+        "clientContractId",
+        "networkId",
+        "caseKind",
+        "applicability",
+        "exceptionIds",
+        "setup",
+        "operation",
+        "mockExchange",
+        "expected",
+        "responseDescriptor"
+      ],
+      "properties": {
+        "caseId": {
+          "$ref": "#/$defs/id"
+        },
+        "scheduleId": {
+          "$ref": "#/$defs/id"
+        },
+        "cohort": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "clientContractId": {
+          "$ref": "#/$defs/id"
+        },
+        "networkId": {
+          "$ref": "#/$defs/id"
+        },
+        "caseKind": {
+          "enum": [
+            "identity",
+            "request-response",
+            "surface",
+            "transport",
+            "error",
+            "numeric",
+            "binary",
+            "resource-boundary"
+          ]
+        },
+        "applicability": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "typescript",
+              "rust",
+              "python",
+              "go",
+              "ruby"
+            ]
+          }
+        },
+        "exceptionIds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/id"
+          }
+        },
+        "setup": {
+          "$ref": "#/$defs/setup"
+        },
+        "operation": {
+          "$ref": "#/$defs/operation"
+        },
+        "mockExchange": {
+          "$ref": "#/$defs/mockExchange"
+        },
+        "expected": {
+          "$ref": "#/$defs/expected"
+        },
+        "responseDescriptor": {
+          "$ref": "#/$defs/responseDescriptor"
+        },
+        "requestDescriptor": {
+          "$ref": "#/$defs/responseDescriptor"
+        }
+      }
+    },
+    "suiGrpcWeb": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contentType",
+        "methodPaths",
+        "limits",
+        "golden",
+        "boundaryCases",
+        "framingCases"
+      ],
+      "properties": {
+        "contentType": {
+          "const": "application/grpc-web+proto"
+        },
+        "methodPaths": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {
+            "$ref": "#/$defs/text"
+          }
+        },
+        "limits": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "requestBytes",
+            "responseBytes",
+            "trailerBytes",
+            "recursionDepth"
+          ],
+          "properties": {
+            "requestBytes": {
+              "const": 1048576
+            },
+            "responseBytes": {
+              "const": 8388608
+            },
+            "trailerBytes": {
+              "const": 8192
+            },
+            "recursionDepth": {
+              "const": 100
+            }
+          }
+        },
+        "golden": {
+          "type": "array",
+          "minItems": 4,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "methodPath",
+              "requestFrameHex",
+              "responseBodyHex",
+              "expected"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/$defs/id"
+              },
+              "methodPath": {
+                "$ref": "#/$defs/text"
+              },
+              "requestFrameHex": {
+                "type": "string",
+                "pattern": "^[0-9a-f]+$"
+              },
+              "responseBodyHex": {
+                "type": "string",
+                "pattern": "^[0-9a-f]+$"
+              },
+              "expected": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "boundaryCases": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "direction",
+              "size",
+              "outcome",
+              "oracleGoldenId"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/$defs/id"
+              },
+              "direction": {
+                "enum": [
+                  "request",
+                  "response",
+                  "trailer"
+                ]
+              },
+              "size": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "outcome": {
+                "$ref": "#/$defs/text"
+              },
+              "oracleGoldenId": {
+                "$ref": "#/$defs/id"
+              }
+            }
+          }
+        },
+        "framingCases": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "outcome",
+              "descriptor",
+              "chunkPlan",
+              "measurement"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/$defs/id"
+              },
+              "outcome": {
+                "$ref": "#/$defs/text"
+              },
+              "descriptor": {
+                "$ref": "#/$defs/descriptor"
+              },
+              "chunkPlan": {
+                "$ref": "#/$defs/chunkPlan"
+              },
+              "measurement": {
+                "$ref": "#/$defs/measurement"
+              }
+            }
+          }
+        }
+      }
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "chunkPlan": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/chunkSingle"
+        },
+        {
+          "$ref": "#/$defs/chunkFixed"
+        },
+        {
+          "$ref": "#/$defs/chunkExplicit"
+        },
+        {
+          "$ref": "#/$defs/chunkFirst"
+        }
+      ]
+    },
+    "measurement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "decodedLength",
+        "sha256"
+      ],
+      "properties": {
+        "decodedLength": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sha256": {
+          "$ref": "#/$defs/digest"
+        },
+        "maxContainerDepth": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "jsonTokenCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "numericTokenCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "numericTokens": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/numericEvent"
+          }
+        },
+        "numericCompact": {
+          "$ref": "#/$defs/numericCompact"
+        },
+        "scanOutcome": {
+          "$ref": "#/$defs/scanOutcome"
+        },
+        "trailerLength": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "grpcFrames": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/frame"
+          }
+        }
+      }
+    },
+    "descriptor": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "encoding",
+            "value",
+            "decodedLength",
+            "sha256"
+          ],
+          "properties": {
+            "kind": {
+              "const": "literal-bytes-v1"
+            },
+            "encoding": {
+              "enum": [
+                "utf8",
+                "hex",
+                "base64"
+              ]
+            },
+            "value": {
+              "type": "string"
+            },
+            "decodedLength": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "sha256": {
+              "$ref": "#/$defs/digest"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "encoding",
+            "value",
+            "decodedLength",
+            "sha256"
+          ],
+          "properties": {
+            "kind": {
+              "const": "sui-raw-bytes-v1"
+            },
+            "encoding": {
+              "const": "hex"
+            },
+            "value": {
+              "type": "string",
+              "pattern": "^[0-9a-f]*$",
+              "maxLength": 8192
+            },
+            "decodedLength": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 4096
+            },
+            "sha256": {
+              "$ref": "#/$defs/digest"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "prefix",
+            "repeatCount",
+            "suffix",
+            "decodedLength",
+            "sha256"
+          ],
+          "properties": {
+            "kind": {
+              "const": "json-space-pad-v1"
+            },
+            "prefix": {
+              "type": "string"
+            },
+            "repeatCount": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "suffix": {
+              "type": "string"
+            },
+            "decodedLength": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "sha256": {
+              "$ref": "#/$defs/digest"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "prefix",
+            "arrayDepth",
+            "scalar",
+            "suffix",
+            "decodedLength",
+            "maxContainerDepth",
+            "sha256"
+          ],
+          "properties": {
+            "kind": {
+              "const": "json-nested-arrays-v1"
+            },
+            "prefix": {
+              "type": "string"
+            },
+            "arrayDepth": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "scalar": {
+              "const": "0"
+            },
+            "suffix": {
+              "type": "string"
+            },
+            "decodedLength": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "maxContainerDepth": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "sha256": {
+              "$ref": "#/$defs/digest"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "prefix",
+            "elementCount",
+            "suffix",
+            "decodedLength",
+            "jsonTokenCount",
+            "sha256"
+          ],
+          "properties": {
+            "kind": {
+              "const": "json-zero-array-v1"
+            },
+            "prefix": {
+              "type": "string"
+            },
+            "elementCount": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "suffix": {
+              "type": "string"
+            },
+            "decodedLength": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "jsonTokenCount": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "sha256": {
+              "$ref": "#/$defs/digest"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "prefix",
+            "tokenForm",
+            "suffix",
+            "decodedLength",
+            "sha256",
+            "measurement"
+          ],
+          "properties": {
+            "kind": {
+              "const": "json-number-token-v1"
+            },
+            "prefix": {
+              "type": "string"
+            },
+            "tokenForm": {
+              "$ref": "#/$defs/tokenForm"
+            },
+            "suffix": {
+              "type": "string"
+            },
+            "decodedLength": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "sha256": {
+              "$ref": "#/$defs/digest"
+            },
+            "measurement": {
+              "$ref": "#/$defs/numberMeasurement"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "prefixHex",
+            "insertHex",
+            "suffixHex",
+            "decodedLength",
+            "sha256"
+          ],
+          "properties": {
+            "kind": {
+              "const": "invalid-utf8-json-v1"
+            },
+            "prefixHex": {
+              "type": "string",
+              "pattern": "^[0-9a-f]*$"
+            },
+            "insertHex": {
+              "type": "string",
+              "pattern": "^[0-9a-f]*$"
+            },
+            "suffixHex": {
+              "type": "string",
+              "pattern": "^[0-9a-f]*$"
+            },
+            "decodedLength": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "sha256": {
+              "$ref": "#/$defs/digest"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "objectByte",
+            "objectCount",
+            "versionPresent",
+            "version",
+            "decodedLength",
+            "sha256"
+          ],
+          "properties": {
+            "kind": {
+              "const": "sui-get-object-request-v1"
+            },
+            "objectByte": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1
+            },
+            "objectCount": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "versionPresent": {
+              "type": "boolean"
+            },
+            "version": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "decodedLength": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "sha256": {
+              "$ref": "#/$defs/digest"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "baseHex",
+            "fillerTag",
+            "fillerBytes",
+            "trailerHex",
+            "decodedLength",
+            "sha256"
+          ],
+          "properties": {
+            "kind": {
+              "const": "sui-padded-service-response-v1"
+            },
+            "baseHex": {
+              "type": "string",
+              "pattern": "^[0-9a-f]*$"
+            },
+            "fillerTag": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 255
+            },
+            "fillerBytes": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "trailerHex": {
+              "type": "string",
+              "pattern": "^[0-9a-f]*$"
+            },
+            "decodedLength": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "sha256": {
+              "$ref": "#/$defs/digest"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "dataHex",
+            "trailerPrefixHex",
+            "valueByte",
+            "valueCount",
+            "trailerSuffixHex",
+            "decodedLength",
+            "sha256"
+          ],
+          "properties": {
+            "kind": {
+              "const": "sui-sized-trailer-response-v1"
+            },
+            "dataHex": {
+              "type": "string",
+              "pattern": "^[0-9a-f]*$"
+            },
+            "trailerPrefixHex": {
+              "type": "string",
+              "pattern": "^[0-9a-f]*$"
+            },
+            "valueByte": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 255
+            },
+            "valueCount": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "trailerSuffixHex": {
+              "type": "string",
+              "pattern": "^[0-9a-f]*$"
+            },
+            "decodedLength": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "sha256": {
+              "$ref": "#/$defs/digest"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "baseGoldenId",
+            "operations",
+            "decodedLength",
+            "sha256"
+          ],
+          "properties": {
+            "kind": {
+              "const": "sui-frame-mutation-v1"
+            },
+            "baseGoldenId": {
+              "$ref": "#/$defs/id"
+            },
+            "operations": {
+              "type": "array",
+              "maxItems": 8,
+              "items": {
+                "$ref": "#/$defs/mutationOperation"
+              }
+            },
+            "decodedLength": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "sha256": {
+              "$ref": "#/$defs/digest"
+            }
+          }
+        }
+      ]
+    },
+    "responseDescriptor": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "oracleGoldenId"
+          ],
+          "properties": {
+            "kind": {
+              "const": "oracle-ref-v1"
+            },
+            "oracleGoldenId": {
+              "$ref": "#/$defs/id"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "descriptor",
+            "chunkPlan",
+            "measurement"
+          ],
+          "properties": {
+            "kind": {
+              "const": "inline-v1"
+            },
+            "descriptor": {
+              "$ref": "#/$defs/descriptor"
+            },
+            "chunkPlan": {
+              "$ref": "#/$defs/chunkPlan"
+            },
+            "measurement": {
+              "$ref": "#/$defs/measurement"
+            }
+          }
+        }
+      ]
+    },
+    "oracleGolden": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "goldenId",
+        "family",
+        "descriptor",
+        "chunkPlan",
+        "measurement",
+        "outcome"
+      ],
+      "properties": {
+        "goldenId": {
+          "$ref": "#/$defs/id"
+        },
+        "family": {
+          "enum": [
+            "bitcoin-json",
+            "sui-grpc-web",
+            "lifecycle"
+          ]
+        },
+        "descriptor": {
+          "$ref": "#/$defs/descriptor"
+        },
+        "chunkPlan": {
+          "$ref": "#/$defs/chunkPlan"
+        },
+        "measurement": {
+          "$ref": "#/$defs/measurement"
+        },
+        "outcome": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind"
+          ],
+          "properties": {
+            "kind": {
+              "$ref": "#/$defs/text"
+            },
+            "category": {
+              "$ref": "#/$defs/text"
+            }
+          }
+        }
+      }
+    },
+    "lifecycleSchedule": {
+      "oneOf": [
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/lifecycleCommon"
+            },
+            {
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "immediate-response",
+                    "redirect-to-second-server",
+                    "withhold-headers",
+                    "first-chunk-then-delay",
+                    "pre-cancel",
+                    "reset-before-headers",
+                    "reset-after-first-chunk"
+                  ]
+                }
+              },
+              "not": {
+                "required": [
+                  "barrier"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {
+              "$ref": "#/$defs/lifecycleCommon"
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "first-chunk-cancellation-barrier"
+                }
+              },
+              "required": [
+                "barrier"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "tokenFormLiteral": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "value"
+      ],
+      "properties": {
+        "kind": {
+          "const": "literal"
+        },
+        "value": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "tokenFormFraction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "fractionZeroCount",
+        "exponentZeroCount"
+      ],
+      "properties": {
+        "kind": {
+          "const": "fraction-zero-exponent-zero"
+        },
+        "fractionZeroCount": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 999
+        },
+        "exponentZeroCount": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 999
+        }
+      }
+    },
+    "tokenFormZeros": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "zeroCount"
+      ],
+      "properties": {
+        "kind": {
+          "const": "one-followed-by-zeros"
+        },
+        "zeroCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000
+        }
+      }
+    },
+    "tokenForm": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/tokenFormLiteral"
+        },
+        {
+          "$ref": "#/$defs/tokenFormFraction"
+        },
+        {
+          "$ref": "#/$defs/tokenFormZeros"
+        }
+      ]
+    },
+    "numberMeasurement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rawLength",
+        "coefficientDigits"
+      ],
+      "properties": {
+        "rawLength": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1025
+        },
+        "coefficientDigits": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1001
+        }
+      }
+    },
+    "numericTuple": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sign",
+        "coefficient",
+        "exponent10"
+      ],
+      "properties": {
+        "sign": {
+          "enum": [
+            -1,
+            0,
+            1
+          ]
+        },
+        "coefficient": {
+          "type": "string",
+          "pattern": "^(?:0|[1-9][0-9]*)$"
+        },
+        "exponent10": {
+          "type": "string",
+          "pattern": "^-?(?:0|[1-9][0-9]*)$"
+        }
+      }
+    },
+    "numericEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "offset",
+        "rawLength",
+        "rawTokenSha256",
+        "coefficientDigits",
+        "explicitExponent",
+        "canonicalTuple",
+        "invalidReason"
+      ],
+      "properties": {
+        "offset": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "rawLength": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1025
+        },
+        "rawToken": {
+          "type": "string"
+        },
+        "rawTokenSha256": {
+          "$ref": "#/$defs/digest"
+        },
+        "coefficientDigits": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1001
+        },
+        "explicitExponent": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[+-]?(?:0|[1-9][0-9]*)$"
+        },
+        "canonicalTuple": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/numericTuple"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "invalidReason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "numericCompactRepeated": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "firstOffset",
+        "repeatedStart",
+        "repeatedStride",
+        "repeatedCount",
+        "repeatedToken",
+        "lastOffset"
+      ],
+      "properties": {
+        "kind": {
+          "const": "repeated-zero-v1"
+        },
+        "firstOffset": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "repeatedStart": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "repeatedStride": {
+          "const": 2
+        },
+        "repeatedCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "repeatedToken": {
+          "const": "0"
+        },
+        "lastOffset": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "numericCompactBounded": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "first",
+        "last"
+      ],
+      "properties": {
+        "kind": {
+          "const": "bounded-events-v1"
+        },
+        "first": {
+          "$ref": "#/$defs/numericEvent"
+        },
+        "last": {
+          "$ref": "#/$defs/numericEvent"
+        }
+      }
+    },
+    "numericCompact": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/numericCompactRepeated"
+        },
+        {
+          "$ref": "#/$defs/numericCompactBounded"
+        }
+      ]
+    },
+    "frame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "marker",
+        "declaredLength",
+        "actualLength",
+        "offset"
+      ],
+      "properties": {
+        "marker": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 255
+        },
+        "declaredLength": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "actualLength": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4294967295
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "scanOutcomeValid": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "const": "valid-utf8"
+        }
+      }
+    },
+    "scanOutcomeInvalid": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "firstInvalidByteOffset"
+      ],
+      "properties": {
+        "kind": {
+          "const": "invalid-utf8"
+        },
+        "firstInvalidByteOffset": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "reason": {
+          "type": "string"
+        }
+      }
+    },
+    "scanOutcome": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/scanOutcomeValid"
+        },
+        {
+          "$ref": "#/$defs/scanOutcomeInvalid"
+        }
+      ]
+    },
+    "mutationSetByte": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "offset",
+        "value"
+      ],
+      "properties": {
+        "kind": {
+          "const": "set-byte"
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "value": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 255
+        }
+      }
+    },
+    "mutationSetU32": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "offset",
+        "value"
+      ],
+      "properties": {
+        "kind": {
+          "const": "set-u32be"
+        },
+        "offset": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "value": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4294967295
+        }
+      }
+    },
+    "mutationAppend": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "value"
+      ],
+      "properties": {
+        "kind": {
+          "const": "append-hex"
+        },
+        "value": {
+          "type": "string",
+          "pattern": "^[0-9a-f]*$"
+        }
+      }
+    },
+    "mutationTruncate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "decodedLength"
+      ],
+      "properties": {
+        "kind": {
+          "const": "truncate-to"
+        },
+        "decodedLength": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "mutationDuplicate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "frameIndex",
+        "insertAtFrameIndex"
+      ],
+      "properties": {
+        "kind": {
+          "const": "duplicate-frame"
+        },
+        "frameIndex": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "insertAtFrameIndex": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "mutationReorder": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "firstFrameIndex",
+        "secondFrameIndex"
+      ],
+      "properties": {
+        "kind": {
+          "const": "reorder-two-frames"
+        },
+        "firstFrameIndex": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "secondFrameIndex": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "mutationOperation": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/mutationSetByte"
+        },
+        {
+          "$ref": "#/$defs/mutationSetU32"
+        },
+        {
+          "$ref": "#/$defs/mutationAppend"
+        },
+        {
+          "$ref": "#/$defs/mutationTruncate"
+        },
+        {
+          "$ref": "#/$defs/mutationDuplicate"
+        },
+        {
+          "$ref": "#/$defs/mutationReorder"
+        }
+      ]
+    },
+    "chunkSingle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "const": "single-v1"
+        }
+      }
+    },
+    "chunkFixed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "chunkBytes"
+      ],
+      "properties": {
+        "kind": {
+          "const": "fixed-v1"
+        },
+        "chunkBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65536
+        }
+      }
+    },
+    "chunkExplicit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "lengths"
+      ],
+      "properties": {
+        "kind": {
+          "const": "explicit-v1"
+        },
+        "lengths": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "items": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 65536
+          }
+        }
+      }
+    },
+    "chunkFirst": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "firstChunkBytes",
+        "chunkBytes"
+      ],
+      "properties": {
+        "kind": {
+          "const": "first-then-block-v1"
+        },
+        "firstChunkBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65536
+        },
+        "chunkBytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65536
+        }
+      }
+    },
+    "descriptorLiteral": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "encoding",
+        "value",
+        "decodedLength",
+        "sha256"
+      ],
+      "properties": {
+        "kind": {
+          "const": "literal-bytes-v1"
+        },
+        "encoding": {
+          "enum": [
+            "utf8",
+            "hex",
+            "base64"
+          ]
+        },
+        "value": {
+          "type": "string"
+        },
+        "decodedLength": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sha256": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "descriptorSpace": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "prefix",
+        "repeatCount",
+        "suffix",
+        "decodedLength",
+        "sha256"
+      ],
+      "properties": {
+        "kind": {
+          "const": "json-space-pad-v1"
+        },
+        "prefix": {
+          "type": "string"
+        },
+        "repeatCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "suffix": {
+          "type": "string"
+        },
+        "decodedLength": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sha256": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "descriptorNested": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "prefix",
+        "arrayDepth",
+        "scalar",
+        "suffix",
+        "decodedLength",
+        "maxContainerDepth",
+        "sha256"
+      ],
+      "properties": {
+        "kind": {
+          "const": "json-nested-arrays-v1"
+        },
+        "prefix": {
+          "type": "string"
+        },
+        "arrayDepth": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "scalar": {
+          "const": "0"
+        },
+        "suffix": {
+          "type": "string"
+        },
+        "decodedLength": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maxContainerDepth": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sha256": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "descriptorZero": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "prefix",
+        "elementCount",
+        "suffix",
+        "decodedLength",
+        "jsonTokenCount",
+        "sha256"
+      ],
+      "properties": {
+        "kind": {
+          "const": "json-zero-array-v1"
+        },
+        "prefix": {
+          "type": "string"
+        },
+        "elementCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "suffix": {
+          "type": "string"
+        },
+        "decodedLength": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "jsonTokenCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sha256": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "descriptorNumber": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "prefix",
+        "tokenForm",
+        "suffix",
+        "decodedLength",
+        "sha256",
+        "measurement"
+      ],
+      "properties": {
+        "kind": {
+          "const": "json-number-token-v1"
+        },
+        "prefix": {
+          "type": "string"
+        },
+        "tokenForm": {
+          "$ref": "#/$defs/tokenForm"
+        },
+        "suffix": {
+          "type": "string"
+        },
+        "decodedLength": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sha256": {
+          "$ref": "#/$defs/digest"
+        },
+        "measurement": {
+          "$ref": "#/$defs/numberMeasurement"
+        }
+      }
+    },
+    "descriptorInvalid": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "prefixHex",
+        "insertHex",
+        "suffixHex",
+        "decodedLength",
+        "sha256"
+      ],
+      "properties": {
+        "kind": {
+          "const": "invalid-utf8-json-v1"
+        },
+        "prefixHex": {
+          "type": "string",
+          "pattern": "^[0-9a-f]*$"
+        },
+        "insertHex": {
+          "type": "string",
+          "pattern": "^[0-9a-f]*$"
+        },
+        "suffixHex": {
+          "type": "string",
+          "pattern": "^[0-9a-f]*$"
+        },
+        "decodedLength": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sha256": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "descriptorSuiRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "objectByte",
+        "objectCount",
+        "versionPresent",
+        "version",
+        "decodedLength",
+        "sha256"
+      ],
+      "properties": {
+        "kind": {
+          "const": "sui-get-object-request-v1"
+        },
+        "objectByte": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1
+        },
+        "objectCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "versionPresent": {
+          "type": "boolean"
+        },
+        "version": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "decodedLength": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sha256": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "descriptorSuiPadded": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "baseHex",
+        "fillerTag",
+        "fillerBytes",
+        "trailerHex",
+        "decodedLength",
+        "sha256"
+      ],
+      "properties": {
+        "kind": {
+          "const": "sui-padded-service-response-v1"
+        },
+        "baseHex": {
+          "type": "string",
+          "pattern": "^[0-9a-f]*$"
+        },
+        "fillerTag": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 255
+        },
+        "fillerBytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "trailerHex": {
+          "type": "string",
+          "pattern": "^[0-9a-f]*$"
+        },
+        "decodedLength": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sha256": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "descriptorSuiTrailer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "dataHex",
+        "trailerPrefixHex",
+        "valueByte",
+        "valueCount",
+        "trailerSuffixHex",
+        "decodedLength",
+        "sha256"
+      ],
+      "properties": {
+        "kind": {
+          "const": "sui-sized-trailer-response-v1"
+        },
+        "dataHex": {
+          "type": "string",
+          "pattern": "^[0-9a-f]*$"
+        },
+        "trailerPrefixHex": {
+          "type": "string",
+          "pattern": "^[0-9a-f]*$"
+        },
+        "valueByte": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 255
+        },
+        "valueCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "trailerSuffixHex": {
+          "type": "string",
+          "pattern": "^[0-9a-f]*$"
+        },
+        "decodedLength": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sha256": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "descriptorMutation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "baseGoldenId",
+        "operations",
+        "decodedLength",
+        "sha256"
+      ],
+      "properties": {
+        "kind": {
+          "const": "sui-frame-mutation-v1"
+        },
+        "baseGoldenId": {
+          "$ref": "#/$defs/id"
+        },
+        "operations": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "$ref": "#/$defs/mutationOperation"
+          }
+        },
+        "decodedLength": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sha256": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "lifecycleBarrier": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "firstChunkSignal",
+        "cancelObserved",
+        "release"
+      ],
+      "properties": {
+        "firstChunkSignal": {
+          "$ref": "#/$defs/text"
+        },
+        "cancelObserved": {
+          "$ref": "#/$defs/text"
+        },
+        "release": {
+          "$ref": "#/$defs/text"
+        }
+      }
+    },
+    "lifecycleCommon": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "timeoutMs",
+        "delayMs",
+        "expectedCalls",
+        "expectedDestinationCalls",
+        "expectedAttempts",
+        "bodyClosed",
+        "connectionClosed",
+        "outcome"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "kind": {
+          "enum": [
+            "immediate-response",
+            "redirect-to-second-server",
+            "withhold-headers",
+            "first-chunk-then-delay",
+            "pre-cancel",
+            "first-chunk-cancellation-barrier",
+            "reset-before-headers",
+            "reset-after-first-chunk"
+          ]
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "delayMs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "expectedCalls": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "expectedDestinationCalls": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "expectedAttempts": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "bodyClosed": {
+          "type": "boolean"
+        },
+        "connectionClosed": {
+          "type": "boolean"
+        },
+        "outcome": {
+          "$ref": "#/$defs/text"
+        },
+        "barrier": {
+          "$ref": "#/$defs/lifecycleBarrier"
+        }
+      }
+    }
+  }
+}

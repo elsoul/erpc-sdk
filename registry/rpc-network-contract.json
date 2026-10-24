@@ -1,0 +1,3734 @@
+{
+  "schemaVersion": 1,
+  "contractVersion": "1.0.0",
+  "transportContractVersion": "1.0",
+  "asOfDate": "2026-10-23",
+  "contentDigest": "1cbe2b4a07c1d91b4bd40ea9501aa3c1f609489adde60baf1fea4dc89f506e67",
+  "claimBoundaries": {
+    "inventoryIsReadiness": false,
+    "contractIsImplementationProof": false,
+    "generatedProjectionIsNativeExecutionProof": false,
+    "packageStatusIncluded": false,
+    "liveObservationIncluded": false,
+    "supportClaimIncluded": false
+  },
+  "methodSets": [
+    {
+      "methodSetId": "legacy-ethereum-current",
+      "kind": "legacy-reference",
+      "catalogRef": "scripts/verify-method-parity.mjs"
+    },
+    {
+      "methodSetId": "legacy-solana-current",
+      "kind": "legacy-reference",
+      "catalogRef": "scripts/verify-method-parity.mjs"
+    },
+    {
+      "methodSetId": "legacy-avalanche-current",
+      "kind": "legacy-reference",
+      "catalogRef": "scripts/verify-method-parity.mjs"
+    },
+    {
+      "methodSetId": "bitcoin-read12",
+      "kind": "expanded",
+      "capabilities": [
+        {
+          "capabilityId": "bitcoin-estimatesmartfee",
+          "publicOperation": "estimateSmartFee",
+          "wireOperation": "estimatesmartfee",
+          "requestEncoding": "json-rpc",
+          "parameterShape": "positional",
+          "responseShape": "exact-json",
+          "effect": "read",
+          "publicNames": {
+            "typescript": "estimateSmartFee",
+            "rust": "estimate_smart_fee",
+            "python": "estimate_smart_fee",
+            "go": "EstimateSmartFee",
+            "ruby": "estimate_smart_fee"
+          },
+          "parameterPolicy": {
+            "kind": "positional",
+            "wireParams": "positional",
+            "nativeParameterTypes": {
+              "typescript": "positional",
+              "rust": "positional",
+              "python": "positional",
+              "go": "positional",
+              "ruby": "positional"
+            }
+          },
+          "nativeResultTypes": {
+            "typescript": "BitcoinJsonValue",
+            "rust": "serde_json::Value",
+            "python": "BitcoinJsonValue",
+            "go": "BitcoinJsonValue",
+            "ruby": "BitcoinJsonValue"
+          }
+        },
+        {
+          "capabilityId": "bitcoin-getbestblockhash",
+          "publicOperation": "getBestBlockHash",
+          "wireOperation": "getbestblockhash",
+          "requestEncoding": "json-rpc",
+          "parameterShape": "none",
+          "responseShape": "string",
+          "effect": "read",
+          "publicNames": {
+            "typescript": "getBestBlockHash",
+            "rust": "get_best_block_hash",
+            "python": "get_best_block_hash",
+            "go": "GetBestBlockHash",
+            "ruby": "get_best_block_hash"
+          },
+          "parameterPolicy": {
+            "kind": "none",
+            "wireParams": [],
+            "nativeParameterTypes": {
+              "typescript": "[]",
+              "rust": "[]",
+              "python": "[]",
+              "go": "[]",
+              "ruby": "[]"
+            }
+          },
+          "nativeResultTypes": {
+            "typescript": "string",
+            "rust": "String",
+            "python": "str",
+            "go": "string",
+            "ruby": "String"
+          }
+        },
+        {
+          "capabilityId": "bitcoin-getblock",
+          "publicOperation": "getBlock",
+          "wireOperation": "getblock",
+          "requestEncoding": "json-rpc",
+          "parameterShape": "positional",
+          "responseShape": "exact-json",
+          "effect": "read",
+          "publicNames": {
+            "typescript": "getBlock",
+            "rust": "get_block",
+            "python": "get_block",
+            "go": "GetBlock",
+            "ruby": "get_block"
+          },
+          "parameterPolicy": {
+            "kind": "positional",
+            "wireParams": "positional",
+            "nativeParameterTypes": {
+              "typescript": "positional",
+              "rust": "positional",
+              "python": "positional",
+              "go": "positional",
+              "ruby": "positional"
+            }
+          },
+          "nativeResultTypes": {
+            "typescript": "BitcoinJsonValue",
+            "rust": "serde_json::Value",
+            "python": "BitcoinJsonValue",
+            "go": "BitcoinJsonValue",
+            "ruby": "BitcoinJsonValue"
+          }
+        },
+        {
+          "capabilityId": "bitcoin-getblockchaininfo",
+          "publicOperation": "getBlockchainInfo",
+          "wireOperation": "getblockchaininfo",
+          "requestEncoding": "json-rpc",
+          "parameterShape": "none",
+          "responseShape": "exact-json",
+          "effect": "read",
+          "publicNames": {
+            "typescript": "getBlockchainInfo",
+            "rust": "get_blockchain_info",
+            "python": "get_blockchain_info",
+            "go": "GetBlockchainInfo",
+            "ruby": "get_blockchain_info"
+          },
+          "parameterPolicy": {
+            "kind": "none",
+            "wireParams": [],
+            "nativeParameterTypes": {
+              "typescript": "[]",
+              "rust": "[]",
+              "python": "[]",
+              "go": "[]",
+              "ruby": "[]"
+            }
+          },
+          "nativeResultTypes": {
+            "typescript": "BitcoinJsonValue",
+            "rust": "serde_json::Value",
+            "python": "BitcoinJsonValue",
+            "go": "BitcoinJsonValue",
+            "ruby": "BitcoinJsonValue"
+          }
+        },
+        {
+          "capabilityId": "bitcoin-getblockcount",
+          "publicOperation": "getBlockCount",
+          "wireOperation": "getblockcount",
+          "requestEncoding": "json-rpc",
+          "parameterShape": "none",
+          "responseShape": "u64-integer",
+          "effect": "read",
+          "publicNames": {
+            "typescript": "getBlockCount",
+            "rust": "get_block_count",
+            "python": "get_block_count",
+            "go": "GetBlockCount",
+            "ruby": "get_block_count"
+          },
+          "parameterPolicy": {
+            "kind": "none",
+            "wireParams": [],
+            "nativeParameterTypes": {
+              "typescript": "[]",
+              "rust": "[]",
+              "python": "[]",
+              "go": "[]",
+              "ruby": "[]"
+            }
+          },
+          "nativeResultTypes": {
+            "typescript": "bigint",
+            "rust": "u64",
+            "python": "int-u64",
+            "go": "uint64",
+            "ruby": "Integer-u64"
+          }
+        },
+        {
+          "capabilityId": "bitcoin-getblockhash",
+          "publicOperation": "getBlockHash",
+          "wireOperation": "getblockhash",
+          "requestEncoding": "json-rpc",
+          "parameterShape": "positional",
+          "responseShape": "string",
+          "effect": "read",
+          "publicNames": {
+            "typescript": "getBlockHash",
+            "rust": "get_block_hash",
+            "python": "get_block_hash",
+            "go": "GetBlockHash",
+            "ruby": "get_block_hash"
+          },
+          "parameterPolicy": {
+            "kind": "positional",
+            "wireParams": "positional",
+            "nativeParameterTypes": {
+              "typescript": "positional",
+              "rust": "positional",
+              "python": "positional",
+              "go": "positional",
+              "ruby": "positional"
+            }
+          },
+          "nativeResultTypes": {
+            "typescript": "string",
+            "rust": "String",
+            "python": "str",
+            "go": "string",
+            "ruby": "String"
+          }
+        },
+        {
+          "capabilityId": "bitcoin-getblockheader",
+          "publicOperation": "getBlockHeader",
+          "wireOperation": "getblockheader",
+          "requestEncoding": "json-rpc",
+          "parameterShape": "positional",
+          "responseShape": "exact-json",
+          "effect": "read",
+          "publicNames": {
+            "typescript": "getBlockHeader",
+            "rust": "get_block_header",
+            "python": "get_block_header",
+            "go": "GetBlockHeader",
+            "ruby": "get_block_header"
+          },
+          "parameterPolicy": {
+            "kind": "positional",
+            "wireParams": "positional",
+            "nativeParameterTypes": {
+              "typescript": "positional",
+              "rust": "positional",
+              "python": "positional",
+              "go": "positional",
+              "ruby": "positional"
+            }
+          },
+          "nativeResultTypes": {
+            "typescript": "BitcoinJsonValue",
+            "rust": "serde_json::Value",
+            "python": "BitcoinJsonValue",
+            "go": "BitcoinJsonValue",
+            "ruby": "BitcoinJsonValue"
+          }
+        },
+        {
+          "capabilityId": "bitcoin-getmempoolinfo",
+          "publicOperation": "getMempoolInfo",
+          "wireOperation": "getmempoolinfo",
+          "requestEncoding": "json-rpc",
+          "parameterShape": "none",
+          "responseShape": "exact-json",
+          "effect": "read",
+          "publicNames": {
+            "typescript": "getMempoolInfo",
+            "rust": "get_mempool_info",
+            "python": "get_mempool_info",
+            "go": "GetMempoolInfo",
+            "ruby": "get_mempool_info"
+          },
+          "parameterPolicy": {
+            "kind": "none",
+            "wireParams": [],
+            "nativeParameterTypes": {
+              "typescript": "[]",
+              "rust": "[]",
+              "python": "[]",
+              "go": "[]",
+              "ruby": "[]"
+            }
+          },
+          "nativeResultTypes": {
+            "typescript": "BitcoinJsonValue",
+            "rust": "serde_json::Value",
+            "python": "BitcoinJsonValue",
+            "go": "BitcoinJsonValue",
+            "ruby": "BitcoinJsonValue"
+          }
+        },
+        {
+          "capabilityId": "bitcoin-getnetworkinfo",
+          "publicOperation": "getNetworkInfo",
+          "wireOperation": "getnetworkinfo",
+          "requestEncoding": "json-rpc",
+          "parameterShape": "none",
+          "responseShape": "exact-json",
+          "effect": "read",
+          "publicNames": {
+            "typescript": "getNetworkInfo",
+            "rust": "get_network_info",
+            "python": "get_network_info",
+            "go": "GetNetworkInfo",
+            "ruby": "get_network_info"
+          },
+          "parameterPolicy": {
+            "kind": "none",
+            "wireParams": [],
+            "nativeParameterTypes": {
+              "typescript": "[]",
+              "rust": "[]",
+              "python": "[]",
+              "go": "[]",
+              "ruby": "[]"
+            }
+          },
+          "nativeResultTypes": {
+            "typescript": "BitcoinJsonValue",
+            "rust": "serde_json::Value",
+            "python": "BitcoinJsonValue",
+            "go": "BitcoinJsonValue",
+            "ruby": "BitcoinJsonValue"
+          }
+        },
+        {
+          "capabilityId": "bitcoin-getrawmempool",
+          "publicOperation": "getRawMempool",
+          "wireOperation": "getrawmempool",
+          "requestEncoding": "json-rpc",
+          "parameterShape": "positional",
+          "responseShape": "exact-json",
+          "effect": "read",
+          "publicNames": {
+            "typescript": "getRawMempool",
+            "rust": "get_raw_mempool",
+            "python": "get_raw_mempool",
+            "go": "GetRawMempool",
+            "ruby": "get_raw_mempool"
+          },
+          "parameterPolicy": {
+            "kind": "positional",
+            "wireParams": "positional",
+            "nativeParameterTypes": {
+              "typescript": "positional",
+              "rust": "positional",
+              "python": "positional",
+              "go": "positional",
+              "ruby": "positional"
+            }
+          },
+          "nativeResultTypes": {
+            "typescript": "BitcoinJsonValue",
+            "rust": "serde_json::Value",
+            "python": "BitcoinJsonValue",
+            "go": "BitcoinJsonValue",
+            "ruby": "BitcoinJsonValue"
+          }
+        },
+        {
+          "capabilityId": "bitcoin-getrawtransaction",
+          "publicOperation": "getRawTransaction",
+          "wireOperation": "getrawtransaction",
+          "requestEncoding": "json-rpc",
+          "parameterShape": "positional",
+          "responseShape": "exact-json",
+          "effect": "read",
+          "publicNames": {
+            "typescript": "getRawTransaction",
+            "rust": "get_raw_transaction",
+            "python": "get_raw_transaction",
+            "go": "GetRawTransaction",
+            "ruby": "get_raw_transaction"
+          },
+          "parameterPolicy": {
+            "kind": "positional",
+            "wireParams": "positional",
+            "nativeParameterTypes": {
+              "typescript": "positional",
+              "rust": "positional",
+              "python": "positional",
+              "go": "positional",
+              "ruby": "positional"
+            }
+          },
+          "nativeResultTypes": {
+            "typescript": "BitcoinJsonValue",
+            "rust": "serde_json::Value",
+            "python": "BitcoinJsonValue",
+            "go": "BitcoinJsonValue",
+            "ruby": "BitcoinJsonValue"
+          }
+        },
+        {
+          "capabilityId": "bitcoin-gettxout",
+          "publicOperation": "getTxOut",
+          "wireOperation": "gettxout",
+          "requestEncoding": "json-rpc",
+          "parameterShape": "positional",
+          "responseShape": "nullable-exact-json",
+          "effect": "read",
+          "publicNames": {
+            "typescript": "getTxOut",
+            "rust": "get_tx_out",
+            "python": "get_tx_out",
+            "go": "GetTxOut",
+            "ruby": "get_tx_out"
+          },
+          "parameterPolicy": {
+            "kind": "positional",
+            "wireParams": "positional",
+            "nativeParameterTypes": {
+              "typescript": "positional",
+              "rust": "positional",
+              "python": "positional",
+              "go": "positional",
+              "ruby": "positional"
+            }
+          },
+          "nativeResultTypes": {
+            "typescript": "BitcoinJsonValue|null",
+            "rust": "serde_json::Value|null",
+            "python": "BitcoinJsonValue|None",
+            "go": "BitcoinJsonValue|nil",
+            "ruby": "BitcoinJsonValue|nil"
+          }
+        }
+      ]
+    },
+    {
+      "methodSetId": "sealed-evm-read3",
+      "kind": "expanded",
+      "capabilities": [
+        {
+          "capabilityId": "evm-eth-call",
+          "publicOperation": "eth_call",
+          "wireOperation": "eth_call",
+          "requestEncoding": "json-rpc",
+          "parameterShape": "positional",
+          "responseShape": "raw-hex",
+          "effect": "read",
+          "publicNames": {
+            "typescript": "eth_call",
+            "rust": "eth_call",
+            "python": "eth_call",
+            "go": "EthCall",
+            "ruby": "eth_call"
+          },
+          "parameterPolicy": {
+            "kind": "positional",
+            "wireParams": "positional",
+            "nativeParameterTypes": {
+              "typescript": "positional",
+              "rust": "positional",
+              "python": "positional",
+              "go": "positional",
+              "ruby": "positional"
+            }
+          },
+          "nativeResultTypes": {
+            "typescript": "string",
+            "rust": "String",
+            "python": "str",
+            "go": "string",
+            "ruby": "String"
+          }
+        },
+        {
+          "capabilityId": "evm-eth-chain-id",
+          "publicOperation": "eth_chainId",
+          "wireOperation": "eth_chainId",
+          "requestEncoding": "json-rpc",
+          "parameterShape": "none",
+          "responseShape": "raw-hex",
+          "effect": "read",
+          "publicNames": {
+            "typescript": "eth_chainId",
+            "rust": "eth_chain_id",
+            "python": "eth_chain_id",
+            "go": "EthChainID",
+            "ruby": "eth_chain_id"
+          },
+          "parameterPolicy": {
+            "kind": "none",
+            "wireParams": [],
+            "nativeParameterTypes": {
+              "typescript": "[]",
+              "rust": "[]",
+              "python": "[]",
+              "go": "[]",
+              "ruby": "[]"
+            }
+          },
+          "nativeResultTypes": {
+            "typescript": "string",
+            "rust": "String",
+            "python": "str",
+            "go": "string",
+            "ruby": "String"
+          }
+        },
+        {
+          "capabilityId": "evm-eth-get-balance",
+          "publicOperation": "eth_getBalance",
+          "wireOperation": "eth_getBalance",
+          "requestEncoding": "json-rpc",
+          "parameterShape": "positional",
+          "responseShape": "raw-hex",
+          "effect": "read",
+          "publicNames": {
+            "typescript": "eth_getBalance",
+            "rust": "eth_get_balance",
+            "python": "eth_get_balance",
+            "go": "EthGetBalance",
+            "ruby": "eth_get_balance"
+          },
+          "parameterPolicy": {
+            "kind": "positional",
+            "wireParams": "positional",
+            "nativeParameterTypes": {
+              "typescript": "positional",
+              "rust": "positional",
+              "python": "positional",
+              "go": "positional",
+              "ruby": "positional"
+            }
+          },
+          "nativeResultTypes": {
+            "typescript": "string",
+            "rust": "String",
+            "python": "str",
+            "go": "string",
+            "ruby": "String"
+          }
+        }
+      ]
+    },
+    {
+      "methodSetId": "near-read3",
+      "kind": "expanded",
+      "capabilities": [
+        {
+          "capabilityId": "near-status",
+          "publicOperation": "status",
+          "wireOperation": "status",
+          "requestEncoding": "json-rpc",
+          "parameterShape": "none",
+          "responseShape": "exact-json",
+          "effect": "read",
+          "publicNames": {
+            "typescript": "status",
+            "rust": "status",
+            "python": "status",
+            "go": "Status",
+            "ruby": "status"
+          },
+          "parameterPolicy": {
+            "kind": "none",
+            "wireParams": [],
+            "nativeParameterTypes": {
+              "typescript": "[]",
+              "rust": "[]",
+              "python": "[]",
+              "go": "[]",
+              "ruby": "[]"
+            }
+          },
+          "nativeResultTypes": {
+            "typescript": "NearStatus",
+            "rust": "NearStatus",
+            "python": "NearStatus",
+            "go": "NearStatus",
+            "ruby": "NearStatus"
+          }
+        },
+        {
+          "capabilityId": "near-block",
+          "publicOperation": "block",
+          "wireOperation": "block",
+          "requestEncoding": "json-rpc",
+          "parameterShape": "fixed-named",
+          "responseShape": "exact-json",
+          "effect": "read",
+          "publicNames": {
+            "typescript": "block",
+            "rust": "block",
+            "python": "block",
+            "go": "Block",
+            "ruby": "block"
+          },
+          "parameterPolicy": {
+            "kind": "fixed-named",
+            "wireParams": "fixed-named",
+            "nativeParameterTypes": {
+              "typescript": "fixed-named",
+              "rust": "fixed-named",
+              "python": "fixed-named",
+              "go": "fixed-named",
+              "ruby": "fixed-named"
+            }
+          },
+          "nativeResultTypes": {
+            "typescript": "NearBlockView",
+            "rust": "NearBlockView",
+            "python": "NearBlockView",
+            "go": "NearBlockView",
+            "ruby": "NearBlockView"
+          }
+        },
+        {
+          "capabilityId": "near-view-account",
+          "publicOperation": "view_account",
+          "wireOperation": "query",
+          "requestEncoding": "json-rpc",
+          "parameterShape": "fixed-named",
+          "responseShape": "exact-json",
+          "effect": "read",
+          "publicNames": {
+            "typescript": "viewAccount",
+            "rust": "view_account",
+            "python": "view_account",
+            "go": "ViewAccount",
+            "ruby": "view_account"
+          },
+          "parameterPolicy": {
+            "kind": "fixed-named",
+            "wireParams": "fixed-named",
+            "nativeParameterTypes": {
+              "typescript": "fixed-named",
+              "rust": "fixed-named",
+              "python": "fixed-named",
+              "go": "fixed-named",
+              "ruby": "fixed-named"
+            }
+          },
+          "nativeResultTypes": {
+            "typescript": "NearAccountView",
+            "rust": "NearAccountView",
+            "python": "NearAccountView",
+            "go": "NearAccountView",
+            "ruby": "NearAccountView"
+          }
+        }
+      ]
+    },
+    {
+      "methodSetId": "sui-unary3",
+      "kind": "expanded",
+      "capabilities": [
+        {
+          "capabilityId": "sui-get-service-info",
+          "publicOperation": "getServiceInfo",
+          "wireOperation": "/sui.rpc.v2.LedgerService/GetServiceInfo",
+          "requestEncoding": "grpc-web-unary",
+          "parameterShape": "none",
+          "responseShape": "bounded-protobuf",
+          "effect": "read",
+          "publicNames": {
+            "typescript": "getServiceInfo",
+            "rust": "get_service_info",
+            "python": "get_service_info",
+            "go": "GetServiceInfo",
+            "ruby": "get_service_info"
+          },
+          "parameterPolicy": {
+            "kind": "none",
+            "wireParams": [],
+            "nativeParameterTypes": {
+              "typescript": "[]",
+              "rust": "[]",
+              "python": "[]",
+              "go": "[]",
+              "ruby": "[]"
+            }
+          },
+          "nativeResultTypes": {
+            "typescript": "SuiServiceInfo",
+            "rust": "SuiServiceInfo",
+            "python": "SuiServiceInfo",
+            "go": "SuiServiceInfo",
+            "ruby": "SuiServiceInfo"
+          }
+        },
+        {
+          "capabilityId": "sui-get-object",
+          "publicOperation": "getObject",
+          "wireOperation": "/sui.rpc.v2.LedgerService/GetObject",
+          "requestEncoding": "grpc-web-unary",
+          "parameterShape": "fixed-named",
+          "responseShape": "bounded-protobuf",
+          "effect": "read",
+          "publicNames": {
+            "typescript": "getObject",
+            "rust": "get_object",
+            "python": "get_object",
+            "go": "GetObject",
+            "ruby": "get_object"
+          },
+          "parameterPolicy": {
+            "kind": "fixed-named",
+            "wireParams": "fixed-named",
+            "nativeParameterTypes": {
+              "typescript": "fixed-named",
+              "rust": "fixed-named",
+              "python": "fixed-named",
+              "go": "fixed-named",
+              "ruby": "fixed-named"
+            }
+          },
+          "nativeResultTypes": {
+            "typescript": "SuiObjectSummary",
+            "rust": "SuiObjectSummary",
+            "python": "SuiObjectSummary",
+            "go": "SuiObjectSummary",
+            "ruby": "SuiObjectSummary"
+          }
+        },
+        {
+          "capabilityId": "sui-get-balance",
+          "publicOperation": "getBalance",
+          "wireOperation": "/sui.rpc.v2.StateService/GetBalance",
+          "requestEncoding": "grpc-web-unary",
+          "parameterShape": "fixed-named",
+          "responseShape": "bounded-protobuf",
+          "effect": "read",
+          "publicNames": {
+            "typescript": "getBalance",
+            "rust": "get_balance",
+            "python": "get_balance",
+            "go": "GetBalance",
+            "ruby": "get_balance"
+          },
+          "parameterPolicy": {
+            "kind": "fixed-named",
+            "wireParams": "fixed-named",
+            "nativeParameterTypes": {
+              "typescript": "fixed-named",
+              "rust": "fixed-named",
+              "python": "fixed-named",
+              "go": "fixed-named",
+              "ruby": "fixed-named"
+            }
+          },
+          "nativeResultTypes": {
+            "typescript": "SuiBalance",
+            "rust": "SuiBalance",
+            "python": "SuiBalance",
+            "go": "SuiBalance",
+            "ruby": "SuiBalance"
+          }
+        }
+      ]
+    }
+  ],
+  "transportProfiles": [
+    {
+      "transportProfileId": "hosted-jsonrpc-query-v1",
+      "protocol": "json-rpc-http",
+      "targetRule": "configured-chain-root",
+      "authPolicy": "api-key-query",
+      "headerPolicy": "global-hosted-only",
+      "attempts": 1,
+      "redirectPolicy": "reject",
+      "retryPolicy": "none",
+      "responsePolicy": "json-rpc-envelope-v1",
+      "timeoutPolicy": "total-request-deadline-v1",
+      "cancellationPolicy": "language-native-stream-cancel-v1",
+      "privacyPolicyId": "sealed-origin-root-v1"
+    },
+    {
+      "transportProfileId": "hosted-bitcoin-bearer-v1",
+      "protocol": "json-rpc-http",
+      "targetRule": "shared-resolved-endpoint-plus-bitcoin",
+      "authPolicy": "bearer-header-no-query",
+      "headerPolicy": "replace-global-authorization",
+      "attempts": 1,
+      "redirectPolicy": "reject",
+      "retryPolicy": "none",
+      "responsePolicy": "bitcoin-json-rpc-envelope-v1",
+      "timeoutPolicy": "total-request-deadline-v1",
+      "cancellationPolicy": "language-native-stream-cancel-v1",
+      "privacyPolicyId": "sealed-origin-root-v1"
+    },
+    {
+      "transportProfileId": "direct-jsonrpc-exact-v1",
+      "protocol": "json-rpc-http",
+      "targetRule": "complete-http-target-preserve-path-query",
+      "authPolicy": "endpoint-scoped-only",
+      "headerPolicy": "endpoint-scoped-only",
+      "attempts": 1,
+      "redirectPolicy": "reject",
+      "retryPolicy": "none",
+      "responsePolicy": "json-rpc-envelope-v1",
+      "timeoutPolicy": "total-request-deadline-v1",
+      "cancellationPolicy": "language-native-stream-cancel-v1",
+      "privacyPolicyId": "sealed-origin-root-v1"
+    },
+    {
+      "transportProfileId": "hosted-sui-grpc-web-v1",
+      "protocol": "grpc-web-unary",
+      "targetRule": "hosted-prefix-plus-selected-service-path",
+      "authPolicy": "bearer-header",
+      "headerPolicy": "grpc-web-protocol-and-bearer",
+      "attempts": 1,
+      "redirectPolicy": "reject",
+      "retryPolicy": "none",
+      "responsePolicy": "sui-grpc-web-framing-v1",
+      "timeoutPolicy": "total-request-deadline-v1",
+      "cancellationPolicy": "language-native-stream-cancel-v1",
+      "privacyPolicyId": "sealed-origin-root-v1"
+    },
+    {
+      "transportProfileId": "direct-sui-grpc-web-prefix-v1",
+      "protocol": "grpc-web-unary",
+      "targetRule": "caller-prefix-preserve-path-query-plus-selected-service-path",
+      "authPolicy": "endpoint-scoped-only",
+      "headerPolicy": "grpc-web-protocol-and-endpoint-scoped",
+      "attempts": 1,
+      "redirectPolicy": "reject",
+      "retryPolicy": "none",
+      "responsePolicy": "sui-grpc-web-framing-v1",
+      "timeoutPolicy": "total-request-deadline-v1",
+      "cancellationPolicy": "language-native-stream-cancel-v1",
+      "privacyPolicyId": "sealed-origin-root-v1"
+    },
+    {
+      "transportProfileId": "unconfigured-local-v1",
+      "protocol": "none",
+      "targetRule": "typed-not-configured-before-io",
+      "authPolicy": "none",
+      "headerPolicy": "none",
+      "attempts": 0,
+      "redirectPolicy": "none",
+      "retryPolicy": "none",
+      "responsePolicy": "none",
+      "timeoutPolicy": "none",
+      "cancellationPolicy": "none",
+      "privacyPolicyId": "empty-unavailable-v1"
+    }
+  ],
+  "clientContracts": [
+    {
+      "clientContractId": "client-ethereum-rpc",
+      "chainKey": "ethereum",
+      "namespace": "ethereum.rpc",
+      "surfaceClass": "legacy-reference",
+      "protocolFamily": "evm-jsonrpc",
+      "methodSetId": "legacy-ethereum-current",
+      "endpointModes": [
+        {
+          "mode": "unconfigured",
+          "transportProfileId": "unconfigured-local-v1",
+          "defaultTarget": null,
+          "edgeOverride": null,
+          "routeRule": null,
+          "publicDefault": null
+        }
+      ],
+      "endpointDiagnosticPolicyId": "legacy-verifier-v1",
+      "networkIds": [
+        "rpc-ethereum-mainnet"
+      ],
+      "forbiddenCapabilities": [],
+      "compatibilityExceptionIds": [],
+      "nativeBindingStatus": "approved-c1"
+    },
+    {
+      "clientContractId": "client-solana-rpc",
+      "chainKey": "solana",
+      "namespace": "solana.rpc",
+      "surfaceClass": "legacy-reference",
+      "protocolFamily": "solana-jsonrpc",
+      "methodSetId": "legacy-solana-current",
+      "endpointModes": [
+        {
+          "mode": "unconfigured",
+          "transportProfileId": "unconfigured-local-v1",
+          "defaultTarget": null,
+          "edgeOverride": null,
+          "routeRule": null,
+          "publicDefault": null
+        }
+      ],
+      "endpointDiagnosticPolicyId": "legacy-verifier-v1",
+      "networkIds": [
+        "rpc-solana-devnet",
+        "rpc-solana-mainnet",
+        "rpc-solana-testnet"
+      ],
+      "forbiddenCapabilities": [],
+      "compatibilityExceptionIds": [],
+      "nativeBindingStatus": "approved-c1"
+    },
+    {
+      "clientContractId": "client-avalanche-rpc",
+      "chainKey": "avalanche-c",
+      "namespace": "avalanche.rpc",
+      "surfaceClass": "legacy-reference",
+      "protocolFamily": "avalanche-jsonrpc",
+      "methodSetId": "legacy-avalanche-current",
+      "endpointModes": [
+        {
+          "mode": "unconfigured",
+          "transportProfileId": "unconfigured-local-v1",
+          "defaultTarget": null,
+          "edgeOverride": null,
+          "routeRule": null,
+          "publicDefault": null
+        }
+      ],
+      "endpointDiagnosticPolicyId": "legacy-verifier-v1",
+      "networkIds": [
+        "rpc-avalanche-c-mainnet"
+      ],
+      "forbiddenCapabilities": [],
+      "compatibilityExceptionIds": [],
+      "nativeBindingStatus": "approved-c1"
+    },
+    {
+      "clientContractId": "client-base-rpc",
+      "chainKey": "base",
+      "namespace": "base.rpc",
+      "surfaceClass": "sealed-read",
+      "protocolFamily": "evm-jsonrpc",
+      "methodSetId": "sealed-evm-read3",
+      "endpointModes": [
+        {
+          "mode": "hosted",
+          "transportProfileId": "hosted-jsonrpc-query-v1",
+          "defaultTarget": "https://base.erpc.global/",
+          "edgeOverride": "https://edge.erpc.global/base",
+          "routeRule": "root target; append no suffix",
+          "publicDefault": "https://base.erpc.global"
+        },
+        {
+          "mode": "direct",
+          "transportProfileId": "direct-jsonrpc-exact-v1",
+          "defaultTarget": null,
+          "edgeOverride": null,
+          "routeRule": null,
+          "publicDefault": null
+        },
+        {
+          "mode": "unconfigured",
+          "transportProfileId": "unconfigured-local-v1",
+          "defaultTarget": null,
+          "edgeOverride": null,
+          "routeRule": null,
+          "publicDefault": null
+        }
+      ],
+      "endpointDiagnosticPolicyId": "sealed-origin-root-v1",
+      "networkIds": [
+        "rpc-base-mainnet"
+      ],
+      "forbiddenCapabilities": [
+        "raw",
+        "request",
+        "batch",
+        "transport",
+        "websocket",
+        "subscription",
+        "sign",
+        "send",
+        "approve",
+        "broadcast",
+        "swap",
+        "bridge"
+      ],
+      "compatibilityExceptionIds": [
+        "typescript-base-unconfigured-placeholder-v1",
+        "ruby-base-synchronous-request-v1"
+      ],
+      "nativeBindingStatus": "approved-c1"
+    },
+    {
+      "clientContractId": "client-bitcoin-rpc",
+      "chainKey": "bitcoin",
+      "namespace": "bitcoin.rpc",
+      "surfaceClass": "bounded-binary-read",
+      "protocolFamily": "bitcoin-jsonrpc",
+      "methodSetId": "bitcoin-read12",
+      "endpointModes": [
+        {
+          "mode": "hosted",
+          "transportProfileId": "hosted-bitcoin-bearer-v1",
+          "defaultTarget": "https://edge.erpc.global/bitcoin",
+          "edgeOverride": null,
+          "routeRule": "resolved shared endpoint plus exactly /bitcoin",
+          "publicDefault": null
+        },
+        {
+          "mode": "direct",
+          "transportProfileId": "direct-jsonrpc-exact-v1",
+          "defaultTarget": null,
+          "edgeOverride": null,
+          "routeRule": null,
+          "publicDefault": null
+        },
+        {
+          "mode": "unconfigured",
+          "transportProfileId": "unconfigured-local-v1",
+          "defaultTarget": null,
+          "edgeOverride": null,
+          "routeRule": null,
+          "publicDefault": null
+        }
+      ],
+      "endpointDiagnosticPolicyId": "sealed-origin-root-v1",
+      "networkIds": [
+        "rpc-bitcoin-mainnet"
+      ],
+      "forbiddenCapabilities": [
+        "raw",
+        "request",
+        "batch",
+        "transport",
+        "websocket",
+        "subscription",
+        "sign",
+        "send",
+        "approve",
+        "broadcast",
+        "swap",
+        "bridge"
+      ],
+      "compatibilityExceptionIds": [
+        "rust-bitcoin-raw-batch-v1",
+        "rust-bitcoin-direct-diagnostic-v1",
+        "rust-bitcoin-decode-domain-v1",
+        "ruby-bitcoin-synchronous-request-v1"
+      ],
+      "responsePolicy": {
+        "policyId": "bitcoin-exact-json-v1",
+        "duplicateKeyPolicy": "last-occurrence-wins",
+        "tuplePolicy": "sign-coefficient-exponent10-v1",
+        "limitApplicability": [
+          "typescript",
+          "python",
+          "go",
+          "ruby"
+        ],
+        "limits": {
+          "decodedEntityBytes": 67108864,
+          "containerDepth": 64,
+          "jsonTokens": 1000000,
+          "numericLexemeBytes": 1024,
+          "coefficientDigits": 1000,
+          "explicitExponentMin": -10000,
+          "explicitExponentMax": 10000,
+          "canonicalExponentMin": -10000,
+          "canonicalExponentMax": 10000
+        },
+        "integerProjection": {
+          "operation": "getblockcount",
+          "grammar": "unsigned-integer-token",
+          "minimum": "0",
+          "maximum": "18446744073709551615",
+          "rejectForms": [
+            "negative",
+            "fraction",
+            "exponent"
+          ]
+        }
+      },
+      "nativeBindingStatus": "approved-c1"
+    },
+    {
+      "clientContractId": "client-polygon-rpc",
+      "chainKey": "polygon-pos",
+      "namespace": "polygon.rpc",
+      "surfaceClass": "sealed-read",
+      "protocolFamily": "evm-jsonrpc",
+      "methodSetId": "sealed-evm-read3",
+      "endpointModes": [
+        {
+          "mode": "hosted",
+          "transportProfileId": "hosted-jsonrpc-query-v1",
+          "defaultTarget": "https://polygon.erpc.global/",
+          "edgeOverride": "https://edge.erpc.global/polygon",
+          "routeRule": "root target; append no suffix",
+          "publicDefault": "https://polygon.erpc.global"
+        },
+        {
+          "mode": "direct",
+          "transportProfileId": "direct-jsonrpc-exact-v1",
+          "defaultTarget": null,
+          "edgeOverride": null,
+          "routeRule": null,
+          "publicDefault": null
+        },
+        {
+          "mode": "unconfigured",
+          "transportProfileId": "unconfigured-local-v1",
+          "defaultTarget": null,
+          "edgeOverride": null,
+          "routeRule": null,
+          "publicDefault": null
+        }
+      ],
+      "endpointDiagnosticPolicyId": "sealed-origin-root-v1",
+      "networkIds": [
+        "rpc-polygon-pos-mainnet"
+      ],
+      "forbiddenCapabilities": [
+        "raw",
+        "request",
+        "batch",
+        "transport",
+        "websocket",
+        "subscription",
+        "sign",
+        "send",
+        "approve",
+        "broadcast",
+        "swap",
+        "bridge"
+      ],
+      "compatibilityExceptionIds": [
+        "ruby-polygon-synchronous-request-v1"
+      ],
+      "nativeBindingStatus": "approved-c2"
+    },
+    {
+      "clientContractId": "client-kaia-rpc",
+      "chainKey": "kaia",
+      "namespace": "kaia.rpc",
+      "surfaceClass": "sealed-read",
+      "protocolFamily": "evm-jsonrpc",
+      "methodSetId": "sealed-evm-read3",
+      "endpointModes": [
+        {
+          "mode": "hosted",
+          "transportProfileId": "hosted-jsonrpc-query-v1",
+          "defaultTarget": "https://kaia.erpc.global/",
+          "edgeOverride": "https://edge.erpc.global/kaia",
+          "routeRule": "root target; append no suffix",
+          "publicDefault": "https://kaia.erpc.global"
+        },
+        {
+          "mode": "direct",
+          "transportProfileId": "direct-jsonrpc-exact-v1",
+          "defaultTarget": null,
+          "edgeOverride": null,
+          "routeRule": null,
+          "publicDefault": null
+        },
+        {
+          "mode": "unconfigured",
+          "transportProfileId": "unconfigured-local-v1",
+          "defaultTarget": null,
+          "edgeOverride": null,
+          "routeRule": null,
+          "publicDefault": null
+        }
+      ],
+      "endpointDiagnosticPolicyId": "sealed-origin-root-v1",
+      "networkIds": [
+        "rpc-kaia-mainnet"
+      ],
+      "forbiddenCapabilities": [
+        "raw",
+        "request",
+        "batch",
+        "transport",
+        "websocket",
+        "subscription",
+        "sign",
+        "send",
+        "approve",
+        "broadcast",
+        "swap",
+        "bridge"
+      ],
+      "compatibilityExceptionIds": [
+        "ruby-kaia-synchronous-request-v1"
+      ],
+      "nativeBindingStatus": "approved-c3"
+    },
+    {
+      "clientContractId": "client-bsc-rpc",
+      "chainKey": "bsc",
+      "namespace": "bsc.rpc",
+      "surfaceClass": "sealed-read",
+      "protocolFamily": "evm-jsonrpc",
+      "methodSetId": "sealed-evm-read3",
+      "endpointModes": [
+        {
+          "mode": "hosted",
+          "transportProfileId": "hosted-jsonrpc-query-v1",
+          "defaultTarget": "https://bsc.erpc.global/",
+          "edgeOverride": "https://edge.erpc.global/bsc",
+          "routeRule": "root target; append no suffix",
+          "publicDefault": "https://bsc.erpc.global"
+        },
+        {
+          "mode": "direct",
+          "transportProfileId": "direct-jsonrpc-exact-v1",
+          "defaultTarget": null,
+          "edgeOverride": null,
+          "routeRule": null,
+          "publicDefault": null
+        },
+        {
+          "mode": "unconfigured",
+          "transportProfileId": "unconfigured-local-v1",
+          "defaultTarget": null,
+          "edgeOverride": null,
+          "routeRule": null,
+          "publicDefault": null
+        }
+      ],
+      "endpointDiagnosticPolicyId": "sealed-origin-root-v1",
+      "networkIds": [
+        "rpc-bsc-mainnet"
+      ],
+      "forbiddenCapabilities": [
+        "raw",
+        "request",
+        "batch",
+        "transport",
+        "websocket",
+        "subscription",
+        "sign",
+        "send",
+        "approve",
+        "broadcast",
+        "swap",
+        "bridge"
+      ],
+      "compatibilityExceptionIds": [
+        "ruby-bsc-synchronous-request-v1"
+      ],
+      "nativeBindingStatus": "approved-c2"
+    },
+    {
+      "clientContractId": "client-arbitrum-rpc",
+      "chainKey": "arbitrum",
+      "namespace": "arbitrum.rpc",
+      "surfaceClass": "sealed-read",
+      "protocolFamily": "evm-jsonrpc",
+      "methodSetId": "sealed-evm-read3",
+      "endpointModes": [
+        {
+          "mode": "hosted",
+          "transportProfileId": "hosted-jsonrpc-query-v1",
+          "defaultTarget": "https://arbitrum.erpc.global/",
+          "edgeOverride": "https://edge.erpc.global/arbitrum",
+          "routeRule": "root target; append no suffix",
+          "publicDefault": "https://arbitrum.erpc.global"
+        },
+        {
+          "mode": "direct",
+          "transportProfileId": "direct-jsonrpc-exact-v1",
+          "defaultTarget": null,
+          "edgeOverride": null,
+          "routeRule": null,
+          "publicDefault": null
+        },
+        {
+          "mode": "unconfigured",
+          "transportProfileId": "unconfigured-local-v1",
+          "defaultTarget": null,
+          "edgeOverride": null,
+          "routeRule": null,
+          "publicDefault": null
+        }
+      ],
+      "endpointDiagnosticPolicyId": "sealed-origin-root-v1",
+      "networkIds": [
+        "rpc-arbitrum-one-mainnet"
+      ],
+      "forbiddenCapabilities": [
+        "raw",
+        "request",
+        "batch",
+        "transport",
+        "websocket",
+        "subscription",
+        "sign",
+        "send",
+        "approve",
+        "broadcast",
+        "swap",
+        "bridge"
+      ],
+      "compatibilityExceptionIds": [
+        "ruby-arbitrum-synchronous-request-v1"
+      ],
+      "nativeBindingStatus": "approved-c1"
+    },
+    {
+      "clientContractId": "client-tron-rpc",
+      "chainKey": "tron",
+      "namespace": "tron.rpc",
+      "surfaceClass": "sealed-read",
+      "protocolFamily": "tron-evm-compatible-jsonrpc",
+      "methodSetId": "sealed-evm-read3",
+      "endpointModes": [
+        {
+          "mode": "hosted",
+          "transportProfileId": "hosted-jsonrpc-query-v1",
+          "defaultTarget": "https://tron.erpc.global/",
+          "edgeOverride": "https://edge.erpc.global/tron",
+          "routeRule": "provider maps root upstream to /jsonrpc; SDK appends no suffix",
+          "publicDefault": "https://tron.erpc.global"
+        },
+        {
+          "mode": "direct",
+          "transportProfileId": "direct-jsonrpc-exact-v1",
+          "defaultTarget": null,
+          "edgeOverride": null,
+          "routeRule": null,
+          "publicDefault": null
+        },
+        {
+          "mode": "unconfigured",
+          "transportProfileId": "unconfigured-local-v1",
+          "defaultTarget": null,
+          "edgeOverride": null,
+          "routeRule": null,
+          "publicDefault": null
+        }
+      ],
+      "endpointDiagnosticPolicyId": "sealed-origin-root-v1",
+      "networkIds": [
+        "rpc-tron-mainnet"
+      ],
+      "forbiddenCapabilities": [
+        "raw",
+        "request",
+        "batch",
+        "transport",
+        "websocket",
+        "subscription",
+        "sign",
+        "send",
+        "approve",
+        "broadcast",
+        "swap",
+        "bridge"
+      ],
+      "compatibilityExceptionIds": [
+        "ruby-tron-synchronous-request-v1"
+      ],
+      "nativeBindingStatus": "approved-c5"
+    },
+    {
+      "clientContractId": "client-hyperliquid-rpc",
+      "chainKey": "hyperliquid-hyperevm",
+      "namespace": "hyperliquid.rpc",
+      "surfaceClass": "sealed-read",
+      "protocolFamily": "evm-jsonrpc",
+      "methodSetId": "sealed-evm-read3",
+      "endpointModes": [
+        {
+          "mode": "hosted",
+          "transportProfileId": "hosted-jsonrpc-query-v1",
+          "defaultTarget": "https://hyperliquid.erpc.global/",
+          "edgeOverride": "https://edge.erpc.global/hyperliquid",
+          "routeRule": "HyperEVM root only; append neither /evm nor /nanoreth",
+          "publicDefault": "https://hyperliquid.erpc.global"
+        },
+        {
+          "mode": "direct",
+          "transportProfileId": "direct-jsonrpc-exact-v1",
+          "defaultTarget": null,
+          "edgeOverride": null,
+          "routeRule": null,
+          "publicDefault": null
+        },
+        {
+          "mode": "unconfigured",
+          "transportProfileId": "unconfigured-local-v1",
+          "defaultTarget": null,
+          "edgeOverride": null,
+          "routeRule": null,
+          "publicDefault": null
+        }
+      ],
+      "endpointDiagnosticPolicyId": "sealed-origin-root-v1",
+      "networkIds": [
+        "rpc-hyperliquid-hyperevm-mainnet"
+      ],
+      "forbiddenCapabilities": [
+        "raw",
+        "request",
+        "batch",
+        "transport",
+        "websocket",
+        "subscription",
+        "sign",
+        "send",
+        "approve",
+        "broadcast",
+        "swap",
+        "bridge"
+      ],
+      "compatibilityExceptionIds": [
+        "ruby-hyperliquid-synchronous-request-v1"
+      ],
+      "nativeBindingStatus": "approved-c4"
+    },
+    {
+      "clientContractId": "client-monad-rpc",
+      "chainKey": "monad",
+      "namespace": "monad.rpc",
+      "surfaceClass": "sealed-read",
+      "protocolFamily": "evm-jsonrpc",
+      "methodSetId": "sealed-evm-read3",
+      "endpointModes": [
+        {
+          "mode": "hosted",
+          "transportProfileId": "hosted-jsonrpc-query-v1",
+          "defaultTarget": "https://monad.erpc.global/",
+          "edgeOverride": "https://edge.erpc.global/monad",
+          "routeRule": "mainnet root; no testnet relabeling",
+          "publicDefault": "https://monad.erpc.global"
+        },
+        {
+          "mode": "direct",
+          "transportProfileId": "direct-jsonrpc-exact-v1",
+          "defaultTarget": null,
+          "edgeOverride": null,
+          "routeRule": null,
+          "publicDefault": null
+        },
+        {
+          "mode": "unconfigured",
+          "transportProfileId": "unconfigured-local-v1",
+          "defaultTarget": null,
+          "edgeOverride": null,
+          "routeRule": null,
+          "publicDefault": null
+        }
+      ],
+      "endpointDiagnosticPolicyId": "sealed-origin-root-v1",
+      "networkIds": [
+        "rpc-monad-mainnet"
+      ],
+      "forbiddenCapabilities": [
+        "raw",
+        "request",
+        "batch",
+        "transport",
+        "websocket",
+        "subscription",
+        "sign",
+        "send",
+        "approve",
+        "broadcast",
+        "swap",
+        "bridge"
+      ],
+      "compatibilityExceptionIds": [
+        "ruby-monad-synchronous-request-v1"
+      ],
+      "nativeBindingStatus": "approved-c3"
+    },
+    {
+      "clientContractId": "client-robinhood-rpc",
+      "chainKey": "robinhood-chain",
+      "namespace": "robinhood.rpc",
+      "surfaceClass": "sealed-read",
+      "protocolFamily": "evm-jsonrpc",
+      "methodSetId": "sealed-evm-read3",
+      "endpointModes": [
+        {
+          "mode": "hosted",
+          "transportProfileId": "hosted-jsonrpc-query-v1",
+          "defaultTarget": "https://robinhood.erpc.global/",
+          "edgeOverride": "https://edge.erpc.global/robinhood",
+          "routeRule": "public chain root only; no brokerage product API",
+          "publicDefault": "https://robinhood.erpc.global"
+        },
+        {
+          "mode": "direct",
+          "transportProfileId": "direct-jsonrpc-exact-v1",
+          "defaultTarget": null,
+          "edgeOverride": null,
+          "routeRule": null,
+          "publicDefault": null
+        },
+        {
+          "mode": "unconfigured",
+          "transportProfileId": "unconfigured-local-v1",
+          "defaultTarget": null,
+          "edgeOverride": null,
+          "routeRule": null,
+          "publicDefault": null
+        }
+      ],
+      "endpointDiagnosticPolicyId": "sealed-origin-root-v1",
+      "networkIds": [
+        "rpc-robinhood-chain-mainnet"
+      ],
+      "forbiddenCapabilities": [
+        "raw",
+        "request",
+        "batch",
+        "transport",
+        "websocket",
+        "subscription",
+        "sign",
+        "send",
+        "approve",
+        "broadcast",
+        "swap",
+        "bridge"
+      ],
+      "compatibilityExceptionIds": [
+        "ruby-robinhood-synchronous-request-v1"
+      ],
+      "nativeBindingStatus": "approved-c4"
+    },
+    {
+      "clientContractId": "client-soneium-rpc",
+      "chainKey": "soneium",
+      "namespace": "soneium.rpc",
+      "surfaceClass": "sealed-read",
+      "protocolFamily": "evm-jsonrpc",
+      "methodSetId": "sealed-evm-read3",
+      "endpointModes": [
+        {
+          "mode": "hosted",
+          "transportProfileId": "hosted-jsonrpc-query-v1",
+          "defaultTarget": "https://soneium.erpc.global/",
+          "edgeOverride": "https://edge.erpc.global/soneium",
+          "routeRule": "root target; append no suffix",
+          "publicDefault": "https://soneium.erpc.global"
+        },
+        {
+          "mode": "direct",
+          "transportProfileId": "direct-jsonrpc-exact-v1",
+          "defaultTarget": null,
+          "edgeOverride": null,
+          "routeRule": null,
+          "publicDefault": null
+        },
+        {
+          "mode": "unconfigured",
+          "transportProfileId": "unconfigured-local-v1",
+          "defaultTarget": null,
+          "edgeOverride": null,
+          "routeRule": null,
+          "publicDefault": null
+        }
+      ],
+      "endpointDiagnosticPolicyId": "sealed-origin-root-v1",
+      "networkIds": [
+        "rpc-soneium-mainnet"
+      ],
+      "forbiddenCapabilities": [
+        "raw",
+        "request",
+        "batch",
+        "transport",
+        "websocket",
+        "subscription",
+        "sign",
+        "send",
+        "approve",
+        "broadcast",
+        "swap",
+        "bridge"
+      ],
+      "compatibilityExceptionIds": [
+        "ruby-soneium-synchronous-request-v1"
+      ],
+      "nativeBindingStatus": "approved-c3"
+    },
+    {
+      "clientContractId": "client-arc-rpc",
+      "chainKey": "arc",
+      "namespace": "arc.rpc",
+      "surfaceClass": "sealed-read",
+      "protocolFamily": "evm-jsonrpc",
+      "methodSetId": "sealed-evm-read3",
+      "endpointModes": [
+        {
+          "mode": "hosted",
+          "transportProfileId": "hosted-jsonrpc-query-v1",
+          "defaultTarget": "https://arc.erpc.global/",
+          "edgeOverride": "https://edge.erpc.global/arc",
+          "routeRule": "mainnet root; preserve raw hexadecimal units",
+          "publicDefault": "https://arc.erpc.global"
+        },
+        {
+          "mode": "direct",
+          "transportProfileId": "direct-jsonrpc-exact-v1",
+          "defaultTarget": null,
+          "edgeOverride": null,
+          "routeRule": null,
+          "publicDefault": null
+        },
+        {
+          "mode": "unconfigured",
+          "transportProfileId": "unconfigured-local-v1",
+          "defaultTarget": null,
+          "edgeOverride": null,
+          "routeRule": null,
+          "publicDefault": null
+        }
+      ],
+      "endpointDiagnosticPolicyId": "sealed-origin-root-v1",
+      "networkIds": [
+        "rpc-arc-mainnet"
+      ],
+      "forbiddenCapabilities": [
+        "raw",
+        "request",
+        "batch",
+        "transport",
+        "websocket",
+        "subscription",
+        "sign",
+        "send",
+        "approve",
+        "broadcast",
+        "swap",
+        "bridge"
+      ],
+      "compatibilityExceptionIds": [
+        "ruby-arc-synchronous-request-v1"
+      ],
+      "nativeBindingStatus": "approved-c4"
+    },
+    {
+      "clientContractId": "client-optimism-rpc",
+      "chainKey": "optimism",
+      "namespace": "optimism.rpc",
+      "surfaceClass": "sealed-read",
+      "protocolFamily": "evm-jsonrpc",
+      "methodSetId": "sealed-evm-read3",
+      "endpointModes": [
+        {
+          "mode": "hosted",
+          "transportProfileId": "hosted-jsonrpc-query-v1",
+          "defaultTarget": "https://optimism.erpc.global/",
+          "edgeOverride": "https://edge.erpc.global/optimism",
+          "routeRule": "root target; append no suffix",
+          "publicDefault": "https://optimism.erpc.global"
+        },
+        {
+          "mode": "direct",
+          "transportProfileId": "direct-jsonrpc-exact-v1",
+          "defaultTarget": null,
+          "edgeOverride": null,
+          "routeRule": null,
+          "publicDefault": null
+        },
+        {
+          "mode": "unconfigured",
+          "transportProfileId": "unconfigured-local-v1",
+          "defaultTarget": null,
+          "edgeOverride": null,
+          "routeRule": null,
+          "publicDefault": null
+        }
+      ],
+      "endpointDiagnosticPolicyId": "sealed-origin-root-v1",
+      "networkIds": [
+        "rpc-optimism-mainnet"
+      ],
+      "forbiddenCapabilities": [
+        "raw",
+        "request",
+        "batch",
+        "transport",
+        "websocket",
+        "subscription",
+        "sign",
+        "send",
+        "approve",
+        "broadcast",
+        "swap",
+        "bridge"
+      ],
+      "compatibilityExceptionIds": [
+        "ruby-optimism-synchronous-request-v1"
+      ],
+      "nativeBindingStatus": "approved-c2"
+    },
+    {
+      "clientContractId": "client-sui-grpc",
+      "chainKey": "sui",
+      "namespace": "sui.grpc",
+      "surfaceClass": "bounded-binary-read",
+      "protocolFamily": "sui-grpc-web",
+      "methodSetId": "sui-unary3",
+      "endpointModes": [
+        {
+          "mode": "hosted",
+          "transportProfileId": "hosted-sui-grpc-web-v1",
+          "defaultTarget": "https://sui.erpc.global/",
+          "edgeOverride": "https://edge.erpc.global/sui",
+          "routeRule": "prefix; append exactly one selected service path",
+          "publicDefault": "https://sui.erpc.global"
+        },
+        {
+          "mode": "direct",
+          "transportProfileId": "direct-sui-grpc-web-prefix-v1",
+          "defaultTarget": null,
+          "edgeOverride": null,
+          "routeRule": "preserve caller prefix path/query; append exactly one selected service path",
+          "publicDefault": null
+        },
+        {
+          "mode": "unconfigured",
+          "transportProfileId": "unconfigured-local-v1",
+          "defaultTarget": null,
+          "edgeOverride": null,
+          "routeRule": null,
+          "publicDefault": null
+        }
+      ],
+      "endpointDiagnosticPolicyId": "sealed-origin-root-v1",
+      "networkIds": [
+        "rpc-sui-mainnet"
+      ],
+      "forbiddenCapabilities": [
+        "raw",
+        "request",
+        "batch",
+        "transport",
+        "websocket",
+        "subscription",
+        "sign",
+        "send",
+        "approve",
+        "broadcast",
+        "swap",
+        "bridge"
+      ],
+      "compatibilityExceptionIds": [
+        "ruby-sui-synchronous-request-v1"
+      ],
+      "nativeBindingStatus": "approved-c5"
+    },
+    {
+      "clientContractId": "client-near-rpc",
+      "chainKey": "near",
+      "namespace": "near.rpc",
+      "surfaceClass": "sealed-read",
+      "protocolFamily": "near-jsonrpc",
+      "methodSetId": "near-read3",
+      "endpointModes": [
+        {
+          "mode": "hosted",
+          "transportProfileId": "hosted-jsonrpc-query-v1",
+          "defaultTarget": "https://near.erpc.global/",
+          "edgeOverride": "https://edge.erpc.global/near",
+          "routeRule": "root target; append no suffix",
+          "publicDefault": "https://near.erpc.global"
+        },
+        {
+          "mode": "direct",
+          "transportProfileId": "direct-jsonrpc-exact-v1",
+          "defaultTarget": null,
+          "edgeOverride": null,
+          "routeRule": null,
+          "publicDefault": null
+        },
+        {
+          "mode": "unconfigured",
+          "transportProfileId": "unconfigured-local-v1",
+          "defaultTarget": null,
+          "edgeOverride": null,
+          "routeRule": null,
+          "publicDefault": null
+        }
+      ],
+      "endpointDiagnosticPolicyId": "sealed-origin-root-v1",
+      "networkIds": [
+        "rpc-near-mainnet"
+      ],
+      "forbiddenCapabilities": [
+        "raw",
+        "request",
+        "batch",
+        "transport",
+        "websocket",
+        "subscription",
+        "sign",
+        "send",
+        "approve",
+        "broadcast",
+        "swap",
+        "bridge"
+      ],
+      "compatibilityExceptionIds": [
+        "ruby-near-synchronous-request-v1"
+      ],
+      "nativeBindingStatus": "approved-c5"
+    }
+  ],
+  "networks": [
+    {
+      "networkId": "rpc-ethereum-mainnet",
+      "chainKey": "ethereum",
+      "namespace": "ethereum.rpc",
+      "clientContractId": "client-ethereum-rpc",
+      "provider": {
+        "id": "644377",
+        "chain": "eth",
+        "network": "mainnet",
+        "protocols": [
+          "evm-jsonrpc",
+          "websocket"
+        ]
+      },
+      "selection": "hosted-or-explicit-direct",
+      "identity": {
+        "probe": "eth_chainId",
+        "parameters": [],
+        "projection": "$.result",
+        "expected": "0x1",
+        "caip2": "eip155:1",
+        "evidence": [
+          {
+            "source": "https://ethereum.org/en/developers/docs/apis/json-rpc/",
+            "asOfDate": "2026-10-23"
+          }
+        ]
+      },
+      "cohort": 0,
+      "inventoryEvidence": {
+        "sourceId": "quicknode-manifest-2026-10-21",
+        "sourceSha256": "7e93e849ea605391df9f9879c815fc0972b2ed035cef7cfb2c700adc10c2f9cb",
+        "observedAt": "2026-10-21T08:24:00.837289+00:00",
+        "endpointId": "644377",
+        "limitations": "inventory-only; deployReady=false; fresh authenticated refresh required"
+      }
+    },
+    {
+      "networkId": "rpc-solana-mainnet",
+      "chainKey": "solana",
+      "namespace": "solana.rpc",
+      "clientContractId": "client-solana-rpc",
+      "provider": {
+        "id": "656385",
+        "chain": "sol",
+        "network": "solana-mainnet",
+        "protocols": [
+          "solana-jsonrpc",
+          "websocket"
+        ]
+      },
+      "selection": "hosted-or-explicit-direct",
+      "identity": {
+        "probe": "getGenesisHash",
+        "parameters": [],
+        "projection": "$.result",
+        "expected": "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d",
+        "caip2": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+        "evidence": [
+          {
+            "source": "https://solana.com/docs/rpc/http/getgenesis",
+            "asOfDate": "2026-10-23"
+          }
+        ]
+      },
+      "cohort": 0,
+      "inventoryEvidence": {
+        "sourceId": "quicknode-manifest-2026-10-21",
+        "sourceSha256": "7e93e849ea605391df9f9879c815fc0972b2ed035cef7cfb2c700adc10c2f9cb",
+        "observedAt": "2026-10-21T08:24:00.837289+00:00",
+        "endpointId": "656385",
+        "limitations": "inventory-only; deployReady=false; fresh authenticated refresh required"
+      }
+    },
+    {
+      "networkId": "rpc-solana-devnet",
+      "chainKey": "solana",
+      "namespace": "solana.rpc",
+      "clientContractId": "client-solana-rpc",
+      "provider": {
+        "id": "674924",
+        "chain": "sol",
+        "network": "solana-devnet",
+        "protocols": [
+          "solana-jsonrpc",
+          "websocket"
+        ]
+      },
+      "selection": "explicit-direct-only",
+      "identity": {
+        "probe": "getGenesisHash",
+        "parameters": [],
+        "projection": "$.result",
+        "expected": "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG",
+        "evidence": [
+          {
+            "source": "https://solana.com/docs/rpc/http/getgenesis",
+            "asOfDate": "2026-10-23"
+          }
+        ]
+      },
+      "cohort": 0,
+      "inventoryEvidence": {
+        "sourceId": "quicknode-manifest-2026-10-21",
+        "sourceSha256": "7e93e849ea605391df9f9879c815fc0972b2ed035cef7cfb2c700adc10c2f9cb",
+        "observedAt": "2026-10-21T08:24:00.837289+00:00",
+        "endpointId": "674924",
+        "limitations": "inventory-only; deployReady=false; fresh authenticated refresh required"
+      }
+    },
+    {
+      "networkId": "rpc-solana-testnet",
+      "chainKey": "solana",
+      "namespace": "solana.rpc",
+      "clientContractId": "client-solana-rpc",
+      "provider": {
+        "id": "674923",
+        "chain": "sol",
+        "network": "solana-testnet",
+        "protocols": [
+          "solana-jsonrpc",
+          "websocket"
+        ]
+      },
+      "selection": "explicit-direct-only",
+      "identity": {
+        "probe": "getGenesisHash",
+        "parameters": [],
+        "projection": "$.result",
+        "expected": "4uhcVJyU9pJkvQyS88uRDiswHXSCkY3zQawwpjk2NsNY",
+        "evidence": [
+          {
+            "source": "https://solana.com/docs/rpc/http/getgenesis",
+            "asOfDate": "2026-10-23"
+          }
+        ]
+      },
+      "cohort": 0,
+      "inventoryEvidence": {
+        "sourceId": "quicknode-manifest-2026-10-21",
+        "sourceSha256": "7e93e849ea605391df9f9879c815fc0972b2ed035cef7cfb2c700adc10c2f9cb",
+        "observedAt": "2026-10-21T08:24:00.837289+00:00",
+        "endpointId": "674923",
+        "limitations": "inventory-only; deployReady=false; fresh authenticated refresh required"
+      }
+    },
+    {
+      "networkId": "rpc-base-mainnet",
+      "chainKey": "base",
+      "namespace": "base.rpc",
+      "clientContractId": "client-base-rpc",
+      "provider": {
+        "id": "663613",
+        "chain": "base",
+        "network": "base-mainnet",
+        "protocols": [
+          "evm-jsonrpc",
+          "websocket"
+        ]
+      },
+      "selection": "hosted-or-explicit-direct",
+      "identity": {
+        "probe": "eth_chainId",
+        "parameters": [],
+        "projection": "$.result",
+        "expected": "0x2105",
+        "caip2": "eip155:8453",
+        "evidence": [
+          {
+            "source": "https://docs.base.org/base-chain/api-reference/ethereum-json-rpc-api/eth_chainId",
+            "asOfDate": "2026-10-23"
+          }
+        ]
+      },
+      "cohort": 1,
+      "inventoryEvidence": {
+        "sourceId": "quicknode-manifest-2026-10-21",
+        "sourceSha256": "7e93e849ea605391df9f9879c815fc0972b2ed035cef7cfb2c700adc10c2f9cb",
+        "observedAt": "2026-10-21T08:24:00.837289+00:00",
+        "endpointId": "663613",
+        "limitations": "inventory-only; deployReady=false; fresh authenticated refresh required"
+      }
+    },
+    {
+      "networkId": "rpc-avalanche-c-mainnet",
+      "chainKey": "avalanche-c",
+      "namespace": "avalanche.rpc",
+      "clientContractId": "client-avalanche-rpc",
+      "provider": {
+        "id": "655221",
+        "chain": "avax",
+        "network": "avalanche-mainnet",
+        "protocols": [
+          "evm-jsonrpc",
+          "websocket"
+        ]
+      },
+      "selection": "hosted-or-explicit-direct",
+      "identity": {
+        "probe": "eth_chainId",
+        "parameters": [],
+        "projection": "$.result",
+        "expected": "0xa86a",
+        "caip2": "eip155:43114",
+        "evidence": [
+          {
+            "source": "https://build.avax.network/docs/api-reference/c-chain/rpc/eth-chainid",
+            "asOfDate": "2026-10-23"
+          }
+        ]
+      },
+      "cohort": 0,
+      "inventoryEvidence": {
+        "sourceId": "quicknode-manifest-2026-10-21",
+        "sourceSha256": "7e93e849ea605391df9f9879c815fc0972b2ed035cef7cfb2c700adc10c2f9cb",
+        "observedAt": "2026-10-21T08:24:00.837289+00:00",
+        "endpointId": "655221",
+        "limitations": "inventory-only; deployReady=false; fresh authenticated refresh required"
+      }
+    },
+    {
+      "networkId": "rpc-bitcoin-mainnet",
+      "chainKey": "bitcoin",
+      "namespace": "bitcoin.rpc",
+      "clientContractId": "client-bitcoin-rpc",
+      "provider": {
+        "id": "674926",
+        "chain": "btc",
+        "network": "btc",
+        "protocols": [
+          "bitcoin-jsonrpc"
+        ]
+      },
+      "selection": "hosted-or-explicit-direct",
+      "identity": {
+        "probe": "getblockchaininfo.chain",
+        "parameters": [],
+        "projection": "$.result.chain",
+        "expected": "main",
+        "secondaryProbe": "getblockhash(0)",
+        "secondaryParameters": [
+          0
+        ],
+        "secondaryProjection": "$.result",
+        "secondaryExpected": "000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f",
+        "evidence": [
+          {
+            "source": "https://github.com/bitcoin/bitcoin/blob/master/src/kernel/chainparams.cpp",
+            "asOfDate": "2026-10-23"
+          }
+        ]
+      },
+      "cohort": 1,
+      "inventoryEvidence": {
+        "sourceId": "quicknode-manifest-2026-10-21",
+        "sourceSha256": "7e93e849ea605391df9f9879c815fc0972b2ed035cef7cfb2c700adc10c2f9cb",
+        "observedAt": "2026-10-21T08:24:00.837289+00:00",
+        "endpointId": "674926",
+        "limitations": "inventory-only; deployReady=false; fresh authenticated refresh required"
+      }
+    },
+    {
+      "networkId": "rpc-polygon-pos-mainnet",
+      "chainKey": "polygon-pos",
+      "namespace": "polygon.rpc",
+      "clientContractId": "client-polygon-rpc",
+      "provider": {
+        "id": "674928",
+        "chain": "matic",
+        "network": "matic",
+        "protocols": [
+          "evm-jsonrpc",
+          "websocket"
+        ]
+      },
+      "selection": "hosted-or-explicit-direct",
+      "identity": {
+        "probe": "eth_chainId",
+        "parameters": [],
+        "projection": "$.result",
+        "expected": "0x89",
+        "caip2": "eip155:137",
+        "evidence": [
+          {
+            "source": "https://wiki.polygon.technology/docs/pos/reference/rpc-endpoints/",
+            "asOfDate": "2026-10-23"
+          }
+        ]
+      },
+      "cohort": 2,
+      "inventoryEvidence": {
+        "sourceId": "quicknode-manifest-2026-10-21",
+        "sourceSha256": "7e93e849ea605391df9f9879c815fc0972b2ed035cef7cfb2c700adc10c2f9cb",
+        "observedAt": "2026-10-21T08:24:00.837289+00:00",
+        "endpointId": "674928",
+        "limitations": "inventory-only; deployReady=false; fresh authenticated refresh required"
+      }
+    },
+    {
+      "networkId": "rpc-kaia-mainnet",
+      "chainKey": "kaia",
+      "namespace": "kaia.rpc",
+      "clientContractId": "client-kaia-rpc",
+      "provider": {
+        "id": "674929",
+        "chain": "kaia",
+        "network": "kaia-mainnet",
+        "protocols": [
+          "evm-jsonrpc",
+          "websocket"
+        ]
+      },
+      "selection": "hosted-or-explicit-direct",
+      "identity": {
+        "probe": "eth_chainId",
+        "parameters": [],
+        "projection": "$.result",
+        "expected": "0x2019",
+        "caip2": "eip155:8217",
+        "evidence": [
+          {
+            "source": "https://docs.kaia.io/references/json-rpc/eth/eth_chainid/",
+            "asOfDate": "2026-10-23"
+          }
+        ]
+      },
+      "cohort": 3,
+      "inventoryEvidence": {
+        "sourceId": "quicknode-manifest-2026-10-21",
+        "sourceSha256": "7e93e849ea605391df9f9879c815fc0972b2ed035cef7cfb2c700adc10c2f9cb",
+        "observedAt": "2026-10-21T08:24:00.837289+00:00",
+        "endpointId": "674929",
+        "limitations": "inventory-only; deployReady=false; fresh authenticated refresh required"
+      }
+    },
+    {
+      "networkId": "rpc-bsc-mainnet",
+      "chainKey": "bsc",
+      "namespace": "bsc.rpc",
+      "clientContractId": "client-bsc-rpc",
+      "provider": {
+        "id": "674930",
+        "chain": "bsc",
+        "network": "bsc",
+        "protocols": [
+          "evm-jsonrpc",
+          "websocket"
+        ]
+      },
+      "selection": "hosted-or-explicit-direct",
+      "identity": {
+        "probe": "eth_chainId",
+        "parameters": [],
+        "projection": "$.result",
+        "expected": "0x38",
+        "caip2": "eip155:56",
+        "evidence": [
+          {
+            "source": "https://docs.bnbchain.org/bnb-smart-chain/developers/json-rpc/",
+            "asOfDate": "2026-10-23"
+          }
+        ]
+      },
+      "cohort": 2,
+      "inventoryEvidence": {
+        "sourceId": "quicknode-manifest-2026-10-21",
+        "sourceSha256": "7e93e849ea605391df9f9879c815fc0972b2ed035cef7cfb2c700adc10c2f9cb",
+        "observedAt": "2026-10-21T08:24:00.837289+00:00",
+        "endpointId": "674930",
+        "limitations": "inventory-only; deployReady=false; fresh authenticated refresh required"
+      }
+    },
+    {
+      "networkId": "rpc-arbitrum-one-mainnet",
+      "chainKey": "arbitrum",
+      "namespace": "arbitrum.rpc",
+      "clientContractId": "client-arbitrum-rpc",
+      "provider": {
+        "id": "677317",
+        "chain": "arb",
+        "network": "arbitrum-mainnet",
+        "protocols": [
+          "evm-jsonrpc",
+          "websocket"
+        ]
+      },
+      "selection": "hosted-or-explicit-direct",
+      "identity": {
+        "probe": "eth_chainId",
+        "parameters": [],
+        "projection": "$.result",
+        "expected": "0xa4b1",
+        "caip2": "eip155:42161",
+        "evidence": [
+          {
+            "source": "https://docs.arbitrum.io/launch-arbitrum-chain/partials/configure-your-chain/common/chain-information",
+            "asOfDate": "2026-10-23"
+          }
+        ]
+      },
+      "cohort": 1,
+      "inventoryEvidence": {
+        "sourceId": "quicknode-manifest-2026-10-21",
+        "sourceSha256": "7e93e849ea605391df9f9879c815fc0972b2ed035cef7cfb2c700adc10c2f9cb",
+        "observedAt": "2026-10-21T08:24:00.837289+00:00",
+        "endpointId": "677317",
+        "limitations": "inventory-only; deployReady=false; fresh authenticated refresh required"
+      }
+    },
+    {
+      "networkId": "rpc-tron-mainnet",
+      "chainKey": "tron",
+      "namespace": "tron.rpc",
+      "clientContractId": "client-tron-rpc",
+      "provider": {
+        "id": "677323",
+        "chain": "tron",
+        "network": "tron-mainnet",
+        "protocols": [
+          "wallet-rest",
+          "walletsolidity-rest",
+          "jsonrpc"
+        ]
+      },
+      "selection": "hosted-or-explicit-direct",
+      "identity": {
+        "probe": "eth_chainId",
+        "parameters": [],
+        "projection": "$.result",
+        "expected": "0x2b6653dc",
+        "evidence": [
+          {
+            "source": "https://developers.tron.network/docs/json-rpc-api",
+            "asOfDate": "2026-10-23"
+          }
+        ]
+      },
+      "cohort": 5,
+      "inventoryEvidence": {
+        "sourceId": "quicknode-manifest-2026-10-21",
+        "sourceSha256": "7e93e849ea605391df9f9879c815fc0972b2ed035cef7cfb2c700adc10c2f9cb",
+        "observedAt": "2026-10-21T08:24:00.837289+00:00",
+        "endpointId": "677323",
+        "limitations": "inventory-only; deployReady=false; fresh authenticated refresh required"
+      }
+    },
+    {
+      "networkId": "rpc-hyperliquid-hyperevm-mainnet",
+      "chainKey": "hyperliquid-hyperevm",
+      "namespace": "hyperliquid.rpc",
+      "clientContractId": "client-hyperliquid-rpc",
+      "provider": {
+        "id": "677319",
+        "chain": "hype",
+        "network": "hype-mainnet",
+        "protocols": [
+          "evm-http",
+          "nanoreth-archive-websocket",
+          "info-rest",
+          "hypercore"
+        ]
+      },
+      "selection": "hosted-or-explicit-direct",
+      "identity": {
+        "probe": "eth_chainId",
+        "parameters": [],
+        "projection": "$.result",
+        "expected": "0x3e7",
+        "caip2": "eip155:999",
+        "evidence": [
+          {
+            "source": "https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/evm",
+            "asOfDate": "2026-10-23"
+          }
+        ]
+      },
+      "cohort": 4,
+      "inventoryEvidence": {
+        "sourceId": "quicknode-manifest-2026-10-21",
+        "sourceSha256": "7e93e849ea605391df9f9879c815fc0972b2ed035cef7cfb2c700adc10c2f9cb",
+        "observedAt": "2026-10-21T08:24:00.837289+00:00",
+        "endpointId": "677319",
+        "limitations": "inventory-only; deployReady=false; fresh authenticated refresh required"
+      }
+    },
+    {
+      "networkId": "rpc-monad-mainnet",
+      "chainKey": "monad",
+      "namespace": "monad.rpc",
+      "clientContractId": "client-monad-rpc",
+      "provider": {
+        "id": "677321",
+        "chain": "monad",
+        "network": "monad-mainnet",
+        "protocols": [
+          "evm-jsonrpc",
+          "websocket"
+        ]
+      },
+      "selection": "hosted-or-explicit-direct",
+      "identity": {
+        "probe": "eth_chainId",
+        "parameters": [],
+        "projection": "$.result",
+        "expected": "0x8f",
+        "caip2": "eip155:143",
+        "evidence": [
+          {
+            "source": "https://docs.monad.xyz/developer-operations/network-information",
+            "asOfDate": "2026-10-23"
+          }
+        ]
+      },
+      "cohort": 3,
+      "inventoryEvidence": {
+        "sourceId": "quicknode-manifest-2026-10-21",
+        "sourceSha256": "7e93e849ea605391df9f9879c815fc0972b2ed035cef7cfb2c700adc10c2f9cb",
+        "observedAt": "2026-10-21T08:24:00.837289+00:00",
+        "endpointId": "677321",
+        "limitations": "inventory-only; deployReady=false; fresh authenticated refresh required"
+      }
+    },
+    {
+      "networkId": "rpc-robinhood-chain-mainnet",
+      "chainKey": "robinhood-chain",
+      "namespace": "robinhood.rpc",
+      "clientContractId": "client-robinhood-rpc",
+      "provider": {
+        "id": "677327",
+        "chain": "robinhood",
+        "network": "robinhood-mainnet",
+        "protocols": [
+          "evm-jsonrpc",
+          "websocket"
+        ]
+      },
+      "selection": "hosted-or-explicit-direct",
+      "identity": {
+        "probe": "eth_chainId",
+        "parameters": [],
+        "projection": "$.result",
+        "expected": "0x1237",
+        "caip2": "eip155:4663",
+        "evidence": [
+          {
+            "source": "https://docs.robinhood.com/chain/developer-portal/",
+            "asOfDate": "2026-10-23"
+          }
+        ]
+      },
+      "cohort": 4,
+      "inventoryEvidence": {
+        "sourceId": "quicknode-manifest-2026-10-21",
+        "sourceSha256": "7e93e849ea605391df9f9879c815fc0972b2ed035cef7cfb2c700adc10c2f9cb",
+        "observedAt": "2026-10-21T08:24:00.837289+00:00",
+        "endpointId": "677327",
+        "limitations": "inventory-only; deployReady=false; fresh authenticated refresh required"
+      }
+    },
+    {
+      "networkId": "rpc-soneium-mainnet",
+      "chainKey": "soneium",
+      "namespace": "soneium.rpc",
+      "clientContractId": "client-soneium-rpc",
+      "provider": {
+        "id": "677328",
+        "chain": "soneium",
+        "network": "soneium-mainnet",
+        "protocols": [
+          "evm-jsonrpc",
+          "websocket"
+        ]
+      },
+      "selection": "hosted-or-explicit-direct",
+      "identity": {
+        "probe": "eth_chainId",
+        "parameters": [],
+        "projection": "$.result",
+        "expected": "0x74c",
+        "caip2": "eip155:1868",
+        "evidence": [
+          {
+            "source": "https://docs.soneium.org/docs/builders/rpc/",
+            "asOfDate": "2026-10-23"
+          }
+        ]
+      },
+      "cohort": 3,
+      "inventoryEvidence": {
+        "sourceId": "quicknode-manifest-2026-10-21",
+        "sourceSha256": "7e93e849ea605391df9f9879c815fc0972b2ed035cef7cfb2c700adc10c2f9cb",
+        "observedAt": "2026-10-21T08:24:00.837289+00:00",
+        "endpointId": "677328",
+        "limitations": "inventory-only; deployReady=false; fresh authenticated refresh required"
+      }
+    },
+    {
+      "networkId": "rpc-arc-mainnet",
+      "chainKey": "arc",
+      "namespace": "arc.rpc",
+      "clientContractId": "client-arc-rpc",
+      "provider": {
+        "id": "677326",
+        "chain": "arc",
+        "network": "arc-mainnet",
+        "protocols": [
+          "evm-jsonrpc",
+          "websocket"
+        ]
+      },
+      "selection": "hosted-or-explicit-direct",
+      "identity": {
+        "probe": "eth_chainId",
+        "parameters": [],
+        "projection": "$.result",
+        "expected": "0x13b2",
+        "caip2": "eip155:5042",
+        "evidence": [
+          {
+            "source": "https://docs.arc.network/learn/technical-reference/network-information",
+            "asOfDate": "2026-10-23"
+          }
+        ]
+      },
+      "cohort": 4,
+      "inventoryEvidence": {
+        "sourceId": "quicknode-manifest-2026-10-21",
+        "sourceSha256": "7e93e849ea605391df9f9879c815fc0972b2ed035cef7cfb2c700adc10c2f9cb",
+        "observedAt": "2026-10-21T08:24:00.837289+00:00",
+        "endpointId": "677326",
+        "limitations": "inventory-only; deployReady=false; fresh authenticated refresh required"
+      }
+    },
+    {
+      "networkId": "rpc-optimism-mainnet",
+      "chainKey": "optimism",
+      "namespace": "optimism.rpc",
+      "clientContractId": "client-optimism-rpc",
+      "provider": {
+        "id": "677318",
+        "chain": "optimism",
+        "network": "optimism",
+        "protocols": [
+          "evm-jsonrpc",
+          "websocket"
+        ]
+      },
+      "selection": "hosted-or-explicit-direct",
+      "identity": {
+        "probe": "eth_chainId",
+        "parameters": [],
+        "projection": "$.result",
+        "expected": "0xa",
+        "caip2": "eip155:10",
+        "evidence": [
+          {
+            "source": "https://docs.optimism.io/chain/addresses",
+            "asOfDate": "2026-10-23"
+          }
+        ]
+      },
+      "cohort": 2,
+      "inventoryEvidence": {
+        "sourceId": "quicknode-manifest-2026-10-21",
+        "sourceSha256": "7e93e849ea605391df9f9879c815fc0972b2ed035cef7cfb2c700adc10c2f9cb",
+        "observedAt": "2026-10-21T08:24:00.837289+00:00",
+        "endpointId": "677318",
+        "limitations": "inventory-only; deployReady=false; fresh authenticated refresh required"
+      }
+    },
+    {
+      "networkId": "rpc-sui-mainnet",
+      "chainKey": "sui",
+      "namespace": "sui.grpc",
+      "clientContractId": "client-sui-grpc",
+      "provider": {
+        "id": "677324",
+        "chain": "sui",
+        "network": "sui-mainnet",
+        "protocols": [
+          "grpc",
+          "graphql"
+        ]
+      },
+      "selection": "hosted-or-explicit-direct",
+      "identity": {
+        "probe": "GetServiceInfo.chain_id",
+        "parameters": [],
+        "projection": "$.chain_id",
+        "expected": "4btiuiMPvEENsttpZC7CZ53DruC3MAgfznDbASZ7DR6S",
+        "secondaryProbe": "GetServiceInfo.chain",
+        "secondaryParameters": [],
+        "secondaryProjection": "$.chain",
+        "secondaryExpected": "mainnet",
+        "evidence": [
+          {
+            "source": "https://docs.sui.io/references/sui-api",
+            "asOfDate": "2026-10-23"
+          }
+        ]
+      },
+      "cohort": 5,
+      "inventoryEvidence": {
+        "sourceId": "quicknode-manifest-2026-10-21",
+        "sourceSha256": "7e93e849ea605391df9f9879c815fc0972b2ed035cef7cfb2c700adc10c2f9cb",
+        "observedAt": "2026-10-21T08:24:00.837289+00:00",
+        "endpointId": "677324",
+        "limitations": "inventory-only; deployReady=false; fresh authenticated refresh required"
+      }
+    },
+    {
+      "networkId": "rpc-near-mainnet",
+      "chainKey": "near",
+      "namespace": "near.rpc",
+      "clientContractId": "client-near-rpc",
+      "provider": {
+        "id": "677325",
+        "chain": "near",
+        "network": "near-mainnet",
+        "protocols": [
+          "near-jsonrpc"
+        ]
+      },
+      "selection": "hosted-or-explicit-direct",
+      "identity": {
+        "probe": "status.chain_id",
+        "parameters": [],
+        "projection": "$.result.chain_id",
+        "expected": "mainnet",
+        "evidence": [
+          {
+            "source": "https://docs.near.org/api/rpc/network",
+            "asOfDate": "2026-10-23"
+          }
+        ]
+      },
+      "cohort": 5,
+      "inventoryEvidence": {
+        "sourceId": "quicknode-manifest-2026-10-21",
+        "sourceSha256": "7e93e849ea605391df9f9879c815fc0972b2ed035cef7cfb2c700adc10c2f9cb",
+        "observedAt": "2026-10-21T08:24:00.837289+00:00",
+        "endpointId": "677325",
+        "limitations": "inventory-only; deployReady=false; fresh authenticated refresh required"
+      }
+    }
+  ],
+  "compatibilityExceptions": [
+    {
+      "exceptionId": "ruby-arbitrum-synchronous-request-v1",
+      "language": "ruby",
+      "clientContractId": "client-arbitrum-rpc",
+      "allowedDifference": "Ruby has no per-request cancellation API for Arbitrum; only that absent case is excluded from the lifecycle probe.",
+      "evidence": [
+        "EDGAR-C1-ACTIVATION-AND-COMMON-CONTRACT.md §Dedicated Bitcoin codec/transport"
+      ],
+      "reviewCondition": "Revisit when the Ruby request API gains an explicitly reviewed cancellation primitive."
+    },
+    {
+      "exceptionId": "ruby-arc-synchronous-request-v1",
+      "language": "ruby",
+      "clientContractId": "client-arc-rpc",
+      "allowedDifference": "Ruby has no per-request cancellation API for Arc; only that absent case is excluded from the lifecycle probe.",
+      "evidence": [
+        "RESUME-20261024-P3C-EVIDENCE-BOUNDARY-DECISION.md §5"
+      ],
+      "reviewCondition": "Revisit when the Ruby request API gains an explicitly reviewed cancellation primitive."
+    },
+    {
+      "exceptionId": "ruby-base-synchronous-request-v1",
+      "language": "ruby",
+      "clientContractId": "client-base-rpc",
+      "allowedDifference": "Ruby has no per-request cancellation API for Base; only that absent case is excluded from the lifecycle probe.",
+      "evidence": [
+        "EDGAR-C1-ACTIVATION-AND-COMMON-CONTRACT.md §Dedicated Bitcoin codec/transport"
+      ],
+      "reviewCondition": "Revisit when the Ruby request API gains an explicitly reviewed cancellation primitive."
+    },
+    {
+      "exceptionId": "ruby-bitcoin-synchronous-request-v1",
+      "language": "ruby",
+      "clientContractId": "client-bitcoin-rpc",
+      "allowedDifference": "Ruby has no per-request cancellation API; the finite exception covers only that absent case and does not relax total deadline, stream cleanup, abort-by-error or no-retry behavior.",
+      "evidence": [
+        "EDGAR-C1-ACTIVATION-AND-COMMON-CONTRACT.md §Dedicated Bitcoin codec/transport"
+      ],
+      "reviewCondition": "Revisit when the Ruby request API gains an explicitly reviewed cancellation primitive."
+    },
+    {
+      "exceptionId": "ruby-bsc-synchronous-request-v1",
+      "language": "ruby",
+      "clientContractId": "client-bsc-rpc",
+      "allowedDifference": "Ruby has no per-request cancellation API for BSC; only that absent case is excluded from the lifecycle probe.",
+      "evidence": [
+        "RESUME-20261024-P3C-EVIDENCE-BOUNDARY-DECISION.md §5"
+      ],
+      "reviewCondition": "Revisit when the Ruby request API gains an explicitly reviewed cancellation primitive."
+    },
+    {
+      "exceptionId": "ruby-hyperliquid-synchronous-request-v1",
+      "language": "ruby",
+      "clientContractId": "client-hyperliquid-rpc",
+      "allowedDifference": "Ruby has no per-request cancellation API for Hyperliquid; only that absent case is excluded from the lifecycle probe.",
+      "evidence": [
+        "RESUME-20261024-P3C-EVIDENCE-BOUNDARY-DECISION.md §5"
+      ],
+      "reviewCondition": "Revisit when the Ruby request API gains an explicitly reviewed cancellation primitive."
+    },
+    {
+      "exceptionId": "ruby-kaia-synchronous-request-v1",
+      "language": "ruby",
+      "clientContractId": "client-kaia-rpc",
+      "allowedDifference": "Ruby has no per-request cancellation API for Kaia; only that absent case is excluded from the lifecycle probe.",
+      "evidence": [
+        "RESUME-20261024-P3C-EVIDENCE-BOUNDARY-DECISION.md §5"
+      ],
+      "reviewCondition": "Revisit when the Ruby request API gains an explicitly reviewed cancellation primitive."
+    },
+    {
+      "exceptionId": "ruby-monad-synchronous-request-v1",
+      "language": "ruby",
+      "clientContractId": "client-monad-rpc",
+      "allowedDifference": "Ruby has no per-request cancellation API for Monad; only that absent case is excluded from the lifecycle probe.",
+      "evidence": [
+        "RESUME-20261024-P3C-EVIDENCE-BOUNDARY-DECISION.md §5"
+      ],
+      "reviewCondition": "Revisit when the Ruby request API gains an explicitly reviewed cancellation primitive."
+    },
+    {
+      "exceptionId": "ruby-near-synchronous-request-v1",
+      "language": "ruby",
+      "clientContractId": "client-near-rpc",
+      "allowedDifference": "Ruby has no per-request cancellation API for NEAR; only that absent case is excluded from the lifecycle probe.",
+      "evidence": [
+        "RESUME-20261024-P3C-EVIDENCE-BOUNDARY-DECISION.md §5"
+      ],
+      "reviewCondition": "Revisit when the Ruby request API gains an explicitly reviewed cancellation primitive."
+    },
+    {
+      "exceptionId": "ruby-optimism-synchronous-request-v1",
+      "language": "ruby",
+      "clientContractId": "client-optimism-rpc",
+      "allowedDifference": "Ruby has no per-request cancellation API for Optimism; only that absent case is excluded from the lifecycle probe.",
+      "evidence": [
+        "RESUME-20261024-P3C-EVIDENCE-BOUNDARY-DECISION.md §5"
+      ],
+      "reviewCondition": "Revisit when the Ruby request API gains an explicitly reviewed cancellation primitive."
+    },
+    {
+      "exceptionId": "ruby-polygon-synchronous-request-v1",
+      "language": "ruby",
+      "clientContractId": "client-polygon-rpc",
+      "allowedDifference": "Ruby has no per-request cancellation API for Polygon; only that absent case is excluded from the lifecycle probe.",
+      "evidence": [
+        "RESUME-20261024-P3C-EVIDENCE-BOUNDARY-DECISION.md §5"
+      ],
+      "reviewCondition": "Revisit when the Ruby request API gains an explicitly reviewed cancellation primitive."
+    },
+    {
+      "exceptionId": "ruby-robinhood-synchronous-request-v1",
+      "language": "ruby",
+      "clientContractId": "client-robinhood-rpc",
+      "allowedDifference": "Ruby has no per-request cancellation API for Robinhood; only that absent case is excluded from the lifecycle probe.",
+      "evidence": [
+        "RESUME-20261024-P3C-EVIDENCE-BOUNDARY-DECISION.md §5"
+      ],
+      "reviewCondition": "Revisit when the Ruby request API gains an explicitly reviewed cancellation primitive."
+    },
+    {
+      "exceptionId": "ruby-soneium-synchronous-request-v1",
+      "language": "ruby",
+      "clientContractId": "client-soneium-rpc",
+      "allowedDifference": "Ruby has no per-request cancellation API for Soneium; only that absent case is excluded from the lifecycle probe.",
+      "evidence": [
+        "RESUME-20261024-P3C-EVIDENCE-BOUNDARY-DECISION.md §5"
+      ],
+      "reviewCondition": "Revisit when the Ruby request API gains an explicitly reviewed cancellation primitive."
+    },
+    {
+      "exceptionId": "ruby-sui-synchronous-request-v1",
+      "language": "ruby",
+      "clientContractId": "client-sui-grpc",
+      "allowedDifference": "Ruby has no per-request cancellation API for Sui; only that absent case is excluded from the lifecycle probe.",
+      "evidence": [
+        "RESUME-20261024-P3C-EVIDENCE-BOUNDARY-DECISION.md §5"
+      ],
+      "reviewCondition": "Revisit when the Ruby request API gains an explicitly reviewed cancellation primitive."
+    },
+    {
+      "exceptionId": "ruby-tron-synchronous-request-v1",
+      "language": "ruby",
+      "clientContractId": "client-tron-rpc",
+      "allowedDifference": "Ruby has no per-request cancellation API for TRON; only that absent case is excluded from the lifecycle probe.",
+      "evidence": [
+        "RESUME-20261024-P3C-EVIDENCE-BOUNDARY-DECISION.md §5"
+      ],
+      "reviewCondition": "Revisit when the Ruby request API gains an explicitly reviewed cancellation primitive."
+    },
+    {
+      "exceptionId": "rust-bitcoin-decode-domain-v1",
+      "language": "rust",
+      "clientContractId": "client-bitcoin-rpc",
+      "allowedDifference": "Rust keeps its accepted arbitrary-precision Bitcoin decoder and reserved-marker behavior; the new four-language streamed lexical resource limits do not retroactively alter that decoder domain.",
+      "evidence": [
+        "EDGAR-C1-NUMERIC-REGISTRY-DECISIONS.md §5"
+      ],
+      "reviewCondition": "Revisit only in a separately approved Rust decoder hardening brief."
+    },
+    {
+      "exceptionId": "rust-bitcoin-direct-diagnostic-v1",
+      "language": "rust",
+      "clientContractId": "client-bitcoin-rpc",
+      "allowedDifference": "Rust retains its queryless direct path-bearing endpoint diagnostic while removing query, fragment and credential values.",
+      "evidence": [
+        "accepted Rust 0.10.0 Bitcoin transport packet"
+      ],
+      "reviewCondition": "Revisit only through a separately approved compatibility decision."
+    },
+    {
+      "exceptionId": "rust-bitcoin-raw-batch-v1",
+      "language": "rust",
+      "clientContractId": "client-bitcoin-rpc",
+      "allowedDifference": "Rust retains its published Bitcoin raw request and intact batch superset through its legacy namespace; the four new language facades remain named-read only.",
+      "evidence": [
+        "accepted Rust 0.10.0 Bitcoin source/API packet"
+      ],
+      "reviewCondition": "Revisit only through a separately approved compatibility decision."
+    },
+    {
+      "exceptionId": "typescript-base-unconfigured-placeholder-v1",
+      "language": "typescript",
+      "clientContractId": "client-base-rpc",
+      "allowedDifference": "Released TypeScript Base retains https://unconfigured.invalid/base while unavailable on an otherwise keyless client and performs zero I/O.",
+      "evidence": [
+        "accepted TypeScript Base 0.9.1 compatibility packet"
+      ],
+      "reviewCondition": "Revisit only through an Edgar-approved compatibility change."
+    }
+  ],
+  "languageBindings": [
+    {
+      "bindingId": "go-client-arbitrum-rpc",
+      "language": "go",
+      "clientContractId": "client-arbitrum-rpc",
+      "status": "approved-c1",
+      "capabilityIds": [
+        "evm-eth-call",
+        "evm-eth-chain-id",
+        "evm-eth-get-balance"
+      ],
+      "exceptionIds": []
+    },
+    {
+      "bindingId": "go-client-arc-rpc",
+      "language": "go",
+      "clientContractId": "client-arc-rpc",
+      "status": "approved-c4",
+      "capabilityIds": [
+        "evm-eth-call",
+        "evm-eth-chain-id",
+        "evm-eth-get-balance"
+      ],
+      "exceptionIds": []
+    },
+    {
+      "bindingId": "go-client-base-rpc",
+      "language": "go",
+      "clientContractId": "client-base-rpc",
+      "status": "approved-c1",
+      "capabilityIds": [
+        "evm-eth-call",
+        "evm-eth-chain-id",
+        "evm-eth-get-balance"
+      ],
+      "exceptionIds": []
+    },
+    {
+      "bindingId": "go-client-bitcoin-rpc",
+      "language": "go",
+      "clientContractId": "client-bitcoin-rpc",
+      "status": "approved-c1",
+      "capabilityIds": [
+        "bitcoin-estimatesmartfee",
+        "bitcoin-getbestblockhash",
+        "bitcoin-getblock",
+        "bitcoin-getblockchaininfo",
+        "bitcoin-getblockcount",
+        "bitcoin-getblockhash",
+        "bitcoin-getblockheader",
+        "bitcoin-getmempoolinfo",
+        "bitcoin-getnetworkinfo",
+        "bitcoin-getrawmempool",
+        "bitcoin-getrawtransaction",
+        "bitcoin-gettxout"
+      ],
+      "exceptionIds": []
+    },
+    {
+      "bindingId": "go-client-bsc-rpc",
+      "language": "go",
+      "clientContractId": "client-bsc-rpc",
+      "status": "approved-c2",
+      "capabilityIds": [
+        "evm-eth-call",
+        "evm-eth-chain-id",
+        "evm-eth-get-balance"
+      ],
+      "exceptionIds": []
+    },
+    {
+      "bindingId": "go-client-hyperliquid-rpc",
+      "language": "go",
+      "clientContractId": "client-hyperliquid-rpc",
+      "status": "approved-c4",
+      "capabilityIds": [
+        "evm-eth-call",
+        "evm-eth-chain-id",
+        "evm-eth-get-balance"
+      ],
+      "exceptionIds": []
+    },
+    {
+      "bindingId": "go-client-kaia-rpc",
+      "language": "go",
+      "clientContractId": "client-kaia-rpc",
+      "status": "approved-c3",
+      "capabilityIds": [
+        "evm-eth-call",
+        "evm-eth-chain-id",
+        "evm-eth-get-balance"
+      ],
+      "exceptionIds": []
+    },
+    {
+      "bindingId": "go-client-monad-rpc",
+      "language": "go",
+      "clientContractId": "client-monad-rpc",
+      "status": "approved-c3",
+      "capabilityIds": [
+        "evm-eth-call",
+        "evm-eth-chain-id",
+        "evm-eth-get-balance"
+      ],
+      "exceptionIds": []
+    },
+    {
+      "bindingId": "go-client-near-rpc",
+      "language": "go",
+      "clientContractId": "client-near-rpc",
+      "status": "approved-c5",
+      "capabilityIds": [
+        "near-status",
+        "near-block",
+        "near-view-account"
+      ],
+      "exceptionIds": []
+    },
+    {
+      "bindingId": "go-client-optimism-rpc",
+      "language": "go",
+      "clientContractId": "client-optimism-rpc",
+      "status": "approved-c2",
+      "capabilityIds": [
+        "evm-eth-call",
+        "evm-eth-chain-id",
+        "evm-eth-get-balance"
+      ],
+      "exceptionIds": []
+    },
+    {
+      "bindingId": "go-client-polygon-rpc",
+      "language": "go",
+      "clientContractId": "client-polygon-rpc",
+      "status": "approved-c2",
+      "capabilityIds": [
+        "evm-eth-call",
+        "evm-eth-chain-id",
+        "evm-eth-get-balance"
+      ],
+      "exceptionIds": []
+    },
+    {
+      "bindingId": "go-client-robinhood-rpc",
+      "language": "go",
+      "clientContractId": "client-robinhood-rpc",
+      "status": "approved-c4",
+      "capabilityIds": [
+        "evm-eth-call",
+        "evm-eth-chain-id",
+        "evm-eth-get-balance"
+      ],
+      "exceptionIds": []
+    },
+    {
+      "bindingId": "go-client-soneium-rpc",
+      "language": "go",
+      "clientContractId": "client-soneium-rpc",
+      "status": "approved-c3",
+      "capabilityIds": [
+        "evm-eth-call",
+        "evm-eth-chain-id",
+        "evm-eth-get-balance"
+      ],
+      "exceptionIds": []
+    },
+    {
+      "bindingId": "go-client-sui-grpc",
+      "language": "go",
+      "clientContractId": "client-sui-grpc",
+      "status": "approved-c5",
+      "capabilityIds": [
+        "sui-get-service-info",
+        "sui-get-object",
+        "sui-get-balance"
+      ],
+      "exceptionIds": []
+    },
+    {
+      "bindingId": "go-client-tron-rpc",
+      "language": "go",
+      "clientContractId": "client-tron-rpc",
+      "status": "approved-c5",
+      "capabilityIds": [
+        "evm-eth-call",
+        "evm-eth-chain-id",
+        "evm-eth-get-balance"
+      ],
+      "exceptionIds": []
+    },
+    {
+      "bindingId": "python-client-arbitrum-rpc",
+      "language": "python",
+      "clientContractId": "client-arbitrum-rpc",
+      "status": "approved-c1",
+      "capabilityIds": [
+        "evm-eth-call",
+        "evm-eth-chain-id",
+        "evm-eth-get-balance"
+      ],
+      "exceptionIds": []
+    },
+    {
+      "bindingId": "python-client-arc-rpc",
+      "language": "python",
+      "clientContractId": "client-arc-rpc",
+      "status": "approved-c4",
+      "capabilityIds": [
+        "evm-eth-call",
+        "evm-eth-chain-id",
+        "evm-eth-get-balance"
+      ],
+      "exceptionIds": []
+    },
+    {
+      "bindingId": "python-client-base-rpc",
+      "language": "python",
+      "clientContractId": "client-base-rpc",
+      "status": "approved-c1",
+      "capabilityIds": [
+        "evm-eth-call",
+        "evm-eth-chain-id",
+        "evm-eth-get-balance"
+      ],
+      "exceptionIds": []
+    },
+    {
+      "bindingId": "python-client-bitcoin-rpc",
+      "language": "python",
+      "clientContractId": "client-bitcoin-rpc",
+      "status": "approved-c1",
+      "capabilityIds": [
+        "bitcoin-estimatesmartfee",
+        "bitcoin-getbestblockhash",
+        "bitcoin-getblock",
+        "bitcoin-getblockchaininfo",
+        "bitcoin-getblockcount",
+        "bitcoin-getblockhash",
+        "bitcoin-getblockheader",
+        "bitcoin-getmempoolinfo",
+        "bitcoin-getnetworkinfo",
+        "bitcoin-getrawmempool",
+        "bitcoin-getrawtransaction",
+        "bitcoin-gettxout"
+      ],
+      "exceptionIds": []
+    },
+    {
+      "bindingId": "python-client-bsc-rpc",
+      "language": "python",
+      "clientContractId": "client-bsc-rpc",
+      "status": "approved-c2",
+      "capabilityIds": [
+        "evm-eth-call",
+        "evm-eth-chain-id",
+        "evm-eth-get-balance"
+      ],
+      "exceptionIds": []
+    },
+    {
+      "bindingId": "python-client-hyperliquid-rpc",
+      "language": "python",
+      "clientContractId": "client-hyperliquid-rpc",
+      "status": "approved-c4",
+      "capabilityIds": [
+        "evm-eth-call",
+        "evm-eth-chain-id",
+        "evm-eth-get-balance"
+      ],
+      "exceptionIds": []
+    },
+    {
+      "bindingId": "python-client-kaia-rpc",
+      "language": "python",
+      "clientContractId": "client-kaia-rpc",
+      "status": "approved-c3",
+      "capabilityIds": [
+        "evm-eth-call",
+        "evm-eth-chain-id",
+        "evm-eth-get-balance"
+      ],
+      "exceptionIds": []
+    },
+    {
+      "bindingId": "python-client-monad-rpc",
+      "language": "python",
+      "clientContractId": "client-monad-rpc",
+      "status": "approved-c3",
+      "capabilityIds": [
+        "evm-eth-call",
+        "evm-eth-chain-id",
+        "evm-eth-get-balance"
+      ],
+      "exceptionIds": []
+    },
+    {
+      "bindingId": "python-client-near-rpc",
+      "language": "python",
+      "clientContractId": "client-near-rpc",
+      "status": "approved-c5",
+      "capabilityIds": [
+        "near-status",
+        "near-block",
+        "near-view-account"
+      ],
+      "exceptionIds": []
+    },
+    {
+      "bindingId": "python-client-optimism-rpc",
+      "language": "python",
+      "clientContractId": "client-optimism-rpc",
+      "status": "approved-c2",
+      "capabilityIds": [
+        "evm-eth-call",
+        "evm-eth-chain-id",
+        "evm-eth-get-balance"
+      ],
+      "exceptionIds": []
+    },
+    {
+      "bindingId": "python-client-polygon-rpc",
+      "language": "python",
+      "clientContractId": "client-polygon-rpc",
+      "status": "approved-c2",
+      "capabilityIds": [
+        "evm-eth-call",
+        "evm-eth-chain-id",
+        "evm-eth-get-balance"
+      ],
+      "exceptionIds": []
+    },
+    {
+      "bindingId": "python-client-robinhood-rpc",
+      "language": "python",
+      "clientContractId": "client-robinhood-rpc",
+      "status": "approved-c4",
+      "capabilityIds": [
+        "evm-eth-call",
+        "evm-eth-chain-id",
+        "evm-eth-get-balance"
+      ],
+      "exceptionIds": []
+    },
+    {
+      "bindingId": "python-client-soneium-rpc",
+      "language": "python",
+      "clientContractId": "client-soneium-rpc",
+      "status": "approved-c3",
+      "capabilityIds": [
+        "evm-eth-call",
+        "evm-eth-chain-id",
+        "evm-eth-get-balance"
+      ],
+      "exceptionIds": []
+    },
+    {
+      "bindingId": "python-client-sui-grpc",
+      "language": "python",
+      "clientContractId": "client-sui-grpc",
+      "status": "approved-c5",
+      "capabilityIds": [
+        "sui-get-service-info",
+        "sui-get-object",
+        "sui-get-balance"
+      ],
+      "exceptionIds": []
+    },
+    {
+      "bindingId": "python-client-tron-rpc",
+      "language": "python",
+      "clientContractId": "client-tron-rpc",
+      "status": "approved-c5",
+      "capabilityIds": [
+        "evm-eth-call",
+        "evm-eth-chain-id",
+        "evm-eth-get-balance"
+      ],
+      "exceptionIds": []
+    },
+    {
+      "bindingId": "ruby-client-arbitrum-rpc",
+      "language": "ruby",
+      "clientContractId": "client-arbitrum-rpc",
+      "status": "approved-c1",
+      "capabilityIds": [
+        "evm-eth-call",
+        "evm-eth-chain-id",
+        "evm-eth-get-balance"
+      ],
+      "exceptionIds": [
+        "ruby-arbitrum-synchronous-request-v1"
+      ]
+    },
+    {
+      "bindingId": "ruby-client-arc-rpc",
+      "language": "ruby",
+      "clientContractId": "client-arc-rpc",
+      "status": "approved-c4",
+      "capabilityIds": [
+        "evm-eth-call",
+        "evm-eth-chain-id",
+        "evm-eth-get-balance"
+      ],
+      "exceptionIds": [
+        "ruby-arc-synchronous-request-v1"
+      ]
+    },
+    {
+      "bindingId": "ruby-client-base-rpc",
+      "language": "ruby",
+      "clientContractId": "client-base-rpc",
+      "status": "approved-c1",
+      "capabilityIds": [
+        "evm-eth-call",
+        "evm-eth-chain-id",
+        "evm-eth-get-balance"
+      ],
+      "exceptionIds": [
+        "ruby-base-synchronous-request-v1"
+      ]
+    },
+    {
+      "bindingId": "ruby-client-bitcoin-rpc",
+      "language": "ruby",
+      "clientContractId": "client-bitcoin-rpc",
+      "status": "approved-c1",
+      "capabilityIds": [
+        "bitcoin-estimatesmartfee",
+        "bitcoin-getbestblockhash",
+        "bitcoin-getblock",
+        "bitcoin-getblockchaininfo",
+        "bitcoin-getblockcount",
+        "bitcoin-getblockhash",
+        "bitcoin-getblockheader",
+        "bitcoin-getmempoolinfo",
+        "bitcoin-getnetworkinfo",
+        "bitcoin-getrawmempool",
+        "bitcoin-getrawtransaction",
+        "bitcoin-gettxout"
+      ],
+      "exceptionIds": [
+        "ruby-bitcoin-synchronous-request-v1"
+      ]
+    },
+    {
+      "bindingId": "ruby-client-bsc-rpc",
+      "language": "ruby",
+      "clientContractId": "client-bsc-rpc",
+      "status": "approved-c2",
+      "capabilityIds": [
+        "evm-eth-call",
+        "evm-eth-chain-id",
+        "evm-eth-get-balance"
+      ],
+      "exceptionIds": [
+        "ruby-bsc-synchronous-request-v1"
+      ]
+    },
+    {
+      "bindingId": "ruby-client-hyperliquid-rpc",
+      "language": "ruby",
+      "clientContractId": "client-hyperliquid-rpc",
+      "status": "approved-c4",
+      "capabilityIds": [
+        "evm-eth-call",
+        "evm-eth-chain-id",
+        "evm-eth-get-balance"
+      ],
+      "exceptionIds": [
+        "ruby-hyperliquid-synchronous-request-v1"
+      ]
+    },
+    {
+      "bindingId": "ruby-client-kaia-rpc",
+      "language": "ruby",
+      "clientContractId": "client-kaia-rpc",
+      "status": "approved-c3",
+      "capabilityIds": [
+        "evm-eth-call",
+        "evm-eth-chain-id",
+        "evm-eth-get-balance"
+      ],
+      "exceptionIds": [
+        "ruby-kaia-synchronous-request-v1"
+      ]
+    },
+    {
+      "bindingId": "ruby-client-monad-rpc",
+      "language": "ruby",
+      "clientContractId": "client-monad-rpc",
+      "status": "approved-c3",
+      "capabilityIds": [
+        "evm-eth-call",
+        "evm-eth-chain-id",
+        "evm-eth-get-balance"
+      ],
+      "exceptionIds": [
+        "ruby-monad-synchronous-request-v1"
+      ]
+    },
+    {
+      "bindingId": "ruby-client-near-rpc",
+      "language": "ruby",
+      "clientContractId": "client-near-rpc",
+      "status": "approved-c5",
+      "capabilityIds": [
+        "near-status",
+        "near-block",
+        "near-view-account"
+      ],
+      "exceptionIds": [
+        "ruby-near-synchronous-request-v1"
+      ]
+    },
+    {
+      "bindingId": "ruby-client-optimism-rpc",
+      "language": "ruby",
+      "clientContractId": "client-optimism-rpc",
+      "status": "approved-c2",
+      "capabilityIds": [
+        "evm-eth-call",
+        "evm-eth-chain-id",
+        "evm-eth-get-balance"
+      ],
+      "exceptionIds": [
+        "ruby-optimism-synchronous-request-v1"
+      ]
+    },
+    {
+      "bindingId": "ruby-client-polygon-rpc",
+      "language": "ruby",
+      "clientContractId": "client-polygon-rpc",
+      "status": "approved-c2",
+      "capabilityIds": [
+        "evm-eth-call",
+        "evm-eth-chain-id",
+        "evm-eth-get-balance"
+      ],
+      "exceptionIds": [
+        "ruby-polygon-synchronous-request-v1"
+      ]
+    },
+    {
+      "bindingId": "ruby-client-robinhood-rpc",
+      "language": "ruby",
+      "clientContractId": "client-robinhood-rpc",
+      "status": "approved-c4",
+      "capabilityIds": [
+        "evm-eth-call",
+        "evm-eth-chain-id",
+        "evm-eth-get-balance"
+      ],
+      "exceptionIds": [
+        "ruby-robinhood-synchronous-request-v1"
+      ]
+    },
+    {
+      "bindingId": "ruby-client-soneium-rpc",
+      "language": "ruby",
+      "clientContractId": "client-soneium-rpc",
+      "status": "approved-c3",
+      "capabilityIds": [
+        "evm-eth-call",
+        "evm-eth-chain-id",
+        "evm-eth-get-balance"
+      ],
+      "exceptionIds": [
+        "ruby-soneium-synchronous-request-v1"
+      ]
+    },
+    {
+      "bindingId": "ruby-client-sui-grpc",
+      "language": "ruby",
+      "clientContractId": "client-sui-grpc",
+      "status": "approved-c5",
+      "capabilityIds": [
+        "sui-get-service-info",
+        "sui-get-object",
+        "sui-get-balance"
+      ],
+      "exceptionIds": [
+        "ruby-sui-synchronous-request-v1"
+      ]
+    },
+    {
+      "bindingId": "ruby-client-tron-rpc",
+      "language": "ruby",
+      "clientContractId": "client-tron-rpc",
+      "status": "approved-c5",
+      "capabilityIds": [
+        "evm-eth-call",
+        "evm-eth-chain-id",
+        "evm-eth-get-balance"
+      ],
+      "exceptionIds": [
+        "ruby-tron-synchronous-request-v1"
+      ]
+    },
+    {
+      "bindingId": "rust-client-arbitrum-rpc",
+      "language": "rust",
+      "clientContractId": "client-arbitrum-rpc",
+      "status": "approved-c1",
+      "capabilityIds": [
+        "evm-eth-call",
+        "evm-eth-chain-id",
+        "evm-eth-get-balance"
+      ],
+      "exceptionIds": []
+    },
+    {
+      "bindingId": "rust-client-arc-rpc",
+      "language": "rust",
+      "clientContractId": "client-arc-rpc",
+      "status": "approved-c4",
+      "capabilityIds": [
+        "evm-eth-call",
+        "evm-eth-chain-id",
+        "evm-eth-get-balance"
+      ],
+      "exceptionIds": []
+    },
+    {
+      "bindingId": "rust-client-base-rpc",
+      "language": "rust",
+      "clientContractId": "client-base-rpc",
+      "status": "approved-c1",
+      "capabilityIds": [
+        "evm-eth-call",
+        "evm-eth-chain-id",
+        "evm-eth-get-balance"
+      ],
+      "exceptionIds": []
+    },
+    {
+      "bindingId": "rust-client-bitcoin-rpc",
+      "language": "rust",
+      "clientContractId": "client-bitcoin-rpc",
+      "status": "approved-c1",
+      "capabilityIds": [
+        "bitcoin-estimatesmartfee",
+        "bitcoin-getbestblockhash",
+        "bitcoin-getblock",
+        "bitcoin-getblockchaininfo",
+        "bitcoin-getblockcount",
+        "bitcoin-getblockhash",
+        "bitcoin-getblockheader",
+        "bitcoin-getmempoolinfo",
+        "bitcoin-getnetworkinfo",
+        "bitcoin-getrawmempool",
+        "bitcoin-getrawtransaction",
+        "bitcoin-gettxout"
+      ],
+      "exceptionIds": [
+        "rust-bitcoin-raw-batch-v1",
+        "rust-bitcoin-direct-diagnostic-v1",
+        "rust-bitcoin-decode-domain-v1"
+      ]
+    },
+    {
+      "bindingId": "rust-client-bsc-rpc",
+      "language": "rust",
+      "clientContractId": "client-bsc-rpc",
+      "status": "approved-c2",
+      "capabilityIds": [
+        "evm-eth-call",
+        "evm-eth-chain-id",
+        "evm-eth-get-balance"
+      ],
+      "exceptionIds": []
+    },
+    {
+      "bindingId": "rust-client-hyperliquid-rpc",
+      "language": "rust",
+      "clientContractId": "client-hyperliquid-rpc",
+      "status": "approved-c4",
+      "capabilityIds": [
+        "evm-eth-call",
+        "evm-eth-chain-id",
+        "evm-eth-get-balance"
+      ],
+      "exceptionIds": []
+    },
+    {
+      "bindingId": "rust-client-kaia-rpc",
+      "language": "rust",
+      "clientContractId": "client-kaia-rpc",
+      "status": "approved-c3",
+      "capabilityIds": [
+        "evm-eth-call",
+        "evm-eth-chain-id",
+        "evm-eth-get-balance"
+      ],
+      "exceptionIds": []
+    },
+    {
+      "bindingId": "rust-client-monad-rpc",
+      "language": "rust",
+      "clientContractId": "client-monad-rpc",
+      "status": "approved-c3",
+      "capabilityIds": [
+        "evm-eth-call",
+        "evm-eth-chain-id",
+        "evm-eth-get-balance"
+      ],
+      "exceptionIds": []
+    },
+    {
+      "bindingId": "rust-client-near-rpc",
+      "language": "rust",
+      "clientContractId": "client-near-rpc",
+      "status": "approved-c5",
+      "capabilityIds": [
+        "near-status",
+        "near-block",
+        "near-view-account"
+      ],
+      "exceptionIds": []
+    },
+    {
+      "bindingId": "rust-client-optimism-rpc",
+      "language": "rust",
+      "clientContractId": "client-optimism-rpc",
+      "status": "approved-c2",
+      "capabilityIds": [
+        "evm-eth-call",
+        "evm-eth-chain-id",
+        "evm-eth-get-balance"
+      ],
+      "exceptionIds": []
+    },
+    {
+      "bindingId": "rust-client-polygon-rpc",
+      "language": "rust",
+      "clientContractId": "client-polygon-rpc",
+      "status": "approved-c2",
+      "capabilityIds": [
+        "evm-eth-call",
+        "evm-eth-chain-id",
+        "evm-eth-get-balance"
+      ],
+      "exceptionIds": []
+    },
+    {
+      "bindingId": "rust-client-robinhood-rpc",
+      "language": "rust",
+      "clientContractId": "client-robinhood-rpc",
+      "status": "approved-c4",
+      "capabilityIds": [
+        "evm-eth-call",
+        "evm-eth-chain-id",
+        "evm-eth-get-balance"
+      ],
+      "exceptionIds": []
+    },
+    {
+      "bindingId": "rust-client-soneium-rpc",
+      "language": "rust",
+      "clientContractId": "client-soneium-rpc",
+      "status": "approved-c3",
+      "capabilityIds": [
+        "evm-eth-call",
+        "evm-eth-chain-id",
+        "evm-eth-get-balance"
+      ],
+      "exceptionIds": []
+    },
+    {
+      "bindingId": "rust-client-sui-grpc",
+      "language": "rust",
+      "clientContractId": "client-sui-grpc",
+      "status": "approved-c5",
+      "capabilityIds": [
+        "sui-get-service-info",
+        "sui-get-object",
+        "sui-get-balance"
+      ],
+      "exceptionIds": []
+    },
+    {
+      "bindingId": "rust-client-tron-rpc",
+      "language": "rust",
+      "clientContractId": "client-tron-rpc",
+      "status": "approved-c5",
+      "capabilityIds": [
+        "evm-eth-call",
+        "evm-eth-chain-id",
+        "evm-eth-get-balance"
+      ],
+      "exceptionIds": []
+    },
+    {
+      "bindingId": "typescript-client-arbitrum-rpc",
+      "language": "typescript",
+      "clientContractId": "client-arbitrum-rpc",
+      "status": "approved-c1",
+      "capabilityIds": [
+        "evm-eth-call",
+        "evm-eth-chain-id",
+        "evm-eth-get-balance"
+      ],
+      "exceptionIds": []
+    },
+    {
+      "bindingId": "typescript-client-arc-rpc",
+      "language": "typescript",
+      "clientContractId": "client-arc-rpc",
+      "status": "approved-c4",
+      "capabilityIds": [
+        "evm-eth-call",
+        "evm-eth-chain-id",
+        "evm-eth-get-balance"
+      ],
+      "exceptionIds": []
+    },
+    {
+      "bindingId": "typescript-client-base-rpc",
+      "language": "typescript",
+      "clientContractId": "client-base-rpc",
+      "status": "approved-c1",
+      "capabilityIds": [
+        "evm-eth-call",
+        "evm-eth-chain-id",
+        "evm-eth-get-balance"
+      ],
+      "exceptionIds": [
+        "typescript-base-unconfigured-placeholder-v1"
+      ]
+    },
+    {
+      "bindingId": "typescript-client-bitcoin-rpc",
+      "language": "typescript",
+      "clientContractId": "client-bitcoin-rpc",
+      "status": "approved-c1",
+      "capabilityIds": [
+        "bitcoin-estimatesmartfee",
+        "bitcoin-getbestblockhash",
+        "bitcoin-getblock",
+        "bitcoin-getblockchaininfo",
+        "bitcoin-getblockcount",
+        "bitcoin-getblockhash",
+        "bitcoin-getblockheader",
+        "bitcoin-getmempoolinfo",
+        "bitcoin-getnetworkinfo",
+        "bitcoin-getrawmempool",
+        "bitcoin-getrawtransaction",
+        "bitcoin-gettxout"
+      ],
+      "exceptionIds": []
+    },
+    {
+      "bindingId": "typescript-client-bsc-rpc",
+      "language": "typescript",
+      "clientContractId": "client-bsc-rpc",
+      "status": "approved-c2",
+      "capabilityIds": [
+        "evm-eth-call",
+        "evm-eth-chain-id",
+        "evm-eth-get-balance"
+      ],
+      "exceptionIds": []
+    },
+    {
+      "bindingId": "typescript-client-hyperliquid-rpc",
+      "language": "typescript",
+      "clientContractId": "client-hyperliquid-rpc",
+      "status": "approved-c4",
+      "capabilityIds": [
+        "evm-eth-call",
+        "evm-eth-chain-id",
+        "evm-eth-get-balance"
+      ],
+      "exceptionIds": []
+    },
+    {
+      "bindingId": "typescript-client-kaia-rpc",
+      "language": "typescript",
+      "clientContractId": "client-kaia-rpc",
+      "status": "approved-c3",
+      "capabilityIds": [
+        "evm-eth-call",
+        "evm-eth-chain-id",
+        "evm-eth-get-balance"
+      ],
+      "exceptionIds": []
+    },
+    {
+      "bindingId": "typescript-client-monad-rpc",
+      "language": "typescript",
+      "clientContractId": "client-monad-rpc",
+      "status": "approved-c3",
+      "capabilityIds": [
+        "evm-eth-call",
+        "evm-eth-chain-id",
+        "evm-eth-get-balance"
+      ],
+      "exceptionIds": []
+    },
+    {
+      "bindingId": "typescript-client-near-rpc",
+      "language": "typescript",
+      "clientContractId": "client-near-rpc",
+      "status": "approved-c5",
+      "capabilityIds": [
+        "near-status",
+        "near-block",
+        "near-view-account"
+      ],
+      "exceptionIds": []
+    },
+    {
+      "bindingId": "typescript-client-optimism-rpc",
+      "language": "typescript",
+      "clientContractId": "client-optimism-rpc",
+      "status": "approved-c2",
+      "capabilityIds": [
+        "evm-eth-call",
+        "evm-eth-chain-id",
+        "evm-eth-get-balance"
+      ],
+      "exceptionIds": []
+    },
+    {
+      "bindingId": "typescript-client-polygon-rpc",
+      "language": "typescript",
+      "clientContractId": "client-polygon-rpc",
+      "status": "approved-c2",
+      "capabilityIds": [
+        "evm-eth-call",
+        "evm-eth-chain-id",
+        "evm-eth-get-balance"
+      ],
+      "exceptionIds": []
+    },
+    {
+      "bindingId": "typescript-client-robinhood-rpc",
+      "language": "typescript",
+      "clientContractId": "client-robinhood-rpc",
+      "status": "approved-c4",
+      "capabilityIds": [
+        "evm-eth-call",
+        "evm-eth-chain-id",
+        "evm-eth-get-balance"
+      ],
+      "exceptionIds": []
+    },
+    {
+      "bindingId": "typescript-client-soneium-rpc",
+      "language": "typescript",
+      "clientContractId": "client-soneium-rpc",
+      "status": "approved-c3",
+      "capabilityIds": [
+        "evm-eth-call",
+        "evm-eth-chain-id",
+        "evm-eth-get-balance"
+      ],
+      "exceptionIds": []
+    },
+    {
+      "bindingId": "typescript-client-sui-grpc",
+      "language": "typescript",
+      "clientContractId": "client-sui-grpc",
+      "status": "approved-c5",
+      "capabilityIds": [
+        "sui-get-service-info",
+        "sui-get-object",
+        "sui-get-balance"
+      ],
+      "exceptionIds": []
+    },
+    {
+      "bindingId": "typescript-client-tron-rpc",
+      "language": "typescript",
+      "clientContractId": "client-tron-rpc",
+      "status": "approved-c5",
+      "capabilityIds": [
+        "evm-eth-call",
+        "evm-eth-chain-id",
+        "evm-eth-get-balance"
+      ],
+      "exceptionIds": []
+    }
+  ]
+}

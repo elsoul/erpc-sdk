@@ -5,17 +5,17 @@ Avalanche C/P/X-chain JSON-RPC, indexed data, analytics, WebSocket subscriptions
 price REST and server-sent events, account usage, and scoped Cloud reads.
 
 ```bash
-# After RubyGems lists 0.9.1:
-gem install erpc-sdk -v 0.9.1
-# For local validation, use the public 0.9.0 gem or this source checkout.
+# Install the 0.11.0 gem:
+gem install erpc-sdk -v 0.11.0
+# Historical public 0.9.0 remains available for compatibility checks.
 ```
 
 Ruby 3.1 or newer is required. Local Mayan unsigned construction uses the
 approved native `digest-keccak` 0.0.7 runtime dependency.
 
-This source/release cohort targets `0.9.1`; check the
-[RubyGems release metadata](https://rubygems.org/api/v1/versions/erpc-sdk.json)
-for current package availability.
+This guide documents version `0.11.0`. Check the [RubyGems release
+metadata](https://rubygems.org/api/v1/versions/erpc-sdk.json) for available
+versions.
 
 ## Quick start
 
@@ -34,6 +34,39 @@ ensure
   erpc&.close
 end
 ```
+
+## Named Bitcoin, Base, and Arbitrum reads
+
+The C1 clients expose bounded, read-only JSON-RPC surfaces. Requests remain
+inert until `.send`; Bitcoin numbers use `Integer` and exact `BigDecimal`
+values, and `get_block_count` accepts only an unsigned integer token in the
+u64 range.
+
+```ruby
+config = ERPC::ClientConfig.new(api_key: ENV.fetch("ERPC_API_KEY"))
+erpc = ERPC::Client.new(config)
+
+best_hash = erpc.bitcoin.rpc.get_best_block_hash.send
+chain_id = erpc.base.rpc.eth_chain_id.send
+arbitrum_id = erpc.arbitrum.rpc.eth_chain_id.send
+```
+
+`bitcoin_rpc`, `base_rpc`, and `arbitrum_rpc` accept keyless direct
+`RpcEndpointConfig` overrides. These sealed reads preserve the complete direct
+URL and scoped headers, reject WebSocket overrides, and do not follow
+redirects. The gem pins the runtime `bigdecimal` dependency at 4.1.3.
+
+The Sui read-only `erpc.sui.grpc` surface is a dependency-free bounded
+gRPC-Web projection. Its source attribution and component license texts are
+listed in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md),
+`LICENSES/Apache-2.0.txt`, and
+`LICENSES/BSD-3-Clause-Google-Protobuf.txt`. The original MIT license remains
+unchanged.
+
+The NEAR read-only surface uses `erpc.near.rpc.status`, `block(reference)`,
+and `view_account(account_id, reference)`. Use
+`NearBlockReference.final`, `.optimistic`, `.height(value)`, or
+`.from_hash(value)` for its exclusive selectors.
 
 ## Dedicated RPC endpoints (introduced in 0.8.0)
 
@@ -251,8 +284,10 @@ See the [Solana v1 guide](https://github.com/elsoul/erpc-sdk/blob/main/packages/
 
 `MayanSwiftV2BridgeClient` is an explicit standalone adapter for the reviewed issued EURC
 routes between Ethereum mainnet and Solana mainnet. The public `0.9.0` gem contains
-the native USDC and local-builder additions alongside EURC. The `0.9.1` package
-also includes these APIs as the source/release cohort target.
+the native USDC and local-builder additions alongside EURC. This `0.11.0` guide
+documents these APIs; check the [RubyGems release metadata](https://rubygems.org/api/v1/versions/erpc-sdk.json)
+for available versions.
+
 The adapter does not
 attach to `ERPC::Client`, inherit eRPC credentials or headers, or make any
 request during construction. Configure the Mayan builder and Explorer
@@ -311,7 +346,9 @@ quotes = bridge.quote_exact_input(
 ```
 
 The public `0.9.0` gem supports the EURC bridge, native USDC, and local-builder
-support. The `0.9.1` package carries these APIs as the source/release cohort target.
+support. This `0.11.0` guide documents these APIs; check the [RubyGems release
+metadata](https://rubygems.org/api/v1/versions/erpc-sdk.json) for available
+versions.
 
 ### Local unsigned Mayan construction
 

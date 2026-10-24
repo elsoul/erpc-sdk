@@ -1,17 +1,18 @@
 # ERPC SDK for Go
 
-Context-aware Go client for ERPC Solana, Ethereum, and Avalanche C/P/X-chain
-JSON-RPC, indexed data, analytics, WebSocket subscriptions, price streams,
-account information, usage, and Cloud APIs.
+Context-aware Go client for ERPC Bitcoin, Base, Arbitrum, Solana, Ethereum,
+and Avalanche C/P/X-chain JSON-RPC, indexed data, analytics, WebSocket
+subscriptions, price streams, account information, usage, and Cloud APIs.
 
 ## Install
 
 ```bash
-go get github.com/elsoul/erpc-sdk/packages/go@v0.9.1
+go get github.com/elsoul/erpc-sdk/packages/go@latest
 ```
 
-This is the planned 0.9.1 cohort command; use it after that module version
-becomes publicly resolvable.
+This guide documents the `v0.11.0` package. Use `@latest` for the latest
+available module, or use `@v0.11.0` when that version is available in the
+registry; check the [available module versions](https://pkg.go.dev/github.com/elsoul/erpc-sdk/packages/go?tab=versions) before selecting a version. The historical `0.9.0` module and its features remain documented below.
 
 Go 1.22 or later is supported.
 
@@ -75,6 +76,26 @@ client, err := erpc.NewClient(erpc.Config{
 	},
 })
 ```
+
+Bitcoin, Base, and Arbitrum also accept keyless direct HTTP endpoints. Their
+sealed clients expose only the approved read helpers; direct targets and
+headers stay scoped to the selected chain.
+
+```go
+client, err := erpc.NewClient(erpc.Config{
+	BitcoinRPC: &erpc.RPCEndpointConfig{
+		HTTPURL: "https://bitcoin.example/rpc?region=eu",
+	},
+	BaseRPC: &erpc.RPCEndpointConfig{
+		HTTPURL: "https://base.example/rpc",
+	},
+})
+```
+
+The Bitcoin client retains JSON number tokens as `json.Number`, applies the
+fixed bounded response policy before decoding, and validates `GetBlockCount`
+as an unsigned integer token. Generic Bitcoin reads return `any`; hash reads
+return strings and `GetTxOut` permits a `nil` result.
 
 Subscriptions require a separate complete WebSocket target. Endpoint-scoped
 headers apply only to that chain's direct HTTP requests.
@@ -140,6 +161,21 @@ event and `Close` when the stream is no longer needed.
 
 | Namespace | Purpose |
 | --- | --- |
+| `client.Bitcoin.RPC` | Sealed Bitcoin exact-JSON named reads |
+| `client.Base.RPC` | Sealed Base EVM read methods |
+| `client.Arbitrum.RPC` | Sealed Arbitrum EVM read methods |
+| `client.Polygon.RPC` | Sealed Polygon EVM read methods |
+| `client.Bsc.RPC` | Sealed BSC EVM read methods |
+| `client.Optimism.RPC` | Sealed Optimism EVM read methods |
+| `client.Kaia.RPC` | Sealed Kaia EVM read methods |
+| `client.Soneium.RPC` | Sealed Soneium EVM read methods |
+| `client.Monad.RPC` | Sealed Monad EVM read methods |
+| `client.Hyperliquid.RPC` | Sealed HyperEVM read methods |
+| `client.Arc.RPC` | Sealed Arc EVM read methods |
+| `client.Robinhood.RPC` | Sealed Robinhood Chain read methods |
+| `client.Near.RPC` | Sealed NEAR status, block, and account reads |
+| `client.Tron.RPC` | Sealed TRON EVM-compatible read methods |
+| `client.Sui.GRPC` | Sealed Sui gRPC-Web service, object, and balance reads |
 | `client.Solana.RPC` | Standard Solana JSON-RPC |
 | `client.Solana.DAS` | Indexed assets and tokens |
 | `client.Solana.History` | Address transactions and transfers |
@@ -159,6 +195,13 @@ event and `Close` when the stream is no longer needed.
 | `client.Price` | Price metadata, updates, and streams |
 | `client.Account` | Token balance |
 | `client.Usage` | Masked monthly API-key usage |
+
+The Sui codec is handwritten and dependency-free. Its adapted source carries
+Apache-2.0 and Google BSD-3-Clause provenance in
+[`LICENSES/Apache-2.0.txt`](LICENSES/Apache-2.0.txt),
+[`LICENSES/BSD-3-Clause-Google-Protobuf.txt`](LICENSES/BSD-3-Clause-Google-Protobuf.txt),
+and [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md). The package's existing
+MIT license remains applicable to the original SDK source.
 
 `Config.AvalancheEndpoint` defaults to `https://ava-rpc.erpc.global` and can be
 overridden independently. The SDK uses its `/ava` HTTP route and `/ava-ws`
@@ -501,4 +544,4 @@ prove settlement.
 
 ## License
 
-MIT
+Original ERPC SDK source remains under [MIT](LICENSE). The modified Sui schema projection carries [Apache-2.0](LICENSES/Apache-2.0.txt), and its Google Timestamp projection carries [BSD-3-Clause](LICENSES/BSD-3-Clause-Google-Protobuf.txt). The aggregate distribution expression is `MIT AND Apache-2.0 AND BSD-3-Clause`. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for component provenance.

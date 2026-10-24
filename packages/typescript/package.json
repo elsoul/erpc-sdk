@@ -1,10 +1,11 @@
 {
   "name": "@elsoul/erpc-sdk",
-  "version": "0.9.1",
+  "version": "0.11.0",
   "description": "Type-safe multi-network TypeScript SDK for ERPC",
   "dependencies": {
     "@noble/curves": "1.9.7",
-    "@noble/hashes": "1.8.0"
+    "@noble/hashes": "1.8.0",
+    "lossless-json": "4.3.3"
   },
   "keywords": [
     "avalanche",
@@ -15,7 +16,7 @@
     "sdk",
     "solana"
   ],
-  "license": "MIT",
+  "license": "MIT AND Apache-2.0 AND BSD-3-Clause",
   "author": "ELSOUL LABO B.V.",
   "homepage": "https://erpc.global",
   "repository": {
@@ -35,7 +36,10 @@
   "files": [
     "dist",
     "LICENSE",
-    "README.md"
+    "LICENSES/Apache-2.0.txt",
+    "LICENSES/BSD-3-Clause-Google-Protobuf.txt",
+    "README.md",
+    "THIRD_PARTY_NOTICES.md"
   ],
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",

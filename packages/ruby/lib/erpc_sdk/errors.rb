@@ -115,6 +115,35 @@ module ERPC
     private_class_method :percent_character_class
 
     def direct_variants(http_url:, websocket_url: nil, headers: {})
+      variants(direct_values(http_url: http_url, websocket_url: websocket_url, headers: headers))
+    end
+
+    def direct_variants_with_path(http_url:, websocket_url: nil, headers: {})
+      values = direct_values(http_url: http_url, websocket_url: websocket_url, headers: headers)
+      [http_url, websocket_url].compact.each do |endpoint|
+        path = URI.parse(endpoint).path.to_s
+        next if path.empty? || path == "/"
+
+        values << path
+        begin
+          values << URI.decode_www_form_component(path)
+        rescue ArgumentError
+          values << path
+        end
+        path.split("/").reject(&:empty?).each do |component|
+          values << component
+          begin
+            values << URI.decode_www_form_component(component)
+          rescue ArgumentError
+            values << component
+          end
+        end
+      end
+      variants(values)
+    end
+    private_class_method :direct_variants_with_path
+
+    def direct_values(http_url:, websocket_url:, headers:)
       values = []
       [http_url, websocket_url].compact.each do |endpoint|
         query = URI.parse(endpoint).query.to_s
@@ -159,7 +188,8 @@ module ERPC
         end
       end
 
-      variants(values)
+      values
     end
+    private_class_method :direct_values
   end
 end
