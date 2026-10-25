@@ -4,6 +4,22 @@ This page describes the repository's operational roles. It does not assign a
 legal role, create a statutory open-source software steward designation, or
 grant authority over credentials, customer data, publication, or live funds.
 
+## Operator and service boundary
+
+ELSOUL LABO B.V. operates this repository. The public website is
+<https://labo.elsoul.nl>. `labo@elsoul.nl` is for general inquiries only;
+suspected vulnerabilities must use the private reporting channel in the
+[security policy](SECURITY.md).
+
+The SDK is free and supports configured RPC URLs from other providers. Any
+charges are for ERPC services; the SDK itself is free. The company continues
+SDK development, releases, and vulnerability fixes. Ordinary inquiries
+prioritize enterprise users, and support for free users is also planned; this
+page does not create an ordinary-inquiry response SLA. Security priority
+follows severity and exploitation, never payment, and public OSS security
+fixes are available to free and paid users at the same time. See
+[SECURITY.md](SECURITY.md) for the operating targets and version scope.
+
 ## Maintainers and contributors
 
 Maintainers keep the SDK source, five language packages, shared catalogs,
@@ -46,8 +62,13 @@ The repository copyright and [NOTICE](NOTICE) identify ELSOUL LABO B.V. as the
 company associated with the repository's original SDK source and imported
 hygiene tooling. That notice does not decide whether the company is a
 manufacturer, open-source software steward, contributor, or another role under
-any regulation. The applicable facts and support commitments remain open for a
-responsible human to assess.
+any regulation. The operator, free-SDK/paid-ERPC boundary, continuing
+maintenance, and operational security targets are confirmed company facts.
+Legal applicability, statutory role, product classification, fixed support
+duration, expected-use basis, and contract-specific terms remain for a
+responsible human to assess. Free SDK distribution and charges for ERPC
+services do not by themselves establish an automatic CRA exemption or a legal
+role.
 
 Public documentation describes the security process and links to release
 evidence. This repository does not declare CRA conformity, CE marking, or

@@ -43,24 +43,44 @@ service owner handle its separate process.
 ## Triage and disclosure
 
 Maintainers triage reports privately, assess affected packages and versions,
-and coordinate a fix or mitigation and an advisory when appropriate. Please
-allow coordination before publishing exploit details. Response and remediation
-time depends on severity and the information available; this policy does not
-set a fixed response or remediation deadline.
+and coordinate a fix or mitigation and an advisory when appropriate. Severity
+and exploitation determine vulnerability priority; payment does not. Public
+OSS security fixes are made available to free and paid users at the same time.
+Please allow coordination before publishing exploit details.
+
+The operating targets for this process are:
+
+- Aim to acknowledge a report within five Dutch business days, Monday through
+  Friday excluding Dutch public holidays, using the Europe/Amsterdam calendar.
+- Critical or actively exploited vulnerabilities receive immediate assessment.
+- For other reports, assign severity, an owner, and a response deadline within
+  seven calendar days from detection.
+- Fix goals measured from detection are 14 calendar days for Critical, 30 for
+  High, and 90 for Medium. Low has no fixed fix deadline and receives monthly
+  review.
+
+These are operational targets, not guaranteed service levels or legal reporting
+deadlines. If a target cannot be met, the existing private exception-approval
+process records the reason, mitigation, owner, and expiry. A mitigation is not
+a completed fix, and an exception does not reset the detection or awareness
+time. Private monthly review covers open vulnerabilities, Low items, overdue
+work, status, priorities, and exception expiry.
 
 If a report may involve active exploitation or a severe product-security
-incident, preserve the original awareness time and escalate it promptly to the
-responsible company human through the private process. Whether a legal
+incident, preserve the original awareness time and escalate it immediately to
+the responsible company human through the private process. Whether a legal
 reporting duty or role applies remains an open company decision; see the
-[public evidence index](docs/compliance/README.md). This page does not
+[public evidence index](docs/compliance/README.md). The operating targets do
+not defer any potentially applicable legal reporting clock. This page does not
 authorize a filing, public disclosure, repository-setting change, or release
 action.
 
 ## Supported versions
 
-Before the first stable release, security fixes are applied to the latest
-published preview only. This is a maintenance policy for the current 0.x line,
-not an LTS, backport, response-time, or support-period commitment.
+Standard security fixes cover the latest published version of each language
+package. Older-version backports require a separate agreement. This policy
+does not define a fixed support duration, an LTS commitment, or a guaranteed
+response time.
 
 Observed published versions on 2026-10-25:
 
