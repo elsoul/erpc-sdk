@@ -242,6 +242,19 @@ function compareVersions(left, right) {
   return (a.major - b.major) || (a.minor - b.minor) || (a.patch - b.patch);
 }
 
+function goRuntimeCompatibility(info) {
+  if (!Object.hasOwn(info ?? {}, "GoVersion")) return { known: false, compatible: true };
+  const required = parseVersion(info.GoVersion);
+  const floor = parseVersion(`${RUNTIME_FLOORS.go.go}.0`);
+  if (!required || !floor) return { known: true, compatible: false, error: `invalid GoVersion ${String(info.GoVersion)}` };
+  return {
+    known: true,
+    compatible: compareVersions(required.text, floor.text) <= 0,
+    required: required.text,
+    floor: floor.text,
+  };
+}
+
 function commandResult(command, args, options = {}) {
   const runner = options.runner ?? defaultCommandRunner;
   const result = runner(command, args, options);
@@ -867,6 +880,7 @@ function evaluateGo(root, options) {
   const direct = parseDirectGoModules(source);
   const result = commandResult("go", ["list", "-m", "-u", "-json", "all"], nativeOptions(goRoot, options, { GOTOOLCHAIN: "local" }));
   if (result.status !== 0) return { ecosystem: "go", status: "lookup-failed", command: result, updates: [], observations: [failureResult("go list", "lookup-failed", result.error ?? result.stderr)] };
+  const lookupCommands = [result];
   let rows;
   try { rows = parseJsonStream(result.stdout, "go list -m output"); } catch (error) { return { ecosystem: "go", status: "lookup-failed", command: result, updates: [], observations: [failureResult("go list", "lookup-failed", error)] }; }
   const observations = [];
@@ -893,37 +907,78 @@ function evaluateGo(root, options) {
     }
     const selector = currentVersion.major === 0 ? `v0.${currentVersion.minor}` : `v${currentVersion.major}`;
     const lookup = commandResult("go", ["list", "-m", "-json", `${module}@${selector}`], nativeOptions(goRoot, options, { GOTOOLCHAIN: "local" }));
+    lookupCommands.push(lookup);
     if (lookup.status !== 0) {
       restorePaths(root, originals);
-      return { ecosystem: "go", status: "lookup-failed", command: lookup, updates: [], observations, error: redactDiagnostic(lookup.error ?? lookup.stderr) };
+      return { ecosystem: "go", status: "lookup-failed", command: lookup, lookupCommands, updates: [], observations, error: redactDiagnostic(lookup.error ?? lookup.stderr) };
     }
-    let selected;
-    try { selected = parseJson(lookup.stdout.trim(), `go module ${module}`).Version; } catch (error) {
+    let selectedInfo;
+    try { selectedInfo = parseJson(lookup.stdout.trim(), `go module ${module}`); } catch (error) {
       restorePaths(root, originals);
-      return { ecosystem: "go", status: "lookup-failed", command: lookup, updates: [], observations, error: redactDiagnostic(error.message ?? error) };
+      return { ecosystem: "go", status: "lookup-failed", command: lookup, lookupCommands, updates: [], observations, error: redactDiagnostic(error.message ?? error) };
+    }
+    let selected = selectedInfo.Version;
+    let selectionLookup = lookup;
+    const runtime = goRuntimeCompatibility(selectedInfo);
+    if (runtime.error) {
+      restorePaths(root, originals);
+      return { ecosystem: "go", status: "lookup-failed", command: result, lookupCommands, updates: [], observations, error: runtime.error };
+    }
+    if (!runtime.compatible) {
+      const compatibleSelector = `v${currentVersion.major}.${currentVersion.minor}`;
+      if (compatibleSelector === selector) {
+        restorePaths(root, originals);
+        return { ecosystem: "go", status: "resolution-failed", command: result, lookupCommands, updates: [], observations, error: runtime.error ?? `${module}@${selected} requires Go ${runtime.required}, above the ${runtime.floor} runtime floor` };
+      }
+      const compatibleLookup = commandResult("go", ["list", "-m", "-json", `${module}@${compatibleSelector}`], nativeOptions(goRoot, options, { GOTOOLCHAIN: "local" }));
+      lookupCommands.push(compatibleLookup);
+      if (compatibleLookup.status !== 0) {
+        restorePaths(root, originals);
+        return { ecosystem: "go", status: "resolution-failed", command: result, lookupCommands, updates: [], observations, error: redactDiagnostic(compatibleLookup.error ?? compatibleLookup.stderr ?? "compatible Go module lookup failed") };
+      }
+      try { selectedInfo = parseJson(compatibleLookup.stdout.trim(), `compatible Go module ${module}`); } catch (error) {
+        restorePaths(root, originals);
+        return { ecosystem: "go", status: "resolution-failed", command: result, lookupCommands, updates: [], observations, error: redactDiagnostic(error.message ?? error) };
+      }
+      const compatibleRuntime = goRuntimeCompatibility(selectedInfo);
+      if (compatibleRuntime.error) {
+        restorePaths(root, originals);
+        return { ecosystem: "go", status: "lookup-failed", command: result, lookupCommands, updates: [], observations, error: compatibleRuntime.error };
+      }
+      if (!compatibleRuntime.compatible) {
+        restorePaths(root, originals);
+        return { ecosystem: "go", status: "resolution-failed", command: result, lookupCommands, updates: [], observations, error: compatibleRuntime.error ?? `${module}@${selectedInfo.Version} exceeds the ${compatibleRuntime.floor} runtime floor` };
+      }
+      selected = selectedInfo.Version;
+      selectionLookup = compatibleLookup;
+    }
+    if (!parseVersion(selected)) {
+      restorePaths(root, originals);
+      return { ecosystem: "go", status: "lookup-failed", command: result, lookupCommands, updates: [], observations, error: `go module ${module} returned an invalid selected version` };
     }
     const observation = observations.find((entry) => entry.name === module);
     observation.selected = selected;
+    observation.selectedGoVersion = selectedInfo.GoVersion ?? null;
     observation.selectedClassification = classifyUpdate(row.Version, selected);
     observation.status = observation.selectedClassification === "none" && observation.status === "manual-review" ? "manual-review" : observation.selectedClassification === "none" ? "no-update" : isEligibleClassification(observation.selectedClassification) ? "eligible" : observation.selectedClassification === "unparseable" ? "lookup-failed" : "manual-review";
-    observation.lookup = "go-list-major-line";
+    observation.lookup = selectionLookup === lookup ? "go-list-major-line" : "go-list-runtime-compatible-line";
     if (isEligibleClassification(observation.selectedClassification)) updates.push({ ...observation, target: selected });
   }
   for (const update of updates) {
-    const get = commandResult("go", ["get", "-mod=mod", `${update.name}@${update.target}`], nativeOptions(goRoot, options, { GOTOOLCHAIN: "local" }));
+    const get = commandResult("go", ["get", `${update.name}@${update.target}`], nativeOptions(goRoot, options, { GOTOOLCHAIN: "local" }));
     if (get.status !== 0) {
       restorePaths(root, originals);
-      return { ecosystem: "go", status: "resolution-failed", command: result, updates: [], observations, error: redactDiagnostic(get.stderr || get.error?.message || "go get failed") };
+      return { ecosystem: "go", status: "resolution-failed", command: result, lookupCommands, updates: [], observations, error: redactDiagnostic(get.stderr || get.error?.message || "go get failed") };
     }
   }
   if (updates.length > 0) {
     const tidy = commandResult("go", ["mod", "tidy"], nativeOptions(goRoot, options, { GOTOOLCHAIN: "local" }));
     if (tidy.status !== 0) {
       restorePaths(root, originals);
-      return { ecosystem: "go", status: "resolution-failed", command: result, updates: [], observations, error: redactDiagnostic(tidy.stderr || tidy.error?.message || "go mod tidy failed") };
+      return { ecosystem: "go", status: "resolution-failed", command: result, lookupCommands, updates: [], observations, error: redactDiagnostic(tidy.stderr || tidy.error?.message || "go mod tidy failed") };
     }
   }
-  return { ecosystem: "go", status: observations.some((observation) => observation.status === "lookup-failed") ? "lookup-failed" : updates.length > 0 ? "eligible" : observations.some((observation) => observation.status === "manual-review") ? "manual-review" : "no-update", command: result, updates, observations };
+  return { ecosystem: "go", status: observations.some((observation) => observation.status === "lookup-failed") ? "lookup-failed" : updates.length > 0 ? "eligible" : observations.some((observation) => observation.status === "manual-review") ? "manual-review" : "no-update", command: result, lookupCommands, updates, observations };
 }
 
 export function evaluateRuby(root, options) {

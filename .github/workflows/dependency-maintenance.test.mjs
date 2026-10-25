@@ -809,6 +809,119 @@ test("native Go inventory ignores the go directive and retains block and single-
   }
 });
 
+test("native Go patch update uses supported go get argv and keeps GOTOOLCHAIN local", () => {
+  const root = detachedFixture();
+  const getCalls = [];
+  try {
+    const baseRunner = nativeRunner(root);
+    const runner = (command, args, options) => {
+      if (command === "go" && args[0] === "get") {
+        getCalls.push({ args: [...args], env: options.env });
+        return { status: 0, stdout: "", stderr: "" };
+      }
+      if (command === "go" && args[0] === "mod" && args[1] === "tidy") return { status: 0, stdout: "", stderr: "" };
+      const result = baseRunner(command, args, options);
+      if (command === "go" && args[0] === "list" && args[1] === "-m" && args[2] === "-u") {
+        const rows = result.stdout.split("\n").filter(Boolean).map((line) => JSON.parse(line));
+        const updated = rows.map((row) => row.Path === "filippo.io/edwards25519" ? { ...row, Update: { Version: "v1.1.1" } } : row);
+        return { ...result, stdout: updated.map((row) => JSON.stringify(row)).join("\n") };
+      }
+      if (command === "go" && args[0] === "list" && args[1] === "-m" && args[2] === "-json" && args[3]?.startsWith("filippo.io/edwards25519@")) return { ...result, stdout: JSON.stringify({ Path: "filippo.io/edwards25519", Version: "v1.1.1" }) };
+      return result;
+    };
+    const artifact = evaluateRepository({ root, sourceSha, eventName: "schedule", eventRef: SOURCE_REF, workflowRef, runner, runId: 8112, runAttempt: 1, useTemporaryCheckout: false });
+    assert.equal(artifact.ecosystems.find((entry) => entry.ecosystem === "go").status, "eligible");
+    assert.equal(getCalls.length, 1);
+    assert.deepEqual(getCalls[0].args, ["get", "filippo.io/edwards25519@v1.1.1"]);
+    assert.equal(getCalls[0].args.includes("-mod=mod"), false);
+    assert.equal(getCalls[0].env.GOTOOLCHAIN, "local");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("native Go runtime fallback preserves unrestricted latest and selects the compatible major-minor line", () => {
+  const root = detachedFixture();
+  const lookupCalls = [];
+  const getCalls = [];
+  try {
+    const baseRunner = nativeRunner(root);
+    const runner = (command, args, options) => {
+      if (command === "go" && args[0] === "get") {
+        getCalls.push({ args: [...args], env: options.env });
+        return { status: 0, stdout: "", stderr: "" };
+      }
+      if (command === "go" && args[0] === "mod" && args[1] === "tidy") return { status: 0, stdout: "", stderr: "" };
+      if (command === "go" && args[0] === "list" && args[1] === "-m" && args[2] === "-json" && args[3]?.startsWith("filippo.io/edwards25519@")) {
+        lookupCalls.push({ args: [...args], env: options.env });
+        const selected = args[3].endsWith("@v1.1") ? { Path: "filippo.io/edwards25519", Version: "v1.1.1", GoVersion: "1.20" } : { Path: "filippo.io/edwards25519", Version: "v1.2.0", GoVersion: "1.24" };
+        return { status: 0, stdout: JSON.stringify(selected), stderr: "" };
+      }
+      const result = baseRunner(command, args, options);
+      if (command === "go" && args[0] === "list" && args[1] === "-m" && args[2] === "-u") {
+        const rows = result.stdout.split("\n").filter(Boolean).map((line) => JSON.parse(line));
+        const updated = rows.map((row) => row.Path === "filippo.io/edwards25519" ? { ...row, Update: { Version: "v1.2.0" } } : row);
+        return { ...result, stdout: updated.map((row) => JSON.stringify(row)).join("\n") };
+      }
+      return result;
+    };
+    const artifact = evaluateRepository({ root, sourceSha, eventName: "schedule", eventRef: SOURCE_REF, workflowRef, runner, runId: 8113, runAttempt: 1, useTemporaryCheckout: false });
+    const go = artifact.ecosystems.find((entry) => entry.ecosystem === "go");
+    const observation = go.observations.find((entry) => entry.name === "filippo.io/edwards25519");
+    assert.equal(go.status, "eligible");
+    assert.equal(observation.latest, "v1.2.0");
+    assert.equal(observation.selected, "v1.1.1");
+    assert.equal(observation.selectedGoVersion, "1.20");
+    assert.deepEqual(lookupCalls.map((entry) => entry.args[3]), ["filippo.io/edwards25519@v1", "filippo.io/edwards25519@v1.1"]);
+    assert.ok(lookupCalls.every((entry) => entry.env.GOTOOLCHAIN === "local"));
+    assert.deepEqual(getCalls.map((entry) => entry.args), [["get", "filippo.io/edwards25519@v1.1.1"]]);
+    assert.equal(getCalls[0].env.GOTOOLCHAIN, "local");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("native Go malformed runtime metadata fails closed without fallback lookup or go get", () => {
+  const root = detachedFixture();
+  const lookupCalls = [];
+  const getCalls = [];
+  const beforeGoMod = readFileSync(join(root, "packages/go/go.mod"), "utf8");
+  const beforeGoSum = readFileSync(join(root, "packages/go/go.sum"), "utf8");
+  try {
+    const baseRunner = nativeRunner(root);
+    const runner = (command, args, options) => {
+      if (command === "go" && args[0] === "get") {
+        getCalls.push([...args]);
+        return { status: 0, stdout: "", stderr: "" };
+      }
+      if (command === "go" && args[0] === "mod" && args[1] === "tidy") return { status: 0, stdout: "", stderr: "" };
+      if (command === "go" && args[0] === "list" && args[1] === "-m" && args[2] === "-json" && args[3]?.startsWith("filippo.io/edwards25519@")) {
+        lookupCalls.push([...args]);
+        const value = args[3].endsWith("@v1.1") ? { Path: "filippo.io/edwards25519", Version: "v1.1.1", GoVersion: "1.20" } : { Path: "filippo.io/edwards25519", Version: "v1.2.0", GoVersion: "not-a-version" };
+        return { status: 0, stdout: JSON.stringify(value), stderr: "" };
+      }
+      const result = baseRunner(command, args, options);
+      if (command === "go" && args[0] === "list" && args[1] === "-m" && args[2] === "-u") {
+        const rows = result.stdout.split("\n").filter(Boolean).map((line) => JSON.parse(line));
+        const updated = rows.map((row) => row.Path === "filippo.io/edwards25519" ? { ...row, Update: { Version: "v1.2.0" } } : row);
+        return { ...result, stdout: updated.map((row) => JSON.stringify(row)).join("\n") };
+      }
+      return result;
+    };
+    const artifact = evaluateRepository({ root, sourceSha, eventName: "schedule", eventRef: SOURCE_REF, workflowRef, runner, runId: 8114, runAttempt: 1, useTemporaryCheckout: false });
+    const go = artifact.ecosystems.find((entry) => entry.ecosystem === "go");
+    assert.equal(go.status, "lookup-failed");
+    assert.equal(artifact.evaluationStatus, "blocked");
+    assert.equal(artifact.candidate.status, "blocked");
+    assert.deepEqual(lookupCalls.map((args) => args[3]), ["filippo.io/edwards25519@v1"]);
+    assert.equal(getCalls.length, 0);
+    assert.equal(readFileSync(join(root, "packages/go/go.mod"), "utf8"), beforeGoMod);
+    assert.equal(readFileSync(join(root, "packages/go/go.sum"), "utf8"), beforeGoSum);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("artifact validation requires native lookup evidence and exact run identity", () => {
   const { before, after } = snapshots();
   const artifact = fixtureArtifact({ before, after });
