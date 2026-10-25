@@ -26,7 +26,7 @@ test('harness, future assets, and CI route correctly', () => {
   const ci = '.github/workflows/release.yml'; assert.deepEqual(route(registry, ci, { taskBrief: brief(ci, selected(ci)) }).requiredGates, ['cyan']);
 });
 test('CI release exact paths route through bounded release ownership', () => {
-  const targets = ['scripts/verify-release.test.mjs', 'scripts/oss-public-hosts.txt', 'docs/RELEASING.md', 'CHANGELOG.md', '.gitleaks.toml', 'scripts/tests/oss-controls.test.mjs'];
+  const targets = ['scripts/verify-release.test.mjs', 'scripts/oss-public-hosts.txt', 'docs/RELEASING.md', 'CHANGELOG.md', '.gitleaks.toml', 'scripts/tests/oss-controls.test.mjs', 'SECURITY.md', 'GOVERNANCE.md', 'CONTRIBUTING.md', 'docs/compliance/README.md', 'docs/secret-exposure-response.md', 'docs/verify-release.md'];
   for (const target of targets) {
     const rule = selected(target);
     assert.equal(rule.id, 'ci-release');
@@ -69,8 +69,20 @@ test('CI release exact paths route through bounded release ownership', () => {
     assert.ok(security.roles.includes('backend-l3-pokemon-wanriky'));
     assert.deepEqual(security.requiredGates, ['cyan']);
     assert.equal(security.dispatchL3, true);
+
+    const compliancePlanning = route(registry, target, { phase: 'planning', category: 'eu-oss-compliance' });
+    assert.ok(compliancePlanning.roles.includes('eu-oss-compliance'));
+    assert.ok(compliancePlanning.roles.includes('cyan'));
+    assert.deepEqual(compliancePlanning.requiredGates, ['cyan']);
+    assert.equal(compliancePlanning.dispatchL3, false);
+    const compliance = route(registry, target, { category: 'eu-oss-compliance', taskBrief: brief(target, rule) });
+    assert.equal(compliance.status, 'READY');
+    assert.equal(compliance.candidateImplementer, 'backend-l3-pokemon-wanriky');
+    assert.ok(compliance.roles.includes('eu-oss-compliance'));
+    assert.deepEqual(compliance.requiredGates, ['cyan']);
+    assert.equal(compliance.dispatchL3, true);
   }
-  for (const target of ['scripts/oss-public-hosts.txt.bak', 'archive/scripts/oss-public-hosts.txt', 'scripts/check-oss-hygiene.sh', 'CONTRIBUTING.md', 'scripts/verify-release.test.mjs.bak', 'docs/RELEASING.md.bak', 'archive/CHANGELOG.md', '.gitleaks.toml.bak', 'scripts/tests/oss-controls.test.mjs.bak']) {
+  for (const target of ['scripts/oss-public-hosts.txt.bak', 'archive/scripts/oss-public-hosts.txt', 'scripts/check-oss-hygiene.sh', 'scripts/verify-release.test.mjs.bak', 'docs/RELEASING.md.bak', 'archive/CHANGELOG.md', '.gitleaks.toml.bak', 'scripts/tests/oss-controls.test.mjs.bak', 'SECURITY.md.bak', 'archive/SECURITY.md', 'GOVERNANCE.md.bak', 'docs/GOVERNANCE.md', 'CONTRIBUTING.md.bak', 'docs/CONTRIBUTING.md', 'docs/compliance/README.md.bak', 'docs/compliance/nested.md', 'docs/secret-exposure-response.md.bak', 'archive/docs/secret-exposure-response.md', 'docs/verify-release.md.bak', 'docs/verify-release/index.md']) {
     const unresolved = route(registry, target);
     assert.equal(unresolved.phase, 'fallback');
     assert.equal(unresolved.status, 'ROUTE_UNRESOLVED');

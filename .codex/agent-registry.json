@@ -342,7 +342,13 @@
           "docs/RELEASING.md",
           "CHANGELOG.md",
           ".gitleaks.toml",
-          "scripts/tests/oss-controls.test.mjs"
+          "scripts/tests/oss-controls.test.mjs",
+          "SECURITY.md",
+          "GOVERNANCE.md",
+          "CONTRIBUTING.md",
+          "docs/compliance/README.md",
+          "docs/secret-exposure-response.md",
+          "docs/verify-release.md"
         ],
         "pathPrefixes": [
           ".github/workflows/"

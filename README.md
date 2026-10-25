@@ -1033,8 +1033,15 @@ enter shell history. Never commit credentials.
 - [Changelog](CHANGELOG.md)
 - [Roadmap](ROADMAP.md)
 - [Release process](docs/RELEASING.md)
-- [Contributing](CONTRIBUTING.md)
+
+### Security, governance, and compliance
+
 - [Security policy](SECURITY.md)
+- [Governance](GOVERNANCE.md)
+- [Contributing](CONTRIBUTING.md)
+- [Compliance evidence index](docs/compliance/README.md)
+- [Secret exposure response](docs/secret-exposure-response.md)
+- [Release verification](docs/verify-release.md)
 
 ## Release model
 

@@ -114,3 +114,24 @@ messages, fixtures, snapshots, or examples.
 - Ensure all checks pass from a clean install.
 
 All releases require explicit human approval.
+
+## Public process and evidence
+
+- Report suspected vulnerabilities through [SECURITY.md](SECURITY.md), not a
+  public issue.
+- Follow [secret-exposure response](docs/secret-exposure-response.md) guidance
+  if a credential, private endpoint, customer data, or signing material may
+  have entered a change, log, artifact, or release.
+- Use [GOVERNANCE.md](GOVERNANCE.md) for repository roles and approval
+  boundaries.
+- Use the [public compliance and evidence index](docs/compliance/README.md) and
+  [release verification guide](docs/verify-release.md) when a change affects
+  component licenses, dependencies, security-sensitive behavior, or release
+  evidence.
+
+When those areas change, include the affected language packages and versions,
+the evidence or reproduction needed to review the change, and any remaining
+uncertainty. Keep credentials, customer context, private incident records, and
+unreleased security details out of commits, examples, and public issue
+discussion. These prompts improve review context; they do not add a license,
+support-period, release, or regulatory requirement.
