@@ -431,6 +431,29 @@ publisher job.
 The publish jobs request `id-token: write` only inside their protected
 environment. Source verification has read-only repository permission.
 
+## Weekly dependency maintenance
+
+`.github/workflows/dependency-maintenance.yml` runs Monday at 09:17 in
+`Europe/Amsterdam` and can also be dispatched manually. It performs bounded,
+read-only native lookups for pnpm, Cargo, pip, Go, and Bundler in a temporary
+checkout. The evaluator preserves the SDK versions, language/runtime floors,
+pnpm 11.24.0, Ruby Bundler 2.4.20, and the Rust `yoke-derive =0.8.2` MSRV
+hold. Major changes and pre-1.0 minor changes are reported for manual review;
+lookup or resolution failures are reported as failures rather than no-ops.
+Lock data is checked through the pinned controller parser tooling (Python 3.11
+`tomllib` and PyYAML 6.0.3 SafeLoader with duplicate-key rejection); parser
+errors fail closed and candidate files are never executed.
+
+The scheduled run may create one managed `codex/dependency-maintenance` PR for
+eligible patch/minor candidate bytes. Manual runs default to evaluation only;
+select the writer input only for an explicitly approved smoke. The writer
+checks the exact source SHA, the closed candidate file set, dependency-only
+field invariants, current `main`, and managed branch ownership before using
+non-forcing GitHub API writes. It dispatches the existing CI workflow once for
+the exact candidate head or safely reuses its verified run. This automation
+does not change SDK or release versions, publish packages, merge PRs, move
+tags, grant permissions, or enable weekly releases.
+
 ## Legacy aligned-version release preparation
 
 1. Choose a stable version and create a normal review branch. For example:

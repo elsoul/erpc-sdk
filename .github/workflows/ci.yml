@@ -1,5 +1,9 @@
 name: CI
 
+run-name: >-
+  ${{ github.event_name == 'workflow_dispatch' &&
+  format('CI dependency head={0} base={1}', inputs.expected_head_sha, inputs.base_sha) || '' }}
+
 on:
   pull_request:
   push:
@@ -47,7 +51,7 @@ jobs:
           case "$EVENT_NAME" in
             workflow_dispatch)
               case "$EVENT_REF" in
-                refs/heads/codex/registry-maintenance|refs/heads/codex/release-preparation) ;;
+                refs/heads/codex/registry-maintenance|refs/heads/codex/release-preparation|refs/heads/codex/dependency-maintenance) ;;
                 *) exit 64 ;;
               esac
               test "$EXPECTED_HEAD_SHA" = "$EVENT_SHA"
@@ -250,6 +254,17 @@ jobs:
         run: |
           node --test scripts/agent-harness.test.mjs
           node scripts/agent-harness.mjs check
+      - name: Set up the bounded dependency parser runtime
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.11'
+      - name: Install and verify the pinned dependency parser
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check --no-input --no-deps --only-binary=:all: PyYAML==6.0.3
+          python -c 'import tomllib, yaml; assert yaml.__version__ == "6.0.3"'
+      - name: Run dependency maintenance helper boundary tests
+        run: node --test .github/workflows/dependency-maintenance.test.mjs
       - name: Set up the pinned Python verifier runtime
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:

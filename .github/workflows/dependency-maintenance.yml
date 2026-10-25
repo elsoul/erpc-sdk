@@ -1,0 +1,229 @@
+name: Weekly dependency maintenance
+
+run-name: >-
+  ${{ github.event_name == 'schedule' && 'Weekly dependency maintenance' ||
+  format('Dependency maintenance evaluation ({0})', inputs.write && 'writer enabled' || 'read only') }}
+
+on:
+  schedule:
+    - cron: '17 9 * * 1'
+      timezone: Europe/Amsterdam
+  workflow_dispatch:
+    inputs:
+      write:
+        description: Enable the authenticated managed dependency PR writer
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: erpc-dependency-maintenance
+  cancel-in-progress: false
+
+jobs:
+  evaluator:
+    name: Evaluate native dependency updates
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    permissions:
+      contents: read
+    outputs:
+      candidate_status: ${{ steps.classify.outputs.candidate_status }}
+      evaluation_status: ${{ steps.classify.outputs.evaluation_status }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+          clean: true
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22.13'
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.11'
+      - name: Install the pinned pip JSON lookup tool
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check --no-input --upgrade pip==26.2.1
+          python -m pip --version | grep -F 'pip 26.2.1'
+          python -m pip install --disable-pip-version-check --no-input --no-deps --only-binary=:all: PyYAML==6.0.3
+          python -c 'import tomllib, yaml; assert yaml.__version__ == "6.0.3"; print(yaml.__version__)'
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: '1.22.x'
+          cache: false
+      - uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b # v1
+        with:
+          ruby-version: '3.1'
+          bundler: '2.4.20'
+          bundler-cache: false
+      - name: Install the pinned pnpm workspace tool
+        run: |
+          set -euo pipefail
+          npm install --global --no-audit --no-fund --ignore-scripts corepack@0.32.0
+          test "$(corepack --version)" = 0.32.0
+          corepack enable
+          corepack prepare pnpm@11.24.0 --activate
+          test "$(corepack pnpm --version)" = 11.24.0
+      - name: Install the pinned Rust runtime
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.85.0 --profile minimal
+          test "$(rustup run 1.85.0 rustc --version | awk '{print $2}')" = 1.85.0
+      - name: Verify immutable source checkout
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_REF: ${{ github.ref }}
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+          test "$(git rev-parse --abbrev-ref HEAD)" = HEAD
+          test -z "$(git status --porcelain)"
+          node --input-type=module - "$EXPECTED_SOURCE_SHA" "$EVENT_NAME" "$EVENT_REF" "$WORKFLOW_REF" <<'NODE'
+          import { validateSourceBinding } from './.github/workflows/dependency-maintenance.mjs'
+
+          const [sourceSha, eventName, eventRef, workflowRef] = process.argv.slice(2)
+          validateSourceBinding({
+            eventName,
+            eventRef,
+            eventSha: sourceSha,
+            checkoutSha: sourceSha,
+            workflowRef,
+          })
+          NODE
+      - name: Evaluate all five native package managers
+        id: evaluate
+        continue-on-error: true
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_REF: ${{ github.ref }}
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          SOURCE_SHA: ${{ github.sha }}
+          OUTPUT_FILE: ${{ runner.temp }}/dependency-maintenance/dependency-observation.json
+        run: |
+          set -euo pipefail
+          mkdir -p "$(dirname "$OUTPUT_FILE")"
+          node --input-type=module - "$OUTPUT_FILE" "$SOURCE_SHA" "$EVENT_NAME" "$EVENT_REF" "$WORKFLOW_REF" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" <<'NODE'
+          import { spawnSync } from 'node:child_process'
+          import { sanitizeEvaluatorEnvironment } from './.github/workflows/dependency-maintenance.mjs'
+
+          const [outputFile, sourceSha, eventName, eventRef, workflowRef, runId, runAttempt] = process.argv.slice(2)
+          const args = ['.github/workflows/dependency-maintenance.mjs', 'evaluate', '--root', process.env.GITHUB_WORKSPACE, '--source-sha', sourceSha, '--event-name', eventName, '--event-ref', eventRef, '--workflow-ref', workflowRef, '--run-id', runId, '--run-attempt', runAttempt, '--output', outputFile]
+          const child = spawnSync(process.execPath, args, { env: sanitizeEvaluatorEnvironment(process.env), stdio: 'inherit' })
+          process.exitCode = child.status ?? 1
+          NODE
+      - name: Classify evaluator result
+        id: classify
+        if: always()
+        env:
+          OUTPUT_FILE: ${{ runner.temp }}/dependency-maintenance/dependency-observation.json
+          EVALUATOR_OUTCOME: ${{ steps.evaluate.outcome }}
+        run: |
+          set -euo pipefail
+          candidate_status=blocked
+          evaluation_status=failed
+          if [ -s "$OUTPUT_FILE" ]; then
+            readarray -t values < <(node --input-type=module -e 'import { readFileSync } from "node:fs"; const artifact = JSON.parse(readFileSync(process.argv[1], "utf8")); if (artifact.kind !== "erpc-sdk-dependency-maintenance-observation") throw new Error("wrong dependency observation kind"); console.log(artifact.candidate?.status ?? "blocked"); console.log(artifact.evaluationStatus ?? "failed")' "$OUTPUT_FILE")
+            candidate_status="${values[0]}"
+            evaluation_status="${values[1]}"
+          fi
+          {
+            echo "candidate_status=$candidate_status"
+            echo "evaluation_status=$evaluation_status"
+          } >> "$GITHUB_OUTPUT"
+          printf 'candidate_status=%s\nevaluation_status=%s\nevaluator_outcome=%s\n' "$candidate_status" "$evaluation_status" "$EVALUATOR_OUTCOME"
+      - name: Fail closed on lookup or resolution failure
+        if: always()
+        env:
+          CANDIDATE_STATUS: ${{ steps.classify.outputs.candidate_status }}
+          EVALUATION_STATUS: ${{ steps.classify.outputs.evaluation_status }}
+        run: |
+          set -euo pipefail
+          case "$CANDIDATE_STATUS:$EVALUATION_STATUS" in
+            eligible:eligible|no-update:no-update|no-update:compatible) ;;
+            *)
+              echo "dependency evaluator did not produce a successful five-ecosystem result" >&2
+              exit 1
+              ;;
+          esac
+      - name: Upload source-bound dependency observation
+        if: always()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: dependency-maintenance-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/dependency-maintenance/dependency-observation.json
+          if-no-files-found: error
+          retention-days: 14
+
+  writer:
+    name: Create or safely reuse the managed dependency PR
+    needs: evaluator
+    if: >-
+      needs.evaluator.result == 'success' &&
+      needs.evaluator.outputs.candidate_status == 'eligible' &&
+      (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.write == true))
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+          clean: true
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22.13'
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.11'
+      - name: Install the pinned writer parser
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check --no-input --no-deps --only-binary=:all: PyYAML==6.0.3
+          python -c 'import tomllib, yaml; assert yaml.__version__ == "6.0.3"'
+      - name: Download the exact same-run observation
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: dependency-maintenance-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/dependency-maintenance
+      - name: Verify source and write the managed dependency PR
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+          REPOSITORY: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          GITHUB_TOKEN: ${{ github.token }}
+          ARTIFACT_FILE: ${{ runner.temp }}/dependency-maintenance/dependency-observation.json
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$(git rev-parse --abbrev-ref HEAD)" = HEAD
+          test -z "$(git status --porcelain)"
+          node .github/workflows/dependency-maintenance.mjs write \
+            --root "$GITHUB_WORKSPACE" \
+            --artifact "$ARTIFACT_FILE" \
+            --source-sha "$SOURCE_SHA" \
+            --repository "$REPOSITORY" \
+            --token "$GITHUB_TOKEN" \
+            --event-name "$EVENT_NAME" \
+            --workflow-ref "$WORKFLOW_REF" \
+            --run-id "$RUN_ID" \
+            --run-attempt "$RUN_ATTEMPT" \
+            --dispatch-ci true
