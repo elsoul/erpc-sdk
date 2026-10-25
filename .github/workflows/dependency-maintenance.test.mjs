@@ -1144,6 +1144,68 @@ test("writer CREATE uses the real GitHub REST adapter paths, methods, and JSON b
   }
 });
 
+test("writer CREATE accepts a verified web-flow commit and rejects unsigned or foreign provenance before PR creation", async () => {
+  const cases = [
+    { name: "verified web-flow", valid: true, author: "github-actions[bot]", committer: "web-flow", verification: { verified: true, reason: "valid" } },
+    { name: "unsigned web-flow", valid: false, author: "github-actions[bot]", committer: "web-flow", verification: { verified: false, reason: "unsigned" } },
+    { name: "wrong author", valid: false, author: "attacker", committer: "web-flow", verification: { verified: true, reason: "valid" } },
+    { name: "other committer", valid: false, author: "github-actions[bot]", committer: "attacker", verification: { verified: true, reason: "valid" } },
+  ];
+  for (const provenance of cases) {
+    const { before, after } = snapshots();
+    const artifact = fixtureArtifact({ before, after });
+    const changedPaths = artifact.candidate.changedPaths;
+    const headSha = "8".repeat(40);
+    const calls = [];
+    const detachedRoot = detachedFixture();
+    try {
+      const commit = {
+        sha: headSha,
+        tree: { sha: "tree-sha" },
+        parents: [{ sha: sourceSha }],
+        commit: { tree: { sha: "tree-sha" }, author: { name: provenance.author }, committer: { name: provenance.committer }, verification: provenance.verification },
+        author: { login: provenance.author },
+        committer: { login: provenance.committer },
+      };
+      const api = async (path, { method = "GET" } = {}) => {
+        calls.push({ path, method });
+        const identity = apiIdentity(path);
+        if (identity) return identity;
+        if (path === `/git/ref/heads/${BASE_BRANCH}`) return { object: { sha: sourceSha } };
+        if (path.startsWith("/pulls?")) return [];
+        if (path === `/git/ref/heads/${BOT_BRANCH}`) {
+          const error = new DependencyMaintenanceError("missing branch", "API_FAILED");
+          error.status = 404;
+          throw error;
+        }
+        if (path === `/git/commits/${sourceSha}`) return { tree: { sha: "base-tree" } };
+        if (path === "/git/blobs" && method === "POST") return { sha: "blob-sha" };
+        if (path === "/git/trees" && method === "POST") return { sha: "tree-sha" };
+        if (path === "/git/commits" && method === "POST") return { sha: headSha };
+        if (path === "/git/refs" && method === "POST") return { object: { sha: headSha } };
+        if (path === `/commits/${headSha}`) return commit;
+        if (path.startsWith("/contents/") && path.endsWith(`?ref=${headSha}`)) {
+          const relativePath = path.slice("/contents/".length, -(`?ref=${headSha}`).length);
+          return { type: "file", encoding: "base64", content: Buffer.from(artifact.candidate.files[relativePath], "utf8").toString("base64") };
+        }
+        if (path === "/pulls" && method === "POST") return managedPr({ source: sourceSha, digest: artifact.candidate.candidateDigest, paths: changedPaths, headSha });
+        throw new Error(`unexpected provenance API call: ${method} ${path}`);
+      };
+      const action = () => writeDependencyPullRequest({ root: detachedRoot, artifact, sourceSha, repository: "elsoul/erpc-sdk", api, dispatchCI: false, expectedRunId: 7001, expectedRunAttempt: 1, expectedEventName: "schedule", expectedWorkflowRef: workflowRef });
+      if (provenance.valid) {
+        const result = await action();
+        assert.equal(result.action, "CREATE", provenance.name);
+        assert.equal(calls.filter((entry) => entry.path === "/pulls" && entry.method === "POST").length, 1, provenance.name);
+      } else {
+        await assert.rejects(action, (error) => error instanceof DependencyMaintenanceError && error.code === "COMMIT_PROVENANCE_INVALID", provenance.name);
+        assert.equal(calls.some((entry) => entry.path === "/pulls" && entry.method === "POST"), false, provenance.name);
+      }
+    } finally {
+      rmSync(detachedRoot, { recursive: true, force: true });
+    }
+  }
+});
+
 test("writer rejects a closed unmerged cohort and treats a 403 branch response as failure, not a missing branch", async () => {
   const { before, after } = snapshots();
   const artifact = fixtureArtifact({ before, after });

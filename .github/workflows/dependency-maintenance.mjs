@@ -1742,7 +1742,12 @@ async function verifyCommitProvenance(api, sha, actorLogin) {
   requireSha(sha, "commit SHA");
   const commit = await apiRequest(api, `/commits/${sha}`);
   if (!commit || commit.sha !== sha || !commit.commit?.tree?.sha || !Array.isArray(commit.parents)) fail("GitHub commit provenance is incomplete", "COMMIT_PROVENANCE_INVALID");
-  if (commit.author?.login !== actorLogin || commit.committer?.login !== actorLogin) fail("GitHub commit author is not the authenticated writer", "COMMIT_PROVENANCE_INVALID");
+  const authenticatedAuthor = commit.author?.login === actorLogin;
+  const authenticatedBotCommitter = commit.committer?.login === actorLogin;
+  const verifiedWebFlowCommitter = commit.committer?.login === "web-flow"
+    && commit.commit?.verification?.verified === true
+    && commit.commit?.verification?.reason === "valid";
+  if (!authenticatedAuthor || (!authenticatedBotCommitter && !verifiedWebFlowCommitter)) fail("GitHub commit author or authenticated committer is invalid", "COMMIT_PROVENANCE_INVALID");
   return commit;
 }
 
