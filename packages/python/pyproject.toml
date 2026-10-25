@@ -29,7 +29,7 @@ classifiers = [
 dependencies = [
   "httpx>=0.27,<1",
   "websockets>=13,<17",
-  "pycryptodome==3.23.0",
+  "pycryptodome==3.24.1",
 ]
 
 [project.optional-dependencies]
