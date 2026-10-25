@@ -331,7 +331,7 @@ test("workflow wiring and extracted evaluator subprocess environment fail closed
     const nativeBin = join(supportRoot, "native-stubs");
     const preload = join(supportRoot, "env-observer.mjs");
     execFileSync("mkdir", ["-p", nativeBin], { stdio: "ignore" });
-    const realPython = execFileSync("command", ["-v", "python3"], { encoding: "utf8" }).trim();
+    const realPython = execFileSync("python3", ["-c", "import sys; print(sys.executable)"], { encoding: "utf8" }).trim();
     for (const command of ["corepack", "cargo", "python3", "go", "bundle"]) {
       const stub = join(nativeBin, command);
       const body = command === "python3" ? `#!/bin/sh\nif [ "${"$1"}" = "-I" ]; then exec ${realPython} "$@"; fi\nexit 1\n` : "#!/bin/sh\nexit 1\n";
