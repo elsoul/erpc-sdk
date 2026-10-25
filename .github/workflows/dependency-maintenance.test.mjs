@@ -107,6 +107,16 @@ function firstVersion(spec) {
   return parts.join(".");
 }
 
+function nextPatch(version) {
+  const [major, minor, patch] = String(version).split(".").map(Number);
+  return `${major}.${minor}.${patch + 1}`;
+}
+
+function nextMinor(version) {
+  const [major, minor] = String(version).split(".").map(Number);
+  return `${major}.${minor + 1}.0`;
+}
+
 function nativeFixtureVersions(root) {
   const files = readCandidateFiles(root);
   const versions = new Map();
@@ -405,10 +415,12 @@ test("candidate validation rejects a coherent SDK baseline bump beyond the revie
 test("candidate validation accepts a coherent first TypeScript runtime patch without treating it as SDK identity drift", () => {
   const { before } = snapshots();
   const after = { ...before };
-  after["packages/typescript/package.json"] = after["packages/typescript/package.json"].replace('"@noble/curves": "1.9.7"', '"@noble/curves": "1.9.8"');
+  const current = nativeFixtureVersions(repositoryRoot).versions.get("@noble/curves");
+  const target = nextPatch(current);
+  after["packages/typescript/package.json"] = after["packages/typescript/package.json"].replace(`"@noble/curves": "${current}"`, `"@noble/curves": "${target}"`);
   after["pnpm-lock.yaml"] = after["pnpm-lock.yaml"]
-    .replaceAll("@noble/curves@1.9.7", "@noble/curves@1.9.8")
-    .replace("specifier: 1.9.7\n        version: 1.9.7", "specifier: 1.9.8\n        version: 1.9.8");
+    .replaceAll(`@noble/curves@${current}`, `@noble/curves@${target}`)
+    .replace(`specifier: ${current}\n        version: ${current}`, `specifier: ${target}\n        version: ${target}`);
   assert.doesNotThrow(() => validateCandidateFiles({ root: repositoryRoot, before, after }));
 });
 
@@ -662,15 +674,17 @@ test("native evaluator keeps pip index failures and invalid JSON blocked despite
 test("native Python candidate relaxes the exact pycryptodome pin only after a compatible selected version", () => {
   const root = detachedFixture();
   try {
-    const artifact = evaluateRepository({ root, sourceSha, eventName: "schedule", eventRef: SOURCE_REF, workflowRef, runner: nativeRunner(root, { bump: { pycryptodome: "3.23.1" }, pipLatest: { pycryptodome: "4.0.0" } }), runId: 8103, runAttempt: 1, useTemporaryCheckout: false });
+    const current = nativeFixtureVersions(root).python.get("pycryptodome");
+    const target = nextPatch(current);
+    const artifact = evaluateRepository({ root, sourceSha, eventName: "schedule", eventRef: SOURCE_REF, workflowRef, runner: nativeRunner(root, { bump: { pycryptodome: target }, pipLatest: { pycryptodome: "4.0.0" } }), runId: 8103, runAttempt: 1, useTemporaryCheckout: false });
     const python = artifact.ecosystems.find((entry) => entry.ecosystem === "python");
     assert.equal(python.status, "eligible");
     assert.deepEqual(artifact.candidate.changedPaths, ["packages/python/pyproject.toml"]);
-    assert.match(artifact.candidate.files["packages/python/pyproject.toml"], /pycryptodome==3\.23\.1/u);
-    assert.doesNotMatch(artifact.candidate.files["packages/python/pyproject.toml"], /pycryptodome==3\.23\.0/u);
+    assert.match(artifact.candidate.files["packages/python/pyproject.toml"], new RegExp(`pycryptodome==${target.replaceAll(".", "\\.")}`, "u"));
+    assert.doesNotMatch(artifact.candidate.files["packages/python/pyproject.toml"], new RegExp(`pycryptodome==${current.replaceAll(".", "\\.")}`, "u"));
     const observation = python.observations.find((entry) => entry.name === "pycryptodome");
     assert.equal(observation.latest, "4.0.0");
-    assert.equal(observation.selected, "3.23.1");
+    assert.equal(observation.selected, target);
     assert.equal(observation.selectedClassification, "patch");
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -694,13 +708,15 @@ test("native TypeScript evaluator fails closed when a declared dependency has no
 test("native TypeScript evaluator resolves an absent outdated row and updates the manifest and lock", () => {
   const root = detachedFixture();
   try {
-    const artifact = evaluateRepository({ root, sourceSha, eventName: "schedule", eventRef: SOURCE_REF, workflowRef, runner: nativeRunner(root, { bump: { vitest: "4.1.12" } }), runId: 8105, runAttempt: 1, useTemporaryCheckout: false });
+    const current = nativeFixtureVersions(root).versions.get("vitest");
+    const target = nextPatch(current);
+    const artifact = evaluateRepository({ root, sourceSha, eventName: "schedule", eventRef: SOURCE_REF, workflowRef, runner: nativeRunner(root, { bump: { vitest: target } }), runId: 8105, runAttempt: 1, useTemporaryCheckout: false });
     const typescript = artifact.ecosystems.find((entry) => entry.ecosystem === "typescript");
     assert.equal(typescript.status, "eligible");
     assert.deepEqual(artifact.candidate.changedPaths, ["packages/typescript/package.json", "pnpm-lock.yaml"]);
-    assert.match(artifact.candidate.files["packages/typescript/package.json"], /"vitest": "\^4\.1\.12"/u);
-    assert.match(artifact.candidate.files["pnpm-lock.yaml"], /vitest@4\.1\.12/u);
-    assert.match(artifact.candidate.files["pnpm-lock.yaml"], /specifier: \^4\.1\.12\n\s+version: 4\.1\.12/u);
+    assert.match(artifact.candidate.files["packages/typescript/package.json"], new RegExp(`"vitest": "\\^${target.replaceAll(".", "\\.")}"`, "u"));
+    assert.match(artifact.candidate.files["pnpm-lock.yaml"], new RegExp(`vitest@${target.replaceAll(".", "\\.")}`, "u"));
+    assert.match(artifact.candidate.files["pnpm-lock.yaml"], new RegExp(`specifier: \\^${target.replaceAll(".", "\\.")}\\n\\s+version: ${target.replaceAll(".", "\\.")}`, "u"));
     const observation = typescript.observations.find((entry) => entry.name === "vitest");
     assert.equal(observation.lookup, "pnpm-compatible-scratch");
     assert.equal(observation.classification, "patch");
@@ -712,15 +728,17 @@ test("native TypeScript evaluator resolves an absent outdated row and updates th
 test("native TypeScript evaluator includes an override-only transitive esbuild target in the candidate", () => {
   const root = detachedFixture();
   try {
-    const artifact = evaluateRepository({ root, sourceSha, eventName: "schedule", eventRef: SOURCE_REF, workflowRef, runner: nativeRunner(root, { bump: { esbuild: "0.28.3" } }), runId: 8106, runAttempt: 1, useTemporaryCheckout: false });
+    const current = nativeFixtureVersions(root).versions.get("esbuild");
+    const target = nextPatch(current);
+    const artifact = evaluateRepository({ root, sourceSha, eventName: "schedule", eventRef: SOURCE_REF, workflowRef, runner: nativeRunner(root, { bump: { esbuild: target } }), runId: 8106, runAttempt: 1, useTemporaryCheckout: false });
     const typescript = artifact.ecosystems.find((entry) => entry.ecosystem === "typescript");
     assert.equal(typescript.status, "eligible");
     assert.deepEqual(artifact.candidate.changedPaths, ["pnpm-lock.yaml", "pnpm-workspace.yaml"]);
-    assert.match(artifact.candidate.files["pnpm-workspace.yaml"], /esbuild: 0\.28\.3/u);
-    assert.match(artifact.candidate.files["pnpm-lock.yaml"], /esbuild@0\.28\.3/u);
+    assert.match(artifact.candidate.files["pnpm-workspace.yaml"], new RegExp(`esbuild: ${target.replaceAll(".", "\\.")}`, "u"));
+    assert.match(artifact.candidate.files["pnpm-lock.yaml"], new RegExp(`esbuild@${target.replaceAll(".", "\\.")}`, "u"));
     const observation = typescript.observations.find((entry) => entry.name === "esbuild");
-    assert.equal(observation.current, "0.28.2");
-    assert.equal(observation.selected ?? observation.latest, "0.28.3");
+    assert.equal(observation.current, current);
+    assert.equal(observation.selected ?? observation.latest, target);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -730,7 +748,9 @@ test("native TypeScript scratch resolution preserves one caret operator without 
   const root = detachedFixture();
   const scratchSpecs = [];
   try {
-    const baseRunner = nativeRunner(root, { bump: { "@types/node": "26.5.0" } });
+    const current = nativeFixtureVersions(root).versions.get("@types/node");
+    const target = nextPatch(current);
+    const baseRunner = nativeRunner(root, { bump: { "@types/node": target } });
     const runner = (command, args, options) => {
       if (command === "corepack" && args[0] === "pnpm" && args[1] === "update") {
         const packageJson = JSON.parse(readFileSync(join(root, "packages/typescript/package.json"), "utf8"));
@@ -741,7 +761,7 @@ test("native TypeScript scratch resolution preserves one caret operator without 
     const result = evaluateTypescript(root, { runner, env: process.env });
     assert.equal(result.status, "eligible");
     assert.ok(scratchSpecs.length > 0);
-    assert.ok(scratchSpecs.every((spec) => spec === "^26.4.0"));
+    assert.ok(scratchSpecs.every((spec) => spec === `^${current}`));
     assert.equal(scratchSpecs.some((spec) => /\^\^|~~/u.test(spec)), false);
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -751,7 +771,9 @@ test("native TypeScript scratch resolution preserves one caret operator without 
 test("native TypeScript resolution failure blocks the ecosystem instead of becoming no-update", () => {
   const root = detachedFixture();
   try {
-    const baseRunner = nativeRunner(root, { bump: { "@types/node": "26.5.0" } });
+    const current = nativeFixtureVersions(root).versions.get("@types/node");
+    const target = nextPatch(current);
+    const baseRunner = nativeRunner(root, { bump: { "@types/node": target } });
     const runner = (command, args, options) => {
       if (command === "corepack" && args[0] === "pnpm" && args[1] === "update" && args.at(-1) === "@types/node") return { status: 1, stdout: "", stderr: "native resolution failed" };
       return baseRunner(command, args, options);
@@ -770,13 +792,15 @@ test("native Ruby evaluator selects a current-major minor and restores the final
   const root = detachedFixture();
   const trace = [];
   try {
-    const artifact = evaluateRepository({ root, sourceSha, eventName: "schedule", eventRef: SOURCE_REF, workflowRef, runner: nativeRunner(root, { rubyRows: ["bigdecimal (newest 5.0.0, installed 4.1.3)"], rubyResolved: { bigdecimal: "4.2.0" }, trace }), runId: 8107, runAttempt: 1, useTemporaryCheckout: false });
+    const current = nativeFixtureVersions(root).ruby.get("bigdecimal");
+    const target = nextMinor(current);
+    const artifact = evaluateRepository({ root, sourceSha, eventName: "schedule", eventRef: SOURCE_REF, workflowRef, runner: nativeRunner(root, { rubyRows: [`bigdecimal (newest 5.0.0, installed ${current})`], rubyResolved: { bigdecimal: target }, trace }), runId: 8107, runAttempt: 1, useTemporaryCheckout: false });
     const ruby = artifact.ecosystems.find((entry) => entry.ecosystem === "ruby");
     assert.equal(ruby.status, "eligible");
     assert.deepEqual(artifact.candidate.changedPaths, ["packages/ruby/Gemfile.lock", "packages/ruby/erpc-sdk.gemspec"]);
-    assert.match(artifact.candidate.files["packages/ruby/erpc-sdk.gemspec"], /bigdecimal", "= 4\.2\.0"/u);
-    assert.match(artifact.candidate.files["packages/ruby/Gemfile.lock"], /bigdecimal \(4\.2\.0\)/u);
-    assert.match(artifact.candidate.files["packages/ruby/Gemfile.lock"], /bigdecimal \(= 4\.2\.0\)/u);
+    assert.match(artifact.candidate.files["packages/ruby/erpc-sdk.gemspec"], new RegExp(`bigdecimal", "= ${target.replaceAll(".", "\\.")}`, "u"));
+    assert.match(artifact.candidate.files["packages/ruby/Gemfile.lock"], new RegExp(`bigdecimal \\(${target.replaceAll(".", "\\.")}\\)`, "u"));
+    assert.match(artifact.candidate.files["packages/ruby/Gemfile.lock"], new RegExp(`bigdecimal \\(= ${target.replaceAll(".", "\\.")}\\)`, "u"));
     const updateCall = trace.find((entry) => entry.command === "bundle" && entry.args[0] === "lock" && entry.args[1] === "--update" && entry.args[2] === "bigdecimal");
     assert.ok(updateCall);
     assert.ok(updateCall.args.includes("--minor"));
@@ -813,6 +837,8 @@ test("native Go patch update uses supported go get argv and keeps GOTOOLCHAIN lo
   const root = detachedFixture();
   const getCalls = [];
   try {
+    const current = nativeFixtureVersions(root).go.get("filippo.io/edwards25519");
+    const target = nextPatch(current);
     const baseRunner = nativeRunner(root);
     const runner = (command, args, options) => {
       if (command === "go" && args[0] === "get") {
@@ -823,16 +849,16 @@ test("native Go patch update uses supported go get argv and keeps GOTOOLCHAIN lo
       const result = baseRunner(command, args, options);
       if (command === "go" && args[0] === "list" && args[1] === "-m" && args[2] === "-u") {
         const rows = result.stdout.split("\n").filter(Boolean).map((line) => JSON.parse(line));
-        const updated = rows.map((row) => row.Path === "filippo.io/edwards25519" ? { ...row, Update: { Version: "v1.1.1" } } : row);
+        const updated = rows.map((row) => row.Path === "filippo.io/edwards25519" ? { ...row, Update: { Version: `v${target}` } } : row);
         return { ...result, stdout: updated.map((row) => JSON.stringify(row)).join("\n") };
       }
-      if (command === "go" && args[0] === "list" && args[1] === "-m" && args[2] === "-json" && args[3]?.startsWith("filippo.io/edwards25519@")) return { ...result, stdout: JSON.stringify({ Path: "filippo.io/edwards25519", Version: "v1.1.1" }) };
+      if (command === "go" && args[0] === "list" && args[1] === "-m" && args[2] === "-json" && args[3]?.startsWith("filippo.io/edwards25519@")) return { ...result, stdout: JSON.stringify({ Path: "filippo.io/edwards25519", Version: `v${target}` }) };
       return result;
     };
     const artifact = evaluateRepository({ root, sourceSha, eventName: "schedule", eventRef: SOURCE_REF, workflowRef, runner, runId: 8112, runAttempt: 1, useTemporaryCheckout: false });
     assert.equal(artifact.ecosystems.find((entry) => entry.ecosystem === "go").status, "eligible");
     assert.equal(getCalls.length, 1);
-    assert.deepEqual(getCalls[0].args, ["get", "filippo.io/edwards25519@v1.1.1"]);
+    assert.deepEqual(getCalls[0].args, ["get", `filippo.io/edwards25519@v${target}`]);
     assert.equal(getCalls[0].args.includes("-mod=mod"), false);
     assert.equal(getCalls[0].env.GOTOOLCHAIN, "local");
   } finally {
@@ -845,6 +871,10 @@ test("native Go runtime fallback preserves unrestricted latest and selects the c
   const lookupCalls = [];
   const getCalls = [];
   try {
+    const current = nativeFixtureVersions(root).go.get("filippo.io/edwards25519");
+    const latest = nextMinor(current);
+    const selected = nextPatch(current);
+    const [major, minor] = current.split(".");
     const baseRunner = nativeRunner(root);
     const runner = (command, args, options) => {
       if (command === "go" && args[0] === "get") {
@@ -854,13 +884,13 @@ test("native Go runtime fallback preserves unrestricted latest and selects the c
       if (command === "go" && args[0] === "mod" && args[1] === "tidy") return { status: 0, stdout: "", stderr: "" };
       if (command === "go" && args[0] === "list" && args[1] === "-m" && args[2] === "-json" && args[3]?.startsWith("filippo.io/edwards25519@")) {
         lookupCalls.push({ args: [...args], env: options.env });
-        const selected = args[3].endsWith("@v1.1") ? { Path: "filippo.io/edwards25519", Version: "v1.1.1", GoVersion: "1.20" } : { Path: "filippo.io/edwards25519", Version: "v1.2.0", GoVersion: "1.24" };
-        return { status: 0, stdout: JSON.stringify(selected), stderr: "" };
+        const metadata = args[3].endsWith(`@v${major}.${minor}`) ? { Path: "filippo.io/edwards25519", Version: `v${selected}`, GoVersion: "1.20" } : { Path: "filippo.io/edwards25519", Version: `v${latest}`, GoVersion: "1.24" };
+        return { status: 0, stdout: JSON.stringify(metadata), stderr: "" };
       }
       const result = baseRunner(command, args, options);
       if (command === "go" && args[0] === "list" && args[1] === "-m" && args[2] === "-u") {
         const rows = result.stdout.split("\n").filter(Boolean).map((line) => JSON.parse(line));
-        const updated = rows.map((row) => row.Path === "filippo.io/edwards25519" ? { ...row, Update: { Version: "v1.2.0" } } : row);
+        const updated = rows.map((row) => row.Path === "filippo.io/edwards25519" ? { ...row, Update: { Version: `v${latest}` } } : row);
         return { ...result, stdout: updated.map((row) => JSON.stringify(row)).join("\n") };
       }
       return result;
@@ -869,12 +899,12 @@ test("native Go runtime fallback preserves unrestricted latest and selects the c
     const go = artifact.ecosystems.find((entry) => entry.ecosystem === "go");
     const observation = go.observations.find((entry) => entry.name === "filippo.io/edwards25519");
     assert.equal(go.status, "eligible");
-    assert.equal(observation.latest, "v1.2.0");
-    assert.equal(observation.selected, "v1.1.1");
+    assert.equal(observation.latest, `v${latest}`);
+    assert.equal(observation.selected, `v${selected}`);
     assert.equal(observation.selectedGoVersion, "1.20");
-    assert.deepEqual(lookupCalls.map((entry) => entry.args[3]), ["filippo.io/edwards25519@v1", "filippo.io/edwards25519@v1.1"]);
+    assert.deepEqual(lookupCalls.map((entry) => entry.args[3]), [`filippo.io/edwards25519@v${major}`, `filippo.io/edwards25519@v${major}.${minor}`]);
     assert.ok(lookupCalls.every((entry) => entry.env.GOTOOLCHAIN === "local"));
-    assert.deepEqual(getCalls.map((entry) => entry.args), [["get", "filippo.io/edwards25519@v1.1.1"]]);
+    assert.deepEqual(getCalls.map((entry) => entry.args), [["get", `filippo.io/edwards25519@v${selected}`]]);
     assert.equal(getCalls[0].env.GOTOOLCHAIN, "local");
   } finally {
     rmSync(root, { recursive: true, force: true });
