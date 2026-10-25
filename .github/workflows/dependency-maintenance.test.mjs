@@ -25,6 +25,7 @@ import {
   createGitHubApi,
   dispatchOrReuseCi,
   evaluateRepository,
+  evaluateTypescript,
   parseGemOutdated,
   parsePythonRequirements,
   pythonRequirementComparator,
@@ -725,6 +726,46 @@ test("native TypeScript evaluator includes an override-only transitive esbuild t
   }
 });
 
+test("native TypeScript scratch resolution preserves one caret operator without generating doubled bounds", () => {
+  const root = detachedFixture();
+  const scratchSpecs = [];
+  try {
+    const baseRunner = nativeRunner(root, { bump: { "@types/node": "26.5.0" } });
+    const runner = (command, args, options) => {
+      if (command === "corepack" && args[0] === "pnpm" && args[1] === "update") {
+        const packageJson = JSON.parse(readFileSync(join(root, "packages/typescript/package.json"), "utf8"));
+        scratchSpecs.push(packageJson.devDependencies["@types/node"]);
+      }
+      return baseRunner(command, args, options);
+    };
+    const result = evaluateTypescript(root, { runner, env: process.env });
+    assert.equal(result.status, "eligible");
+    assert.ok(scratchSpecs.length > 0);
+    assert.ok(scratchSpecs.every((spec) => spec === "^26.4.0"));
+    assert.equal(scratchSpecs.some((spec) => /\^\^|~~/u.test(spec)), false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("native TypeScript resolution failure blocks the ecosystem instead of becoming no-update", () => {
+  const root = detachedFixture();
+  try {
+    const baseRunner = nativeRunner(root, { bump: { "@types/node": "26.5.0" } });
+    const runner = (command, args, options) => {
+      if (command === "corepack" && args[0] === "pnpm" && args[1] === "update" && args.at(-1) === "@types/node") return { status: 1, stdout: "", stderr: "native resolution failed" };
+      return baseRunner(command, args, options);
+    };
+    const artifact = evaluateRepository({ root, sourceSha, eventName: "schedule", eventRef: SOURCE_REF, workflowRef, runner, runId: 8110, runAttempt: 1, useTemporaryCheckout: false });
+    const typescript = artifact.ecosystems.find((entry) => entry.ecosystem === "typescript");
+    assert.equal(typescript.status, "resolution-failed");
+    assert.equal(artifact.evaluationStatus, "blocked");
+    assert.equal(artifact.candidate.status, "blocked");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("native Ruby evaluator selects a current-major minor and restores the final exact PATH constraint", () => {
   const root = detachedFixture();
   const trace = [];
@@ -740,6 +781,29 @@ test("native Ruby evaluator selects a current-major minor and restores the final
     assert.ok(updateCall);
     assert.ok(updateCall.args.includes("--minor"));
     assert.equal(updateCall.args.includes("--major"), false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("native Go inventory ignores the go directive and retains block and single-line require modules", () => {
+  const root = detachedFixture();
+  try {
+    const baseRunner = nativeRunner(root);
+    const runner = (command, args, options) => {
+      const result = baseRunner(command, args, options);
+      if (command === "go" && args[0] === "list" && args[1] === "-m" && args[2] === "-u") {
+        const rows = result.stdout.split("\n").filter(Boolean).map((line) => JSON.parse(line)).filter((row) => row.Path !== "go");
+        return { ...result, stdout: rows.map((row) => JSON.stringify(row)).join("\n") };
+      }
+      return result;
+    };
+    const artifact = evaluateRepository({ root, sourceSha, eventName: "schedule", eventRef: SOURCE_REF, workflowRef, runner, runId: 8111, runAttempt: 1, useTemporaryCheckout: false });
+    const go = artifact.ecosystems.find((entry) => entry.ecosystem === "go");
+    assert.notEqual(go.status, "lookup-failed");
+    assert.equal(go.observations.some((entry) => entry.name === "go"), false);
+    assert.equal(go.observations.find((entry) => entry.name === "filippo.io/edwards25519")?.direct, true);
+    assert.equal(go.observations.find((entry) => entry.name === "golang.org/x/sys")?.direct, true);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

@@ -404,9 +404,14 @@ function resolvePnpmCompatibleTarget(root, declaration, options) {
     const current = parseVersion(declaration.spec)?.text;
     if (!current) return null;
     if (!dependencyName) return null;
-    updateNpmDeclaration(root, declaration, dependencyName, `^${current}`);
+    if (declaration.relativePath === "pnpm-workspace.yaml") updateNpmDeclaration(root, declaration, dependencyName, `^${current}`);
+    else {
+      const manifest = parseJson(readRegularText(root, declaration.relativePath), declaration.relativePath);
+      manifest[declaration.section][dependencyName] = `^${current}`;
+      writeJsonFile(root, declaration.relativePath, manifest);
+    }
     const update = commandResult("corepack", ["pnpm", "update", "--recursive", "--ignore-scripts", "--no-save", "--reporter=append-only", dependencyName], nativeOptions(root, options));
-    if (update.status !== 0) throw new DependencyMaintenanceError(update.stderr || "pnpm compatible resolution failed", "RESOLUTION_FAILED");
+    if (update.status !== 0) throw new DependencyMaintenanceError(redactDiagnostic(update.stderr || update.stdout || "pnpm compatible resolution failed"), "RESOLUTION_FAILED");
     const inventory = commandResult("corepack", ["pnpm", "list", "--recursive", "--lockfile-only", "--json", "--no-color"], nativeOptions(root, options));
     if (inventory.status !== 0) throw new DependencyMaintenanceError(inventory.stderr || "pnpm compatible inventory failed", "RESOLUTION_FAILED");
     return parsePnpmInventory(inventory.stdout).get(dependencyName) ?? null;
@@ -601,6 +606,7 @@ function parseDirectGoModules(text) {
   for (const line of text.split(/\r?\n/u)) {
     if (/^require\s*\(/u.test(line)) { inRequire = true; continue; }
     if (inRequire && line.trim() === ")") { inRequire = false; continue; }
+    if (!inRequire && !/^require\s+/u.test(line)) continue;
     const match = (inRequire ? line : line.replace(/^require\s+/u, "")).match(/^\s*([^\s]+)\s+v?\d/u);
     if (match) direct.add(match[1]);
   }
@@ -691,7 +697,8 @@ export function evaluateTypescript(root, options) {
       return { ecosystem: "typescript", status: "resolution-failed", command: result, lookupCommands: [...viewCommands, result], updates: [], observations, error: redactDiagnostic(error.message ?? error) };
     }
   }
-  if (observations.some((observation) => observation.status === "lookup-failed")) status = "lookup-failed";
+  if (observations.some((observation) => observation.status === "resolution-failed")) status = "resolution-failed";
+  else if (observations.some((observation) => observation.status === "lookup-failed")) status = "lookup-failed";
   return { ecosystem: "typescript", status, command: result, lookupCommands: [...viewCommands, result], updates, observations };
 }
 
@@ -1485,7 +1492,7 @@ export function validateCandidateFiles({ root = REPOSITORY_ROOT, before, after, 
 }
 
 function ecosystemStatus(results) {
-  if (results.some((result) => ["blocked", "lookup-failed", "resolution-failed"].includes(result.status) || result.observations?.some((observation) => observation.status === "lookup-failed"))) return "blocked";
+  if (results.some((result) => ["blocked", "lookup-failed", "resolution-failed"].includes(result.status) || result.observations?.some((observation) => ["lookup-failed", "resolution-failed"].includes(observation.status)))) return "blocked";
   if (results.some((result) => result.status === "eligible")) return "eligible";
   return "no-update";
 }
@@ -1498,7 +1505,7 @@ export function buildObservation({ sourceSha, eventName = "schedule", eventRef =
   const validation = validateCandidateFiles({ before, after });
   const files = Object.fromEntries(validation.changedPaths.map((relativePath) => [relativePath, after[relativePath]]));
   const fileDigests = Object.fromEntries(validation.changedPaths.map((relativePath) => [relativePath, createHash("sha256").update(files[relativePath], "utf8").digest("hex")]));
-  const blocked = results.some((result) => ["blocked", "lookup-failed", "resolution-failed"].includes(result.status) || result.observations?.some((observation) => observation.status === "lookup-failed"));
+  const blocked = results.some((result) => ["blocked", "lookup-failed", "resolution-failed"].includes(result.status) || result.observations?.some((observation) => ["lookup-failed", "resolution-failed"].includes(observation.status)));
   const candidateStatus = blocked ? "blocked" : validation.changedPaths.length > 0 ? "eligible" : "no-update";
   return {
     schemaVersion: OBSERVATION_SCHEMA_VERSION,
