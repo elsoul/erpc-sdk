@@ -11,9 +11,10 @@
 
 import { createHash } from "node:crypto";
 import {
+  chmodSync,
   copyFileSync,
-  existsSync,
   lstatSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -37,9 +38,17 @@ export const SOURCE_REF = "refs/heads/main";
 export const MANAGED_BY = "erpc-sdk-dependency-maintenance";
 export const OBSERVATION_KIND = "erpc-sdk-dependency-maintenance-observation";
 export const OBSERVATION_SCHEMA_VERSION = 1;
+export const SCAN_RECEIPT_KIND = "erpc-sdk-dependency-maintenance-scan-receipt";
+export const SCAN_RECEIPT_SCHEMA_VERSION = 1;
+export const SCAN_RECEIPT_FILENAME = "dependency-observation.receipt.json";
+export const SCANNED_OBSERVATION_FILENAME = "dependency-observation.scanned.json";
+export const GITLEAKS_VERSION = "8.30.1";
+export const GITLEAKS_WRAPPER_PATH = "scripts/run-gitleaks.sh";
+export const GITLEAKS_CONFIG_PATH = ".gitleaks.toml";
 export const MAX_ARTIFACT_BYTES = 4 * 1024 * 1024;
 export const MAX_COMMAND_OUTPUT_BYTES = 2 * 1024 * 1024;
 export const COMMAND_TIMEOUT_MS = 120_000;
+export const MAX_SCAN_STRINGS = 100_000;
 
 export const CANDIDATE_PATHS = Object.freeze([
   "package.json",
@@ -1636,6 +1645,342 @@ function exactKeys(value, expected, label) {
   if (stableJson(actual) !== stableJson(wanted)) fail(`${label} keys are invalid`, "ARTIFACT_INVALID");
 }
 
+const SCAN_RECEIPT_KEYS = Object.freeze([
+  "schemaVersion",
+  "kind",
+  "status",
+  "observationSha256",
+  "candidateDigest",
+  "sourceSha",
+  "sourceRef",
+  "eventName",
+  "workflowPath",
+  "workflowRef",
+  "runId",
+  "runAttempt",
+  "scanner",
+]);
+const SCANNER_KEYS = Object.freeze(["name", "version", "wrapperSha256", "configSha256"]);
+const SCAN_SAFE_ENVIRONMENT_KEYS = Object.freeze(["PATH", "HOME", "XDG_CACHE_HOME", "TMPDIR", "TMP", "TEMP", "LANG"]);
+const MAX_SCAN_MATERIALIZED_BYTES = 16 * 1024 * 1024;
+const MAX_SCAN_RECEIPT_BYTES = 64 * 1024;
+
+function scanFailure(code = "SCAN_FAILED") {
+  const messages = {
+    SCAN_INPUT_INVALID: "dependency observation scan input is invalid",
+    SCAN_RECEIPT_MISSING: "dependency observation scan receipt is missing",
+    SCAN_RECEIPT_INVALID: "dependency observation scan receipt is invalid",
+    SCAN_RECEIPT_MISMATCH: "dependency observation scan receipt does not match",
+    SCAN_FAILED: "dependency observation secret scan failed",
+  };
+  throw new DependencyMaintenanceError(messages[code] ?? messages.SCAN_FAILED, code);
+}
+
+function sha256Bytes(bytes) {
+  return createHash("sha256").update(bytes).digest("hex");
+}
+
+function boundedUtf8(bytes, code = "SCAN_INPUT_INVALID") {
+  if (!Buffer.isBuffer(bytes) || bytes.length === 0 || bytes.length > MAX_ARTIFACT_BYTES) scanFailure(code);
+  try {
+    const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    if (Buffer.byteLength(text, "utf8") !== bytes.length) scanFailure(code);
+    return text;
+  } catch {
+    scanFailure(code);
+  }
+}
+
+function boundedFileBytes(filePath) {
+  let link;
+  let stat;
+  try {
+    link = lstatSync(filePath);
+    stat = statSync(filePath);
+  } catch {
+    scanFailure("SCAN_INPUT_INVALID");
+  }
+  if (link.isSymbolicLink() || !stat.isFile() || stat.size > MAX_ARTIFACT_BYTES) scanFailure("SCAN_INPUT_INVALID");
+  try {
+    const bytes = readFileSync(filePath);
+    if (bytes.length === 0 || bytes.length > MAX_ARTIFACT_BYTES) scanFailure("SCAN_INPUT_INVALID");
+    return bytes;
+  } catch {
+    scanFailure("SCAN_INPUT_INVALID");
+  }
+}
+
+function trustedScannerFiles(root) {
+  const files = {};
+  for (const relativePath of [GITLEAKS_WRAPPER_PATH, GITLEAKS_CONFIG_PATH]) {
+    let target;
+    try {
+      target = pathInRoot(root, relativePath, "trusted scanner path");
+    } catch {
+      scanFailure("SCAN_INPUT_INVALID");
+    }
+    files[relativePath] = boundedFileBytes(target);
+  }
+  const wrapperText = boundedUtf8(files[GITLEAKS_WRAPPER_PATH]);
+  if (!new RegExp(`(?:^|\\n)version=${GITLEAKS_VERSION.replaceAll(".", "\\.")}(?:\\n|$)`, "u").test(wrapperText)) scanFailure("SCAN_FAILED");
+  return Object.freeze({
+    wrapperPath: pathInRoot(root, GITLEAKS_WRAPPER_PATH, "trusted scanner wrapper"),
+    configPath: pathInRoot(root, GITLEAKS_CONFIG_PATH, "trusted scanner config"),
+    wrapperSha256: sha256Bytes(files[GITLEAKS_WRAPPER_PATH]),
+    configSha256: sha256Bytes(files[GITLEAKS_CONFIG_PATH]),
+  });
+}
+
+function scannerEnvironment(input = process.env) {
+  const environment = {};
+  for (const key of SCAN_SAFE_ENVIRONMENT_KEYS) {
+    if (typeof input[key] === "string" && input[key].length > 0) environment[key] = input[key];
+  }
+  if (!environment.PATH) environment.PATH = "/usr/bin:/bin";
+  if (!environment.HOME) environment.HOME = tmpdir();
+  environment.LC_ALL = "C";
+  return environment;
+}
+
+function collectDecodedStrings(value, output, state) {
+  if (typeof value === "string") {
+    if (value.length > 0) {
+      if (value.includes("\0")) scanFailure("SCAN_INPUT_INVALID");
+      if ([...value].some((character) => {
+        const code = character.codePointAt(0);
+        return code >= 0xd800 && code <= 0xdfff;
+      })) scanFailure("SCAN_INPUT_INVALID");
+      output.push(value);
+      state.count += 1;
+      state.bytes += Buffer.byteLength(value, "utf8") + 1;
+    }
+    if (state.count > MAX_SCAN_STRINGS || state.bytes > MAX_SCAN_MATERIALIZED_BYTES) scanFailure("SCAN_INPUT_INVALID");
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const entry of value) collectDecodedStrings(entry, output, state);
+    return;
+  }
+  if (value && typeof value === "object") {
+    for (const [key, entry] of Object.entries(value)) {
+      collectDecodedStrings(key, output, state);
+      collectDecodedStrings(entry, output, state);
+    }
+  }
+}
+
+function materializeScanInput(root, artifact, observationBytes) {
+  const directory = mkdtempSync(join(tmpdir(), "erpc-dependency-secret-scan-"));
+  try {
+    const observationPath = join(directory, "dependency-observation.json");
+    writeFileSync(observationPath, observationBytes, { flag: "wx", mode: 0o600 });
+    const candidateDirectory = join(directory, "candidate-files");
+    mkdirSync(candidateDirectory, { recursive: true, mode: 0o700 });
+    for (const relativePath of [...artifact.candidate.changedPaths].sort()) {
+      if (!CANDIDATE_PATH_SET.has(relativePath)) scanFailure("SCAN_INPUT_INVALID");
+      safeRelativePath(relativePath, "candidate path");
+      const value = artifact.candidate.files[relativePath];
+      if (typeof value !== "string") scanFailure("SCAN_INPUT_INVALID");
+      const bytes = Buffer.from(value, "utf8");
+      if (bytes.length > MAX_ARTIFACT_BYTES || boundedUtf8(bytes) !== value) scanFailure("SCAN_INPUT_INVALID");
+      const target = join(candidateDirectory, relativePath);
+      mkdirSync(dirname(target), { recursive: true, mode: 0o700 });
+      writeFileSync(target, bytes, { flag: "wx", mode: 0o600 });
+    }
+    const decodedStrings = [];
+    const state = { count: 0, bytes: 0 };
+    collectDecodedStrings(artifact, decodedStrings, state);
+    const decodedPath = join(directory, "decoded-observation-strings.txt");
+    const decodedBytes = Buffer.from(decodedStrings.join("\n"), "utf8");
+    if (decodedBytes.length > MAX_SCAN_MATERIALIZED_BYTES) scanFailure("SCAN_INPUT_INVALID");
+    writeFileSync(decodedPath, decodedBytes, { flag: "wx", mode: 0o600 });
+    return directory;
+  } catch (error) {
+    try { rmSync(directory, { recursive: true, force: true }); } catch { /* best effort cleanup */ }
+    if (error instanceof DependencyMaintenanceError) throw error;
+    scanFailure("SCAN_INPUT_INVALID");
+  }
+}
+
+function runGitleaksScan(root, scanDirectory, scanner) {
+  let result;
+  try {
+    result = spawnSync(scanner.wrapperPath, [
+      "dir",
+      scanDirectory,
+      "--redact=100",
+      "--config",
+      scanner.configPath,
+      "--ignore-gitleaks-allow",
+    ], {
+      cwd: root,
+      env: scannerEnvironment(),
+      encoding: "utf8",
+      timeout: COMMAND_TIMEOUT_MS,
+      maxBuffer: MAX_COMMAND_OUTPUT_BYTES,
+      shell: false,
+      windowsHide: true,
+    });
+  } catch {
+    scanFailure("SCAN_FAILED");
+  }
+  if (!result || result.error || result.signal || result.status !== 0) scanFailure("SCAN_FAILED");
+  return true;
+}
+
+function parseObservationScanInput(observationBytes, { artifact = null, root = REPOSITORY_ROOT, sourceSha = null, requireSuccessful = false, expectedRunId = null, expectedRunAttempt = null, expectedEventName = null, expectedWorkflowRef = null } = {}) {
+  const text = boundedUtf8(observationBytes);
+  let parsed;
+  try { parsed = JSON.parse(text); } catch { scanFailure("SCAN_INPUT_INVALID"); }
+  try {
+    validateObservationArtifact(parsed, {
+      root,
+      sourceSha,
+      requireSuccessful,
+      expectedRunId,
+      expectedRunAttempt,
+      expectedEventName,
+      expectedWorkflowRef,
+    });
+  } catch {
+    scanFailure("SCAN_INPUT_INVALID");
+  }
+  if (artifact !== null && stableJson(parsed) !== stableJson(artifact)) scanFailure("SCAN_INPUT_INVALID");
+  if (!(parsed.evaluationStatus === "eligible" || parsed.evaluationStatus === "no-update" || parsed.evaluationStatus === "blocked")) scanFailure("SCAN_INPUT_INVALID");
+  if (typeof parsed.workflowRef !== "string" || parsed.workflowRef.length === 0 || !/^[^/]+\/[^/]+\/.+@refs\/heads\/main$/u.test(parsed.workflowRef) || !parsed.workflowRef.endsWith(`${WORKFLOW_PATH}@refs/heads/main`)) scanFailure("SCAN_INPUT_INVALID");
+  return parsed;
+}
+
+function scanReceiptForArtifact({ artifact, observationBytes, scanner }) {
+  return {
+    schemaVersion: SCAN_RECEIPT_SCHEMA_VERSION,
+    kind: SCAN_RECEIPT_KIND,
+    status: "passed",
+    observationSha256: sha256Bytes(observationBytes),
+    candidateDigest: artifact.candidate.candidateDigest,
+    sourceSha: artifact.sourceSha,
+    sourceRef: artifact.sourceRef,
+    eventName: artifact.eventName,
+    workflowPath: artifact.workflowPath,
+    workflowRef: artifact.workflowRef,
+    runId: artifact.runId,
+    runAttempt: artifact.runAttempt,
+    scanner: {
+      name: "gitleaks",
+      version: GITLEAKS_VERSION,
+      wrapperSha256: scanner.wrapperSha256,
+      configSha256: scanner.configSha256,
+    },
+  };
+}
+
+export function serializeObservationArtifact(artifact) {
+  try {
+    const text = `${JSON.stringify(artifact, null, 2)}\n`;
+    return Buffer.from(text, "utf8");
+  } catch {
+    scanFailure("SCAN_INPUT_INVALID");
+  }
+}
+
+export function scanDependencyObservation({ root = REPOSITORY_ROOT, artifact = null, observationBytes, sourceSha = null, requireSuccessful = false, expectedRunId = null, expectedRunAttempt = null, expectedEventName = null, expectedWorkflowRef = null } = {}) {
+  if (!Buffer.isBuffer(observationBytes)) scanFailure("SCAN_INPUT_INVALID");
+  const parsed = parseObservationScanInput(observationBytes, { artifact, root, sourceSha, requireSuccessful, expectedRunId, expectedRunAttempt, expectedEventName, expectedWorkflowRef });
+  const scanner = trustedScannerFiles(root);
+  let scanDirectory = null;
+  try {
+    scanDirectory = materializeScanInput(root, parsed, observationBytes);
+    runGitleaksScan(root, scanDirectory, scanner);
+    return Object.freeze(scanReceiptForArtifact({ artifact: parsed, observationBytes, scanner }));
+  } finally {
+    if (scanDirectory) {
+      try { rmSync(scanDirectory, { recursive: true, force: true }); } catch { /* best effort cleanup */ }
+    }
+  }
+}
+
+export function validateScanReceipt(receipt, { root = REPOSITORY_ROOT, artifact, observationBytes, sourceSha = null, expectedRunId = null, expectedRunAttempt = null, expectedEventName = null, expectedWorkflowRef = null, requireSuccessful = true } = {}) {
+  if (!receipt || typeof receipt !== "object" || Array.isArray(receipt)) scanFailure("SCAN_RECEIPT_MISSING");
+  try {
+    exactKeys(receipt, SCAN_RECEIPT_KEYS, "scan receipt");
+    exactKeys(receipt.scanner, SCANNER_KEYS, "scan receipt scanner");
+  } catch {
+    scanFailure("SCAN_RECEIPT_INVALID");
+  }
+  if (receipt.schemaVersion !== SCAN_RECEIPT_SCHEMA_VERSION || receipt.kind !== SCAN_RECEIPT_KIND || receipt.status !== "passed") scanFailure("SCAN_RECEIPT_INVALID");
+  if (!Buffer.isBuffer(observationBytes) || observationBytes.length === 0 || observationBytes.length > MAX_ARTIFACT_BYTES) scanFailure("SCAN_RECEIPT_INVALID");
+  let parsedArtifact;
+  try {
+    parsedArtifact = parseObservationScanInput(observationBytes, { artifact, root, sourceSha, requireSuccessful, expectedRunId, expectedRunAttempt, expectedEventName, expectedWorkflowRef });
+  } catch {
+    scanFailure("SCAN_RECEIPT_INVALID");
+  }
+  for (const [key, value] of Object.entries({
+    sourceSha: parsedArtifact.sourceSha,
+    sourceRef: parsedArtifact.sourceRef,
+    eventName: parsedArtifact.eventName,
+    workflowPath: parsedArtifact.workflowPath,
+    workflowRef: parsedArtifact.workflowRef,
+    runId: parsedArtifact.runId,
+    runAttempt: parsedArtifact.runAttempt,
+  })) {
+    if (receipt[key] !== value) scanFailure("SCAN_RECEIPT_MISMATCH");
+  }
+  if (sourceSha !== null && receipt.sourceSha !== sourceSha) scanFailure("SCAN_RECEIPT_MISMATCH");
+  if (receipt.candidateDigest !== parsedArtifact.candidate.candidateDigest) scanFailure("SCAN_RECEIPT_MISMATCH");
+  if (receipt.observationSha256 !== sha256Bytes(observationBytes)) scanFailure("SCAN_RECEIPT_MISMATCH");
+  try { requireDigest(receipt.observationSha256, "scan observation digest"); } catch { scanFailure("SCAN_RECEIPT_INVALID"); }
+  try { requireDigest(receipt.candidateDigest, "scan candidate digest"); } catch { scanFailure("SCAN_RECEIPT_INVALID"); }
+  if (receipt.scanner.name !== "gitleaks" || receipt.scanner.version !== GITLEAKS_VERSION) scanFailure("SCAN_RECEIPT_INVALID");
+  let scanner;
+  try { scanner = trustedScannerFiles(root); } catch { scanFailure("SCAN_RECEIPT_INVALID"); }
+  if (receipt.scanner.wrapperSha256 !== scanner.wrapperSha256 || receipt.scanner.configSha256 !== scanner.configSha256) scanFailure("SCAN_RECEIPT_MISMATCH");
+  if (Buffer.byteLength(JSON.stringify(receipt), "utf8") > MAX_SCAN_RECEIPT_BYTES) scanFailure("SCAN_RECEIPT_INVALID");
+  return receipt;
+}
+
+export function observationReceiptPath(observationPath) {
+  return join(dirname(resolve(requireString(observationPath, "observation path"))), SCAN_RECEIPT_FILENAME);
+}
+
+export function observationSnapshotPath(observationPath) {
+  return join(dirname(resolve(requireString(observationPath, "observation path"))), SCANNED_OBSERVATION_FILENAME);
+}
+
+function removeStaleScanFile(filePath) {
+  try {
+    const stat = lstatSync(filePath);
+    if (stat.isDirectory()) scanFailure("SCAN_INPUT_INVALID");
+    rmSync(filePath, { force: true });
+  } catch (error) {
+    if (error?.code !== "ENOENT") scanFailure("SCAN_INPUT_INVALID");
+  }
+}
+
+export function scanAndWriteDependencyObservation({ root = REPOSITORY_ROOT, observationPath, receiptPath = null, snapshotPath = null, sourceSha = null, expectedRunId = null, expectedRunAttempt = null, expectedEventName = null, expectedWorkflowRef = null } = {}) {
+  const observationFile = resolve(requireString(observationPath, "observation path"));
+  const receiptFile = resolve(receiptPath ?? observationReceiptPath(observationFile));
+  const snapshotFile = resolve(snapshotPath ?? observationSnapshotPath(observationFile));
+  if (snapshotFile === observationFile || receiptFile === observationFile || receiptFile === snapshotFile) scanFailure("SCAN_INPUT_INVALID");
+  removeStaleScanFile(receiptFile);
+  removeStaleScanFile(snapshotFile);
+  try {
+    const observationBytes = boundedFileBytes(observationFile);
+    const artifact = parseObservationScanInput(observationBytes, { root, sourceSha, expectedRunId, expectedRunAttempt, expectedEventName, expectedWorkflowRef });
+    const receipt = scanDependencyObservation({ root, artifact, observationBytes, sourceSha, expectedRunId, expectedRunAttempt, expectedEventName, expectedWorkflowRef });
+    writeFileSync(snapshotFile, observationBytes, { flag: "wx", mode: 0o600 });
+    writeFileSync(receiptFile, `${JSON.stringify(receipt, null, 2)}\n`, { flag: "wx", mode: 0o600 });
+    try { chmodSync(snapshotFile, 0o600); } catch { /* best effort permission tightening */ }
+    try { chmodSync(receiptFile, 0o600); } catch { /* best effort permission tightening */ }
+    return receipt;
+  } catch (error) {
+    try { rmSync(snapshotFile, { force: true }); } catch { /* best effort cleanup */ }
+    try { rmSync(receiptFile, { force: true }); } catch { /* best effort cleanup */ }
+    if (error instanceof DependencyMaintenanceError) throw error;
+    scanFailure("SCAN_FAILED");
+  }
+}
+
 export function validateObservationArtifact(artifact, { root = REPOSITORY_ROOT, sourceSha = null, requireSuccessful = false, expectedRunId = null, expectedRunAttempt = null, expectedEventName = null, expectedWorkflowRef = null } = {}) {
   if (!artifact || typeof artifact !== "object" || Array.isArray(artifact)) fail("dependency observation must be an object", "ARTIFACT_INVALID");
   if (artifact.schemaVersion !== OBSERVATION_SCHEMA_VERSION || artifact.kind !== OBSERVATION_KIND) fail("dependency observation kind or schema is invalid", "ARTIFACT_INVALID");
@@ -1898,10 +2243,45 @@ async function verifyManagedBranch(api, { sourceSha, branchSha, marker, reposito
   return commit;
 }
 
-export async function writeDependencyPullRequest({ root = REPOSITORY_ROOT, artifact, sourceSha, repository, token = null, api = null, dispatchCI = true, expectedRunId = null, expectedRunAttempt = null, expectedEventName = null, expectedWorkflowRef = null } = {}) {
+export async function writeDependencyPullRequest({ root = REPOSITORY_ROOT, artifact = null, observationBytes = null, receipt = null, sourceSha, repository, token = null, api = null, dispatchCI = true, expectedRunId = null, expectedRunAttempt = null, expectedEventName = null, expectedWorkflowRef = null } = {}) {
   requireSha(sourceSha, "writer source SHA");
   validateCleanCheckout(root, sourceSha);
-  validateObservationArtifact(artifact, { root, sourceSha, requireSuccessful: true, expectedRunId, expectedRunAttempt, expectedEventName, expectedWorkflowRef });
+  if (artifact === null && !Buffer.isBuffer(observationBytes)) scanFailure("SCAN_INPUT_INVALID");
+  const exactObservationBytes = Buffer.isBuffer(observationBytes) ? Buffer.from(observationBytes) : serializeObservationArtifact(artifact);
+  const scannedArtifact = parseObservationScanInput(exactObservationBytes, {
+    artifact,
+    root,
+    sourceSha,
+    requireSuccessful: true,
+    expectedRunId,
+    expectedRunAttempt,
+    expectedEventName,
+    expectedWorkflowRef,
+  });
+  artifact = scannedArtifact;
+  validateScanReceipt(receipt, {
+    root,
+    artifact,
+    observationBytes: exactObservationBytes,
+    sourceSha,
+    expectedRunId,
+    expectedRunAttempt,
+    expectedEventName,
+    expectedWorkflowRef,
+    requireSuccessful: true,
+  });
+  const freshReceipt = scanDependencyObservation({
+    root,
+    artifact,
+    observationBytes: exactObservationBytes,
+    sourceSha,
+    requireSuccessful: true,
+    expectedRunId,
+    expectedRunAttempt,
+    expectedEventName,
+    expectedWorkflowRef,
+  });
+  if (stableJson(receipt) !== stableJson(freshReceipt)) scanFailure("SCAN_RECEIPT_MISMATCH");
   if (artifact.candidate.status !== "eligible") fail(`candidate status ${artifact.candidate.status} is not writable`, "CANDIDATE_NOT_ELIGIBLE");
   const client = api ?? createGitHubApi({ token, repository });
   const identity = await verifyApiIdentity(client, repository);
@@ -2032,17 +2412,43 @@ async function cli(argv) {
     process.stdout.write(`${JSON.stringify({ status: artifact.candidate.status, evaluationStatus: artifact.evaluationStatus, candidateDigest: artifact.candidate.candidateDigest, changedPaths: artifact.candidate.changedPaths })}\n`);
     return artifact.candidate.status === "blocked" ? 2 : 0;
   }
+  if (args.command === "scan") {
+    const observationPath = resolve(requireString(args.observation ?? args.artifact, "observation"));
+    const receiptPath = args.receipt ? resolve(requireString(args.receipt, "receipt")) : observationReceiptPath(observationPath);
+    const snapshotPath = args.snapshot ? resolve(requireString(args.snapshot, "snapshot")) : observationSnapshotPath(observationPath);
+    const receipt = scanAndWriteDependencyObservation({
+      root,
+      observationPath,
+      receiptPath,
+      snapshotPath,
+      sourceSha: args.source_sha ?? null,
+      expectedRunId: args.run_id ?? null,
+      expectedRunAttempt: args.run_attempt ?? null,
+      expectedEventName: args.event_name ?? null,
+      expectedWorkflowRef: args.workflow_ref ?? null,
+    });
+    process.stdout.write(`${JSON.stringify({ status: receipt.status, kind: receipt.kind, scanner: receipt.scanner.name, version: receipt.scanner.version })}\n`);
+    return 0;
+  }
   if (args.command === "write") {
-    const artifact = parseJson(readFileSync(resolve(requireString(args.artifact, "artifact")), "utf8"), "dependency observation artifact");
-    const result = await writeDependencyPullRequest({ root, artifact, sourceSha: requireSha(args.source_sha, "source SHA"), repository: requireString(args.repository, "repository"), token: requireString(args.token ?? process.env.GITHUB_TOKEN, "GitHub token"), dispatchCI: args.dispatch_ci !== "false", expectedRunId: args.run_id, expectedRunAttempt: args.run_attempt, expectedEventName: args.event_name, expectedWorkflowRef: args.workflow_ref });
+    const observationPath = resolve(requireString(args.artifact, "artifact"));
+    const observationBytes = boundedFileBytes(observationPath);
+    const artifact = parseJson(boundedUtf8(observationBytes), "dependency observation artifact");
+    const receiptPath = args.receipt ? resolve(requireString(args.receipt, "receipt")) : observationReceiptPath(observationPath);
+    const receipt = parseJson(boundedUtf8(boundedFileBytes(receiptPath)), "dependency observation scan receipt");
+    const result = await writeDependencyPullRequest({ root, artifact, observationBytes, receipt, sourceSha: requireSha(args.source_sha, "source SHA"), repository: requireString(args.repository, "repository"), token: requireString(args.token ?? process.env.GITHUB_TOKEN, "GitHub token"), dispatchCI: args.dispatch_ci !== "false", expectedRunId: args.run_id, expectedRunAttempt: args.run_attempt, expectedEventName: args.event_name, expectedWorkflowRef: args.workflow_ref });
     process.stdout.write(`${JSON.stringify(result)}\n`);
     return 0;
   }
-  process.stderr.write("usage: dependency-maintenance.mjs <evaluate|write> [options]\n");
+  process.stderr.write("usage: dependency-maintenance.mjs <evaluate|scan|write> [options]\n");
   return 64;
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  try { process.exitCode = await cli(process.argv.slice(2)); } catch (error) { process.stderr.write(`${error.code ?? "ERROR"}: ${error.message}\n`); process.exitCode = 1; }
+  try { process.exitCode = await cli(process.argv.slice(2)); } catch (error) {
+    const code = /^[A-Z][A-Z0-9_]*$/u.test(String(error?.code ?? "")) ? error.code : "ERROR";
+    process.stderr.write(`${code}: dependency maintenance command failed\n`);
+    process.exitCode = 1;
+  }
 }
 

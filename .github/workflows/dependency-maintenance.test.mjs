@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { test } from "node:test";
 import { join, resolve } from "node:path";
@@ -18,6 +19,11 @@ import {
   hashFiles,
   readCandidateFiles,
   sanitizeEvaluatorEnvironment,
+  scanDependencyObservation,
+  scanAndWriteDependencyObservation,
+  observationReceiptPath,
+  observationSnapshotPath,
+  serializeObservationArtifact,
   validateCandidateFiles,
   validateCleanCheckout,
   validateObservationArtifact,
@@ -68,6 +74,25 @@ function fixtureArtifact({ before, after, statuses = {} } = {}) {
     before,
     after,
   });
+}
+
+function scanEvidence(artifact, root) {
+  const observationBytes = serializeObservationArtifact(artifact);
+  const receipt = scanDependencyObservation({
+    root,
+    artifact,
+    observationBytes,
+    sourceSha,
+    expectedRunId: 7001,
+    expectedRunAttempt: 1,
+    expectedEventName: "schedule",
+    expectedWorkflowRef: workflowRef,
+  });
+  return { observationBytes, receipt };
+}
+
+function syntheticMnemonic() {
+  return ["mnemonic:", ...Array.from({ length: 11 }, () => "abandon"), "invalid"].join(" ");
 }
 
 function managedPr({ source, digest, paths, headSha, number = 42, merged = false, bodyOverride = null } = {}) {
@@ -327,10 +352,16 @@ test("workflow wiring and extracted evaluator subprocess environment fail closed
   assert.match(workflow, /cron:\s*'17 9 \* \* 1'/u);
   assert.match(workflow, /timezone:\s*Europe\/Amsterdam/u);
   assert.match(workflow, /persist-credentials:\s*false/gu);
+  assert.match(workflow, /Scan exact observation before upload/u);
+  assert.match(workflow, /steps\.scan\.outcome == 'success'/u);
+  assert.match(workflow, /dependency-observation\.scanned\.json/u);
+  assert.match(workflow, /dependency-observation\.receipt\.json/u);
+  assert.ok(workflow.indexOf("Scan exact observation before upload") < workflow.indexOf("Upload source-bound dependency observation"));
   assert.match(workflow, /actions\/setup-python@[^\s]+[\s\S]+python-version:\s*'3\.11'/u);
   assert.match(workflow, /pip install[^\n]+--no-deps[^\n]+--only-binary=:all:\s+PyYAML==6\.0\.3/u);
   assert.match(workflow, /import tomllib, yaml; assert yaml\.__version__ == "6\.0\.3"/u);
   assert.match(evaluatorSource, /--ignore-scripts/u);
+  assert.match(evaluatorSource, /--redact=100/u);
   assert.match(workflow, /contents:\s*write[\s\S]+pull-requests:\s*write[\s\S]+actions:\s*write/u);
   const detachedRoot = mkdtempSync(join(tmpdir(), "erpc-dependency-env-test-"));
   let supportRoot = null;
@@ -366,6 +397,243 @@ test("workflow wiring and extracted evaluator subprocess environment fail closed
   } finally {
     rmSync(detachedRoot, { recursive: true, force: true });
     if (typeof supportRoot === "string") rmSync(supportRoot, { recursive: true, force: true });
+  }
+});
+
+test("real pinned scan covers clean bytes, decoded candidates, escaped diagnostics, and inline allow suppression", () => {
+  const root = detachedFixture();
+  try {
+    const { before, after } = snapshots();
+    const clean = fixtureArtifact({ before, after });
+    const cleanBytes = serializeObservationArtifact(clean);
+    const cleanReceipt = scanDependencyObservation({ root, artifact: clean, observationBytes: cleanBytes, sourceSha, expectedRunId: 7001, expectedRunAttempt: 1, expectedEventName: "schedule", expectedWorkflowRef: workflowRef });
+    assert.equal(cleanReceipt.status, "passed");
+    assert.equal(cleanReceipt.scanner.version, "8.30.1");
+
+    const candidateAfter = { ...after, "pnpm-lock.yaml": `${after["pnpm-lock.yaml"]}\n# ${syntheticMnemonic()} gitleaks:allow\n` };
+    const candidateFinding = fixtureArtifact({ before, after: candidateAfter });
+    assert.throws(() => scanDependencyObservation({ root, artifact: candidateFinding, observationBytes: serializeObservationArtifact(candidateFinding), sourceSha, expectedRunId: 7001, expectedRunAttempt: 1, expectedEventName: "schedule", expectedWorkflowRef: workflowRef }), (error) => error instanceof DependencyMaintenanceError && error.code === "SCAN_FAILED" && !error.message.includes("abandon"));
+
+    const diagnosticFinding = structuredClone(clean);
+    const pattern = syntheticMnemonic();
+    diagnosticFinding.ecosystems[0].observations[0].diagnostic = pattern;
+    const escapedBytes = Buffer.from(serializeObservationArtifact(diagnosticFinding).toString("utf8").replace("mnemonic", "\\u006d\\u006e\\u0065\\u006d\\u006f\\u006e\\u0069\\u0063"), "utf8");
+    assert.throws(() => scanDependencyObservation({ root, artifact: diagnosticFinding, observationBytes: escapedBytes, sourceSha, expectedRunId: 7001, expectedRunAttempt: 1, expectedEventName: "schedule", expectedWorkflowRef: workflowRef }), (error) => error instanceof DependencyMaintenanceError && error.code === "SCAN_FAILED" && !error.message.includes("abandon"));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("scan CLI failure keeps credential and native diagnostics out of output and removes stale receipt", () => {
+  const root = detachedFixture();
+  const directory = mkdtempSync(join(tmpdir(), "erpc-dependency-scan-cli-"));
+  try {
+    const { before, after } = snapshots();
+    const artifact = fixtureArtifact({ before, after });
+    const pattern = syntheticMnemonic();
+    artifact.ecosystems[0].observations[0].diagnostic = pattern;
+    const observationPath = join(directory, "dependency-observation.json");
+    const receiptPath = join(directory, "dependency-observation.receipt.json");
+    const snapshotPath = join(directory, "dependency-observation.scanned.json");
+    writeFileSync(observationPath, serializeObservationArtifact(artifact), { flag: "w" });
+    writeFileSync(receiptPath, "stale receipt\n", { flag: "w" });
+    writeFileSync(snapshotPath, "stale snapshot\n", { flag: "w" });
+    const result = spawnSync(process.execPath, [resolve(repositoryRoot, ".github/workflows/dependency-maintenance.mjs"), "scan", "--root", root, "--observation", observationPath, "--receipt", receiptPath, "--snapshot", snapshotPath, "--source-sha", sourceSha, "--event-name", "schedule", "--workflow-ref", workflowRef, "--run-id", "7001", "--run-attempt", "1"], { cwd: repositoryRoot, encoding: "utf8" });
+    assert.notEqual(result.status, 0);
+    assert.doesNotMatch(`${result.stdout}\n${result.stderr}`, /abandon|native diagnostics|leak/u);
+    assert.equal(existsSync(receiptPath), false);
+    assert.equal(existsSync(snapshotPath), false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("scan upload snapshot stays bound when the source observation changes during the real scan", () => {
+  const root = detachedFixture();
+  const directory = mkdtempSync(join(tmpdir(), "erpc-dependency-scan-snapshot-"));
+  try {
+    const { before, after } = snapshots();
+    const clean = fixtureArtifact({ before, after });
+    const replacement = structuredClone(clean);
+    replacement.ecosystems[0].observations[0].diagnostic = syntheticMnemonic();
+    const observationPath = join(directory, "dependency-observation.json");
+    const replacementPath = join(directory, "replacement-observation.json");
+    writeFileSync(observationPath, serializeObservationArtifact(clean), { flag: "w" });
+    writeFileSync(replacementPath, serializeObservationArtifact(replacement), { flag: "w" });
+    const childScript = `
+      import childProcess from "node:child_process";
+      import { readFileSync, writeFileSync } from "node:fs";
+      import { syncBuiltinESMExports } from "node:module";
+      import { pathToFileURL } from "node:url";
+      const [helperPath, sourceRoot, observationFile, replacementFile, expectedSha, workflow] = process.argv.slice(1);
+      process.argv[1] = "";
+      const realSpawnSync = childProcess.spawnSync;
+      childProcess.spawnSync = (command, args, options) => {
+        if (String(command).endsWith("/scripts/run-gitleaks.sh")) writeFileSync(observationFile, readFileSync(replacementFile));
+        return realSpawnSync(command, args, options);
+      };
+      syncBuiltinESMExports();
+      const helper = await import(pathToFileURL(helperPath).href);
+      const receipt = helper.scanAndWriteDependencyObservation({ root: sourceRoot, observationPath: observationFile, sourceSha: expectedSha, expectedRunId: 7001, expectedRunAttempt: 1, expectedEventName: "schedule", expectedWorkflowRef: workflow });
+      process.stdout.write(JSON.stringify({ receipt, snapshot: helper.observationSnapshotPath(observationFile) }));
+    `;
+    const output = execFileSync(process.execPath, ["--input-type=module", "-e", childScript, resolve(repositoryRoot, ".github/workflows/dependency-maintenance.mjs"), root, observationPath, replacementPath, sourceSha, workflowRef], { cwd: repositoryRoot, encoding: "utf8" });
+    const result = JSON.parse(output);
+    const snapshotBytes = readFileSync(result.snapshot);
+    const originalBytes = readFileSync(observationPath);
+    assert.equal(createHash("sha256").update(snapshotBytes).digest("hex"), result.receipt.observationSha256);
+    assert.deepEqual(snapshotBytes, serializeObservationArtifact(clean));
+    assert.deepEqual(originalBytes, serializeObservationArtifact(replacement));
+    assert.notEqual(result.snapshot, observationPath);
+    assert.equal(existsSync(observationSnapshotPath(observationPath)), true);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("scanner execution failure produces no receipt or snapshot and zero writer API mutations", () => {
+  const root = detachedFixture();
+  const directory = mkdtempSync(join(tmpdir(), "erpc-dependency-scan-failure-"));
+  try {
+    const { before, after } = snapshots();
+    const artifact = fixtureArtifact({ before, after });
+    const evidence = scanEvidence(artifact, root);
+    const scanObservationPath = join(directory, "scan-observation.json");
+    const scanReceiptPath = join(directory, "scan.receipt.json");
+    const scanSnapshotPath = join(directory, "scan.snapshot.json");
+    const writerObservationPath = join(directory, "writer-observation.json");
+    const writerReceiptPath = join(directory, "writer.receipt.json");
+    writeFileSync(scanObservationPath, evidence.observationBytes, { flag: "w" });
+    writeFileSync(scanReceiptPath, "stale receipt\n", { flag: "w" });
+    writeFileSync(scanSnapshotPath, "stale snapshot\n", { flag: "w" });
+    writeFileSync(writerObservationPath, evidence.observationBytes, { flag: "w" });
+    writeFileSync(writerReceiptPath, `${JSON.stringify(evidence.receipt)}\n`, { flag: "w" });
+    const childScript = `
+      import childProcess from "node:child_process";
+      import { existsSync, readFileSync } from "node:fs";
+      import { syncBuiltinESMExports } from "node:module";
+      import { pathToFileURL } from "node:url";
+      const [helperPath, sourceRoot, scanObservation, scanReceipt, scanSnapshot, writerObservation, writerReceipt, expectedSha, workflow] = process.argv.slice(1);
+      process.argv[1] = "";
+      const realSpawnSync = childProcess.spawnSync;
+      childProcess.spawnSync = (command, args, options) => {
+        if (String(command).endsWith("/scripts/run-gitleaks.sh")) return { status: null, stdout: "", stderr: "scanner diagnostic", error: new Error("scanner diagnostic"), signal: "SIGTERM" };
+        return realSpawnSync(command, args, options);
+      };
+      syncBuiltinESMExports();
+      const helper = await import(pathToFileURL(helperPath).href);
+      let scanError = null;
+      try {
+        helper.scanAndWriteDependencyObservation({ root: sourceRoot, observationPath: scanObservation, receiptPath: scanReceipt, snapshotPath: scanSnapshot, sourceSha: expectedSha, expectedRunId: 7001, expectedRunAttempt: 1, expectedEventName: "schedule", expectedWorkflowRef: workflow });
+      } catch (error) {
+        scanError = { code: error.code, message: error.message };
+      }
+      const calls = [];
+      const api = async (path, options = {}) => { calls.push({ path, method: options.method ?? "GET" }); throw new Error("unexpected writer API call"); };
+      let writerError = null;
+      try {
+        const observationBytes = readFileSync(writerObservation);
+        await helper.writeDependencyPullRequest({ root: sourceRoot, artifact: JSON.parse(observationBytes), observationBytes, receipt: JSON.parse(readFileSync(writerReceipt, "utf8")), sourceSha: expectedSha, repository: "elsoul/erpc-sdk", api, dispatchCI: false, expectedRunId: 7001, expectedRunAttempt: 1, expectedEventName: "schedule", expectedWorkflowRef: workflow });
+      } catch (error) {
+        writerError = { code: error.code, message: error.message };
+      }
+      process.stdout.write(JSON.stringify({ scanError, writerError, calls, receiptExists: existsSync(scanReceipt), snapshotExists: existsSync(scanSnapshot) }));
+    `;
+    const output = execFileSync(process.execPath, ["--input-type=module", "-e", childScript, resolve(repositoryRoot, ".github/workflows/dependency-maintenance.mjs"), root, scanObservationPath, scanReceiptPath, scanSnapshotPath, writerObservationPath, writerReceiptPath, sourceSha, workflowRef], { cwd: repositoryRoot, encoding: "utf8" });
+    const result = JSON.parse(output);
+    assert.deepEqual(result.scanError, { code: "SCAN_FAILED", message: "dependency observation secret scan failed" });
+    assert.deepEqual(result.writerError, { code: "SCAN_FAILED", message: "dependency observation secret scan failed" });
+    assert.deepEqual(result.calls, []);
+    assert.equal(result.receiptExists, false);
+    assert.equal(result.snapshotExists, false);
+    assert.doesNotMatch(output, /scanner diagnostic|abandon/u);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("malformed scan CLI input emits only a static failure and no receipt", () => {
+  const root = detachedFixture();
+  const directory = mkdtempSync(join(tmpdir(), "erpc-dependency-scan-malformed-"));
+  try {
+    const observationPath = join(directory, "dependency-observation.json");
+    const receiptPath = join(directory, "dependency-observation.receipt.json");
+    const snapshotPath = join(directory, "dependency-observation.scanned.json");
+    writeFileSync(observationPath, `{"diagnostic":"${syntheticMnemonic()}"`, { flag: "w" });
+    writeFileSync(receiptPath, "stale receipt\n", { flag: "w" });
+    writeFileSync(snapshotPath, "stale snapshot\n", { flag: "w" });
+    const result = spawnSync(process.execPath, [resolve(repositoryRoot, ".github/workflows/dependency-maintenance.mjs"), "scan", "--root", root, "--observation", observationPath, "--receipt", receiptPath, "--snapshot", snapshotPath, "--source-sha", sourceSha, "--event-name", "schedule", "--workflow-ref", workflowRef, "--run-id", "7001", "--run-attempt", "1"], { cwd: repositoryRoot, encoding: "utf8" });
+    assert.notEqual(result.status, 0);
+    assert.doesNotMatch(`${result.stdout}\n${result.stderr}`, /abandon|diagnostic|SyntaxError|JSON/u);
+    assert.equal(existsSync(receiptPath), false);
+    assert.equal(existsSync(snapshotPath), false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("symlink observation input fails closed before scanning and cleans evidence paths", () => {
+  const root = detachedFixture();
+  const directory = mkdtempSync(join(tmpdir(), "erpc-dependency-scan-symlink-"));
+  try {
+    const { before, after } = snapshots();
+    const artifact = fixtureArtifact({ before, after });
+    const target = join(directory, "real-observation.json");
+    const observationPath = join(directory, "dependency-observation.json");
+    writeFileSync(target, serializeObservationArtifact(artifact), { flag: "w" });
+    symlinkSync(target, observationPath);
+    assert.throws(() => scanAndWriteDependencyObservation({ root, observationPath, sourceSha, expectedRunId: 7001, expectedRunAttempt: 1, expectedEventName: "schedule", expectedWorkflowRef: workflowRef }), (error) => error instanceof DependencyMaintenanceError && error.code === "SCAN_INPUT_INVALID");
+    assert.equal(existsSync(observationReceiptPath(observationPath)), false);
+    assert.equal(existsSync(observationSnapshotPath(observationPath)), false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("writer requires exact receipt bindings and fresh real scan before any mutation", async () => {
+  const root = detachedFixture();
+  try {
+    const { before, after } = snapshots();
+    const artifact = fixtureArtifact({ before, after });
+    const evidence = scanEvidence(artifact, root);
+    const mutations = [];
+    const readOnlyApi = async (path, { method = "GET" } = {}) => {
+      mutations.push({ path, method });
+      throw new Error("writer API must not be reached");
+    };
+    const receiptCases = [
+      ["absent", null],
+      ["malformed", {}],
+      ["status", { ...evidence.receipt, status: "failed" }],
+      ["source", { ...evidence.receipt, sourceSha: "0".repeat(40) }],
+      ["run", { ...evidence.receipt, runId: 7002 }],
+      ["attempt", { ...evidence.receipt, runAttempt: 2 }],
+      ["event", { ...evidence.receipt, eventName: "workflow_dispatch" }],
+      ["workflow", { ...evidence.receipt, workflowRef: workflowRef.replace("refs/heads/main", "refs/heads/other") }],
+      ["observation", { ...evidence.receipt, observationSha256: "1".repeat(64) }],
+      ["candidate", { ...evidence.receipt, candidateDigest: "2".repeat(64) }],
+      ["wrapper", { ...evidence.receipt, scanner: { ...evidence.receipt.scanner, wrapperSha256: "3".repeat(64) } }],
+      ["config", { ...evidence.receipt, scanner: { ...evidence.receipt.scanner, configSha256: "4".repeat(64) } }],
+    ];
+    for (const [name, receipt] of receiptCases) {
+      await assert.rejects(() => writeDependencyPullRequest({ root, artifact, observationBytes: evidence.observationBytes, receipt, sourceSha, repository: "elsoul/erpc-sdk", api: readOnlyApi, dispatchCI: false, expectedRunId: 7001, expectedRunAttempt: 1, expectedEventName: "schedule", expectedWorkflowRef: workflowRef }), (error) => error instanceof DependencyMaintenanceError && /scan receipt|scan/u.test(error.message), name);
+      assert.equal(mutations.length, 0, `${name} receipt must block before API calls`);
+    }
+
+    const pattern = syntheticMnemonic();
+    const forged = structuredClone(artifact);
+    forged.ecosystems[0].observations[0].diagnostic = pattern;
+    const forgedBytes = serializeObservationArtifact(forged);
+    const forgedReceipt = { ...evidence.receipt, observationSha256: createHash("sha256").update(forgedBytes).digest("hex") };
+    await assert.rejects(() => writeDependencyPullRequest({ root, artifact: forged, observationBytes: forgedBytes, receipt: forgedReceipt, sourceSha, repository: "elsoul/erpc-sdk", api: readOnlyApi, dispatchCI: false, expectedRunId: 7001, expectedRunAttempt: 1, expectedEventName: "schedule", expectedWorkflowRef: workflowRef }), (error) => error instanceof DependencyMaintenanceError && error.code === "SCAN_FAILED");
+    assert.equal(mutations.length, 0, "fresh scan finding must block before API calls");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
   }
 });
 
@@ -494,7 +762,7 @@ test("writer refuses stale main before any branch or pull request mutation", asy
       if (path === `/git/ref/heads/${BASE_BRANCH}`) return { object: { sha: "1".repeat(40) } };
       throw new Error(`unexpected API call: ${path}`);
     };
-    await assert.rejects(() => writeDependencyPullRequest({ root: detachedRoot, artifact, sourceSha, repository: "elsoul/erpc-sdk", api, expectedRunId: 7001, expectedRunAttempt: 1, expectedEventName: "schedule", expectedWorkflowRef: workflowRef }), (error) => error instanceof DependencyMaintenanceError && error.code === "STALE_MAIN");
+    await assert.rejects(() => writeDependencyPullRequest({ ...scanEvidence(artifact, detachedRoot), root: detachedRoot, artifact, sourceSha, repository: "elsoul/erpc-sdk", api, expectedRunId: 7001, expectedRunAttempt: 1, expectedEventName: "schedule", expectedWorkflowRef: workflowRef }), (error) => error instanceof DependencyMaintenanceError && error.code === "STALE_MAIN");
     assert.deepEqual(calls, ["", `/git/ref/heads/${BASE_BRANCH}`]);
   } finally {
     rmSync(detachedRoot, { recursive: true, force: true });
@@ -516,7 +784,7 @@ test("writer rejects a foreign branch with no uniquely owned managed PR", async 
       if (path === `/git/ref/heads/${BOT_BRANCH}`) return { object: { sha: "2".repeat(40) } };
       throw new Error(`unexpected API call: ${path}`);
     };
-    await assert.rejects(() => writeDependencyPullRequest({ root: detachedRoot, artifact, sourceSha, repository: "elsoul/erpc-sdk", api, expectedRunId: 7001, expectedRunAttempt: 1, expectedEventName: "schedule", expectedWorkflowRef: workflowRef }), (error) => error instanceof DependencyMaintenanceError && error.code === "AMBIGUOUS_OWNERSHIP");
+    await assert.rejects(() => writeDependencyPullRequest({ ...scanEvidence(artifact, detachedRoot), root: detachedRoot, artifact, sourceSha, repository: "elsoul/erpc-sdk", api, expectedRunId: 7001, expectedRunAttempt: 1, expectedEventName: "schedule", expectedWorkflowRef: workflowRef }), (error) => error instanceof DependencyMaintenanceError && error.code === "AMBIGUOUS_OWNERSHIP");
   } finally {
     rmSync(detachedRoot, { recursive: true, force: true });
   }
@@ -536,7 +804,7 @@ test("writer refuses duplicate managed PR ownership before branch mutation", asy
       if (path.startsWith("/pulls?")) return [{ number: 1 }, { number: 2 }];
       throw new Error(`unexpected API call: ${path}`);
     };
-    await assert.rejects(() => writeDependencyPullRequest({ root: detachedRoot, artifact, sourceSha, repository: "elsoul/erpc-sdk", api, expectedRunId: 7001, expectedRunAttempt: 1, expectedEventName: "schedule", expectedWorkflowRef: workflowRef }), (error) => error instanceof DependencyMaintenanceError && error.code === "AMBIGUOUS_OWNERSHIP");
+    await assert.rejects(() => writeDependencyPullRequest({ ...scanEvidence(artifact, detachedRoot), root: detachedRoot, artifact, sourceSha, repository: "elsoul/erpc-sdk", api, expectedRunId: 7001, expectedRunAttempt: 1, expectedEventName: "schedule", expectedWorkflowRef: workflowRef }), (error) => error instanceof DependencyMaintenanceError && error.code === "AMBIGUOUS_OWNERSHIP");
   } finally {
     rmSync(detachedRoot, { recursive: true, force: true });
   }
@@ -571,7 +839,7 @@ test("writer CREATE and SAFE_REUSE bind authenticated branch bytes and PR owners
     if (path === "/pulls" && method === "POST") return managedPr({ source: sourceSha, digest: artifact.candidate.candidateDigest, paths: changedPaths, headSha });
     throw new Error(`unexpected create API call: ${method} ${path}`);
   };
-  const created = await writeDependencyPullRequest({ root: detachedRoot, artifact, sourceSha, repository: "elsoul/erpc-sdk", api: createApi, dispatchCI: false, expectedRunId: 7001, expectedRunAttempt: 1, expectedEventName: "schedule", expectedWorkflowRef: workflowRef });
+  const created = await writeDependencyPullRequest({ ...scanEvidence(artifact, detachedRoot), root: detachedRoot, artifact, sourceSha, repository: "elsoul/erpc-sdk", api: createApi, dispatchCI: false, expectedRunId: 7001, expectedRunAttempt: 1, expectedEventName: "schedule", expectedWorkflowRef: workflowRef });
   assert.equal(created.action, "CREATE");
   assert.ok(createCalls.some((entry) => entry === "POST /git/refs"));
 
@@ -586,7 +854,7 @@ test("writer CREATE and SAFE_REUSE bind authenticated branch bytes and PR owners
     if (contents[path]) return contents[path];
     throw new Error(`unexpected reuse API call: ${method} ${path}`);
   };
-  const reused = await writeDependencyPullRequest({ root: detachedRoot, artifact, sourceSha, repository: "elsoul/erpc-sdk", api: reuseApi, dispatchCI: false, expectedRunId: 7001, expectedRunAttempt: 1, expectedEventName: "schedule", expectedWorkflowRef: workflowRef });
+  const reused = await writeDependencyPullRequest({ ...scanEvidence(artifact, detachedRoot), root: detachedRoot, artifact, sourceSha, repository: "elsoul/erpc-sdk", api: reuseApi, dispatchCI: false, expectedRunId: 7001, expectedRunAttempt: 1, expectedEventName: "schedule", expectedWorkflowRef: workflowRef });
   assert.equal(reused.action, "SAFE_REUSE");
   } finally {
     rmSync(detachedRoot, { recursive: true, force: true });
@@ -616,7 +884,7 @@ test("writer stops on a branch race before a non-forcing ref update", async () =
     if (path.startsWith("/contents/") && path.endsWith(`?ref=${headOne}`)) { const file = path.slice("/contents/".length, -(`?ref=${headOne}`).length); if (oldFiles[file]) return { type: "file", encoding: "base64", content: Buffer.from(oldFiles[file], "utf8").toString("base64") }; }
     throw new Error(`unexpected race API call: ${path}`);
   };
-  await assert.rejects(() => writeDependencyPullRequest({ root: detachedRoot, artifact, sourceSha, repository: "elsoul/erpc-sdk", api, dispatchCI: false, expectedRunId: 7001, expectedRunAttempt: 1, expectedEventName: "schedule", expectedWorkflowRef: workflowRef }), (error) => error instanceof DependencyMaintenanceError && error.code === "RACE_HEAD");
+  await assert.rejects(() => writeDependencyPullRequest({ ...scanEvidence(artifact, detachedRoot), root: detachedRoot, artifact, sourceSha, repository: "elsoul/erpc-sdk", api, dispatchCI: false, expectedRunId: 7001, expectedRunAttempt: 1, expectedEventName: "schedule", expectedWorkflowRef: workflowRef }), (error) => error instanceof DependencyMaintenanceError && error.code === "RACE_HEAD");
   } finally {
     rmSync(detachedRoot, { recursive: true, force: true });
   }
@@ -998,7 +1266,7 @@ test("buildObservation refuses five-ecosystem results with no native command rec
   valid.ecosystems[0].lookups = [];
   const root = detachedFixture();
   try {
-    await assert.rejects(() => writeDependencyPullRequest({ root, artifact: valid, sourceSha, repository: "elsoul/erpc-sdk", api: async () => { throw new Error("writer API must not be reached"); }, dispatchCI: false, expectedRunId: 7001, expectedRunAttempt: 1, expectedEventName: "schedule", expectedWorkflowRef: workflowRef }), /native lookup receipt|ARTIFACT_INVALID|lookup/u);
+    await assert.rejects(() => writeDependencyPullRequest({ root, artifact: valid, sourceSha, repository: "elsoul/erpc-sdk", api: async () => { throw new Error("writer API must not be reached"); }, dispatchCI: false, expectedRunId: 7001, expectedRunAttempt: 1, expectedEventName: "schedule", expectedWorkflowRef: workflowRef }), /native lookup receipt|ARTIFACT_INVALID|lookup|scan/u);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -1062,7 +1330,7 @@ test("writer UPDATE uses plural Git trees, parent-preserving commits, and non-fo
       if (path === `/pulls/${oldPr.number}` && method === "PATCH") return { ...oldPr, body };
       throw new Error(`unexpected update API call: ${method} ${path}`);
     };
-    const result = await writeDependencyPullRequest({ root: detachedRoot, artifact, sourceSha, repository: "elsoul/erpc-sdk", api, dispatchCI: false, expectedRunId: 7001, expectedRunAttempt: 1, expectedEventName: "schedule", expectedWorkflowRef: workflowRef });
+    const result = await writeDependencyPullRequest({ ...scanEvidence(artifact, detachedRoot), root: detachedRoot, artifact, sourceSha, repository: "elsoul/erpc-sdk", api, dispatchCI: false, expectedRunId: 7001, expectedRunAttempt: 1, expectedEventName: "schedule", expectedWorkflowRef: workflowRef });
     assert.equal(result.action, "UPDATE");
     const commitCall = calls.find((entry) => entry.path === "/git/commits" && entry.method === "POST");
     assert.deepEqual(commitCall.body.parents, [oldHead, sourceSha]);
@@ -1117,7 +1385,7 @@ test("writer advances a historical merged cohort into a new CREATE", async () =>
       if (path === "/pulls" && method === "POST") return managedPr({ source: sourceSha, digest: artifact.candidate.candidateDigest, paths: changedPaths, headSha: newHead, number: 44 });
       throw new Error(`unexpected merged recurrence API call: ${method} ${path}`);
     };
-    const result = await writeDependencyPullRequest({ root: detachedRoot, artifact, sourceSha, repository: "elsoul/erpc-sdk", api, dispatchCI: false, expectedRunId: 7001, expectedRunAttempt: 1, expectedEventName: "schedule", expectedWorkflowRef: workflowRef });
+    const result = await writeDependencyPullRequest({ ...scanEvidence(artifact, detachedRoot), root: detachedRoot, artifact, sourceSha, repository: "elsoul/erpc-sdk", api, dispatchCI: false, expectedRunId: 7001, expectedRunAttempt: 1, expectedEventName: "schedule", expectedWorkflowRef: workflowRef });
     assert.equal(result.action, "CREATE");
     assert.equal(calls.filter((entry) => entry.path === "/pulls" && entry.method === "POST").length, 1);
     const commitCall = calls.find((entry) => entry.path === "/git/commits" && entry.method === "POST");
@@ -1159,7 +1427,7 @@ test("writer CREATE uses the real GitHub REST adapter paths, methods, and JSON b
       throw new Error(`unexpected HTTP-backed writer API call: ${method} ${path}`);
     };
     const api = fetchBackedApi(handler, seen);
-    const result = await writeDependencyPullRequest({ root: detachedRoot, artifact, sourceSha, repository: "elsoul/erpc-sdk", api, dispatchCI: false, expectedRunId: 7001, expectedRunAttempt: 1, expectedEventName: "schedule", expectedWorkflowRef: workflowRef });
+    const result = await writeDependencyPullRequest({ ...scanEvidence(artifact, detachedRoot), root: detachedRoot, artifact, sourceSha, repository: "elsoul/erpc-sdk", api, dispatchCI: false, expectedRunId: 7001, expectedRunAttempt: 1, expectedEventName: "schedule", expectedWorkflowRef: workflowRef });
     assert.equal(result.action, "CREATE");
     const refWrite = seen.find((entry) => entry.url.endsWith(`/git/refs`) && entry.method === "POST");
     assert.equal(refWrite.url, "https://api.github.com/repos/elsoul/erpc-sdk/git/refs");
@@ -1221,7 +1489,7 @@ test("writer CREATE accepts a verified web-flow commit and rejects unsigned or f
         if (path === "/pulls" && method === "POST") return managedPr({ source: sourceSha, digest: artifact.candidate.candidateDigest, paths: changedPaths, headSha });
         throw new Error(`unexpected provenance API call: ${method} ${path}`);
       };
-      const action = () => writeDependencyPullRequest({ root: detachedRoot, artifact, sourceSha, repository: "elsoul/erpc-sdk", api, dispatchCI: false, expectedRunId: 7001, expectedRunAttempt: 1, expectedEventName: "schedule", expectedWorkflowRef: workflowRef });
+      const action = () => writeDependencyPullRequest({ ...scanEvidence(artifact, detachedRoot), root: detachedRoot, artifact, sourceSha, repository: "elsoul/erpc-sdk", api, dispatchCI: false, expectedRunId: 7001, expectedRunAttempt: 1, expectedEventName: "schedule", expectedWorkflowRef: workflowRef });
       if (provenance.valid) {
         const result = await action();
         assert.equal(result.action, "CREATE", provenance.name);
@@ -1252,7 +1520,7 @@ test("writer rejects a closed unmerged cohort and treats a 403 branch response a
       if (path.startsWith("/pulls?") && path.includes("state=closed")) return [closedUnmerged];
       throw new Error(`unexpected closed PR API call: ${method} ${path}`);
     };
-    await assert.rejects(() => writeDependencyPullRequest({ root: detachedRoot, artifact, sourceSha, repository: "elsoul/erpc-sdk", api: closedApi, dispatchCI: false, expectedRunId: 7001, expectedRunAttempt: 1, expectedEventName: "schedule", expectedWorkflowRef: workflowRef }), (error) => error instanceof DependencyMaintenanceError && error.code === "AMBIGUOUS_OWNERSHIP");
+    await assert.rejects(() => writeDependencyPullRequest({ ...scanEvidence(artifact, detachedRoot), root: detachedRoot, artifact, sourceSha, repository: "elsoul/erpc-sdk", api: closedApi, dispatchCI: false, expectedRunId: 7001, expectedRunAttempt: 1, expectedEventName: "schedule", expectedWorkflowRef: workflowRef }), (error) => error instanceof DependencyMaintenanceError && error.code === "AMBIGUOUS_OWNERSHIP");
     assert.equal(closedCalls.some((entry) => entry.method === "POST"), false);
 
     const forbiddenCalls = [];
@@ -1270,7 +1538,7 @@ test("writer rejects a closed unmerged cohort and treats a 403 branch response a
       }
       throw new Error(`unexpected forbidden branch API call: ${method} ${path}`);
     };
-    await assert.rejects(() => writeDependencyPullRequest({ root: detachedRoot, artifact, sourceSha, repository: "elsoul/erpc-sdk", api: forbiddenApi, dispatchCI: false, expectedRunId: 7001, expectedRunAttempt: 1, expectedEventName: "schedule", expectedWorkflowRef: workflowRef }), (error) => error instanceof DependencyMaintenanceError && error.code === "API_FAILED" && error.status === 403);
+    await assert.rejects(() => writeDependencyPullRequest({ ...scanEvidence(artifact, detachedRoot), root: detachedRoot, artifact, sourceSha, repository: "elsoul/erpc-sdk", api: forbiddenApi, dispatchCI: false, expectedRunId: 7001, expectedRunAttempt: 1, expectedEventName: "schedule", expectedWorkflowRef: workflowRef }), (error) => error instanceof DependencyMaintenanceError && error.code === "API_FAILED" && error.status === 403);
     assert.equal(forbiddenCalls.some((entry) => entry.path === "/git/refs" && entry.method === "POST"), false);
   } finally {
     rmSync(detachedRoot, { recursive: true, force: true });
@@ -1317,7 +1585,7 @@ test("writer observes an accepted branch-ref transport failure once without retr
       if (path === "/pulls" && method === "POST") return managedPr({ source: sourceSha, digest: artifact.candidate.candidateDigest, paths: changedPaths, headSha });
       throw new Error(`unexpected ambiguous ref API call: ${method} ${path}`);
     };
-    const result = await writeDependencyPullRequest({ root: detachedRoot, artifact, sourceSha, repository: "elsoul/erpc-sdk", api, dispatchCI: false, expectedRunId: 7001, expectedRunAttempt: 1, expectedEventName: "schedule", expectedWorkflowRef: workflowRef });
+    const result = await writeDependencyPullRequest({ ...scanEvidence(artifact, detachedRoot), root: detachedRoot, artifact, sourceSha, repository: "elsoul/erpc-sdk", api, dispatchCI: false, expectedRunId: 7001, expectedRunAttempt: 1, expectedEventName: "schedule", expectedWorkflowRef: workflowRef });
     assert.equal(result.action, "CREATE");
     assert.equal(calls.filter((entry) => entry.path === "/git/refs" && entry.method === "POST").length, 1);
     assert.equal(branchReads, 2);
@@ -1363,7 +1631,7 @@ test("writer observes an accepted pull-request transport failure once without a 
       }
       throw new Error(`unexpected ambiguous PR API call: ${method} ${path}`);
     };
-    const result = await writeDependencyPullRequest({ root: detachedRoot, artifact, sourceSha, repository: "elsoul/erpc-sdk", api, dispatchCI: false, expectedRunId: 7001, expectedRunAttempt: 1, expectedEventName: "schedule", expectedWorkflowRef: workflowRef });
+    const result = await writeDependencyPullRequest({ ...scanEvidence(artifact, detachedRoot), root: detachedRoot, artifact, sourceSha, repository: "elsoul/erpc-sdk", api, dispatchCI: false, expectedRunId: 7001, expectedRunAttempt: 1, expectedEventName: "schedule", expectedWorkflowRef: workflowRef });
     assert.equal(result.action, "CREATE");
     assert.equal(calls.filter((entry) => entry.path === "/pulls" && entry.method === "POST").length, 1);
     assert.equal(calls.filter((entry) => entry.path.startsWith("/pulls?") && entry.path.includes("state=open")).length, 2);
@@ -1439,7 +1707,7 @@ test("writer rejects forged managed PR identity before branch or PR mutation", a
       if (path.startsWith("/pulls?") && path.includes("state=open")) return [forged];
       throw new Error(`unexpected forged PR API call: ${method} ${path}`);
     };
-    await assert.rejects(() => writeDependencyPullRequest({ root: detachedRoot, artifact, sourceSha, repository: "elsoul/erpc-sdk", api, dispatchCI: false, expectedRunId: 7001, expectedRunAttempt: 1, expectedEventName: "schedule", expectedWorkflowRef: workflowRef }), (error) => error instanceof DependencyMaintenanceError && error.code === "AMBIGUOUS_OWNERSHIP");
+    await assert.rejects(() => writeDependencyPullRequest({ ...scanEvidence(artifact, detachedRoot), root: detachedRoot, artifact, sourceSha, repository: "elsoul/erpc-sdk", api, dispatchCI: false, expectedRunId: 7001, expectedRunAttempt: 1, expectedEventName: "schedule", expectedWorkflowRef: workflowRef }), (error) => error instanceof DependencyMaintenanceError && error.code === "AMBIGUOUS_OWNERSHIP");
     assert.equal(calls.some((entry) => entry.method === "POST" || entry.method === "PATCH"), false);
   } finally {
     rmSync(detachedRoot, { recursive: true, force: true });
@@ -1471,7 +1739,7 @@ test("writer rejects a user-modified file on an otherwise owned dependency branc
       }
       throw new Error(`unexpected modified branch API call: ${method} ${path}`);
     };
-    await assert.rejects(() => writeDependencyPullRequest({ root: detachedRoot, artifact, sourceSha, repository: "elsoul/erpc-sdk", api, dispatchCI: false, expectedRunId: 7001, expectedRunAttempt: 1, expectedEventName: "schedule", expectedWorkflowRef: workflowRef }), (error) => error instanceof DependencyMaintenanceError && error.code === "HUMAN_BRANCH_EDIT");
+    await assert.rejects(() => writeDependencyPullRequest({ ...scanEvidence(artifact, detachedRoot), root: detachedRoot, artifact, sourceSha, repository: "elsoul/erpc-sdk", api, dispatchCI: false, expectedRunId: 7001, expectedRunAttempt: 1, expectedEventName: "schedule", expectedWorkflowRef: workflowRef }), (error) => error instanceof DependencyMaintenanceError && error.code === "HUMAN_BRANCH_EDIT");
     assert.equal(calls.some((entry) => entry.method === "POST" || entry.method === "PATCH"), false);
   } finally {
     rmSync(detachedRoot, { recursive: true, force: true });

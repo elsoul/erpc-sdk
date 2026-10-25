@@ -62,6 +62,15 @@ existing checks and tests. Install the development dependencies listed above
 before pushing. Fix false positives in the relevant rule with a regression test
 and explain the change in the same commit; never use `--no-verify`.
 
+Hook installation is a manual per-checkout action: a newly cloned or separately
+managed checkout has no protection until `pnpm lefthook install` is run there.
+The hooks protect ordinary local commits and pushes only; GitHub API writes can
+bypass local hooks. The dependency-maintenance writer therefore performs its
+own fresh pinned Gitleaks scan of the exact observation and candidate bytes
+before its first API mutation. The helper offers no scan opt-out or caller
+asserted pass path, and hooks remain manually managed and bypassable local
+controls.
+
 `scripts/run-gitleaks.sh` downloads the official Gitleaks 8.30.1 binary for
 macOS/Linux on x64/arm64. Each platform archive has a pinned SHA256. The wrapper
 checks cached archives on every invocation and extracts a fresh executable into
