@@ -449,10 +449,26 @@ eligible patch/minor candidate bytes. Manual runs default to evaluation only;
 select the writer input only for an explicitly approved smoke. The writer
 checks the exact source SHA, the closed candidate file set, dependency-only
 field invariants, current `main`, and managed branch ownership before using
-non-forcing GitHub API writes. It dispatches the existing CI workflow once for
-the exact candidate head or safely reuses its verified run. This automation
-does not change SDK or release versions, publish packages, merge PRs, move
-tags, grant permissions, or enable weekly releases.
+non-forcing GitHub API writes. Before an observation is uploaded, the evaluator
+materializes the exact observation, decoded candidate files, and decoded JSON
+diagnostics in a private temporary directory and runs the pinned Gitleaks
+wrapper with full redaction and inline `gitleaks:allow` suppression ignored.
+Trusted checked-in configuration allowlists remain in effect. A detached receipt binds
+the passed scan to the observation bytes, candidate digest, source/run/event
+identity, workflow ref, and the wrapper/configuration digests. The upload
+uses the private scanned snapshot and requires that receipt from the same
+invocation. The writer validates that
+receipt and repeats the real scan immediately before its first GitHub API
+mutation, so a stale or caller-asserted pass cannot authorize a write.
+
+Findings, malformed inputs, scanner errors, timeouts, missing tools, and
+receipt mismatches fail closed and make no successful receipt or eligible
+writer run. Gitleaks is a pattern detector: a clean result does not prove that
+every secret is absent, and a synthetic finding is not an incident
+confirmation. The local hooks remain separately installed, human-managed
+protection for ordinary commits and pushes. This automation does not change
+SDK or release versions, publish packages, merge PRs, move tags, grant
+permissions, or enable weekly releases.
 
 ## Legacy aligned-version release preparation
 

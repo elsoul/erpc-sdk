@@ -65,7 +65,7 @@
     "pack:check": "node scripts/verify-package.mjs && corepack pnpm pack --dry-run"
   },
   "devDependencies": {
-    "@types/node": "^26.6.5",
+    "@types/node": "^26.6.6",
     "tsup": "^8.5.1",
     "typescript": "^5.9.3",
     "vitest": "^4.1.12"

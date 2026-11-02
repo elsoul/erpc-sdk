@@ -36,6 +36,7 @@ jobs:
     outputs:
       candidate_status: ${{ steps.classify.outputs.candidate_status }}
       evaluation_status: ${{ steps.classify.outputs.evaluation_status }}
+      scan_status: ${{ steps.scan.outputs.scan_status }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -133,7 +134,7 @@ jobs:
           candidate_status=blocked
           evaluation_status=failed
           if [ -s "$OUTPUT_FILE" ]; then
-            readarray -t values < <(node --input-type=module -e 'import { readFileSync } from "node:fs"; const artifact = JSON.parse(readFileSync(process.argv[1], "utf8")); if (artifact.kind !== "erpc-sdk-dependency-maintenance-observation") throw new Error("wrong dependency observation kind"); console.log(artifact.candidate?.status ?? "blocked"); console.log(artifact.evaluationStatus ?? "failed")' "$OUTPUT_FILE")
+            readarray -t values < <(node --input-type=module -e 'import { readFileSync } from "node:fs"; try { const artifact = JSON.parse(readFileSync(process.argv[1], "utf8")); const candidateStatuses = new Set(["eligible", "no-update", "blocked"]); const evaluationStatuses = new Set(["eligible", "no-update", "blocked", "compatible", "failed"]); if (artifact.kind !== "erpc-sdk-dependency-maintenance-observation") throw new Error("invalid"); const candidate = artifact.candidate?.status ?? "blocked"; const evaluation = artifact.evaluationStatus ?? "failed"; if (!candidateStatuses.has(candidate) || !evaluationStatuses.has(evaluation)) throw new Error("invalid"); console.log(candidate); console.log(evaluation); } catch { process.stderr.write("invalid dependency maintenance status\\n"); process.exit(1); }' "$OUTPUT_FILE")
             candidate_status="${values[0]}"
             evaluation_status="${values[1]}"
           fi
@@ -142,26 +143,59 @@ jobs:
             echo "evaluation_status=$evaluation_status"
           } >> "$GITHUB_OUTPUT"
           printf 'candidate_status=%s\nevaluation_status=%s\nevaluator_outcome=%s\n' "$candidate_status" "$evaluation_status" "$EVALUATOR_OUTCOME"
+      - name: Scan exact observation before upload
+        id: scan
+        if: always()
+        continue-on-error: true
+        env:
+          OUTPUT_FILE: ${{ runner.temp }}/dependency-maintenance/dependency-observation.json
+          RECEIPT_FILE: ${{ runner.temp }}/dependency-maintenance/dependency-observation.receipt.json
+          SNAPSHOT_FILE: ${{ runner.temp }}/dependency-maintenance/dependency-observation.scanned.json
+          SOURCE_SHA: ${{ github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          test -s "$OUTPUT_FILE"
+          node .github/workflows/dependency-maintenance.mjs scan \
+            --root "$GITHUB_WORKSPACE" \
+            --observation "$OUTPUT_FILE" \
+            --receipt "$RECEIPT_FILE" \
+            --snapshot "$SNAPSHOT_FILE" \
+            --source-sha "$SOURCE_SHA" \
+            --event-name "$EVENT_NAME" \
+            --workflow-ref "$WORKFLOW_REF" \
+            --run-id "$RUN_ID" \
+            --run-attempt "$RUN_ATTEMPT"
+          printf 'scan_status=passed\n' >> "$GITHUB_OUTPUT"
       - name: Fail closed on lookup or resolution failure
         if: always()
         env:
           CANDIDATE_STATUS: ${{ steps.classify.outputs.candidate_status }}
           EVALUATION_STATUS: ${{ steps.classify.outputs.evaluation_status }}
+          SCAN_STATUS: ${{ steps.scan.outputs.scan_status }}
         run: |
           set -euo pipefail
-          case "$CANDIDATE_STATUS:$EVALUATION_STATUS" in
-            eligible:eligible|no-update:no-update|no-update:compatible) ;;
+          case "$CANDIDATE_STATUS:$EVALUATION_STATUS:$SCAN_STATUS" in
+            eligible:eligible:passed|no-update:no-update:passed|no-update:compatible:passed) ;;
             *)
-              echo "dependency evaluator did not produce a successful five-ecosystem result" >&2
+              echo "dependency evaluator did not produce a successful five-ecosystem result and scan receipt" >&2
               exit 1
               ;;
           esac
       - name: Upload source-bound dependency observation
-        if: always()
+        if: >-
+          always() &&
+          steps.scan.outcome == 'success' &&
+          steps.scan.outputs.scan_status == 'passed'
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
           name: dependency-maintenance-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/dependency-maintenance/dependency-observation.json
+          path: |
+            ${{ runner.temp }}/dependency-maintenance/dependency-observation.scanned.json
+            ${{ runner.temp }}/dependency-maintenance/dependency-observation.receipt.json
           if-no-files-found: error
           retention-days: 14
 
@@ -171,6 +205,7 @@ jobs:
     if: >-
       needs.evaluator.result == 'success' &&
       needs.evaluator.outputs.candidate_status == 'eligible' &&
+      needs.evaluator.outputs.scan_status == 'passed' &&
       (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.write == true))
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -210,7 +245,8 @@ jobs:
           RUN_ID: ${{ github.run_id }}
           RUN_ATTEMPT: ${{ github.run_attempt }}
           GITHUB_TOKEN: ${{ github.token }}
-          ARTIFACT_FILE: ${{ runner.temp }}/dependency-maintenance/dependency-observation.json
+          ARTIFACT_FILE: ${{ runner.temp }}/dependency-maintenance/dependency-observation.scanned.json
+          RECEIPT_FILE: ${{ runner.temp }}/dependency-maintenance/dependency-observation.receipt.json
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
@@ -219,6 +255,7 @@ jobs:
           node .github/workflows/dependency-maintenance.mjs write \
             --root "$GITHUB_WORKSPACE" \
             --artifact "$ARTIFACT_FILE" \
+            --receipt "$RECEIPT_FILE" \
             --source-sha "$SOURCE_SHA" \
             --repository "$REPOSITORY" \
             --token "$GITHUB_TOKEN" \
