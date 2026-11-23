@@ -24,8 +24,8 @@ importers:
         specifier: 1.8.0
         version: 1.8.0
       lossless-json:
-        specifier: 4.3.3
-        version: 4.3.3
+        specifier: 4.3.4
+        version: 4.3.4
     devDependencies:
       '@types/node':
         specifier: ^26.6.6
@@ -747,8 +747,8 @@ packages:
     resolution: {integrity: sha512-IXO6OCs9yg8tMKzfPZ1YmheJbZCiEsnBdcB03l0OcfK9prKnJb96siuHCr5Fl37/yo9DnKU+TLpxzTUspw9shg==}
     engines: {node: ^12.20.0 || ^14.13.1 || >=16.0.0}
 
-  lossless-json@4.3.3:
-    resolution: {integrity: sha512-FGFrGArHsv7BRiYOf37ZRieT9HlKw+Kpu9HvtpYjcoOEo8lqNkjny8A2YAfWNWWQC+9pcLIrLZ+IviKJhaHwGQ==}
+  lossless-json@4.3.4:
+    resolution: {integrity: sha512-zfmBtt+IgL7aiem9qNhAmW8/kZOVzA0Y219UNj/FN7p21hQ4ZOghT4y9FzxQAm/64e4wi4jR7lBXUXy2IrjaMA==}
 
   magic-string@0.30.21:
     resolution: {integrity: sha512-vd2F4YUyEXKGcLHoq+TEyCjxueSeHnFxyyjNp80yg0XV4vUhnDer/lvvlqM/arB5bXQN5K2/3oinyCRyx8T2CQ==}
@@ -1475,7 +1475,7 @@ snapshots:
 
   load-tsconfig@0.2.5: {}
 
-  lossless-json@4.3.3: {}
+  lossless-json@4.3.4: {}
 
   magic-string@0.30.21:
     dependencies:

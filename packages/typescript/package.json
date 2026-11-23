@@ -5,7 +5,7 @@
   "dependencies": {
     "@noble/curves": "1.9.7",
     "@noble/hashes": "1.8.0",
-    "lossless-json": "4.3.3"
+    "lossless-json": "4.3.4"
   },
   "keywords": [
     "avalanche",

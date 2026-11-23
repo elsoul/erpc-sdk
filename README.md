@@ -1,21 +1,120 @@
 # ERPC SDK
 
-[![ERPC — Global Edge Blockchain Infrastructure](https://storage.erpc.global/ERPCheader.jpg)](https://erpc.global)
+[![ERPC SDK: a crystal core in a gunmetal developer module](assets/erpc-sdk-hero.png)][erpc-sdk-home]
 
-<p align="center">
+**Build multichain applications in the language you use.**
+
+ERPC SDK brings RPC access, token and DEX catalogs, and supported swap and bridge
+flows to TypeScript, Rust, Python, Go, and Ruby. Connect through ERPC or configure
+your own RPC endpoints, with explicit requests and language-specific APIs.
+
+[Quick start](#quick-start) · [Choose your language](#choose-your-language) ·
+[Usage guide](#complete-usage-guide) · [Method reference](docs/METHODS.md)
+
+<p>
   <a href="https://github.com/elsoul/erpc-sdk/actions/workflows/ci.yml"><img src="https://github.com/elsoul/erpc-sdk/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
   <a href="https://www.npmjs.com/package/@elsoul/erpc-sdk"><img src="https://img.shields.io/npm/v/%40elsoul%2Ferpc-sdk.svg" alt="npm" /></a>
   <a href="https://crates.io/crates/erpc-sdk"><img src="https://img.shields.io/crates/v/erpc-sdk.svg" alt="crates.io" /></a>
   <a href="https://pypi.org/project/erpc-sdk/"><img src="https://img.shields.io/pypi/v/erpc-sdk.svg" alt="PyPI" /></a>
   <a href="https://pkg.go.dev/github.com/elsoul/erpc-sdk/packages/go"><img src="https://pkg.go.dev/badge/github.com/elsoul/erpc-sdk/packages/go.svg" alt="Go Reference" /></a>
   <a href="https://rubygems.org/gems/erpc-sdk"><img src="https://img.shields.io/gem/v/erpc-sdk.svg" alt="RubyGems" /></a>
-  <a href="#license"><img src="https://img.shields.io/badge/licenses-components-informational.svg" alt="Component licenses" /></a>
 </p>
 
-<p align="center">
-  <strong>ERPC Official Multi-Network Blockchain SDK<br />
-  Built for Developers. Ready for AI Agents.</strong>
-</p>
+## Quick start
+
+For TypeScript or JavaScript on Node.js 20 or later:
+
+```bash
+npm install @elsoul/erpc-sdk@0.11.0
+```
+
+Set `ERPC_API_KEY` in your environment using a key from your ERPC account.
+Save this as `quickstart.mjs` and run `node quickstart.mjs`, or use it in your
+TypeScript project:
+
+```js
+import { createErpcClient } from '@elsoul/erpc-sdk'
+
+const apiKey = process.env.ERPC_API_KEY
+if (!apiKey) throw new Error('ERPC_API_KEY is required')
+
+const erpc = createErpcClient({ apiKey })
+try {
+  const slot = await erpc.solana.rpc.getSlot().send()
+  const chainId = await erpc.ethereum.rpc.eth_chainId().send()
+  console.log({ slot, chainId })
+} finally {
+  erpc.close()
+}
+```
+
+Calling `.send()` performs the RPC request. To use a caller-owned endpoint
+without an ERPC key, follow the [direct RPC guide](#direct-rpc-endpoints).
+
+## Choose your language
+
+The `0.11.0` release is available in all five languages. Each guide includes
+installation, configuration, examples, and that package's exact API surface.
+
+| Language | Install | Guide |
+| --- | --- | --- |
+| TypeScript / JavaScript | `npm install @elsoul/erpc-sdk@0.11.0` | [TypeScript guide](packages/typescript/README.md) |
+| Rust | `cargo add erpc-sdk@0.11.0` | [Rust guide](packages/rust/README.md) |
+| Python | `python -m pip install erpc-sdk==0.11.0` | [Python guide](packages/python/README.md) |
+| Go | `go get github.com/elsoul/erpc-sdk/packages/go@v0.11.0` | [Go guide](packages/go/README.md) |
+| Ruby | `gem install erpc-sdk -v 0.11.0` | [Ruby guide](packages/ruby/README.md) |
+
+Minimum runtimes: Node.js 20, Rust 1.85, Python 3.11, Go 1.22, and Ruby 3.1.
+Package version badges link to the live registries. The Rust `0.11.0` artifact
+is the immutable release from October 23; see the
+[release details](#packages) for the five-language publication history.
+
+## What you can build
+
+| Area | Available scope |
+| --- | --- |
+| RPC applications | Solana, Ethereum, and Avalanche chain APIs, with subscriptions and service APIs where documented by each package. |
+| Multichain reads | A bounded read-only matrix across **18 chain families and 20 network rows**, including Bitcoin, additional EVM families, NEAR, TRON, and three Sui gRPC-Web reads. |
+| Token and DEX tools | Shared offline token, DEX, pool, and ranking catalogs. |
+| Swap workflows | Reviewed Ethereum Uniswap V2 and Avalanche LFJ exact-input routes, using configured RPC reads and local quote, preparation, and simulation logic where supported. |
+| Bridge workflows | Reviewed Mayan Swift v2 native EURC and native USDC routes, with explicit provider and unsigned-build boundaries. |
+
+Coverage varies by chain, method, and language. The read-only matrix does not
+imply full transaction, subscription, swap, or bridge support on every chain.
+Use the [method reference](docs/METHODS.md) and
+[capability details](#availability) to choose a supported flow.
+
+Wallets remain under your application's control. Supported preparation and
+bridge builds return unsigned data; an external wallet signs it before you
+submit it through a supported RPC method. See
+[signing and broadcast](packages/typescript/docs/signing-and-broadcast.md).
+
+## Explore the SDK
+
+| Task | Start here |
+| --- | --- |
+| Run examples in your language | [Five-language quick starts](#quick-starts) |
+| Connect a dedicated or self-hosted RPC | [Direct RPC endpoints](#direct-rpc-endpoints) |
+| Find tokens, pools, and supported DEX routes | [Token catalog](#offline-token-catalog) · [DEX catalog](registry/DEX.md) |
+| Check bridge routes and provider requirements | [Bridge capability registry](registry/BRIDGE.md) · [Mayan authentication](#mayan-authentication-layers) |
+| Subscribe to data or handle request failures | [Subscriptions](#websocket-subscriptions) · [Errors](#error-handling) |
+| Find a specific API or configuration option | [Method reference](docs/METHODS.md) · [Usage guide](#complete-usage-guide) |
+| Follow releases and planned work | [Changelog](CHANGELOG.md) · [Roadmap](ROADMAP.md) |
+
+## Contributing and security
+
+See [Contributing](CONTRIBUTING.md) for the development environment and checks.
+Report security issues through the [Security policy](SECURITY.md).
+[Governance](GOVERNANCE.md) and the [compliance evidence index](docs/compliance/README.md)
+describe how the project is maintained.
+
+Merging a change does not publish a package. Releases follow the reviewed
+[release process](docs/RELEASING.md).
+
+## Complete usage guide
+
+<details>
+<summary>Complete usage guide and API examples</summary>
 
 All five language packages are publicly available at `0.11.0`. The TypeScript,
 Python, Go, and Ruby packages were published in the
@@ -995,6 +1094,8 @@ selected RPC access; legacy `endpoint` and `avalancheEndpoint` remain eRPC base
 URLs, not full dedicated-node overrides. Default endpoints and timeout values
 are exported for applications that need to inspect them.
 
+</details>
+
 ## Development
 
 ```bash
@@ -1075,3 +1176,7 @@ All five language artifacts are publicly available at `0.11.0`; the Rust
 artifact is the immutable package reused from 2026-10-23. These notices
 describe source and component provenance; they do not certify legal compliance
 or CE conformity.
+
+<!-- Replace this single target with the SDK documentation URL when published. -->
+[erpc-sdk-home]: https://erpc.global/en/
+
