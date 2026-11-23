@@ -5,7 +5,7 @@
   "dependencies": {
     "@noble/curves": "1.9.7",
     "@noble/hashes": "1.8.0",
-    "lossless-json": "4.3.3"
+    "lossless-json": "4.3.4"
   },
   "keywords": [
     "avalanche",
@@ -65,7 +65,7 @@
     "pack:check": "node scripts/verify-package.mjs && corepack pnpm pack --dry-run"
   },
   "devDependencies": {
-    "@types/node": "^26.6.5",
+    "@types/node": "^26.6.6",
     "tsup": "^8.5.1",
     "typescript": "^5.9.3",
     "vitest": "^4.1.12"
