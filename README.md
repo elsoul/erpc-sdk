@@ -64,7 +64,7 @@ installation, configuration, examples, and that package's exact API surface.
 | Go | `go get github.com/elsoul/erpc-sdk/packages/go@v0.11.0` | [Go guide](packages/go/README.md) |
 | Ruby | `gem install erpc-sdk -v 0.11.0` | [Ruby guide](packages/ruby/README.md) |
 
-Minimum runtimes: Node.js 20, Rust 1.85, Python 3.11, Go 1.22, and Ruby 3.1.
+Minimum runtimes: Node.js 20, Rust 1.85, Python 3.11, Go 1.26, and Ruby 3.1.
 Package version badges link to the live registries. The Rust `0.11.0` artifact
 is the immutable release from October 23; see the
 [release details](#packages) for the five-language publication history.
@@ -213,7 +213,7 @@ gem install erpc-sdk
 See the package guides for [TypeScript](packages/typescript/README.md),
 [Rust](packages/rust/README.md), [Python](packages/python/README.md),
 [Go](packages/go/README.md), and [Ruby](packages/ruby/README.md). Minimum
-versions are Rust 1.85, Python 3.11, Go 1.22, and Ruby 3.1.
+versions are Rust 1.85, Python 3.11, Go 1.26, and Ruby 3.1.
 
 ## Availability
 

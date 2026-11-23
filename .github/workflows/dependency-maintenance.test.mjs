@@ -166,8 +166,8 @@ function nativeFixtureVersions(root) {
     const match = line.match(/^\s*(\S+)\s+v(\d+\.\d+(?:\.\d+)?)/u);
     if (match) go.set(match[1], match[2]);
   }
-  go.set("go", "1.22.0");
-  go.set("golang.org/x/sys", "0.28.0");
+  go.set("go", "1.26.0");
+  go.set("golang.org/x/sys", "0.50.0");
   const python = new Map(parsePythonRequirements(files["packages/python/pyproject.toml"]).map((entry) => [entry.name, firstVersion(entry.spec)]));
   const ruby = new Map();
   for (const match of files["packages/ruby/Gemfile.lock"].matchAll(/^    ([^\s(]+) \(([^)]+)\)$/gmu)) ruby.set(match[1], match[2]);
@@ -1152,7 +1152,7 @@ test("native Go runtime fallback preserves unrestricted latest and selects the c
       if (command === "go" && args[0] === "mod" && args[1] === "tidy") return { status: 0, stdout: "", stderr: "" };
       if (command === "go" && args[0] === "list" && args[1] === "-m" && args[2] === "-json" && args[3]?.startsWith("filippo.io/edwards25519@")) {
         lookupCalls.push({ args: [...args], env: options.env });
-        const metadata = args[3].endsWith(`@v${major}.${minor}`) ? { Path: "filippo.io/edwards25519", Version: `v${selected}`, GoVersion: "1.20" } : { Path: "filippo.io/edwards25519", Version: `v${latest}`, GoVersion: "1.24" };
+        const metadata = args[3].endsWith(`@v${major}.${minor}`) ? { Path: "filippo.io/edwards25519", Version: `v${selected}`, GoVersion: "1.20" } : { Path: "filippo.io/edwards25519", Version: `v${latest}`, GoVersion: "1.27" };
         return { status: 0, stdout: JSON.stringify(metadata), stderr: "" };
       }
       const result = baseRunner(command, args, options);
