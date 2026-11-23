@@ -76,7 +76,7 @@ export const RUNTIME_FLOORS = Object.freeze({
   typescript: { sdkNode: ">=20", workspaceNode: ">=22.13", pnpm: "11.24.0" },
   rust: { rust: "1.85", edition: "2024" },
   python: { python: ">=3.11" },
-  go: { go: "1.22", toolchain: "local" },
+  go: { go: "1.26", toolchain: "local" },
   ruby: { ruby: ">=3.1", bundler: "2.4.20" },
 });
 
@@ -1329,7 +1329,7 @@ function assertIdentity(root, files, baselineFiles = files) {
   if (!/^edition\s*=\s*"2024"/mu.test(cargo) || !/^rust-version\s*=\s*"1\.85"/mu.test(cargo) || !/^yoke-derive\s*=\s*"=0\.8\.2"/mu.test(cargo)) fail("Rust edition, MSRV, or yoke hold changed", "FLOOR_DRIFT");
   const python = files["packages/python/pyproject.toml"];
   if (!/^requires-python\s*=\s*">=3\.11"/mu.test(python)) fail("Python floor changed", "FLOOR_DRIFT");
-  if (!/^module\s+github\.com\/elsoul\/erpc-sdk\/packages\/go\s*$/mu.test(files["packages/go/go.mod"]) || !/^go\s+1\.22\s*$/mu.test(files["packages/go/go.mod"])) fail("Go module or floor changed", "FLOOR_DRIFT");
+  if (!/^module\s+github\.com\/elsoul\/erpc-sdk\/packages\/go\s*$/mu.test(files["packages/go/go.mod"]) || !/^go\s+1\.26\.0\s*$/mu.test(files["packages/go/go.mod"])) fail("Go module or floor changed", "FLOOR_DRIFT");
   if (!/^\s*spec\.required_ruby_version\s*=\s*">= 3\.1"/mu.test(files["packages/ruby/erpc-sdk.gemspec"])) fail("Ruby floor changed", "FLOOR_DRIFT");
   const expected = extractSdkIdentity(root, baselineFiles);
   const actual = extractSdkIdentity(root, files);

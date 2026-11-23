@@ -735,7 +735,7 @@ const validateNonRust = (data, expectedVersion) => {
   ) {
     fail('Unexpected Python package repository')
   }
-  if (!/^go 1\.22$/m.test(data.goManifest)) {
+  if (!/^go 1\.26\.0$/m.test(data.goManifest)) {
     fail('Unexpected minimum Go version')
   }
   if (!/^\s*spec\.required_ruby_version = ">= 3\.1"$/m.test(data.rubyManifest)) {
@@ -2894,7 +2894,7 @@ export function validateReleaseSetPlan(plan) {
   const expectedRustLicense = rust.mode === 'reuse' && rust.version === RUST_VERSION ? 'MIT' : RUST_011_LICENSE_PROFILE
   requireEqual(plan.licenseProfile.rust, expectedRustLicense, 'Release-set Rust license profile does not match the bound artifact')
   releaseSetKeys(plan.toolchain, ['node', 'python', 'go', 'ruby', 'rust'], 'Release-set toolchain')
-  const requiredToolchain = { node: '24', python: '3.12', go: '1.22', ruby: '3.1', rust: '1.85.0' }
+  const requiredToolchain = { node: '24', python: '3.12', go: '1.26', ruby: '3.1', rust: '1.85.0' }
   for (const [tool, value] of Object.entries(requiredToolchain)) requireEqual(plan.toolchain[tool], value, `Release-set ${tool} toolchain mismatch`)
   releaseSetKeys(plan.approval, ['environments', 'effects', 'publicAssets', 'bundleFiles'], 'Release-set approval')
   releaseSetKeys(plan.approval.environments, ['npm', 'pypi', 'rubygems', 'cratesIo'], 'Release-set environments')
@@ -4915,9 +4915,9 @@ export async function observeGoModule(input, adapters = {}) {
   for (const runtime of runtimes) {
     await mkdir(runtime.consumer, { recursive: true }); await mkdir(runtime.goPath, { recursive: true }); await mkdir(runtime.goCache, { recursive: true }); await mkdir(runtime.moduleCache, { recursive: true }); await writeFile(runtime.goEnv, '')
     const version = await goObserverRun(run, input.toolPaths.go, ['version'], { cwd: runtime.consumer, env: runtime.env }, `${runtime.kind}-version`, deadlineControl)
-    if (!/^go version go1\.22\./.test(String(version.stdout).trim())) fail(`go-observe-${runtime.kind}-tool-version-mismatch`)
+    if (!/^go version go1\.26\./.test(String(version.stdout).trim())) fail(`go-observe-${runtime.kind}-tool-version-mismatch`)
     const runtimeVersion = String(version.stdout).trim()
-    await writeFile(join(runtime.consumer, 'go.mod'), `module example.invalid/${runtime.kind}-consumer\n\ngo 1.22\n\nrequire ${normalized.descriptor.module} ${normalized.descriptor.version}\n`)
+    await writeFile(join(runtime.consumer, 'go.mod'), `module example.invalid/${runtime.kind}-consumer\n\ngo 1.26.0\n\nrequire ${normalized.descriptor.module} ${normalized.descriptor.version}\n`)
     let downloaded
     let absentAttempts = 0
     while (true) {

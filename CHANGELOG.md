@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Raise the Go module's minimum Go version from 1.22 to 1.26 and update
+  `golang.org/x/crypto` from v0.31.0 to v0.59.0 (with `golang.org/x/sys`
+  v0.50.0). This clears the open Dependabot alerts for `golang.org/x/crypto`,
+  all of which are in the `ssh`, `ssh/agent`, and `ssh/knownhosts` packages;
+  the SDK only imports `golang.org/x/crypto/sha3`. Go 1.22 through 1.25 no
+  longer receive upstream security fixes, and current `golang.org/x/crypto`
+  releases require Go 1.26. CI, release, and dependency-maintenance workflows
+  now run Go 1.26.
+
 ## 0.11.0 — 2026-10-24 (public SDK release)
 
 - Publish the TypeScript, Python, Go, and Ruby packages at the reviewed

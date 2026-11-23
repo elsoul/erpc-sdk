@@ -11,7 +11,7 @@ Requirements:
 - pnpm 11
 - Rust 1.85 or newer with `rustfmt` and `clippy`
 - Python 3.11 or newer
-- Go 1.22 or newer
+- Go 1.26 or newer
 - Ruby 3.1 or newer with Bundler
 
 ```bash

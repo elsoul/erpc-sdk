@@ -14,7 +14,7 @@ This guide documents the `v0.11.0` package. Use `@latest` for the latest
 available module, or use `@v0.11.0` when that version is available in the
 registry; check the [available module versions](https://pkg.go.dev/github.com/elsoul/erpc-sdk/packages/go?tab=versions) before selecting a version. The historical `0.9.0` module and its features remain documented below.
 
-Go 1.22 or later is supported.
+Go 1.26 or later is supported.
 
 ## Quick start
 
